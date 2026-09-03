@@ -24,6 +24,7 @@ import {
   type DenominationKind,
   encodeCurrencyCode,
 } from "@/lib/commerce/denomination";
+import { FIAT_TOKEN_FEED_REQUIRED_REASON } from "@/lib/commerce/openable-terms";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import {
   AUCTION_REQUIRES_VERIFICATION_HINT,
@@ -261,7 +262,7 @@ export function ListingEditClient({
         denominationKind === DENOMINATION_KIND.Fiat &&
         !asset.fiatDenomination
       ) {
-        setLog(asset.fiatUnavailableReason ?? "Fiat is not available for this asset.");
+        setLog(asset.fiatUnavailableReason ?? FIAT_TOKEN_FEED_REQUIRED_REASON);
         return;
       }
       if (wrongChain) {

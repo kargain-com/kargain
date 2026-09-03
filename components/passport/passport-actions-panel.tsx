@@ -533,7 +533,7 @@ export function PassportActionsPanel({
         <p className="text-sm text-text-secondary">Passport contract not configured.</p>
       )}
 
-      {passport && (
+      {passport && evm.ok && (
     <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-6">
       {!embeddedInSheet && (
         <h2 className="font-sans text-base font-medium text-text-primary">Actions</h2>

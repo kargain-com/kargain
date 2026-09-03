@@ -7,6 +7,7 @@ import { LightningAddressField, isLightningAddressInvalid } from "@/components/p
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useActiveAccount, requireEvmSession, evmSessionRefusalCopy } from "@/hooks/use-active-account";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { categoryLabel } from "@/lib/design/instrument-classes";
 import { KAR_PRO_PAYMENTS_NETWORK_SCOPE } from "@/lib/kar-pro/membership-roster";
@@ -27,6 +28,8 @@ const PAYMENT_METHOD_LABELS: Record<PaymentMethodId, string> = {
 };
 
 export function KarProPaymentsSection({ chainId, address }: KarProPaymentsSectionProps) {
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
   const wc = wagmiChainId(chainId);
   const { data: walletClient } = useWalletClient({ chainId: wc });
 
@@ -83,8 +86,12 @@ export function KarProPaymentsSection({ chainId, address }: KarProPaymentsSectio
   );
 
   const onSaveMethods = async () => {
-    if (!walletClient) {
-      setMethodsError("Connect your wallet to save payment methods.");
+    if (!evm.ok || !walletClient) {
+      setMethodsError(
+        !evm.ok
+          ? evmSessionRefusalCopy(evm.cause)
+          : "Connect your wallet to save payment methods.",
+      );
       return;
     }
     if (lud16Invalid) {

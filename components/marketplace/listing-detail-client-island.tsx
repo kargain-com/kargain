@@ -18,6 +18,7 @@ import { SellerContactButton } from "@/components/marketplace/seller-contact-but
 import { SellerMessagingBanner } from "@/components/marketplace/seller-messaging-banner";
 import { Button } from "@/components/ui/button";
 import { useListingChainReads } from "@/hooks/use-listing-chain-reads";
+import { usePassportPresence } from "@/hooks/use-passport-presence";
 import {
   commerceConfirmedLabel,
   commerceConfirmedPanel,
@@ -38,6 +39,7 @@ import {
   isPassportHolder,
   resolveEffectiveOnChainOwner,
 } from "@/lib/passport/passport-owner";
+import { presenceBlocksWrites } from "@/lib/passport/presence";
 import {
   commercialActive,
   nativeUnitOf,
@@ -56,6 +58,8 @@ type Props = {
   /** Ponder passport owner (fallback while chain loads). */
   passportOwner: `0x${string}`;
   passportStatus: PassportStatus;
+  ponderCustodyChain?: number;
+  custodyUnresolved?: string | null;
   duplicateVin: boolean;
   hadDispute: boolean;
 };
@@ -75,6 +79,8 @@ export function ListingDetailClientIsland({
   listing,
   passportOwner,
   passportStatus,
+  ponderCustodyChain,
+  custodyUnresolved,
   duplicateVin,
   hadDispute,
 }: Props) {
@@ -82,6 +88,14 @@ export function ListingDetailClientIsland({
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
   const [sellerNostrPubkey, setSellerNostrPubkey] = useState<string | null>(null);
+
+  const { presence, presenceCopy } = usePassportPresence({
+    chainId,
+    tokenId,
+    ponderCustodyChain: ponderCustodyChain ?? chainId,
+    custodyUnresolved,
+  });
+  const locationBlocksWrites = presenceBlocksWrites(presence);
 
   const passport = karPassportAddress(chainId);
   const wc = wagmiChainId(chainId);
@@ -231,6 +245,12 @@ export function ListingDetailClientIsland({
 
   return (
     <div className="space-y-6">
+      {locationBlocksWrites && (
+        <p className="rounded-md border border-border-default bg-bg-surface p-4 font-sans text-sm text-text-secondary" role="status">
+          {presenceCopy}
+        </p>
+      )}
+
       {listingActive && effectiveListing ? (
         <ListingBuyPanel
           chainId={chainId}
@@ -274,7 +294,7 @@ export function ListingDetailClientIsland({
         </div>
       )}
 
-      {listingActive && hasDirectPayment && listingSeller && (
+      {!locationBlocksWrites && listingActive && hasDirectPayment && listingSeller && (
         <ListingMakeOfferButton
           tokenId={tokenId}
           sellerAddress={listingSeller}
@@ -292,7 +312,8 @@ export function ListingDetailClientIsland({
 
       {isSeller && listingActive && <SellerMessagingBanner />}
 
-      {listingActive &&
+      {!locationBlocksWrites &&
+        listingActive &&
         hasDirectPayment &&
         (isSeller || isAgent) &&
         sellerNostrPubkey && (
@@ -304,7 +325,7 @@ export function ListingDetailClientIsland({
           />
         )}
 
-      {showOwnerFloor && floorUnits && commerce.compensationForm != null && (
+      {!locationBlocksWrites && showOwnerFloor && floorUnits && commerce.compensationForm != null && (
         <OwnerLowerFloorPanel
           mode="fixedPrice"
           chainId={chainId}
@@ -319,7 +340,7 @@ export function ListingDetailClientIsland({
         />
       )}
 
-      {showRecallFlow && (
+      {!locationBlocksWrites && showRecallFlow && (
         <OwnerRecallPanel
           mode="fixedPrice"
           chainId={chainId}
@@ -330,7 +351,7 @@ export function ListingDetailClientIsland({
         />
       )}
 
-      {canManageListing && (
+      {!locationBlocksWrites && canManageListing && (
         <div className="space-y-2">
           {showDelistBeforeAuctionHint && (
             <p className="font-sans text-sm text-text-secondary" role="status">

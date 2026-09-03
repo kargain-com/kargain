@@ -19,6 +19,7 @@ import {
   bridgeActionCopy,
   bridgeBlockReasonCopy,
   bridgeHopIdLine,
+  bridgeNextHopWrongVmCopy,
   deriveBridgeCrossingConsent,
   deriveBridgeDirectionMode,
   deriveBridgeSurface,
@@ -41,6 +42,24 @@ import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { formatNativeAmountLabeled } from "@/lib/web3/native-amount";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
+import type { ActiveAccount } from "@/hooks/use-active-account";
+
+/** Next-hop family refusal when the destination stack is a different VM (§4.19). */
+function nextHopWrongVmCopyForRoute(
+  account: ActiveAccount,
+  hops: readonly { srcChainId: number; dstChainId: number }[],
+  fromChainId: number,
+): string | null {
+  if (account.status !== "connected" || hops.length === 0) return null;
+  const hop =
+    hops.find((h) => h.srcChainId === fromChainId) ?? hops[0]!;
+  const dstStack = commercialActive(hop.dstChainId);
+  if (!dstStack || dstStack.vm === account.vm) return null;
+  return bridgeNextHopWrongVmCopy({
+    networkName: shortChainName(hop.dstChainId),
+    wantedFamily: dstStack.vm,
+  });
+}
 
 type Props = {
   chainId: number;
@@ -193,6 +212,15 @@ export function PassportBridgePanel({
           )
         : [];
   const multiHop = record == null && route?.ok === true && route.hops.length > 1;
+  const nextHopWrongVmCopyText = nextHopWrongVmCopyForRoute(
+    account,
+    record != null
+      ? [{ srcChainId: record.srcChainId, dstChainId: record.dstChainId }]
+      : route?.ok
+        ? route.hops
+        : [],
+    record != null ? record.srcChainId : chainId,
+  );
 
   const buttonLabel =
     phase === "approving"
@@ -246,6 +274,12 @@ export function PassportBridgePanel({
         </p>
       )}
 
+      {nextHopWrongVmCopyText && (
+        <p className="font-sans text-sm text-text-secondary" role="status">
+          {nextHopWrongVmCopyText}
+        </p>
+      )}
+
       {hopLines.length > 0 && (
         <ol aria-label="Bridge hops">
           {hopLines.map((line) => (
@@ -259,7 +293,7 @@ export function PassportBridgePanel({
         </ol>
       )}
 
-      {surface.canBridge && !transitActive && (
+      {surface.canBridge && !transitActive && !nextHopWrongVmCopyText && (
         <div className="space-y-2">
           <p className="font-sans text-sm text-text-secondary">
             {crossingConsent.disclosure}
@@ -348,6 +382,7 @@ export function PassportBridgePanel({
             transitActive ||
             !surface.canBridge ||
             Boolean(disabledReason) ||
+            Boolean(nextHopWrongVmCopyText) ||
             busy ||
             (crossingConsent.requiresAck && !crossingAcked)
           }

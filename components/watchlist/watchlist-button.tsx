@@ -4,6 +4,7 @@ import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account"
 
 import { BookmarkCheckIcon, BookmarkIcon, SpinnerIcon } from "@/components/ui/icons";
 
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
 import { useWatchlist } from "@/hooks/use-watchlist";
 import { cn } from "@/lib/utils";
@@ -15,11 +16,18 @@ type Props = {
 export function WatchlistButton({ tokenId }: Props) {
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
-  const isConnected = evm.ok;
   const { isWatched, isToggling, toggle } = useWatchlist(tokenId);
 
-  const disabled = !isConnected || isToggling;
-  const watching = isConnected && isWatched;
+  if (!evm.ok) {
+    return (
+      <EvmSessionRefusal
+        cause={evm.cause}
+        disconnectedTitle="Connect your wallet to save vehicles to your watchlist."
+      />
+    );
+  }
+
+  const watching = isWatched;
   const label = watching ? "Watching" : "Watch";
 
   return (
@@ -27,7 +35,7 @@ export function WatchlistButton({ tokenId }: Props) {
       type="button"
       variant="secondary"
       className={cn("w-full", watching && "text-accent-warm hover:text-accent-warm")}
-      disabled={disabled}
+      disabled={isToggling}
       aria-busy={isToggling}
       onClick={() => void toggle()}
     >

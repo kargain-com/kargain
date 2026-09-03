@@ -8,8 +8,8 @@ import { BookmarkIcon } from "@/components/ui/icons";
 import { loadFavoriteListingCards } from "@/app/actions/favorite-listings";
 import { ListingCard } from "@/components/marketplace/listing-card";
 import { ListingCardSkeleton } from "@/components/marketplace/listing-card-skeleton";
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { EmptyState } from "@/components/ui/empty-state";
-import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useWatchlist } from "@/hooks/use-watchlist";
 import {
   LISTING_CARD_GRID_NARROW,
@@ -47,13 +47,11 @@ export function WatchlistClient({ layout = "wide" }: Props) {
   return (
     <>
       {!isConnected && (
-        <div className="mt-8 space-y-3">
-          <EmptyState
-            variant="infrastructure"
-            level="B"
-            title="Connect your wallet to save vehicles to your watchlist."
+        <div className="mt-8">
+          <EvmSessionRefusal
+            cause={evm.cause}
+            disconnectedTitle="Connect your wallet to save vehicles to your watchlist."
           />
-          <WalletLoginButton />
         </div>
       )}
 

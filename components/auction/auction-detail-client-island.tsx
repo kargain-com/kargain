@@ -20,12 +20,14 @@ import { useAuctionBids } from "@/hooks/use-auction-bids";
 import type { useAuctionDetail } from "@/hooks/use-auction-detail";
 import { useAuctionLiveSignals } from "@/hooks/use-auction-live-signals";
 import { useMandate } from "@/hooks/use-mandate";
+import { usePassportPresence } from "@/hooks/use-passport-presence";
 import { auctionBlocksListingCommerce } from "@/lib/auction/map-ponder-auction";
 import { addressesMatch, isZeroAddress } from "@/lib/commerce/consignment";
 import { DENOMINATION_KIND } from "@/lib/commerce/denomination";
 import { floorDisplayUnits } from "@/lib/commerce/floor-display";
 import { canAgentOpenFromMandate } from "@/lib/commerce/mandate";
 import { commerceModeAddress } from "@/lib/commerce/mode";
+import { presenceBlocksWrites } from "@/lib/passport/presence";
 import {
   commercialActive,
   nativeUnitOf,
@@ -45,6 +47,8 @@ type Props = {
    * Blocks create/authorize; suppresses “Checking auction…” flash.
    */
   listingBlocksAuction: boolean;
+  ponderCustodyChain?: number;
+  custodyUnresolved?: string | null;
   /** Shared detail from PassportCommerce (single fetch). */
   detail: AuctionDetailController;
 };
@@ -59,12 +63,22 @@ export function AuctionDetailClientIsland({
   passportOwner,
   canOpenConsignment,
   listingBlocksAuction,
+  ponderCustodyChain,
+  custodyUnresolved,
   detail,
 }: Props) {
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
   const mode = commerceModeAddress("ascending", chainId);
+
+  const { presence, presenceCopy } = usePassportPresence({
+    chainId,
+    tokenId,
+    ponderCustodyChain: ponderCustodyChain ?? chainId,
+    custodyUnresolved,
+  });
+  const locationBlocksWrites = presenceBlocksWrites(presence);
 
   const auction = detail.auction;
   const uiState = detail.uiState;
@@ -190,6 +204,15 @@ export function AuctionDetailClientIsland({
 
   return (
     <div className="space-y-4">
+      {locationBlocksWrites && (
+        <p
+          className="rounded-md border border-border-default bg-bg-surface p-4 font-sans text-sm text-text-secondary"
+          role="status"
+        >
+          {presenceCopy}
+        </p>
+      )}
+
       {showLiveCommerce && auction && (
         <>
           {showReturnAdvisory && (
@@ -209,7 +232,8 @@ export function AuctionDetailClientIsland({
             extensionFlash={liveSignals.extensionFlash}
           />
 
-          {(uiState === "S1" || uiState === "S3" || uiState === "S4") && (
+          {!locationBlocksWrites &&
+            (uiState === "S1" || uiState === "S3" || uiState === "S4") && (
             <AuctionBidPanel
               chainId={chainId}
               tokenId={tokenId}
@@ -227,7 +251,7 @@ export function AuctionDetailClientIsland({
             />
           )}
 
-          {uiState === "S1" && (
+          {!locationBlocksWrites && uiState === "S1" && (
             <AuctionCancelPanel
               chainId={chainId}
               tokenId={tokenId}
@@ -235,7 +259,7 @@ export function AuctionDetailClientIsland({
             />
           )}
 
-          {showOwnerFloor && floorUnits && detail.compensationForm != null && (
+          {!locationBlocksWrites && showOwnerFloor && floorUnits && detail.compensationForm != null && (
             <OwnerLowerFloorPanel
               mode="ascending"
               chainId={chainId}
@@ -250,7 +274,7 @@ export function AuctionDetailClientIsland({
             />
           )}
 
-          {showOwnerReturn && (
+          {!locationBlocksWrites && showOwnerReturn && (
             <OwnerRecallPanel
               mode="ascending"
               chainId={chainId}
@@ -261,7 +285,7 @@ export function AuctionDetailClientIsland({
             />
           )}
 
-          {uiState === "S5" && (
+          {!locationBlocksWrites && uiState === "S5" && (
             <AuctionFinalizePanel
               chainId={chainId}
               tokenId={tokenId}
@@ -274,7 +298,8 @@ export function AuctionDetailClientIsland({
             />
           )}
 
-          {(uiState === "SETTLED" ||
+          {!locationBlocksWrites &&
+            (uiState === "SETTLED" ||
             uiState === "S8" ||
             uiState === "S9") && (
             <AuctionSettlementPanel
@@ -298,7 +323,7 @@ export function AuctionDetailClientIsland({
         </>
       )}
 
-      {showAgentCreate && (
+      {!locationBlocksWrites && showAgentCreate && (
         <AgentCreateAuctionPanel chainId={chainId} tokenId={tokenId} />
       )}
 

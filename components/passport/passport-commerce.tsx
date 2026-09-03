@@ -98,6 +98,8 @@ export function PassportCommerce({
           passportOwner={passportOwner}
           canOpenConsignment={canOpenConsignment}
           listingBlocksAuction={listingBlocksAuction}
+          ponderCustodyChain={chainId}
+          custodyUnresolved={custodyUnresolved}
           detail={detail}
         />
       ) : (
@@ -108,6 +110,8 @@ export function PassportCommerce({
             passportOwner={passportOwner}
             canOpenConsignment={canOpenConsignment}
             listingBlocksAuction={listingBlocksAuction}
+            ponderCustodyChain={chainId}
+            custodyUnresolved={custodyUnresolved}
             detail={detail}
           />
           <ListingDetailClientIsland
@@ -116,6 +120,8 @@ export function PassportCommerce({
             listing={listing}
             passportOwner={passportOwner}
             passportStatus={passportStatus}
+            ponderCustodyChain={chainId}
+            custodyUnresolved={custodyUnresolved}
             duplicateVin={duplicateVin}
             hadDispute={hadDispute}
           />

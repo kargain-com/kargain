@@ -6,8 +6,8 @@ import { NotificationIcon } from "@/components/ui/icons";
 import { useMemo } from "react";
 
 import { NotificationRow, NotificationRowSkeletonList } from "@/components/notifications/notification-row";
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { EmptyState } from "@/components/ui/empty-state";
-import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useNotificationsFeed } from "@/hooks/use-notifications-feed";
 
 import type { NotificationItem } from "@/lib/notifications/types";
@@ -45,13 +45,11 @@ export function NotificationsClient() {
 
   if (!isConnected) {
     return (
-      <div className="mt-8 space-y-3">
-        <EmptyState
-          variant="infrastructure"
-          level="B"
-          title="Connect your wallet to see alerts from your passports and watchlist."
+      <div className="mt-8">
+        <EvmSessionRefusal
+          cause={evm.cause}
+          disconnectedTitle="Connect your wallet to see alerts from your passports and watchlist."
         />
-        <WalletLoginButton />
       </div>
     );
   }

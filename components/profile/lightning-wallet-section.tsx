@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 
 import { NwcConnectField } from "@/components/profile/nwc-connect-field";
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { categoryLabel } from "@/lib/design/instrument-classes";
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
 import { useNwcWallet } from "@/hooks/use-nwc-wallet";
 
 function SectionEyebrow({ children }: { children: string }) {
@@ -19,6 +21,8 @@ function SectionEyebrow({ children }: { children: string }) {
 }
 
 export function LightningWalletSection() {
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
   const { present, connect, disconnect } = useNwcWallet();
   const [confirmDisconnectOpen, setConfirmDisconnectOpen] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -27,7 +31,6 @@ export function LightningWalletSection() {
     setDisconnecting(true);
     try {
       await disconnect();
-      setConfirmDisconnectOpen(false);
     } finally {
       setDisconnecting(false);
     }
@@ -44,7 +47,12 @@ export function LightningWalletSection() {
           Hub, Coinos, etc.).
         </p>
 
-        {present ? (
+        {!evm.ok ? (
+          <EvmSessionRefusal
+            cause={evm.cause}
+            disconnectedTitle="Connect your wallet first."
+          />
+        ) : present ? (
           <div className="flex flex-wrap items-center gap-3">
             <p className="font-sans text-sm text-text-primary">Wallet connected</p>
             <Button

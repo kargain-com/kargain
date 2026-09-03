@@ -43,20 +43,42 @@ const ACTION_PREFIXES = [
   "components/kar-pro/",
   "components/verifier/",
   "components/messaging/",
-  "components/profile/messaging-settings-section.tsx",
+  "components/watchlist/",
+  "components/notifications/",
+  "components/profile/",
   "components/shell/chain-selector.tsx",
+  "app/(identity)/messages/",
 ] as const;
 
 const ALLOWLIST_NO_REFUSAL_COPY = new Set([
   "components/marketplace/listing-card.tsx",
-  "components/marketplace/nostr-comments-section.tsx",
-  "components/marketplace/listing-make-offer-button.tsx",
   "components/auction/auction-card.tsx",
   "components/passport/passport-detail-tabs.tsx",
   "components/passport/passport-presence-status.tsx",
   "components/kar-pro/kar-pro-hero-subtitle.tsx",
   "components/shell/evm-session-refusal.tsx",
+  // Identity chrome / badges — page surfaces (notifications-client, profile-edit) name the cause.
+  "components/notifications/notifications-shell.tsx",
+  "components/notifications/notifications-unread-badge.tsx",
+  "components/profile/profile-page.tsx",
 ]);
+
+/** Surfaces that must import bridgeNextHopWrongVmCopy (product consume). */
+const BRIDGE_NEXT_HOP_CONSUMERS = [
+  "components/passport/passport-bridge-panel.tsx",
+] as const;
+
+/** Commerce islands that must name §4.21 presence at write sites. */
+const PRESENCE_ISLANDS = [
+  "components/marketplace/listing-detail-client-island.tsx",
+  "components/auction/auction-detail-client-island.tsx",
+] as const;
+
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
+
+function readSrc(rel: string): string {
+  return readFileSync(join(ROOT, rel), "utf8");
+}
 
 function isActionSurface(rel: string): boolean {
   return ACTION_PREFIXES.some(
@@ -166,6 +188,42 @@ describe("S8-5 named unavailability owners", () => {
     );
     assert.match(BRIDGE_SECOND_HOP_REQUIRED, /second hop/i);
   });
+
+  it("bridge panel consumes bridgeNextHopWrongVmCopy", () => {
+    for (const rel of BRIDGE_NEXT_HOP_CONSUMERS) {
+      assert.match(
+        readSrc(rel),
+        /bridgeNextHopWrongVmCopy/,
+        `${rel} must render next-hop wrong-VM copy`,
+      );
+    }
+    const planted = `const hops = route.hops; // no next-hop wrong-VM`;
+    assert.doesNotMatch(planted, /bridgeNextHopWrongVmCopy/);
+  });
+
+  it("listing-edit never invents fiat unavailability copy", () => {
+    const src = readSrc("components/marketplace/listing-edit-client.tsx");
+    assert.match(src, /FIAT_TOKEN_FEED_REQUIRED_REASON/);
+    assert.doesNotMatch(src, /Fiat is not available for this asset/);
+  });
+
+  it("commerce islands consume usePassportPresence", () => {
+    for (const rel of PRESENCE_ISLANDS) {
+      const src = readSrc(rel);
+      assert.match(src, /usePassportPresence/, rel);
+      assert.match(src, /presenceBlocksWrites|presenceCopy/, rel);
+    }
+  });
+
+  it("sell panel names session before silent !isOwner hide", () => {
+    const src = readSrc("components/passport/passport-sell-panel.tsx");
+    assert.match(src, /!evm\.ok/);
+    assert.match(src, /EvmSessionRefusal/);
+    const planted = `
+      if (!isOwner) return null;
+    `;
+    assert.doesNotMatch(planted, /EvmSessionRefusal/);
+  });
 });
 
 describe("S8-5 action-surface refusal census", () => {
@@ -183,6 +241,33 @@ describe("S8-5 action-surface refusal census", () => {
       violations,
       [],
       violations.map((v) => `${v.path}: ${v.reason}`).join("\n"),
+    );
+  });
+
+  it("watchlist / offers / comments / make-offer are not allowlisted silent hides", () => {
+    assert.equal(
+      ALLOWLIST_NO_REFUSAL_COPY.has(
+        "components/marketplace/listing-make-offer-button.tsx",
+      ),
+      false,
+    );
+    assert.equal(
+      ALLOWLIST_NO_REFUSAL_COPY.has(
+        "components/marketplace/nostr-comments-section.tsx",
+      ),
+      false,
+    );
+    assert.match(
+      readSrc("components/marketplace/listing-make-offer-button.tsx"),
+      /EvmSessionRefusal/,
+    );
+    assert.match(
+      readSrc("components/marketplace/nostr-comments-section.tsx"),
+      /evmSessionRefusalCopy/,
+    );
+    assert.match(
+      readSrc("components/watchlist/watchlist-button.tsx"),
+      /EvmSessionRefusal/,
     );
   });
 
@@ -214,15 +299,41 @@ describe("S8-5 action-surface refusal census", () => {
       /isConnected\s*=\s*evm\.ok/.test(dirty) &&
       !consumesRefusalCopy(dirty);
     assert.equal(hasFalseSwitch, true);
+
+    const clean = `
+      import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
+      const wrongChain = evm.ok && walletChainId !== chainId;
+      if (!evm.ok) return <EvmSessionRefusal cause={evm.cause} />;
+      if (wrongChain) return <p>Switch to the correct network to bid.</p>;
+    `;
+    const cleanFalse =
+      /Switch to the correct network/.test(clean) &&
+      /isConnected\s*=\s*evm\.ok/.test(clean) &&
+      !consumesRefusalCopy(clean);
+    assert.equal(cleanFalse, false);
+  });
+
+  it("NWC connect maps wrong_vm to family copy", () => {
+    const src = readSrc("components/profile/nwc-connect-field.tsx");
+    assert.match(src, /wrong_vm/);
+    assert.match(src, /wrongVmActionCopy/);
+    const planted = `case "wallet_disconnected": return "Connect your wallet first.";`;
+    assert.doesNotMatch(planted, /wrongVmActionCopy/);
+  });
+
+  it("conversation page names SVM messaging refusal", () => {
+    const src = readSrc(
+      "app/(identity)/messages/[conversationId]/page.tsx",
+    );
+    assert.match(src, /SVM_MESSAGING_UNAVAILABLE/);
+    assert.match(src, /isSvmMessagingRefusal/);
+    assert.doesNotMatch(src, /router\.replace\("\/messages"\)/);
   });
 });
 
 describe("S8-5 chain-selector chrome", () => {
   it("selector source uses chainSelectorStateCopy for wrong_vm", () => {
-    const src = readFileSync(
-      join(fileURLToPath(new URL("..", import.meta.url)), "components/shell/chain-selector.tsx"),
-      "utf8",
-    );
+    const src = readSrc("components/shell/chain-selector.tsx");
     assert.match(src, /chainSelectorStateCopy/);
     assert.doesNotMatch(
       src,

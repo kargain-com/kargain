@@ -279,4 +279,16 @@ describe("detail gallery presence policy", () => {
     assert.doesNotMatch(src, /PassportPresenceVerified/);
     assert.doesNotMatch(src, /children:\s*\([^)]*\)\s*=>/);
   });
+
+  it("listing and auction commerce islands consume usePassportPresence", () => {
+    for (const rel of [
+      "components/marketplace/listing-detail-client-island.tsx",
+      "components/auction/auction-detail-client-island.tsx",
+    ]) {
+      const src = readFileSync(join(process.cwd(), rel), "utf8");
+      assert.match(src, /usePassportPresence/, rel);
+      assert.match(src, /presenceBlocksWrites/, rel);
+      assert.doesNotMatch(src, /derivePassportPresence/, rel);
+    }
+  });
 });

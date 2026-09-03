@@ -2,6 +2,7 @@
 
 import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
 
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import {
@@ -39,13 +40,28 @@ export function AuctionCancelPanel({
 
   const mode = commerceModeAddress("ascending", chainId);
 
+  if (!mode || auction.startedAt !== 0n) {
+    return null;
+  }
+
+  if (!evm.ok) {
+    return (
+      <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
+        <EvmSessionRefusal
+          cause={evm.cause}
+          disconnectedTitle="Connect your wallet to cancel this auction."
+        />
+      </div>
+    );
+  }
+
   const isSeller = addressesMatch(auction.seller, address);
   const isAgent =
     auction.agent != null &&
     !isZeroAddress(auction.agent) &&
     addressesMatch(auction.agent, address);
 
-  if (!mode || auction.startedAt !== 0n || (!isSeller && !isAgent)) {
+  if (!isSeller && !isAgent) {
     return null;
   }
 

@@ -38,7 +38,7 @@ import {
 } from "@/lib/commerce/denomination";
 import { isMandateExpired, mandateHasAgent } from "@/lib/commerce/mandate";
 import { commerceModeAddress } from "@/lib/commerce/mode";
-import { gateOpenablePairing } from "@/lib/commerce/openable-terms";
+import { gateOpenablePairing, fiatUnavailableReasonForAsset } from "@/lib/commerce/openable-terms";
 import { resolveSettlementAssetMeta } from "@/lib/commerce/settlement-asset-meta";
 import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
 import {
@@ -207,6 +207,10 @@ export function AuthorizeAuctionAgentDialog({
         (a) => a.token.toLowerCase() === settlementAsset.toLowerCase(),
       ),
     [openOptions.assets, settlementAsset],
+  );
+  const fiatUnavailableReason = fiatUnavailableReasonForAsset(
+    openOptions,
+    settlementAsset,
   );
 
   useEffect(() => {
@@ -670,6 +674,11 @@ export function AuthorizeAuctionAgentDialog({
                 <p className="font-sans text-xs text-text-secondary">
                   Ascending floors are denominated in the settlement asset.
                 </p>
+                {fiatUnavailableReason ? (
+                  <p className="font-sans text-xs text-text-secondary" role="note">
+                    {fiatUnavailableReason}
+                  </p>
+                ) : null}
               </div>
             )}
 

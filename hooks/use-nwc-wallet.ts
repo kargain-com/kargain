@@ -60,7 +60,8 @@ export type NwcConnectErrorCode =
   | "relay_unreachable"
   | "sign_rejected"
   | "storage_failed"
-  | "wallet_disconnected";
+  | "wallet_disconnected"
+  | "wrong_vm";
 
 export type NwcConnectResult =
   | { ok: true }
@@ -152,9 +153,16 @@ export function useNwcWallet() {
 
   const connect = useCallback(
     async (uri: string): Promise<NwcConnectResult> => {
-      if (!address || !walletClient) {
+      if (!evm.ok) {
+        return {
+          ok: false,
+          code: evm.cause === "wrong_vm" ? "wrong_vm" : "wallet_disconnected",
+        };
+      }
+      if (!walletClient) {
         return { ok: false, code: "wallet_disconnected" };
       }
+      const address = evm.address;
 
       const parsed = parseNwcUri(uri);
       if (!parsed) {
@@ -191,7 +199,7 @@ export function useNwcWallet() {
       notifyPresenceChange();
       return { ok: true };
     },
-    [address, walletClient],
+    [evm, walletClient],
   );
 
   const payInvoice = useCallback(

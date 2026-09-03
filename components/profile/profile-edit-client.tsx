@@ -11,11 +11,11 @@ import { PlacePicker, type PlacePickerValue } from "@/components/geo/place-picke
 import { IdentityHeader } from "@/components/identity/identity-header";
 import { MessagingSettingsSection } from "@/components/profile/messaging-settings-section";
 import { LightningWalletSection } from "@/components/profile/lightning-wallet-section";
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
@@ -244,13 +244,11 @@ export function ProfileEditClient() {
 
   if (!isConnected) {
     return (
-      <div className="mx-auto max-w-md px-6 py-24 text-center md:px-8">
-        <p className="font-sans text-sm text-text-secondary">
-          Connect your wallet to edit your profile
-        </p>
-        <div className="mt-4 flex justify-center">
-          <WalletLoginButton />
-        </div>
+      <div className="mx-auto max-w-md px-6 py-24 md:px-8">
+        <EvmSessionRefusal
+          cause={evm.cause}
+          disconnectedTitle="Connect your wallet to edit your profile."
+        />
       </div>
     );
   }

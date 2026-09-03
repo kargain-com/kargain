@@ -12,6 +12,7 @@ import { CreateAuctionPanel } from "@/components/auction/create-auction-panel";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
 import { AgentAuthorizationStatus } from "@/components/marketplace/agent-authorization-status";
 import { AuthorizeAgentDialog } from "@/components/marketplace/authorize-agent-dialog";
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
 import type { PassportCommerceFacts } from "@/hooks/use-passport-commerce-facts";
 import { useCommerceModePaused } from "@/hooks/use-commerce-mode-paused";
@@ -169,6 +170,21 @@ export function PassportSellPanel({
     void refetchOwner();
     void refetchVerifier();
   };
+
+  // Sell needs an EVM session to prove ownership — name the family, never vanish.
+  if (!evm.ok) {
+    return (
+      <section className="space-y-3 rounded-md border border-border-default bg-bg-card p-4">
+        <h2 className="font-sans text-base font-medium text-text-primary">
+          {SELL_HEADING}
+        </h2>
+        <EvmSessionRefusal
+          cause={evm.cause}
+          disconnectedTitle="Connect your wallet to list or authorize a sale."
+        />
+      </section>
+    );
+  }
 
   if (!isOwner) return null;
 

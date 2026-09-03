@@ -9,6 +9,7 @@ import {
   type NwcConnectErrorCode,
   type NwcConnectResult,
 } from "@/hooks/use-nwc-wallet";
+import { wrongVmActionCopy } from "@/hooks/use-active-account";
 
 function connectErrorMessage(code: NwcConnectErrorCode): string {
   switch (code) {
@@ -24,6 +25,8 @@ function connectErrorMessage(code: NwcConnectErrorCode): string {
       return "Could not save connection on this device.";
     case "wallet_disconnected":
       return "Connect your wallet first.";
+    case "wrong_vm":
+      return wrongVmActionCopy("evm");
     default:
       return "Could not connect wallet.";
   }

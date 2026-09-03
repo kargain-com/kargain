@@ -4,6 +4,7 @@ import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account"
 
 import { useCallback, useEffect, useState } from "react";
 
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
 import { useNostrKey } from "@/hooks/use-nostr-key";
 import {
@@ -112,7 +113,16 @@ export function ListingMakeOfferButton({
     tokenId,
   ]);
 
-  if (!isConnected || isSeller || isAgent) return null;
+  if (isSeller || isAgent) return null;
+
+  if (!evm.ok) {
+    return (
+      <EvmSessionRefusal
+        cause={evm.cause}
+        disconnectedTitle="Connect your wallet to make an offer."
+      />
+    );
+  }
 
   if (!sellerNostrPubkey) {
     return (

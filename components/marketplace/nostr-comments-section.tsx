@@ -1,6 +1,6 @@
 "use client";
 
-import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import { useActiveAccount, requireEvmSession, evmSessionRefusalCopy } from "@/hooks/use-active-account";
 
 import {
   ChevronDownIcon,
@@ -94,7 +94,9 @@ function NostrCommentsSection({
     ? replyTo
       ? "Write a reply..."
       : "Share your thoughts..."
-    : "Connect wallet to join the discussion";
+    : evm.ok
+      ? "Unlock your Nostr identity to join the discussion."
+      : evmSessionRefusalCopy(evm.cause);
 
   const visibleRoots = useMemo(() => {
     if (showAllRoots || roots.length <= initialVisibleRoots) return roots;
