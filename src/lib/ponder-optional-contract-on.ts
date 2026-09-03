@@ -11,14 +11,24 @@
  *
  * Runtime: if the contract was not registered, Ponder does not invoke these
  * handlers. No address invention; no unconditional registration.
+ *
+ * Event name → decoded args: see ponder-optional-contract-events.ts.
  */
 
 import { ponder } from "ponder:registry";
 
-export type OptionalContractEventName =
-  | `FixedPriceConsignment:${string}`
-  | `AscendingConsignment:${string}`
-  | `KarPassportBridgeGateway:${string}`;
+import type {
+  OptionalContractEventArgs,
+  OptionalContractEventName,
+} from "./ponder-optional-contract-events";
+
+export {
+  listOptionalContractEventKeys,
+  OPTIONAL_CONTRACT_ABIS,
+  type OptionalContractEventArgs,
+  type OptionalContractEventName,
+  type OptionalContractName,
+} from "./ponder-optional-contract-events";
 
 /**
  * Structural indexing context shared by optional-contract handlers and by
@@ -31,9 +41,9 @@ export type IndexingContext = {
   client: Parameters<Parameters<typeof ponder.on>[1]>[0]["context"]["client"];
 };
 
-/** Structural event envelope — args are narrowed at the handler via `eventArgs`. */
-export type IndexingEventEnvelope = {
-  args: Record<string, unknown>;
+/** Structural event envelope — `args` narrowed by the registered event name. */
+export type IndexingEventEnvelope<Args = Record<string, unknown>> = {
+  args: Args;
   id: string;
   log: {
     address: `0x${string}`;
@@ -51,37 +61,34 @@ export type IndexingEventEnvelope = {
   };
 };
 
-export type OptionalContractIndexingArgs = {
-  event: IndexingEventEnvelope;
+export type OptionalContractIndexingArgs<
+  N extends OptionalContractEventName = OptionalContractEventName,
+> = {
+  event: IndexingEventEnvelope<OptionalContractEventArgs<N>>;
   context: IndexingContext;
 };
 
-type OptionalOn = (
-  name: OptionalContractEventName,
-  indexingFunction: (
-    args: OptionalContractIndexingArgs,
-  ) => Promise<void> | void,
-) => void;
-
-/**
- * Narrow decoded event args for an optionally-registered contract handler.
- * Args arrive as a structural record because EventNames omits these events.
- */
-export function eventArgs<T extends Record<string, unknown>>(
-  event: IndexingEventEnvelope,
-): T {
-  return event.args as T;
-}
-
 /**
  * Register a handler for an optionally-configured commercial contract.
- * Boundary: EventNames omits these names when the address did not resolve.
+ *
+ * Sole cast: Ponder's EventNames omits optional createConfig keys (address
+ * conditional), so those names are not in `ponder.on`'s union even when the
+ * contract is registered. The cast goes through `unknown` because Ponder's
+ * handler parameter type (always-registered events only) does not overlap
+ * OptionalContractIndexingArgs. Claim holds because (1) names are
+ * ABI-validated via OptionalContractEventName, (2) args are
+ * ContractEventArgsFromTopics for that name, (3) Ponder only invokes handlers
+ * for contracts present in createConfig at runtime.
  */
-export function onOptionalContractEvent(
-  name: OptionalContractEventName,
+export function onOptionalContractEvent<N extends OptionalContractEventName>(
+  name: N,
   indexingFunction: (
-    args: OptionalContractIndexingArgs,
+    args: OptionalContractIndexingArgs<N>,
   ) => Promise<void> | void,
 ): void {
-  (ponder.on as OptionalOn)(name, indexingFunction);
+  type OptionalOn = <EventName extends OptionalContractEventName>(
+    eventName: EventName,
+    fn: (args: OptionalContractIndexingArgs<EventName>) => Promise<void> | void,
+  ) => void;
+  (ponder.on as unknown as OptionalOn)(name, indexingFunction);
 }

@@ -9,31 +9,14 @@ import {
   insertOnftReceivedCrossing,
   insertOnftSentCrossing,
 } from "./lib/ponder-bridge-crossings";
-import {
-  eventArgs,
-  onOptionalContractEvent,
-} from "./lib/ponder-optional-contract-on";
+import { onOptionalContractEvent } from "./lib/ponder-optional-contract-on";
 
 function indexingChainId(context: { chain: { id: number } }): number {
   return Number(context.chain.id);
 }
 
-type OnftSentArgs = {
-  guid: `0x${string}`;
-  dstEid: number | bigint;
-  fromAddress: `0x${string}`;
-  tokenId: bigint;
-};
-
-type OnftReceivedArgs = {
-  guid: `0x${string}`;
-  srcEid: number | bigint;
-  toAddress: `0x${string}`;
-  tokenId: bigint;
-};
-
 onOptionalContractEvent("KarPassportBridgeGateway:ONFTSent", async ({ event, context }) => {
-  const args = eventArgs<OnftSentArgs>(event);
+  const { args } = event;
   await insertOnftSentCrossing(context, {
     observingChainId: indexingChainId(context),
     guid: args.guid,
@@ -50,7 +33,7 @@ onOptionalContractEvent("KarPassportBridgeGateway:ONFTSent", async ({ event, con
 onOptionalContractEvent(
   "KarPassportBridgeGateway:ONFTReceived",
   async ({ event, context }) => {
-    const args = eventArgs<OnftReceivedArgs>(event);
+    const { args } = event;
     await insertOnftReceivedCrossing(context, {
       observingChainId: indexingChainId(context),
       guid: args.guid,

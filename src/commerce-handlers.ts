@@ -33,7 +33,6 @@
 
 import { ponder } from "ponder:registry";
 import {
-  eventArgs,
   onOptionalContractEvent,
   type IndexingContext,
 } from "./lib/ponder-optional-contract-on";
@@ -1302,175 +1301,175 @@ export async function indexPassportChallengeTerminal(
 // ---------------------------------------------------------------------------
 
 onOptionalContractEvent("FixedPriceConsignment:ConsignmentOpened", async ({ event, context }) => {
-  await handleConsignmentOpened(COMMERCE_MODE.FIXED_PRICE, { block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<ConsignmentOpenedEvent["args"]>(event) }, context);
+  await handleConsignmentOpened(COMMERCE_MODE.FIXED_PRICE, { block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:ConsignmentOpened", async ({ event, context }) => {
-  await handleConsignmentOpened(COMMERCE_MODE.ASCENDING, { block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<ConsignmentOpenedEvent["args"]>(event) }, context);
+  await handleConsignmentOpened(COMMERCE_MODE.ASCENDING, { block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 
 onOptionalContractEvent("FixedPriceConsignment:ConsignmentPriceSet", async ({ event, context }) => {
-  await handleConsignmentPriceSet({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<ConsignmentPriceSetEvent["args"]>(event) }, context);
+  await handleConsignmentPriceSet({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:ConsignmentPriceSet", async ({ event, context }) => {
-  await handleConsignmentPriceSet({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<ConsignmentPriceSetEvent["args"]>(event) }, context);
+  await handleConsignmentPriceSet({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 
 onOptionalContractEvent("FixedPriceConsignment:ConsignmentFloorLowered", async ({ event, context }) => {
-  await handleConsignmentFloorLowered({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<FloorLoweredEvent["args"]>(event) }, context);
+  await handleConsignmentFloorLowered({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:ConsignmentFloorLowered", async ({ event, context }) => {
-  await handleConsignmentFloorLowered({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<FloorLoweredEvent["args"]>(event) }, context);
+  await handleConsignmentFloorLowered({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 
 onOptionalContractEvent("FixedPriceConsignment:ConsignmentCommissionLowered", async ({ event, context }) => {
-  await handleConsignmentCommissionLowered({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<CommissionLoweredEvent["args"]>(event) }, context);
+  await handleConsignmentCommissionLowered({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:ConsignmentCommissionLowered", async ({ event, context }) => {
-  await handleConsignmentCommissionLowered({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<CommissionLoweredEvent["args"]>(event) }, context);
+  await handleConsignmentCommissionLowered({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 
 onOptionalContractEvent("FixedPriceConsignment:ConsignmentClosed", async ({ event, context }) => {
-  await handleConsignmentClosed({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<ConsignmentClosedEvent["args"]>(event) }, context);
+  await handleConsignmentClosed({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:ConsignmentClosed", async ({ event, context }) => {
-  await handleConsignmentClosed({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<ConsignmentClosedEvent["args"]>(event) }, context);
+  await handleConsignmentClosed({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 
 onOptionalContractEvent("FixedPriceConsignment:ConsignmentSplitPaid", async ({ event, context }) => {
-  await handleConsignmentSplitPaid({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<ConsignmentSplitPaidEvent["args"]>(event) }, context);
+  await handleConsignmentSplitPaid({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:ConsignmentSplitPaid", async ({ event, context }) => {
-  await handleConsignmentSplitPaid({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<ConsignmentSplitPaidEvent["args"]>(event) }, context);
+  await handleConsignmentSplitPaid({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 
 onOptionalContractEvent("FixedPriceConsignment:MandateGranted", async ({ event, context }) => {
-  await handleMandateGranted(COMMERCE_MODE.FIXED_PRICE, { block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<MandateGrantedEvent["args"]>(event) }, context);
+  await handleMandateGranted(COMMERCE_MODE.FIXED_PRICE, { block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:MandateGranted", async ({ event, context }) => {
-  await handleMandateGranted(COMMERCE_MODE.ASCENDING, { block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<MandateGrantedEvent["args"]>(event) }, context);
+  await handleMandateGranted(COMMERCE_MODE.ASCENDING, { block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 
 onOptionalContractEvent("FixedPriceConsignment:MandateRevoked", async ({ event, context }) => {
-  await handleMandateRevoked({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<MandateRevokedEvent["args"]>(event) }, context);
+  await handleMandateRevoked({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:MandateRevoked", async ({ event, context }) => {
-  await handleMandateRevoked({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<MandateRevokedEvent["args"]>(event) }, context);
+  await handleMandateRevoked({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 
 onOptionalContractEvent("FixedPriceConsignment:RecallRequested", async ({ event, context }) => {
-  await handleRecallRequested({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<RecallRequestedEvent["args"]>(event) }, context);
+  await handleRecallRequested({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:RecallRequested", async ({ event, context }) => {
-  await handleRecallRequested({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<RecallRequestedEvent["args"]>(event) }, context);
+  await handleRecallRequested({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 
 onOptionalContractEvent("FixedPriceConsignment:Paused", async ({ event, context }) => {
-  await handlePaused(COMMERCE_MODE.FIXED_PRICE, { block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<PausedEvent["args"]>(event) }, context);
+  await handlePaused(COMMERCE_MODE.FIXED_PRICE, { block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:Paused", async ({ event, context }) => {
-  await handlePaused(COMMERCE_MODE.ASCENDING, { block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<PausedEvent["args"]>(event) }, context);
+  await handlePaused(COMMERCE_MODE.ASCENDING, { block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 
 onOptionalContractEvent("FixedPriceConsignment:Unpaused", async ({ event, context }) => {
-  await handleUnpaused(COMMERCE_MODE.FIXED_PRICE, { block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<PausedEvent["args"]>(event) }, context);
+  await handleUnpaused(COMMERCE_MODE.FIXED_PRICE, { block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:Unpaused", async ({ event, context }) => {
-  await handleUnpaused(COMMERCE_MODE.ASCENDING, { block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<PausedEvent["args"]>(event) }, context);
+  await handleUnpaused(COMMERCE_MODE.ASCENDING, { block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 
 onOptionalContractEvent("FixedPriceConsignment:GuardianSet", async ({ event, context }) => {
-  await handleGuardianSet(COMMERCE_MODE.FIXED_PRICE, { block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<GuardianSetEvent["args"]>(event) }, context);
+  await handleGuardianSet(COMMERCE_MODE.FIXED_PRICE, { block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:GuardianSet", async ({ event, context }) => {
-  await handleGuardianSet(COMMERCE_MODE.ASCENDING, { block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<GuardianSetEvent["args"]>(event) }, context);
+  await handleGuardianSet(COMMERCE_MODE.ASCENDING, { block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 
 onOptionalContractEvent("FixedPriceConsignment:ClaimRecorded", async ({ event, context }) => {
-  await handleCommerceClaimRecorded({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<ClaimEvent["args"]>(event) }, context);
+  await handleCommerceClaimRecorded({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:ClaimRecorded", async ({ event, context }) => {
-  await handleCommerceClaimRecorded({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<ClaimEvent["args"]>(event) }, context);
+  await handleCommerceClaimRecorded({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 
 onOptionalContractEvent("FixedPriceConsignment:ClaimWithdrawn", async ({ event, context }) => {
-  await handleCommerceClaimWithdrawn({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<ClaimEvent["args"]>(event) }, context);
+  await handleCommerceClaimWithdrawn({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:ClaimWithdrawn", async ({ event, context }) => {
-  await handleCommerceClaimWithdrawn({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<ClaimEvent["args"]>(event) }, context);
+  await handleCommerceClaimWithdrawn({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 
 // FixedPrice only.
 onOptionalContractEvent("FixedPriceConsignment:Bought", async ({ event, context }) => {
-  await handleBought({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<BoughtEvent["args"]>(event) }, context);
+  await handleBought({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("FixedPriceConsignment:ExternalPaymentConfirmed", async ({ event, context }) => {
-  await handleExternalPaymentConfirmed({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<ExternalPaymentConfirmedEvent["args"]>(event) }, context);
+  await handleExternalPaymentConfirmed({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("FixedPriceConsignment:SettlementNoteSet", async ({ event, context }) => {
-  await handleSettlementNoteSet({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<SettlementNoteSetEvent["args"]>(event) }, context);
+  await handleSettlementNoteSet({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("FixedPriceConsignment:PaymentTokenApproved", async ({ event, context }) => {
-  await handleFixedPricePaymentTokenApproved({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<FixedPricePaymentTokenApprovedEvent["args"]>(event) }, context);
+  await handleFixedPricePaymentTokenApproved({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("FixedPriceConsignment:PaymentTokenRevoked", async ({ event, context }) => {
-  await handlePaymentTokenRevoked({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<PaymentTokenRevokedEvent["args"]>(event) }, context);
+  await handlePaymentTokenRevoked({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("FixedPriceConsignment:CurrencyFeedSet", async ({ event, context }) => {
-  await handleCurrencyFeedSet({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<CurrencyFeedSetEvent["args"]>(event) }, context);
+  await handleCurrencyFeedSet({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("FixedPriceConsignment:NativeUsdStalenessToleranceSet", async ({ event, context }) => {
   await handleNativeUsdStalenessToleranceSet(
-    { block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<NativeUsdStalenessToleranceSetEvent["args"]>(event) },
+    { block: event.block, transaction: event.transaction, log: event.log, args: event.args },
     context,
   );
 });
 
 // Ascending only.
 onOptionalContractEvent("AscendingConsignment:AuctionRulesSet", async ({ event, context }) => {
-  await handleAuctionRulesSet({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<AuctionRulesSetEvent["args"]>(event) }, context);
+  await handleAuctionRulesSet({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:PaymentTokenApproved", async ({ event, context }) => {
-  await handleAscendingPaymentTokenApproved({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<AscendingPaymentTokenApprovedEvent["args"]>(event) }, context);
+  await handleAscendingPaymentTokenApproved({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:PaymentTokenRevoked", async ({ event, context }) => {
-  await handlePaymentTokenRevoked({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<PaymentTokenRevokedEvent["args"]>(event) }, context);
+  await handlePaymentTokenRevoked({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:AscendingTermsSnapshotted", async ({ event, context }) => {
-  await handleAscendingTermsSnapshotted({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<AscendingTermsSnapshottedEvent["args"]>(event) }, context);
+  await handleAscendingTermsSnapshotted({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:BidPlaced", async ({ event, context }) => {
-  await handleBidPlaced({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<BidPlacedEvent["args"]>(event) }, context);
+  await handleBidPlaced({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:BidRefunded", async ({ event, context }) => {
-  await handleBidRefunded({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<BidRefundedEvent["args"]>(event) }, context);
+  await handleBidRefunded({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:Settled", async ({ event, context }) => {
-  await handleSettled({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<SettledEvent["args"]>(event) }, context);
+  await handleSettled({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:ReceiptConfirmed", async ({ event, context }) => {
-  await handleReceiptConfirmed({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<BuyerOnlyEvent["args"]>(event) }, context);
+  await handleReceiptConfirmed({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:FundsReleased", async ({ event, context }) => {
-  await handleFundsReleased({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<BuyerOnlyEvent["args"]>(event) }, context);
+  await handleFundsReleased({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:ReversalStarted", async ({ event, context }) => {
-  await handleReversalStarted({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<ReversalStartedEvent["args"]>(event) }, context);
+  await handleReversalStarted({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:ReversalCompleted", async ({ event, context }) => {
-  await handleReversalCompleted({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<BuyerOnlyEvent["args"]>(event) }, context);
+  await handleReversalCompleted({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:ReversalAbandoned", async ({ event, context }) => {
-  await handleReversalAbandoned({ block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<BuyerOnlyEvent["args"]>(event) }, context);
+  await handleReversalAbandoned({ block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 
 onOptionalContractEvent("AscendingConsignment:ChallengeOpened", async ({ event, context }) => {
-  await writeChallengeOpened("ascending", { block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<ChallengeOpenedEvent["args"]>(event) }, context);
+  await writeChallengeOpened("ascending", { block: event.block, transaction: event.transaction, log: event.log, args: event.args }, context);
 });
 onOptionalContractEvent("AscendingConsignment:ChallengeWithdrawn", async ({ event, context }) => {
   await handleAscendingChallengeTerminal(
     "withdrawn",
     "ChallengeWithdrawn",
-    { block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<ChallengeTerminalEvent["args"]>(event) },
+    { block: event.block, transaction: event.transaction, log: event.log, args: event.args },
     context,
   );
 });
@@ -1478,7 +1477,7 @@ onOptionalContractEvent("AscendingConsignment:ChallengeJudged", async ({ event, 
   await handleAscendingChallengeTerminal(
     "judged",
     "ChallengeJudged",
-    { block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<ChallengeTerminalEvent["args"]>(event) },
+    { block: event.block, transaction: event.transaction, log: event.log, args: event.args },
     context,
   );
 });
@@ -1486,7 +1485,7 @@ onOptionalContractEvent("AscendingConsignment:ChallengeConcluded", async ({ even
   await handleAscendingChallengeTerminal(
     "concluded",
     "ChallengeConcluded",
-    { block: event.block, transaction: event.transaction, log: event.log, args: eventArgs<ChallengeTerminalEvent["args"]>(event) },
+    { block: event.block, transaction: event.transaction, log: event.log, args: event.args },
     context,
   );
 });

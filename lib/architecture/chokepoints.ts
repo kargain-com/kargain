@@ -423,8 +423,9 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   },
   {
     id: "ponder-optional-contract-on",
-    owner: "src/lib/ponder-optional-contract-on.ts",
-    rule: "FixedPrice/Ascending/Gateway handlers register via onOptionalContractEvent when createConfig keys are address-conditional",
+    owner:
+      "src/lib/ponder-optional-contract-on.ts · src/lib/ponder-optional-contract-events.ts",
+    rule: "FixedPrice/Ascending/Gateway handlers register via onOptionalContractEvent; event name binds ABI args (ContractEventArgsFromTopics); no unbound eventArgs",
     guardTests: ["ponder-optional-contract-on-policy.test.ts"],
   },
 ] as const;
