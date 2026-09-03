@@ -3,9 +3,11 @@ import { describe, it } from "node:test";
 
 import {
   chainSelectorSwitchTargets,
+  deriveChainSelectorState,
   deriveChainSelectorWrong,
   isKargainWriteChain,
 } from "../lib/web3/chain-selector-state.ts";
+import { mintKargainNamespace } from "../lib/web3/kargain-namespace.ts";
 
 describe("isKargainWriteChain", () => {
   it("accepts Base Sepolia and Ethereum Sepolia", () => {
@@ -87,6 +89,38 @@ describe("deriveChainSelectorWrong", () => {
   });
 });
 
+describe("deriveChainSelectorState", () => {
+  it("SVM session is wrong_vm", () => {
+    assert.equal(
+      deriveChainSelectorState({
+        account: {
+          status: "connected",
+          vm: "svm",
+          address: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        },
+        expectedChainId: 84532,
+      }),
+      "wrong_vm",
+    );
+  });
+
+  it("matching EVM is ok", () => {
+    assert.equal(
+      deriveChainSelectorState({
+        account: {
+          status: "connected",
+          vm: "evm",
+          address: "0x0000000000000000000000000000000000000001",
+          namespace: mintKargainNamespace(84532),
+          chainId: 84532,
+        },
+        expectedChainId: 84532,
+      }),
+      "ok",
+    );
+  });
+});
+
 describe("chainSelectorSwitchTargets", () => {
   it("returns only expected when it is a write-union chain", () => {
     assert.deepEqual(chainSelectorSwitchTargets(11155111), [11155111]);
@@ -96,5 +130,9 @@ describe("chainSelectorSwitchTargets", () => {
     const targets = chainSelectorSwitchTargets(null);
     assert.ok(targets.includes(84532));
     assert.ok(targets.includes(11155111));
+  });
+
+  it("wrong_vm has no switch targets", () => {
+    assert.deepEqual(chainSelectorSwitchTargets(84532, "wrong_vm"), []);
   });
 });

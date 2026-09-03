@@ -1,8 +1,10 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+
 import { useCallback, useMemo, useState } from "react";
 import { formatUnits, parseUnits } from "viem";
-import { useChainId, useSwitchChain, useWriteContract } from "wagmi";
+import { useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -72,10 +74,13 @@ export function OwnerLowerFloorPanel({
   compensationForm,
   onChanged,
 }: Props) {
+  const { account, switchChain } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const walletChain = evm.ok ? evm.chainId : undefined;
+  const switchAvail = evmSwitchChainAvailability(account);
+
   const wc = wagmiChainId(chainId);
-  const walletChain = useChainId();
-  const { switchChainAsync } = useSwitchChain();
-  const { writeContractAsync, isPending } = useWriteContract();
+      const { writeContractAsync, isPending } = useWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 
@@ -124,7 +129,10 @@ export function OwnerLowerFloorPanel({
 
   const runLower = useCallback(async () => {
     if (!market || !canSubmit || snapshotFloor == null) return;
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
+    if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(wc );
+      }
     setTxError(null);
     try {
       const newFloor = parseUnits(input, floorDecimals);
@@ -147,7 +155,7 @@ export function OwnerLowerFloorPanel({
     canSubmit,
     snapshotFloor,
     wrongChain,
-    switchChainAsync,
+    switchChain,
     wc,
     input,
     floorDecimals,
@@ -156,8 +164,7 @@ export function OwnerLowerFloorPanel({
     tid,
     onChanged,
     handleOpenChange,
-    runTx,
-  ]);
+    runTx, switchAvail]);
 
   if (!isConcessionAvailable(gate) || !market) return null;
 

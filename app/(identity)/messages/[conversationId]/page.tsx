@@ -1,8 +1,9 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { Suspense, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useAccount } from "wagmi";
 
 import { ConversationThreadClient } from "@/components/messaging/conversation-thread-client";
 import { useClientMounted } from "@/hooks/use-client-mounted";
@@ -25,7 +26,9 @@ export default function ConversationPage() {
 
 function ConversationBody() {
   const router = useRouter();
-  const { isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const isConnected = evm.ok;
   const mounted = useClientMounted();
   const params = useParams();
   const conversationId = typeof params.conversationId === "string" ? params.conversationId : "";

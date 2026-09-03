@@ -1,7 +1,8 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import Link from "next/link";
-import { useAccount } from "wagmi";
 
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { monoLinkSm } from "@/lib/design/instrument-classes";
@@ -24,7 +25,9 @@ export function ProfileVerifierStatsBand({
   membershipRows,
   isOwner,
 }: ProfileVerifierStatsBandProps) {
-  const { chainId: walletChainId } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const walletChainId = evm.ok ? evm.chainId : undefined;
   const chainId = resolveKarProTargetChainId(walletChainId);
   const activeIds = activeMembershipChainIds(membershipRows);
   const walletOnActive =

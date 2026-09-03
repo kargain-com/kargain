@@ -1,6 +1,8 @@
 "use client";
 
-import { useAccount, useWriteContract } from "wagmi";
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
+import { useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { WalletLoginButton } from "@/components/wallet-login-button";
@@ -34,7 +36,9 @@ export function AuctionFinalizePanel({
   auction,
   protectionWindowSec,
 }: Props) {
-  const { isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const isConnected = evm.ok;
   const { writeContractAsync, isPending } = useWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = phase !== "idle";

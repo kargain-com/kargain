@@ -1,11 +1,14 @@
 "use client";
 
-import { useSwitchChain } from "wagmi";
+import {
+  evmSwitchChainAvailability,
+  useActiveAccount,
+} from "@/hooks/use-active-account";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { commercialChainIds } from "@/lib/web3/chain-context";
-import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
+import { shortChainName } from "@/lib/web3/supported-chains";
 
 type Props = {
   title?: string;
@@ -15,7 +18,8 @@ type Props = {
 export function KarProNetworkPrompt({
   title = "Switch to a Kargain network to become or manage KarPro.",
 }: Props = {}) {
-  const { switchChainAsync, isPending } = useSwitchChain();
+  const { account, switchChain, isConnectPending: isPending } = useActiveAccount();
+  const switchAvail = evmSwitchChainAvailability(account);
 
   return (
     <div className="space-y-4">
@@ -30,8 +34,11 @@ export function KarProNetworkPrompt({
             <Button
               type="button"
               variant="secondary"
-              disabled={isPending}
-              onClick={() => void switchChainAsync?.({ chainId: wagmiChainId(id) })}
+              disabled={isPending || !switchAvail.available}
+              onClick={() => {
+                if (!switchAvail.available) return;
+                void switchChain(id);
+              }}
             >
               Switch to {shortChainName(id)}{" "}
               <span className="font-mono text-xs tabular-nums text-text-tertiary">

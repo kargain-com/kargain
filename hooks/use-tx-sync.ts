@@ -4,11 +4,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
 import type { TransactionReceipt } from "viem";
-import { useChainId, useConfig, useSwitchChain } from "wagmi";
+import { useConfig } from "wagmi";
 import { waitForTransactionReceipt } from "wagmi/actions";
 
 import { getIndexerBlockNumber } from "@/app/actions/indexer-status";
 import { revalidateIndexerCache } from "@/app/actions/revalidate-indexer-cache";
+import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { invalidateIndexerQueries } from "@/lib/web3/indexer-query-keys";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
@@ -42,8 +43,10 @@ export function useTxSync(chainId: number) {
   const config = useConfig();
   const queryClient = useQueryClient();
   const router = useRouter();
-  const walletChainId = useChainId();
-  const { switchChainAsync } = useSwitchChain();
+  const { account, switchChain } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const walletChainId = evm.ok ? evm.chainId : undefined;
+  const switchAvail = evmSwitchChainAvailability(account);
   const [phase, setPhase] = useState<TxSyncPhase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [syncLagged, setSyncLagged] = useState(false);
@@ -122,7 +125,10 @@ export function useTxSync(chainId: number) {
       try {
         const targetChainId = wagmiChainId(chainId);
         if (walletChainId !== targetChainId) {
-          await switchChainAsync({ chainId: targetChainId });
+          if (!switchAvail.available) {
+            throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+          }
+          await switchChain(chainId);
         }
 
         const hash = await writeFn();
@@ -147,13 +153,7 @@ export function useTxSync(chainId: number) {
         setPhase("idle");
       }
     },
-    [
-      chainId,
-      config,
-      syncReads,
-      switchChainAsync,
-      walletChainId,
-    ],
+    [chainId, config, syncReads, switchChain, walletChainId, switchAvail],
   );
 
   const busy = phase !== "idle" || flowActive;

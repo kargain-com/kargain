@@ -1,15 +1,10 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatUnits, stringToHex } from "viem";
-import {
-  useAccount,
-  useBalance,
-  useChainId,
-  useReadContract,
-  useSendTransaction,
-  useWriteContract,
-} from "wagmi";
+import { useBalance, useReadContract, useSendTransaction, useWriteContract } from "wagmi";
 
 import { getProfileData } from "@/app/actions/marketplace-listings";
 import { Button } from "@/components/ui/button";
@@ -133,7 +128,12 @@ export function VerificationPaymentModal({
   verifierName,
   membershipChainId,
 }: VerificationPaymentModalProps) {
-  const walletChainId = useChainId();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
+  const walletChainId = evm.ok ? evm.chainId : undefined;
+
   const chainId =
     membershipChainId != null && Number.isFinite(membershipChainId)
       ? membershipChainId
@@ -141,13 +141,11 @@ export function VerificationPaymentModal({
   const commercialReady =
     chainId != null &&
     (membershipChainId == null || walletChainId === membershipChainId);
-  const wc = wagmiChainId(chainId ?? walletChainId);
-  const { address, isConnected } = useAccount();
+  const syncChainId = chainId ?? walletChainId ?? 84532;
+  const wc = wagmiChainId(syncChainId);
   const { sendTransactionAsync, isPending: isEthPending } = useSendTransaction();
   const { writeContractAsync, isPending: isWritePending } = useWriteContract();
-  const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(
-    chainId ?? walletChainId,
-  );
+  const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(syncChainId);
   const { ethUsd, btcUsd, isLoading: ratesLoading } = useMarketRates({ enabled: open });
   const { profile: verifierProfile } = useNostrProfile(verifierAddress, undefined, {
     enabled: open,
@@ -880,7 +878,10 @@ export function VerificationPayButton({
   variant = "ghost",
   size,
 }: VerificationPayButtonProps) {
-  const { address, isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
   const [open, setOpen] = useState(false);
 
   if (feeWei === 0n) return null;

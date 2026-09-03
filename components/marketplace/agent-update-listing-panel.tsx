@@ -1,14 +1,10 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { parseUnits } from "viem";
-import {
-  useAccount,
-  useChainId,
-  useReadContract,
-  useSwitchChain,
-  useWriteContract,
-} from "wagmi";
+import { useReadContract, useWriteContract } from "wagmi";
 
 import { AgentLowerCommissionPanel } from "@/components/commerce/agent-lower-commission-panel";
 import { Button } from "@/components/ui/button";
@@ -83,11 +79,15 @@ export function AgentUpdateListingPanel({
   wallet,
   onSuccess,
 }: Props) {
+  const { account, switchChain } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
+  const walletChain = evm.ok ? evm.chainId : undefined;
+  const switchAvail = evmSwitchChainAvailability(account);
+
   const wc = wagmiChainId(chainId);
-  const { address, isConnected } = useAccount();
-  const walletChain = useChainId();
-  const { switchChainAsync } = useSwitchChain();
-  const { writeContractAsync, isPending } = useWriteContract();
+        const { writeContractAsync, isPending } = useWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 
@@ -149,7 +149,10 @@ export function AgentUpdateListingPanel({
 
   const runUpdateListing = useCallback(async () => {
     if (!market || !meetsFloor || price1e8 == null) return;
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
+    if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(wc );
+      }
     setTxError(null);
     try {
       const pricedOk = await runTx(() =>
@@ -170,13 +173,12 @@ export function AgentUpdateListingPanel({
     meetsFloor,
     price1e8,
     wrongChain,
-    switchChainAsync,
+    switchChain,
     wc,
     writeContractAsync,
     tid,
     onSuccess,
-    runTx,
-  ]);
+    runTx, switchAvail]);
 
   return (
     <div className="mt-3 space-y-3 border-t border-border-default pt-3">

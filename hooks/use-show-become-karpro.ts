@@ -1,6 +1,8 @@
 "use client";
 
-import { useAccount, useReadContract } from "wagmi";
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
+import { useReadContract } from "wagmi";
 
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import {
@@ -11,7 +13,11 @@ import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 export function useShowBecomeKarPro(): boolean {
-  const { address, isConnected, chainId: walletChainId } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
+  const walletChainId = evm.ok ? evm.chainId : undefined;
   const chainId = resolveKarProTargetChainId(walletChainId);
   const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
   const wc = chainId != null ? wagmiChainId(chainId) : undefined;

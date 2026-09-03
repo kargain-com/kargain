@@ -1,17 +1,11 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { erc20Abi, isAddressEqual, zeroAddress } from "viem";
-import {
-  useAccount,
-  useBalance,
-  useChainId,
-  useReadContract,
-  useSimulateContract,
-  useSwitchChain,
-  useWriteContract,
-} from "wagmi";
+import { useBalance, useReadContract, useSimulateContract, useWriteContract } from "wagmi";
 
 import { BuyRiskModal } from "@/components/marketplace/buy-risk-modal";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
@@ -88,11 +82,15 @@ export function ListingBuyPanel({
   hadDispute,
   directPaymentNote: directPaymentNoteProp,
 }: Props) {
+  const { account, switchChain } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
+  const walletChain = evm.ok ? evm.chainId : undefined;
+  const switchAvail = evmSwitchChainAvailability(account);
+
   const router = useRouter();
-  const { address, isConnected } = useAccount();
-  const walletChain = useChainId();
-  const { switchChainAsync } = useSwitchChain();
-  const { writeContractAsync, isPending } = useWriteContract();
+        const { writeContractAsync, isPending } = useWriteContract();
   const [riskOpen, setRiskOpen] = useState(false);
   const [txError, setTxError] = useState<string | null>(null);
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
@@ -259,7 +257,10 @@ export function ListingBuyPanel({
     setTxError(null);
     if (!market || quote == null) return;
     try {
-      if (wrongChain) await switchChainAsync?.({ chainId: wc });
+      if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(wc );
+      }
 
       if (!isNative && asset && (allowance ?? 0n) < quote) {
         const hash = await writeContractAsync({
@@ -297,7 +298,7 @@ export function ListingBuyPanel({
     market,
     quote,
     wrongChain,
-    switchChainAsync,
+    switchChain,
     wc,
     isNative,
     asset,
@@ -310,8 +311,7 @@ export function ListingBuyPanel({
     tid,
     router,
     tokenId,
-    chainId,
-  ]);
+    chainId, switchAvail]);
 
   const handleBuyClick = () => {
     if (requiresRiskAck) {
@@ -418,7 +418,10 @@ export function ListingBuyPanel({
           </p>
           <Button
             type="button"
-            onClick={() => void switchChainAsync?.({ chainId: wc })}
+            onClick={() => {
+              if (!switchAvail.available) return;
+              void switchChain(wc );
+            }}
           >
             Switch network
           </Button>

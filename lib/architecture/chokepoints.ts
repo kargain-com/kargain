@@ -256,6 +256,20 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "network-vm-component-policy.test.ts",
       "passport-presence-owner-policy.test.ts",
       "s8-1-consumer-wiring-policy.test.ts",
+      "active-account-owner-policy.test.ts",
+      "solana-web3-app-graph-policy.test.ts",
+      "svm-wallet-adapter-policy.test.ts",
+    ],
+  },
+  {
+    id: "active-account",
+    owner: "hooks/use-active-account.ts · lib/web3/active-account.ts · evm/svm adapters",
+    rule: "Sole who-is-connected entry (discriminated account only); EVM facts via requireEvmSession / commercialNamespaceOf / switch availability (named causes); wagmi account hooks only in evm-account-adapter; no invented SVM namespace; no EVM-field undefined forks outside owners",
+    guardTests: [
+      "active-account-owner-policy.test.ts",
+      "active-account.test.ts",
+      "svm-wallet-adapter-policy.test.ts",
+      "solana-web3-app-graph-policy.test.ts",
     ],
   },
   {

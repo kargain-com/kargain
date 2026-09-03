@@ -1,7 +1,9 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useMemo } from "react";
-import { useAccount } from "wagmi";
+
 import type { Address } from "viem";
 
 import {
@@ -24,7 +26,9 @@ export function useIsCommerceGuardian(enabled = true): {
   isGuardian: boolean;
   isPending: boolean;
 } {
-  const { address: connected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const connected = evm.ok ? evm.address : undefined;
 
   const targets = useMemo(() => {
     const out: {

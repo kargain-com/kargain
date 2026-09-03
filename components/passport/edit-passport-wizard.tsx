@@ -1,15 +1,11 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+
 import Link from "next/link";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  useAccount,
-  useChainId,
-  useSignMessage,
-  useSwitchChain,
-  useWriteContract,
-} from "wagmi";
+import { useSignMessage, useWriteContract } from "wagmi";
 
 import { PassportMetadataFields } from "@/components/passport/passport-metadata-fields";
 import { MetadataChangeConfirmDialog } from "@/components/passport/metadata-change-confirm-dialog";
@@ -99,10 +95,15 @@ export function EditPassportWizard({
   initialMetadata,
   existingPhotoUris,
 }: Props) {
-  const { address, isConnected, connector } = useAccount();
-  const walletChain = useChainId();
+  const { account, switchChain, signingBinding } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
+  const walletChain = evm.ok ? evm.chainId : undefined;
+  const connector = signingBinding.ok ? signingBinding.connector : undefined;
+  const switchAvail = evmSwitchChainAvailability(account);
+
   const { signMessageAsync } = useSignMessage();
-  const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync, isPending, reset: resetWrite } = useWriteContract();
   const {
     runTx,
@@ -267,7 +268,10 @@ export function EditPassportWizard({
     setShowSuccess(false);
 
     try {
-      if (wrongChain) await switchChainAsync?.({ chainId: wc });
+      if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(wc );
+      }
       await ensureSiweSession({
         address,
         chainId,
@@ -440,7 +444,10 @@ export function EditPassportWizard({
           <button
             type="button"
             className="link-underline"
-            onClick={() => void switchChainAsync?.({ chainId: wc })}
+            onClick={() => {
+              if (!switchAvail.available) return;
+              void switchChain(wc );
+            }}
           >
             Switch network
           </button>

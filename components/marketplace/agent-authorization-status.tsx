@@ -1,8 +1,10 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+
 import Link from "next/link";
 import { useCallback, useState } from "react";
-import { useChainId, useSwitchChain, useWriteContract } from "wagmi";
+import { useWriteContract } from "wagmi";
 
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { Button } from "@/components/ui/button";
@@ -44,10 +46,13 @@ export function AgentAuthorizationStatus({
   listingActive,
   onChanged,
 }: Props) {
+  const { account, switchChain } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const walletChain = evm.ok ? evm.chainId : undefined;
+  const switchAvail = evmSwitchChainAvailability(account);
+
   const wc = wagmiChainId(chainId);
-  const walletChain = useChainId();
-  const { switchChainAsync } = useSwitchChain();
-  const { writeContractAsync, isPending } = useWriteContract();
+      const { writeContractAsync, isPending } = useWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 
@@ -64,7 +69,10 @@ export function AgentAuthorizationStatus({
 
   const runRevoke = useCallback(async () => {
     if (!market || listingActive) return;
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
+    if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(wc );
+      }
     setTxError(null);
     try {
       const succeeded = await runTx(() =>
@@ -84,13 +92,12 @@ export function AgentAuthorizationStatus({
     market,
     listingActive,
     wrongChain,
-    switchChainAsync,
+    switchChain,
     wc,
     writeContractAsync,
     tid,
     onChanged,
-    runTx,
-  ]);
+    runTx, switchAvail]);
 
   return (
     <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">

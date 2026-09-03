@@ -1,15 +1,12 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { formatEther } from "viem";
-import {
-  useAccount,
-  useReadContract,
-  useSignMessage,
-  useWriteContract,
-} from "wagmi";
+import { useReadContract, useSignMessage, useWriteContract } from "wagmi";
 
 import { EvidenceInput } from "@/components/passport/evidence-input";
 import { MetadataDiffPanel } from "@/components/passport/metadata-diff-panel";
@@ -116,7 +113,11 @@ export function PassportActionsPanel({
   embeddedInSheet = false,
 }: Props) {
   const pathname = usePathname();
-  const { address, isConnected, connector } = useAccount();
+  const { account, signingBinding } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
+  const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const { signMessageAsync } = useSignMessage();
   const { writeContractAsync, isPending } = useWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);

@@ -1,9 +1,11 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { CheckDoubleIcon } from "@/components/ui/icons";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { useAccount, useReadContract, useWalletClient } from "wagmi";
+import { useReadContract, useWalletClient } from "wagmi";
 
 import { PlacePicker, type PlacePickerValue } from "@/components/geo/place-picker";
 import { IdentityHeader } from "@/components/identity/identity-header";
@@ -95,7 +97,11 @@ function KarProReadoutRow({
 }
 
 export function ProfileEditClient() {
-  const { address, isConnected, chainId: walletChainId } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
+  const walletChainId = evm.ok ? evm.chainId : undefined;
   const { data: walletClient } = useWalletClient();
   const touchedRef = useRef<Set<ProfileEditFieldKey>>(new Set());
   const [dirty, setDirty] = useState(false);

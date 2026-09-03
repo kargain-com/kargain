@@ -1,5 +1,7 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import {
   CircleCheckIcon,
   GlobeIcon,
@@ -9,7 +11,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Address } from "viem";
-import { useAccount } from "wagmi";
+
 import type {
   KarProVerifierProfile,
 } from "@/lib/verifier/verifier-profile-types";
@@ -319,7 +321,10 @@ export function ProfilePage({
   delegatedCount = null,
 }: ProfilePageProps) {
   const searchParams = useSearchParams();
-  const { address, isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
   const isOwner = useIsProfileOwner(wallet);
   const { profile } = useNostrProfile(wallet, initialNostrProfile);
 

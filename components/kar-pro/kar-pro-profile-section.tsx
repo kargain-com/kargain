@@ -1,8 +1,10 @@
 "use client";
 
+import { useActiveAccount } from "@/hooks/use-active-account";
+
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useAccount, useWriteContract } from "wagmi";
+import { useWriteContract } from "wagmi";
 
 import {
   KarProProfileFields,
@@ -62,7 +64,8 @@ export function KarProProfileSection({
   address,
   onUpdated,
 }: KarProProfileSectionProps) {
-  const { connector } = useAccount();
+  const { signingBinding } = useActiveAccount();
+  const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const { writeContractAsync } = useWriteContract();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
   const wc = wagmiChainId(chainId);

@@ -1,7 +1,8 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import Link from "next/link";
-import { useAccount } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
@@ -25,7 +26,9 @@ export function KarProStatusWidget({
   isActiveVerifier,
   membershipRows,
 }: KarProStatusWidgetProps) {
-  const { chainId: walletChainId } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const walletChainId = evm.ok ? evm.chainId : undefined;
   const chainId = resolveKarProTargetChainId(walletChainId);
   const activeIds = activeMembershipChainIds(membershipRows);
   const walletOnActive = chainId != null && activeIds.includes(chainId);

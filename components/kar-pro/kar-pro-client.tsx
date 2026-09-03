@@ -1,6 +1,6 @@
 "use client";
 
-import { useAccount } from "wagmi";
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
 
 import { KarProCommonsSection } from "@/components/kar-pro/kar-pro-commons-section";
 import { KarProMembershipSection } from "@/components/kar-pro/kar-pro-membership-section";
@@ -35,7 +35,11 @@ export function KarProClient({
   embedded?: boolean;
   onVerifierStatusChange?: (isActiveVerifier: boolean) => void;
 }) {
-  const { address, isConnected, chainId: walletChainId } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
+  const walletChainId = evm.ok ? evm.chainId : undefined;
   const chainId = resolveKarProTargetChainId(walletChainId);
 
   const staking = chainId != null ? karProStakingAddress(chainId) : undefined;

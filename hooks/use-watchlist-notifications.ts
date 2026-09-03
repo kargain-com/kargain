@@ -1,8 +1,9 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useAccount } from "wagmi";
 
 import { fetchListingBatch, fetchPassportBatch } from "@/app/actions/notifications";
 import { useNotificationState } from "@/hooks/use-notification-state";
@@ -59,7 +60,9 @@ export function useWatchlistNotifications(): {
   items: NotificationItem[];
   isLoading: boolean;
 } {
-  const { isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const isConnected = evm.ok;
   const { watchedIds, isLoading: watchlistLoading } = useWatchlist();
   const { state } = useNotificationState();
 

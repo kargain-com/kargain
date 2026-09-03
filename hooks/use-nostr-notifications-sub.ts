@@ -1,8 +1,9 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Event } from "nostr-tools";
-import { useAccount } from "wagmi";
 
 import { useNotificationState } from "@/hooks/use-notification-state";
 import { useNostrKey } from "@/hooks/use-nostr-key";
@@ -26,7 +27,9 @@ export function useNostrNotificationsSub(ownedTokenIds: string[]): {
   items: NotificationItem[];
   isLoading: boolean;
 } {
-  const { isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const isConnected = evm.ok;
   const { nostrPubkey } = useNostrKey();
   const { state } = useNotificationState();
   const [events, setEvents] = useState<Event[]>([]);

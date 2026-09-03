@@ -1,7 +1,9 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useState } from "react";
-import { useAccount, useReadContract } from "wagmi";
+import { useReadContract } from "wagmi";
 
 import { KarProClient } from "@/components/kar-pro/kar-pro-client";
 import { formatStakeEth } from "@/lib/kar-pro/stake-format";
@@ -17,7 +19,11 @@ const VALUE_PROPS = [
 ] as const;
 
 export function KarProPageContent() {
-  const { address, isConnected, chainId: walletChainId } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
+  const walletChainId = evm.ok ? evm.chainId : undefined;
   const chainId = resolveKarProTargetChainId(walletChainId);
   const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
   const wc = chainId != null ? wagmiChainId(chainId) : undefined;

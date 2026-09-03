@@ -1,9 +1,10 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { CommentIcon } from "@/components/ui/icons";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useAccount } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { useMessagingSession } from "@/hooks/use-messaging-session";
@@ -24,7 +25,11 @@ type Props = {
 };
 
 export function SellerContactButton({ peerAddress, label, listingTokenId }: Props) {
-  const { address, isConnected, connector } = useAccount();
+  const { account, signingBinding } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
+  const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const router = useRouter();
   const { snapshot, dispatch, session } = useMessagingSession();
   const needsMessagingSetup = needsMessagingSetupCard(snapshot);

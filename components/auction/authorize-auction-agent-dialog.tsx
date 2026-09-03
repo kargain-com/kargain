@@ -1,14 +1,10 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatUnits, parseUnits, zeroAddress } from "viem";
-import {
-  useAccount,
-  useChainId,
-  useReadContract,
-  useSwitchChain,
-  useWriteContract,
-} from "wagmi";
+import { useReadContract, useWriteContract } from "wagmi";
 
 import { getVerifierDirectory } from "@/app/actions/verifier-directory";
 import type { VerifierDirectoryEntry } from "@/lib/verifier/parse-directory-entry";
@@ -110,11 +106,14 @@ export function AuthorizeAuctionAgentDialog({
   onAuthorized,
   hasActiveAuction = false,
 }: Props) {
+  const { account, switchChain } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const walletChain = evm.ok ? evm.chainId : undefined;
+  const switchAvail = evmSwitchChainAvailability(account);
+
   const wc = wagmiChainId(chainId);
-  const { address } = useAccount();
-  const walletChain = useChainId();
-  const { switchChainAsync } = useSwitchChain();
-  const { writeContractAsync, isPending } = useWriteContract();
+        const { writeContractAsync, isPending } = useWriteContract();
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
 
   const mode = commerceModeAddress("ascending", chainId);
@@ -265,7 +264,10 @@ export function AuthorizeAuctionAgentDialog({
 
   const runSetApprovalForAll = useCallback(async () => {
     if (!mode) return;
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
+    if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(wc );
+      }
     setTxError(null);
     try {
       await approveForAll(awaitReceipt);
@@ -273,11 +275,14 @@ export function AuthorizeAuctionAgentDialog({
     } catch (err) {
       setTxError(txErrorMessage(err));
     }
-  }, [mode, wrongChain, switchChainAsync, wc, approveForAll, awaitReceipt]);
+  }, [mode, wrongChain, switchChain, wc, approveForAll, awaitReceipt, switchAvail]);
 
   const runApproveToken = useCallback(async () => {
     if (!mode) return;
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
+    if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(wc );
+      }
     setTxError(null);
     try {
       await approveToken(awaitReceipt);
@@ -285,7 +290,7 @@ export function AuthorizeAuctionAgentDialog({
     } catch (err) {
       setTxError(txErrorMessage(err));
     }
-  }, [mode, wrongChain, switchChainAsync, wc, approveToken, awaitReceipt]);
+  }, [mode, wrongChain, switchChain, wc, approveToken, awaitReceipt, switchAvail]);
 
   const runRevoke = useCallback(async () => {
     if (!mode || hasActiveAuction) return;

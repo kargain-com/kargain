@@ -1,8 +1,10 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useAccount } from "wagmi";
+
 import type { Address } from "viem";
 
 import { getCommercePaymentTokenCandidates } from "@/app/actions/commerce-payment-tokens";
@@ -64,7 +66,9 @@ function parseChainEnabled(
  * Reuses pause ops mode/guardian/owner reads; never offers approve.
  */
 export function useCommerceRevokeOps() {
-  const { address: connected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const connected = evm.ok ? evm.address : undefined;
   const pause = useCommercePauseOps();
 
   const ponderQuery = useQuery({

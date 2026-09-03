@@ -1,9 +1,11 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatEther } from "viem";
-import { useAccount, useReadContract } from "wagmi";
+import { useReadContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { InstrumentLink } from "@/components/ui/instrument-link";
@@ -63,7 +65,10 @@ export function PassportBridgePanel({
   const router = useRouter();
   const handedOffRef = useRef(false);
   const [crossingAcked, setCrossingAcked] = useState(false);
-  const { address, isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
   const passport = karPassportAddress(chainId);
   const tid = BigInt(tokenId);
   const dstChainId = bridgeCounterpartChainId(chainId);

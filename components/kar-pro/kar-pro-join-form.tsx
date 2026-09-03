@@ -1,7 +1,9 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useState } from "react";
-import { useAccount, useWriteContract } from "wagmi";
+import { useWriteContract } from "wagmi";
 
 import {
   KarProProfileFields,
@@ -59,7 +61,10 @@ export function KarProJoinForm({
   onSuccess: () => void;
   otherActiveChainIds?: readonly number[];
 }) {
-  const { address, connector } = useAccount();
+  const { account, signingBinding } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const { writeContractAsync } = useWriteContract();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
   const wc = wagmiChainId(chainId);

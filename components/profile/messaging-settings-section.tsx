@@ -1,8 +1,9 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { SpinnerIcon } from "@/components/ui/icons";
 import { useCallback, useEffect, useState } from "react";
-import { useAccount } from "wagmi";
 
 import { MessagingDevicesPanel } from "@/components/messaging/messaging-devices-panel";
 import { Button } from "@/components/ui/button";
@@ -43,7 +44,9 @@ function SectionEyebrow({ children }: { children: string }) {
 }
 
 export function MessagingSettingsSection() {
-  const { address } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
   const { snapshot, dispatch, client, session } = useMessagingSession();
   const { refreshConsentLists } = useXmtpConversations();
   const [confirmDisableOpen, setConfirmDisableOpen] = useState(false);

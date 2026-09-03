@@ -1,12 +1,9 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+
 import { useCallback, useState } from "react";
-import {
-  useAccount,
-  useChainId,
-  useSwitchChain,
-  useWriteContract,
-} from "wagmi";
+import { useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
@@ -24,11 +21,15 @@ type Props = {
 };
 
 export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props) {
+  const { account, switchChain } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
+  const walletChain = evm.ok ? evm.chainId : undefined;
+  const switchAvail = evmSwitchChainAvailability(account);
+
   const wc = wagmiChainId(chainId);
-  const { address, isConnected } = useAccount();
-  const walletChain = useChainId();
-  const { switchChainAsync } = useSwitchChain();
-  const { writeContractAsync, isPending } = useWriteContract();
+        const { writeContractAsync, isPending } = useWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 
@@ -43,7 +44,10 @@ export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props
 
   const runAgentDelist = useCallback(async () => {
     if (!market || !isAgentWallet) return;
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
+    if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(wc );
+      }
     setTxError(null);
     try {
       const succeeded = await runTx(() =>
@@ -63,13 +67,12 @@ export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props
     market,
     isAgentWallet,
     wrongChain,
-    switchChainAsync,
+    switchChain,
     wc,
     writeContractAsync,
     tid,
     onSuccess,
-    runTx,
-  ]);
+    runTx, switchAvail]);
 
   return (
     <div className="mt-3 border-t border-border-default pt-3">

@@ -1,16 +1,14 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useCallback, useRef, useState } from "react";
 import {
   getAddress,
   type Address,
   type Hex,
 } from "viem";
-import {
-  useAccount,
-  usePublicClient,
-  useWriteContract,
-} from "wagmi";
+import { usePublicClient, useWriteContract } from "wagmi";
 
 import { usePassportApproval } from "@/hooks/use-passport-approval";
 import { useTxSync } from "@/hooks/use-tx-sync";
@@ -116,7 +114,9 @@ export function useBridge(
     bridgeCounterpartChainId(srcChainId) ?? BRIDGE_SPOKE_CHAIN_ID,
   tokenId: string = "",
 ) {
-  const { address } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
   const publicClient = usePublicClient({ chainId: wagmiChainId(srcChainId) });
   const { writeContractAsync } = useWriteContract();
   const { runTx, awaitReceipt, runFlow, busy: syncBusy, error: syncError } =

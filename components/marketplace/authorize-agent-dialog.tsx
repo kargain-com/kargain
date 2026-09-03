@@ -1,13 +1,10 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatUnits, parseUnits } from "viem";
-import {
-  useAccount,
-  useChainId,
-  useSwitchChain,
-  useWriteContract,
-} from "wagmi";
+import { useWriteContract } from "wagmi";
 
 import { getVerifierDirectory } from "@/app/actions/verifier-directory";
 import type { VerifierDirectoryEntry } from "@/lib/verifier/parse-directory-entry";
@@ -97,11 +94,14 @@ export function AuthorizeAgentDialog({
   onOpenChange,
   onAuthorized,
 }: Props) {
+  const { account, switchChain } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const walletChain = evm.ok ? evm.chainId : undefined;
+  const switchAvail = evmSwitchChainAvailability(account);
+
   const wc = wagmiChainId(chainId);
-  const { address } = useAccount();
-  const walletChain = useChainId();
-  const { switchChainAsync } = useSwitchChain();
-  const { writeContractAsync, isPending } = useWriteContract();
+        const { writeContractAsync, isPending } = useWriteContract();
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 
@@ -236,7 +236,10 @@ export function AuthorizeAgentDialog({
 
   const runSetApprovalForAll = useCallback(async () => {
     if (!market) return;
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
+    if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(wc );
+      }
     setTxError(null);
     try {
       await approveForAll(awaitReceipt);
@@ -244,11 +247,14 @@ export function AuthorizeAgentDialog({
     } catch (err) {
       setTxError(txErrorMessage(err));
     }
-  }, [market, wrongChain, switchChainAsync, wc, approveForAll, awaitReceipt]);
+  }, [market, wrongChain, switchChain, wc, approveForAll, awaitReceipt, switchAvail]);
 
   const runApproveToken = useCallback(async () => {
     if (!market) return;
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
+    if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(wc );
+      }
     setTxError(null);
     try {
       await approveToken(awaitReceipt);
@@ -256,7 +262,7 @@ export function AuthorizeAgentDialog({
     } catch (err) {
       setTxError(txErrorMessage(err));
     }
-  }, [market, wrongChain, switchChainAsync, wc, approveToken, awaitReceipt]);
+  }, [market, wrongChain, switchChain, wc, approveToken, awaitReceipt, switchAvail]);
 
   const handleSelectAgent = useCallback((entry: VerifierDirectoryEntry) => {
     setSelectedAgent(entry);
@@ -328,7 +334,10 @@ export function AuthorizeAgentDialog({
       setTxError(pairingGate.cause);
       return;
     }
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
+    if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(wc );
+      }
     setTxError(null);
     try {
       const expiry = noExpiration ? 0n : dateToExpiryUnix(expiryDate);
@@ -372,7 +381,7 @@ export function AuthorizeAgentDialog({
     compensationBuilt,
     pairingGate,
     wrongChain,
-    switchChainAsync,
+    switchChain,
     wc,
     noExpiration,
     expiryDate,
@@ -383,8 +392,7 @@ export function AuthorizeAgentDialog({
     tid,
     onAuthorized,
     handleOpenChange,
-    runTx,
-  ]);
+    runTx, switchAvail]);
 
   const agentName = selectedAgent ? agentDisplayName(selectedAgent) : "";
   const formattedFloor =

@@ -1,10 +1,13 @@
 "use client";
 
-import { useSwitchChain } from "wagmi";
+import {
+  evmSwitchChainAvailability,
+  useActiveAccount,
+} from "@/hooks/use-active-account";
 
 import { categoryLabel, instrumentReadoutPanel, monoLinkSm } from "@/lib/design/instrument-classes";
 import type { KarProMembershipRow } from "@/lib/kar-pro/membership-roster";
-import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
+import { shortChainName } from "@/lib/web3/supported-chains";
 
 function statusLabel(status: KarProMembershipRow["status"]): string {
   switch (status) {
@@ -26,7 +29,8 @@ type KarProNetworksRosterProps = {
  * Switch CTAs only — join form appears after wallet target is inactive on that chain.
  */
 export function KarProNetworksRoster({ rows }: KarProNetworksRosterProps) {
-  const { switchChainAsync, isPending } = useSwitchChain();
+  const { account, switchChain, isConnectPending: isPending } = useActiveAccount();
+  const switchAvail = evmSwitchChainAvailability(account);
 
   return (
     <div className={`${instrumentReadoutPanel} space-y-1`}>
@@ -44,12 +48,18 @@ export function KarProNetworksRoster({ rows }: KarProNetworksRosterProps) {
           if (!showManaging && row.status === "active") {
             action = {
               label: "Switch to manage",
-              onClick: () => void switchChainAsync?.({ chainId: wagmiChainId(row.chainId) }),
+              onClick: () => {
+                if (!switchAvail.available) return;
+                void switchChain(row.chainId);
+              },
             };
           } else if (!showManaging && row.status === "not_joined") {
             action = {
               label: "Switch to join",
-              onClick: () => void switchChainAsync?.({ chainId: wagmiChainId(row.chainId) }),
+              onClick: () => {
+                if (!switchAvail.available) return;
+                void switchChain(row.chainId);
+              },
             };
           }
 

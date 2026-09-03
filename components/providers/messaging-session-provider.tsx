@@ -1,5 +1,7 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import {
   createContext,
   useEffect,
@@ -8,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type { Address, WalletClient } from "viem";
-import { useAccount, useChainId, useWalletClient } from "wagmi";
+import { useWalletClient } from "wagmi";
 
 import {
   createInMemoryMessagingCache,
@@ -195,9 +197,13 @@ function ensureRefs(
 }
 
 export function MessagingSessionProvider({ children }: { children: ReactNode }) {
-  const { address, isConnected } = useAccount();
-  const walletChainId = useChainId();
-  const commercialChainId = resolveWalletCommercialChainId(walletChainId);
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
+  const walletChainId = evm.ok ? evm.chainId : undefined;
+
+      const commercialChainId = resolveWalletCommercialChainId(walletChainId);
   const { data: walletClient } = useWalletClient(
     commercialChainId != null ? { chainId: wagmiChainId(commercialChainId) } : {},
   );

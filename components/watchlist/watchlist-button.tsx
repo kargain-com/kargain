@@ -1,7 +1,8 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { BookmarkCheckIcon, BookmarkIcon, SpinnerIcon } from "@/components/ui/icons";
-import { useAccount } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { useWatchlist } from "@/hooks/use-watchlist";
@@ -12,7 +13,9 @@ type Props = {
 };
 
 export function WatchlistButton({ tokenId }: Props) {
-  const { isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const isConnected = evm.ok;
   const { isWatched, isToggling, toggle } = useWatchlist(tokenId);
 
   const disabled = !isConnected || isToggling;

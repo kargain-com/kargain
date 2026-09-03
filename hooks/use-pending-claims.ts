@@ -1,7 +1,8 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useQuery } from "@tanstack/react-query";
-import { useAccount } from "wagmi";
 
 import { getPendingClaims } from "@/app/actions/claims";
 import { mapPendingClaimsResponse } from "@/lib/claims/map-pending-claim";
@@ -11,7 +12,10 @@ export function pendingClaimsQueryKey(address: string | undefined) {
 }
 
 export function usePendingClaims() {
-  const { address, isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
 
   const query = useQuery({
     queryKey: pendingClaimsQueryKey(address),

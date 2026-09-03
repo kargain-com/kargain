@@ -1,8 +1,9 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { NotificationIcon } from "@/components/ui/icons";
 import { useMemo } from "react";
-import { useAccount } from "wagmi";
 
 import { NotificationRow, NotificationRowSkeletonList } from "@/components/notifications/notification-row";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -23,7 +24,9 @@ function groupLabel(groupKey: string, items: NotificationItem[]) {
 }
 
 export function NotificationsClient() {
-  const { isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const isConnected = evm.ok;
   const { items, unreadCount, isLoading, markRead } = useNotificationsFeed();
 
   const grouped = useMemo(() => {

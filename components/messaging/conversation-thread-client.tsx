@@ -1,9 +1,10 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getAddress, type Address } from "viem";
-import { useAccount } from "wagmi";
 
 import { ArrowLeftIcon, SendIcon, SpinnerIcon } from "@/components/ui/icons";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
@@ -53,7 +54,9 @@ function parsePeerAddress(raw: string | undefined): `0x${string}` | undefined {
 }
 
 function ConversationThreadBody({ conversationId }: Props) {
-  const { isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const isConnected = evm.ok;
   const { client, snapshot } = useMessagingSession();
   useRequestLocalMessagingClient(isConnected);
   const isReady = snapshot.state === "active" && client != null;

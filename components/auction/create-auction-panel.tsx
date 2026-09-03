@@ -1,13 +1,10 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useEffect, useMemo, useState } from "react";
 import { parseUnits, zeroAddress } from "viem";
-import {
-  useAccount,
-  useChainId,
-  useReadContract,
-  useWriteContract,
-} from "wagmi";
+import { useReadContract, useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
@@ -58,9 +55,12 @@ export function CreateAuctionPanel({
   isOwner,
   isActiveVerifier,
 }: Props) {
-  const { isConnected } = useAccount();
-  const walletChainId = useChainId();
-  const { writeContractAsync } = useWriteContract();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const isConnected = evm.ok;
+  const walletChainId = evm.ok ? evm.chainId : undefined;
+
+      const { writeContractAsync } = useWriteContract();
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
 
   const { options: openOptions, pending: openOptionsPending } =

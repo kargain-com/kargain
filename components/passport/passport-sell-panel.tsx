@@ -1,8 +1,10 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAccount, useReadContract } from "wagmi";
+import { useReadContract } from "wagmi";
 
 import { AuctionAgentAuthorizationStatus } from "@/components/auction/auction-agent-authorization-status";
 import { AuthorizeAuctionAgentDialog } from "@/components/auction/authorize-auction-agent-dialog";
@@ -84,7 +86,10 @@ export function PassportSellPanel({
   now,
 }: Props) {
   const router = useRouter();
-  const { address, isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
   const [fixedPriceDialogOpen, setFixedPriceDialogOpen] = useState(false);
   const [ascendingDialogOpen, setAscendingDialogOpen] = useState(false);
 

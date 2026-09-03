@@ -1,13 +1,16 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useCallback, useEffect, useState } from "react";
-import { useAccount } from "wagmi";
 
 import { useNostrKey } from "@/hooks/use-nostr-key";
 import { addFavorite, loadFavorites, removeFavorite } from "@/lib/nostr/favorites";
 
 export function useWatchlist(tokenId?: string) {
-  const { isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const isConnected = evm.ok;
   const { nostrPrivateKey, nostrPubkey, loading: keyLoading, ensureNostrKey } = useNostrKey();
   const [watchedIds, setWatchedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);

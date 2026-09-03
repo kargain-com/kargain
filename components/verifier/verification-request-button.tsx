@@ -1,9 +1,10 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { MessageIcon } from "@/components/ui/icons";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useAccount } from "wagmi";
 
 import { getProfileData } from "@/app/actions/marketplace-listings";
 import { formatPassportTitle } from "@/lib/passport/passport-token-id";
@@ -71,7 +72,11 @@ export function VerificationRequestButton({
   verifierName,
   verificationFee,
 }: Props) {
-  const { address: userAddress, isConnected, connector } = useAccount();
+  const { account, signingBinding } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const userAddress = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
+  const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const { session, dispatch } = useMessagingSession();
   const needsMessagingSetup = needsMessagingSetupCard(
     session?.getSnapshot() ?? { state: "disconnected" },

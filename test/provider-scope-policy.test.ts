@@ -23,6 +23,7 @@ describe("provider scope policy", () => {
       [
         "DisplayCurrencyProvider",
         "QueryClientProvider",
+        "SvmAccountSessionProvider",
         "WagmiProvider",
         "WalletSessionSync",
       ].sort(),
@@ -36,7 +37,7 @@ describe("provider scope policy", () => {
         "XmtpConversationsProvider",
       ].sort(),
     );
-    assert.equal(PROVIDER_SCOPE.length, 8);
+    assert.equal(PROVIDER_SCOPE.length, 9);
   });
 
   it("keeps root AppProviders free of identity providers", () => {
@@ -48,6 +49,7 @@ describe("provider scope policy", () => {
     assert.doesNotMatch(text, /XmtpConversationsProvider/);
     assert.match(text, /QueryClientProvider/);
     assert.match(text, /WagmiProvider/);
+    assert.match(text, /SvmAccountSessionProvider/);
     assert.match(text, /DisplayCurrencyProvider/);
     assert.match(text, /WalletSessionSync/);
   });
@@ -98,6 +100,7 @@ describe("provider scope policy", () => {
 
     const login = read("components/wallet-login-button.tsx");
     assert.match(login, /ensureWalletConnectConnector/);
+    assert.match(login, /ensureSvmWalletDiscovery/);
   });
 
   it("SiteChrome is a server shell with optional identity badges", () => {

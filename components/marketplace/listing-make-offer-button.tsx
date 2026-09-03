@@ -1,7 +1,8 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useCallback, useEffect, useState } from "react";
-import { useAccount } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { useNostrKey } from "@/hooks/use-nostr-key";
@@ -26,7 +27,10 @@ export function ListingMakeOfferButton({
   sellerNostrPubkey,
   agentAddress,
 }: Props) {
-  const { address, isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
   const { ensureNostrKey } = useNostrKey();
   const [hasActiveOffer, setHasActiveOffer] = useState(false);
   const [checkingOffer, setCheckingOffer] = useState(false);

@@ -1,5 +1,7 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import {
   CheckDoubleIcon,
   ChevronRightIcon,
@@ -9,7 +11,7 @@ import {
 import Link from "next/link";
 import { useCallback, useState, type ReactNode } from "react";
 import { type Address } from "viem";
-import { useAccount, useEnsName } from "wagmi";
+import { useEnsName } from "wagmi";
 
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import { Button } from "@/components/ui/button";
@@ -61,7 +63,9 @@ export function IdentityHeader({
   proShowroomChainId = null,
   showEditButton = true,
 }: IdentityHeaderProps) {
-  const { isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const isConnected = evm.ok;
   const isOwner = useIsProfileOwner(wallet);
   const { reachable, isLoading: reachabilityLoading, message: reachabilityMessage } =
     usePeerMessagingReachability(!isOwner ? wallet : undefined);

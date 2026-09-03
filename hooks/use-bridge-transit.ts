@@ -1,9 +1,10 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { getAddress, type Address } from "viem";
-import { useAccount } from "wagmi";
 
 import { getPassportDetailLive } from "@/app/actions/passport-detail";
 import { useTxSync } from "@/hooks/use-tx-sync";
@@ -74,7 +75,9 @@ export function useBridgeTransit(opts: {
   enabled?: boolean;
 }) {
   const { tokenId, ponderCustodyChain, enabled = true } = opts;
-  const { address } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
   const router = useRouter();
   // chainId unused by syncReads; commerce custody satisfies the hook shape.
   const { syncReads } = useTxSync(ponderCustodyChain);

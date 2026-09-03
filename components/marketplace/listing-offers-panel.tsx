@@ -1,8 +1,10 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+
 import Link from "next/link";
 import { useCallback, useState } from "react";
-import { useChainId, useSwitchChain, useWriteContract } from "wagmi";
+import { useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -133,10 +135,13 @@ export function ListingOffersPanel({
   sellerNostrPubkey,
   hasDirectPayment,
 }: Props) {
+  const { account, switchChain } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const walletChain = evm.ok ? evm.chainId : undefined;
+  const switchAvail = evmSwitchChainAvailability(account);
+
   const wc = wagmiChainId(chainId);
-  const walletChain = useChainId();
-  const { switchChainAsync } = useSwitchChain();
-  const { writeContractAsync, isPending } = useWriteContract();
+      const { writeContractAsync, isPending } = useWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 
@@ -153,7 +158,10 @@ export function ListingOffersPanel({
   const runConfirmPayment = useCallback(
     async (buyer: `0x${string}`) => {
       if (!market || !hasDirectPayment) return;
-      if (wrongChain) await switchChainAsync?.({ chainId: wc });
+      if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(wc );
+      }
       setTxError(null);
       try {
         const succeeded = await runTx(() =>
@@ -176,12 +184,11 @@ export function ListingOffersPanel({
       market,
       hasDirectPayment,
       wrongChain,
-      switchChainAsync,
+      switchChain,
       wc,
       writeContractAsync,
       tid,
-      runTx,
-    ],
+      runTx, switchAvail],
   );
 
   return (

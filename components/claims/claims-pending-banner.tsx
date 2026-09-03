@@ -1,8 +1,9 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useAccount } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { usePendingClaims } from "@/hooks/use-pending-claims";
@@ -14,7 +15,10 @@ import { cn } from "@/lib/utils";
 
 /** Global indication when the connected wallet has outstanding claims. */
 export function ClaimsPendingBanner({ className }: { className?: string }) {
-  const { address, isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { total, isLoading } = usePendingClaims();

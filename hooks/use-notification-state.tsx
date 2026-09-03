@@ -1,5 +1,7 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import {
   createContext,
   useCallback,
@@ -11,7 +13,6 @@ import {
   type ReactNode,
 } from "react";
 import type { Address } from "viem";
-import { useAccount } from "wagmi";
 
 import {
   loadNotificationState,
@@ -68,7 +69,10 @@ export function useNotificationState(): NotificationStateContextValue {
 }
 
 function NotificationStateProvider({ children }: { children: ReactNode }) {
-  const { isConnected, address } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
   const { nostrPrivateKey, nostrPubkey, ensureNostrKey } = useNostrKey();
   const [state, setState] = useState<NotificationState>(DEFAULT_STATE);
   const [isLoading, setIsLoading] = useState(false);

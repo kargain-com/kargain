@@ -1,6 +1,8 @@
 "use client";
 
-import { useAccount, useReadContract } from "wagmi";
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
+import { useReadContract } from "wagmi";
 import { erc20Abi } from "viem";
 
 import { AgentCreateAuctionPanel } from "@/components/auction/agent-create-auction-panel";
@@ -55,7 +57,10 @@ export function AuctionDetailClientIsland({
   listingBlocksAuction,
   detail,
 }: Props) {
-  const { address, isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
   const mode = commerceModeAddress("ascending", chainId);
 
   const auction = detail.auction;

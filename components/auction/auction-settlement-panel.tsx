@@ -1,12 +1,9 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+
 import { useState } from "react";
-import {
-  useAccount,
-  useChainId,
-  useSwitchChain,
-  useWriteContract,
-} from "wagmi";
+import { useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { WalletLoginButton } from "@/components/wallet-login-button";
@@ -94,10 +91,14 @@ export function AuctionSettlementPanel({
   passportTokenOwner,
   auctionUiState,
 }: Props) {
-  const { address, isConnected } = useAccount();
-  const walletChainId = useChainId();
-  const { switchChainAsync } = useSwitchChain();
-  const { writeContractAsync, isPending: isWriting } = useWriteContract();
+  const { account, switchChain } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
+  const walletChainId = evm.ok ? evm.chainId : undefined;
+  const switchAvail = evmSwitchChainAvailability(account);
+
+        const { writeContractAsync, isPending: isWriting } = useWriteContract();
   const { runTx, awaitReceipt, busy, error, syncLagged } = useTxSync(chainId);
   const [txError, setTxError] = useState<string | null>(null);
 
@@ -188,7 +189,10 @@ export function AuctionSettlementPanel({
     if (!mode) return;
     setTxError(null);
     try {
-      if (wrongChain) await switchChainAsync({ chainId: wagmiChainId(chainId) });
+      if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(chainId);
+      }
       await runTx(() =>
         writeContractAsync({
           address: mode,
@@ -207,7 +211,10 @@ export function AuctionSettlementPanel({
     if (!mode) return;
     setTxError(null);
     try {
-      if (wrongChain) await switchChainAsync({ chainId: wagmiChainId(chainId) });
+      if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(chainId);
+      }
       await runTx(async () => {
         await ensureApproved(awaitReceipt);
         return writeContractAsync({
@@ -230,7 +237,10 @@ export function AuctionSettlementPanel({
     }
     setTxError(null);
     try {
-      if (wrongChain) await switchChainAsync({ chainId: wagmiChainId(chainId) });
+      if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(chainId);
+      }
       await runTx(() =>
         writeContractAsync({
           address: mode,
@@ -250,7 +260,10 @@ export function AuctionSettlementPanel({
     if (!mode) return;
     setTxError(null);
     try {
-      if (wrongChain) await switchChainAsync({ chainId: wagmiChainId(chainId) });
+      if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(chainId);
+      }
       await runTx(() =>
         writeContractAsync({
           address: mode,

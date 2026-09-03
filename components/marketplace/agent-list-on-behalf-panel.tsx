@@ -1,13 +1,10 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+
 import { useCallback, useMemo, useState } from "react";
 import { parseUnits, stringToHex } from "viem";
-import {
-  useAccount,
-  useChainId,
-  useSwitchChain,
-  useWriteContract,
-} from "wagmi";
+import { useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
@@ -63,11 +60,15 @@ export function AgentListOnBehalfPanel({
   wallet,
   onSuccess,
 }: Props) {
+  const { account, switchChain } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
+  const walletChain = evm.ok ? evm.chainId : undefined;
+  const switchAvail = evmSwitchChainAvailability(account);
+
   const wc = wagmiChainId(chainId);
-  const { address, isConnected } = useAccount();
-  const walletChain = useChainId();
-  const { switchChainAsync } = useSwitchChain();
-  const { writeContractAsync, isPending } = useWriteContract();
+        const { writeContractAsync, isPending } = useWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 
@@ -109,7 +110,10 @@ export function AgentListOnBehalfPanel({
 
   const runListOnBehalf = useCallback(async () => {
     if (!market || !meetsFloor || price1e8 == null) return;
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
+    if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(wc );
+      }
     setTxError(null);
     try {
       const succeeded = await runTx(() =>
@@ -148,7 +152,7 @@ export function AgentListOnBehalfPanel({
     meetsFloor,
     price1e8,
     wrongChain,
-    switchChainAsync,
+    switchChain,
     wc,
     mandate.denominationKind,
     mandate.currencyCode,
@@ -156,8 +160,7 @@ export function AgentListOnBehalfPanel({
     writeContractAsync,
     tid,
     onSuccess,
-    runTx,
-  ]);
+    runTx, switchAvail]);
 
   return (
     <div className="mt-3 space-y-3 border-t border-border-default pt-3">

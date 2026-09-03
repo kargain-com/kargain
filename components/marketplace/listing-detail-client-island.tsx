@@ -1,9 +1,11 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { CircleCheckIcon, CommentIcon } from "@/components/ui/icons";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useAccount, useReadContract } from "wagmi";
+import { useReadContract } from "wagmi";
 import { erc20Abi } from "viem";
 
 import { OwnerLowerFloorPanel } from "@/components/commerce/owner-lower-floor-panel";
@@ -72,7 +74,10 @@ export function ListingDetailClientIsland({
   duplicateVin,
   hadDispute,
 }: Props) {
-  const { address, isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
   const [sellerNostrPubkey, setSellerNostrPubkey] = useState<string | null>(null);
 
   const passport = karPassportAddress(chainId);

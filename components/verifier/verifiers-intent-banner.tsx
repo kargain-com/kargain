@@ -1,10 +1,11 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { ChevronDownIcon, UserCheckIcon } from "@/components/ui/icons";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { Address } from "viem";
-import { useAccount } from "wagmi";
 
 import { getProfileData } from "@/app/actions/marketplace-listings";
 import { useShowBecomeKarPro } from "@/hooks/use-show-become-karpro";
@@ -79,7 +80,10 @@ function UnverifiedPassportsBanner({ address }: { address: Address }) {
 }
 
 export function VerifiersIntentBanner() {
-  const { address, isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
   const showBecomeKarPro = useShowBecomeKarPro();
   const isKarPro = isConnected && !showBecomeKarPro;
 

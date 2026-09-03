@@ -1,5 +1,7 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import {
   createContext,
   useCallback,
@@ -11,7 +13,6 @@ import {
   type ReactNode,
 } from "react";
 import { getAddress } from "viem";
-import { useAccount } from "wagmi";
 
 import { useMessagingSession } from "@/hooks/use-messaging-session";
 import {
@@ -62,7 +63,9 @@ export function useXmtpConversationsContext(): XmtpConversationsContextValue {
 }
 
 export function XmtpConversationsProvider({ children }: { children: ReactNode }) {
-  const { address } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
   const { client } = useMessagingSession();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [requestConversations, setRequestConversations] = useState<ConversationSummary[]>(

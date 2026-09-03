@@ -1,10 +1,11 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAddress, type Address } from "viem";
-import { useAccount } from "wagmi";
 
 import { CommentIcon, SpinnerIcon } from "@/components/ui/icons";
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
@@ -193,7 +194,11 @@ export function MessageInboxClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const activeTab = tabFromSearchParams(searchParams);
-  const { address, isConnected, connector } = useAccount();
+  const { account, signingBinding } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
+  const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const { client, session, snapshot } = useMessagingSession();
   useRequestLocalMessagingClient(isConnected);
   const needsMessagingCard = needsMessagingSetupCard(snapshot);

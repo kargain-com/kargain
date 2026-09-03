@@ -1,5 +1,7 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 /**
  * Sole owner of ERC-721 passport approval reads/writes for any spender
  * (commerce modes, bridge gateway). ERC-20 payment-token allowance is a
@@ -10,7 +12,7 @@
  */
 
 import { useCallback, useMemo, useState } from "react";
-import { useAccount, useWriteContract } from "wagmi";
+import { useWriteContract } from "wagmi";
 
 import { addressesMatch } from "@/lib/commerce/consignment";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
@@ -36,7 +38,9 @@ export function usePassportApproval({
   spender,
   enabled = true,
 }: Args) {
-  const { address } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
   const { writeContractAsync } = useWriteContract();
   const [approvalBusy, setApprovalBusy] = useState(false);
 

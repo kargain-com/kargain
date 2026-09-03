@@ -3,7 +3,6 @@
 import { ChevronDownIcon } from "@/components/ui/icons";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo } from "react";
-import { useAccount, useChainId, useSwitchChain } from "wagmi";
 
 import {
   DropdownMenu,
@@ -13,14 +12,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  evmSwitchChainAvailability,
+  requireEvmSession,
+  useActiveAccount,
+} from "@/hooks/use-active-account";
+import {
   chainSelectorSwitchTargets,
-  deriveChainSelectorWrong,
+  deriveChainSelectorState,
 } from "@/lib/web3/chain-selector-state";
 import {
   getViemChain,
   kargainChains,
   shortChainName,
-  wagmiChainId,
 } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
@@ -38,13 +41,23 @@ function ChainStatusDot({ wrong }: { wrong?: boolean }) {
   return <span className="size-1.5 shrink-0 rounded-full bg-[#0052ff] opacity-80" aria-hidden />;
 }
 
+/**
+ * Chain selector driven by {@link deriveChainSelectorState}.
+ * Disconnected → hidden. SVM → visible `wrong_vm` (empty switch targets; chrome copy is screens slice).
+ */
 export function ChainSelector({ syncSearchParam, expectedChainId, className }: Props) {
   const router = useRouter();
   const path = usePathname();
   const sp = useSearchParams();
-  const { switchChainAsync, isPending } = useSwitchChain();
-  const walletChainId = useChainId();
-  const { isConnected } = useAccount();
+  const { account, switchChain, isConnectPending: isPending } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const switchAvail = evmSwitchChainAvailability(account);
+  const walletChainId = evm.ok ? evm.chainId : undefined;
+
+  const selectorState = deriveChainSelectorState({
+    account,
+    expectedChainId,
+  });
 
   const urlChain = useMemo(() => {
     const raw = sp.get("chain");
@@ -52,24 +65,26 @@ export function ChainSelector({ syncSearchParam, expectedChainId, className }: P
     return Number.isFinite(n) ? n : null;
   }, [sp]);
 
-  const displayChainId = syncSearchParam ? (urlChain ?? walletChainId) : walletChainId;
-  const wrong = deriveChainSelectorWrong({
-    isConnected,
-    walletChainId,
-    expectedChainId,
-  });
+  const displayChainId =
+    syncSearchParam ? (urlChain ?? walletChainId ?? 0) : (walletChainId ?? 0);
+  const wrong = selectorState !== "ok";
   const activeChain = getViemChain(displayChainId);
-  const chainName = wrong ? "Wrong network" : (activeChain?.name ?? `Chain ${displayChainId}`);
-  const switchTargets = chainSelectorSwitchTargets(expectedChainId);
+  const chainName =
+    selectorState === "wrong_vm"
+      ? "Wrong network"
+      : selectorState === "wrong_network"
+        ? "Wrong network"
+        : (activeChain?.name ?? `Chain ${displayChainId}`);
+  const switchTargets = chainSelectorSwitchTargets(expectedChainId, selectorState);
 
   const onSwitchTo = useCallback(
     (id: number) => {
-      if (!switchChainAsync) return;
-      void switchChainAsync({ chainId: wagmiChainId(id) }).catch(() => {
+      if (!switchAvail.available) return;
+      void switchChain(id).catch(() => {
         /* user rejected */
       });
     },
-    [switchChainAsync],
+    [switchAvail, switchChain],
   );
 
   const onSelectChain = useCallback(
@@ -79,18 +94,23 @@ export function ChainSelector({ syncSearchParam, expectedChainId, className }: P
         next.set("chain", String(id));
         router.push(`${path}?${next.toString()}`);
       }
-      if (isConnected && switchChainAsync && id !== walletChainId) {
+      if (
+        switchAvail.available &&
+        walletChainId != null &&
+        id !== walletChainId
+      ) {
         try {
-          await switchChainAsync({ chainId: wagmiChainId(id) });
+          await switchChain(id);
         } catch {
           /* user rejected */
         }
       }
     },
-    [isConnected, path, router, sp, switchChainAsync, syncSearchParam, walletChainId],
+    [path, router, sp, switchAvail, switchChain, syncSearchParam, walletChainId],
   );
 
-  if (!isConnected) return null;
+  // No session → no chrome. Connected (incl. SVM wrong_vm) always surfaces state.
+  if (account.status !== "connected") return null;
 
   const triggerClass = cn(
     "inline-flex h-9 shrink-0 items-center gap-2 rounded-sm border bg-bg-surface px-3 font-mono text-xs transition-colors duration-200 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
@@ -113,29 +133,36 @@ export function ChainSelector({ syncSearchParam, expectedChainId, className }: P
       expectedChainId != null
         ? shortChainName(expectedChainId)
         : "a Kargain network";
+    const ariaLabel =
+      selectorState === "wrong_vm"
+        ? "Wrong network — wallet family cannot switch to this network"
+        : `Wrong network — switch to ${ariaTarget}`;
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            disabled={isPending}
+            disabled={isPending || switchTargets.length === 0}
             className={triggerClass}
-            aria-label={`Wrong network — switch to ${ariaTarget}`}
+            aria-label={ariaLabel}
+            data-selector-state={selectorState}
           >
             {trigger}
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-[180px] p-1">
-          {switchTargets.map((id) => (
-            <DropdownMenuItem
-              key={id}
-              className="font-mono text-xs"
-              onSelect={() => onSwitchTo(id)}
-            >
-              Switch to {shortChainName(id)}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
+        {switchTargets.length > 0 ? (
+          <DropdownMenuContent align="end" className="min-w-[180px] p-1">
+            {switchTargets.map((id) => (
+              <DropdownMenuItem
+                key={id}
+                className="font-mono text-xs"
+                onSelect={() => onSwitchTo(id)}
+              >
+                Switch to {shortChainName(id)}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        ) : null}
       </DropdownMenu>
     );
   }
@@ -148,6 +175,7 @@ export function ChainSelector({ syncSearchParam, expectedChainId, className }: P
           disabled={isPending}
           className={triggerClass}
           aria-label={`Network: ${chainName}`}
+          data-selector-state={selectorState}
         >
           {trigger}
         </button>

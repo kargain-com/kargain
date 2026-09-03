@@ -1,7 +1,9 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useCallback, useEffect, useSyncExternalStore } from "react";
-import { useAccount, useWalletClient } from "wagmi";
+import { useWalletClient } from "wagmi";
 
 import { nwcLinkMessage } from "@/lib/nostr/key-manager-crypto";
 import {
@@ -92,7 +94,9 @@ export function nwcPayErrorMessage(code: NwcErrorCode): string {
 }
 
 export function useNwcWallet() {
-  const { address } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
   const { data: walletClient } = useWalletClient();
 
   const present = useSyncExternalStore(

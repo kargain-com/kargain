@@ -1,6 +1,8 @@
 "use client";
 
-import { useAccount, useReadContract } from "wagmi";
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
+import { useReadContract } from "wagmi";
 
 import { formatStakeEth } from "@/lib/kar-pro/stake-format";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
@@ -9,7 +11,9 @@ import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 export function KarProHeroSubtitle() {
-  const { chainId: walletChainId } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const walletChainId = evm.ok ? evm.chainId : undefined;
   const chainId = resolveKarProTargetChainId(walletChainId);
   const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
   const wc = chainId != null ? wagmiChainId(chainId) : undefined;

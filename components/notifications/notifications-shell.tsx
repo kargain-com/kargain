@@ -1,8 +1,9 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect } from "react";
-import { useAccount } from "wagmi";
 
 import { NotificationsClient } from "@/components/notifications/notifications-client";
 import { WatchlistClient } from "@/components/watchlist/watchlist-client";
@@ -17,7 +18,9 @@ function tabFromSearchParams(searchParams: URLSearchParams): TabId {
 
 /** Lazy Nostr key restore when user opens /notifications (repopulates pubkey cache). */
 function NotificationsNostrBootstrap() {
-  const { isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const isConnected = evm.ok;
   const { ensureNostrKey } = useNostrKey();
 
   useEffect(() => {

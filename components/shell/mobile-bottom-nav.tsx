@@ -1,11 +1,12 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import type { Address } from "viem";
-import { useAccount } from "wagmi";
 
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import {
@@ -115,7 +116,10 @@ export function MobileBottomNav({
   identityBadges?: boolean;
 }) {
   const path = usePathname();
-  const { address, isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
 
   return (
     <nav

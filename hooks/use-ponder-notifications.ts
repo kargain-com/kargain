@@ -1,7 +1,8 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useQuery } from "@tanstack/react-query";
-import { useAccount } from "wagmi";
 
 import { fetchNotificationFeed } from "@/app/actions/notifications";
 import { useNotificationState } from "@/hooks/use-notification-state";
@@ -13,7 +14,10 @@ export function usePonderNotifications(): {
   isLoading: boolean;
   error: string | null;
 } {
-  const { isConnected, address } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
   const { state } = useNotificationState();
 
   const { data, isPending, error } = useQuery({

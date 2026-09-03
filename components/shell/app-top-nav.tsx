@@ -1,5 +1,7 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import Link from "next/link";
 import {
   CircleAddIcon,
@@ -10,7 +12,6 @@ import {
 } from "@/components/ui/icons";
 import dynamic from "next/dynamic";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useAccount, useChainId } from "wagmi";
 
 import { ChainSelector } from "@/components/shell/chain-selector";
 import { CurrencySelector } from "@/components/shell/currency-selector";
@@ -44,11 +45,14 @@ export type AppTopNavProps = {
 };
 
 export function AppTopNav({ identityBadges = false }: AppTopNavProps) {
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const isConnected = evm.ok;
+  const walletChainId = evm.ok ? evm.chainId : undefined;
+
   const path = usePathname();
   const sp = useSearchParams();
-  const { isConnected } = useAccount();
-  const walletChainId = useChainId();
-  const showBecomeKarPro = useShowBecomeKarPro();
+      const showBecomeKarPro = useShowBecomeKarPro();
   const isMarketplaceBrowse = path === "/";
 
   const urlChain = sp.get("chain");

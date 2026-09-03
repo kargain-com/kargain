@@ -1,5 +1,7 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import {
   ChevronDownIcon,
   HeartIcon,
@@ -10,7 +12,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { hexToBytes } from "viem";
-import { useAccount } from "wagmi";
+
 import { finalizeEvent, getPublicKey } from "nostr-tools";
 
 import { Button } from "@/components/ui/button";
@@ -58,7 +60,10 @@ function NostrCommentsSection({
   const compact = density === "compact";
   const searchParams = useSearchParams();
   const highlightEventId = searchParams.get("e");
-  const { isConnected, address } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
   const { nostrPrivateKey, loading, ensureNostrKey } = useNostrKey();
   const sharedFeed = useListingCommentsContextOptional();
   const localFeed = useListingComments(tokenId, { enabled: sharedFeed == null });

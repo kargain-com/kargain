@@ -1,10 +1,11 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Address } from "viem";
 import type { Filter } from "nostr-tools";
-import { useAccount } from "wagmi";
 
 import { useKarProMembershipActive } from "@/hooks/use-kar-pro-membership-active";
 import { useNostrKey } from "@/hooks/use-nostr-key";
@@ -55,7 +56,9 @@ export function useCommonsReviews(
   options?: UseCommonsReviewsOptions,
 ): UseCommonsReviewsReturn {
   const enabled = options?.enabled ?? true;
-  const { address } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
   const { nostrPubkey } = useNostrKey();
 
   const claimKey = useMemo(() => {

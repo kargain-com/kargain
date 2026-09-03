@@ -1,14 +1,11 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { parseEventLogs, UserRejectedRequestError, type Hash } from "viem";
-import {
-  useAccount,
-  useChainId,
-  useSignMessage,
-  useWriteContract,
-} from "wagmi";
+import { useSignMessage, useWriteContract } from "wagmi";
 
 import { KarProNetworkPrompt } from "@/components/kar-pro/kar-pro-network-prompt";
 import { PassportMetadataFields } from "@/components/passport/passport-metadata-fields";
@@ -62,8 +59,12 @@ const MINT_PARSE_ERROR_MESSAGE =
 
 export function CreatePassportWizard() {
   const router = useRouter();
-  const { address, isConnected, connector } = useAccount();
-  const walletChain = useChainId();
+  const { account, signingBinding } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
+  const connector = signingBinding.ok ? signingBinding.connector : undefined;
+  const walletChain = evm.ok ? evm.chainId : undefined;
   const { signMessageAsync } = useSignMessage();
   const { writeContractAsync, isPending: isWritePending, reset: resetWrite } =
     useWriteContract();
@@ -79,7 +80,7 @@ export function CreatePassportWizard() {
     phase: txPhase,
     error: txError,
     syncLagged,
-  } = useTxSync(chainId ?? walletChain);
+  } = useTxSync(chainId ?? walletChain ?? 84532);
 
   const [step, setStep] = useState<Step>(1);
   const [phase, setPhase] = useState<Phase>("idle");

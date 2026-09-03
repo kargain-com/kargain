@@ -1,12 +1,9 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+
 import { useCallback, useMemo, useState } from "react";
-import {
-  useChainId,
-  useReadContract,
-  useSwitchChain,
-  useWriteContract,
-} from "wagmi";
+import { useReadContract, useWriteContract } from "wagmi";
 
 import {
   ReturnCooldownDisplay,
@@ -57,10 +54,13 @@ export function OwnerRecallPanel({
   hasAgent,
   onChanged,
 }: Props) {
+  const { account, switchChain } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const walletChain = evm.ok ? evm.chainId : undefined;
+  const switchAvail = evmSwitchChainAvailability(account);
+
   const wc = wagmiChainId(chainId);
-  const walletChain = useChainId();
-  const { switchChainAsync } = useSwitchChain();
-  const { writeContractAsync, isPending } = useWriteContract();
+      const { writeContractAsync, isPending } = useWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const [txError, setTxError] = useState<string | null>(null);
 
@@ -94,7 +94,10 @@ export function OwnerRecallPanel({
       if (!market) return;
       setTxError(null);
       try {
-        if (wrongChain) await switchChainAsync?.({ chainId: wc });
+        if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(wc );
+      }
         const succeeded = await runTx(() =>
           writeContractAsync({
             address: market,
@@ -112,13 +115,12 @@ export function OwnerRecallPanel({
       market,
       abi,
       wrongChain,
-      switchChainAsync,
+      switchChain,
       wc,
       writeContractAsync,
       tid,
       onChanged,
-      runTx,
-    ],
+      runTx, switchAvail],
   );
 
   if (!market || !hasAgent) return null;

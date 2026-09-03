@@ -1,8 +1,9 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useQuery } from "@tanstack/react-query";
 import { BookmarkIcon } from "@/components/ui/icons";
-import { useAccount } from "wagmi";
 
 import { loadFavoriteListingCards } from "@/app/actions/favorite-listings";
 import { ListingCard } from "@/components/marketplace/listing-card";
@@ -29,7 +30,9 @@ type Props = {
 
 export function WatchlistClient({ layout = "wide" }: Props) {
   const gridClass = GRID_CLASS[layout];
-  const { isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const isConnected = evm.ok;
   const { watchedIds, isLoading } = useWatchlist();
 
   const { data: listingData, isPending: listingsPending } = useQuery({

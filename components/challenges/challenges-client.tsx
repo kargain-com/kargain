@@ -1,8 +1,9 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { ShieldWarningIcon } from "@/components/ui/icons";
 import { useMemo, useState } from "react";
-import { useAccount } from "wagmi";
 
 import { ChallengeRow, ChallengeRowSkeleton } from "@/components/challenges/challenge-row";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -17,7 +18,10 @@ import { serialLabel } from "@/lib/design/instrument-classes";
 import { cn } from "@/lib/utils";
 
 export function ChallengesClient() {
-  const { address, isConnected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
   const [filter, setFilter] = useState<ChallengeBrowseFilterId>("unresolved");
 
   const browse = useMemo(

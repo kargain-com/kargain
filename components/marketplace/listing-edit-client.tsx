@@ -1,14 +1,11 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { parseUnits, stringToHex } from "viem";
-import {
-  useAccount,
-  useChainId,
-  useSwitchChain,
-  useWriteContract,
-} from "wagmi";
+import { useWriteContract } from "wagmi";
 
 import { ListingDisplayPrice } from "@/components/marketplace/listing-display-price";
 import { ListingSellerSettlementPanel } from "@/components/marketplace/listing-seller-settlement-panel";
@@ -56,11 +53,15 @@ export function ListingEditClient({
   chainId,
   passportStatus,
 }: Props) {
+  const { account, switchChain } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
+  const walletChain = evm.ok ? evm.chainId : undefined;
+  const switchAvail = evmSwitchChainAvailability(account);
+
   const wc = wagmiChainId(chainId);
-  const { address, isConnected } = useAccount();
-  const walletChain = useChainId();
-  const { switchChainAsync } = useSwitchChain();
-  const { writeContractAsync, isPending } = useWriteContract();
+        const { writeContractAsync, isPending } = useWriteContract();
   const { runTx, awaitReceipt, runFlow, busy, error, syncLagged } =
     useTxSync(chainId);
   const { options: openOptions, pending: openOptionsPending } =
@@ -223,7 +224,10 @@ export function ListingEditClient({
 
   const runApprove = useCallback(async () => {
     if (!address || !market) return;
-    if (wrongChain) await switchChainAsync?.({ chainId: wc });
+    if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(wc );
+      }
     setLog("Approving marketplace…");
     try {
       await approveToken(awaitReceipt);
@@ -236,10 +240,9 @@ export function ListingEditClient({
     wrongChain,
     market,
     wc,
-    switchChainAsync,
+    switchChain,
     approveToken,
-    awaitReceipt,
-  ]);
+    awaitReceipt, switchAvail]);
 
   const runList = useCallback(async () => {
     await runFlow(async () => {
@@ -262,7 +265,10 @@ export function ListingEditClient({
         setLog(asset.fiatUnavailableReason ?? "Fiat is not available for this asset.");
         return;
       }
-      if (wrongChain) await switchChainAsync?.({ chainId: wc });
+      if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(wc );
+      }
       const decimals =
         denominationKind === DENOMINATION_KIND.Asset ? asset.decimals : 8;
       const amount = parseUnits(priceInput || "0", decimals);
@@ -326,17 +332,19 @@ export function ListingEditClient({
     wc,
     refetchListing,
     saveSettlementNote,
-    switchChainAsync,
+    switchChain,
     writeContractAsync,
     awaitReceipt,
     runTx,
-    runFlow,
-  ]);
+    runFlow, switchAvail]);
 
   const runUpdatePrice = useCallback(async () => {
     await runFlow(async () => {
       if (!canDelist || !market) return;
-      if (wrongChain) await switchChainAsync?.({ chainId: wc });
+      if (wrongChain) {
+        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        await switchChain(wc );
+      }
       const amount = parseUnits(priceInput || "0", priceDecimals);
       if (amount <= 0n) {
         setLog("Enter a valid asking price.");
@@ -374,11 +382,10 @@ export function ListingEditClient({
     wc,
     refetchListing,
     saveSettlementNote,
-    switchChainAsync,
+    switchChain,
     writeContractAsync,
     runTx,
-    runFlow,
-  ]);
+    runFlow, switchAvail]);
 
   const runSaveSettlementNote = useCallback(async () => {
     if (!active || !isSeller || !market) return;
@@ -413,7 +420,10 @@ export function ListingEditClient({
         <p className="text-sm text-text-secondary">
           Switch to {shortChainName(chainId)}
         </p>
-        <Button type="button" onClick={() => void switchChainAsync?.({ chainId: wc })}>
+        <Button type="button" onClick={() => {
+              if (!switchAvail.available) return;
+              void switchChain(wc );
+            }}>
           Switch to {shortChainName(chainId)}
         </Button>
       </div>

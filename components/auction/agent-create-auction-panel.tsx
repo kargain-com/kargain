@@ -1,7 +1,9 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useMemo, useState } from "react";
-import { useAccount, useChainId, useReadContract, useWriteContract } from "wagmi";
+import { useReadContract, useWriteContract } from "wagmi";
 
 import { Button } from "@/components/ui/button";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
@@ -53,9 +55,13 @@ export function AgentCreateAuctionPanel({
   tokenId,
   onSuccess,
 }: Props) {
-  const { address, isConnected } = useAccount();
-  const walletChainId = useChainId();
-  const { writeContractAsync, isPending: isWriting } = useWriteContract();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
+  const walletChainId = evm.ok ? evm.chainId : undefined;
+
+      const { writeContractAsync, isPending: isWriting } = useWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
 
   const [reserveStr, setReserveStr] = useState("");

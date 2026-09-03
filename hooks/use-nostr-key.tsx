@@ -1,5 +1,7 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import {
   createContext,
   useCallback,
@@ -10,7 +12,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useAccount, useWalletClient } from "wagmi";
+import { useWalletClient } from "wagmi";
 
 import { useWalletAccountKind } from "@/hooks/use-wallet-account-kind";
 import { getOrCreateNostrKey, type WalletSigner } from "@/lib/nostr/key-manager";
@@ -53,7 +55,11 @@ function persistPubkeyForAddress(address: `0x${string}`, privateKey: `0x${string
 
 /** App-root provider: passive pubkey restore; private key only after ensureNostrKey. */
 export function NostrKeyProvider({ children }: { children: ReactNode }) {
-  const { isConnected, address, connector } = useAccount();
+  const { account, signingBinding } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
+  const isConnected = evm.ok;
+  const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const { data: walletClient } = useWalletClient();
   const { kind: accountKind, isLoading: accountKindLoading } = useWalletAccountKind(
     isConnected ? address : undefined,

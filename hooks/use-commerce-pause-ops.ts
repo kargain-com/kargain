@@ -1,7 +1,9 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useMemo } from "react";
-import { useAccount } from "wagmi";
+
 import type { Address } from "viem";
 
 import {
@@ -49,7 +51,9 @@ type Target = {
  * Reads `paused` / `guardian` / `owner` from chain only.
  */
 export function useCommercePauseOps() {
-  const { address: connected } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const connected = evm.ok ? evm.address : undefined;
 
   const targets = useMemo((): Target[] => {
     const out: Target[] = [];

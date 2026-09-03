@@ -1,8 +1,9 @@
 "use client";
 
+import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useAccount } from "wagmi";
 
 import type { PassportStatus } from "@/components/ui/passport-status-badge";
 import { usePassportOnChainOwner } from "@/hooks/use-passport-on-chain-owner";
@@ -46,7 +47,9 @@ export function PassportDetailTabs({
 }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { address } = useAccount();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const address = evm.ok ? evm.address : undefined;
   const { onChainOwner } = usePassportOnChainOwner(chainId, tokenId);
   const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, passportOwner);
   const isOwner = isOnChainNftOwner(address, effectiveOwner);

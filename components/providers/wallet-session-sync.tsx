@@ -1,37 +1,41 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useAccount, useChainId } from "wagmi";
 
+import {
+  requireEvmSession,
+  useActiveAccount,
+} from "@/hooks/use-active-account";
 import { clearSiweSession } from "@/lib/auth/clear-siwe-session";
 
 /**
- * Clears stale SIWE cookies when the connected wallet address or chain changes.
- * Does not disconnect wagmi or delete Nostr keys in local storage.
+ * Clears stale SIWE cookies when the connected EVM wallet address or chain changes.
+ * SVM sessions refuse via {@link requireEvmSession} (`wrong_vm`) — SIWE is EVM-only.
+ * Does not disconnect wallets or delete Nostr keys in local storage.
  */
 export function WalletSessionSync() {
-  const { address, isConnected } = useAccount();
-  const chainId = useChainId();
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
   const previousRef = useRef<{ address: string; chainId: number } | null>(null);
 
   useEffect(() => {
-    if (!isConnected || !address) {
+    if (!evm.ok) {
       previousRef.current = null;
       return;
     }
 
-    const normalized = address.toLowerCase();
+    const normalized = evm.address.toLowerCase();
     const previous = previousRef.current;
 
     if (
       previous &&
-      (previous.address !== normalized || previous.chainId !== chainId)
+      (previous.address !== normalized || previous.chainId !== evm.chainId)
     ) {
       void clearSiweSession();
     }
 
-    previousRef.current = { address: normalized, chainId };
-  }, [address, chainId, isConnected]);
+    previousRef.current = { address: normalized, chainId: evm.chainId };
+  }, [evm]);
 
   return null;
 }

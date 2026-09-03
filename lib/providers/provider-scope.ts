@@ -23,7 +23,13 @@ export const PROVIDER_SCOPE: readonly ProviderScopeEntry[] = [
     id: "WagmiProvider",
     scope: "global",
     justifyingConsumer:
-      "useAccount / useChainId in AppTopNav, MobileBottomNav, ClaimsPendingBanner, WalletLoginButton",
+      "EVM account adapter under useActiveAccount (AppTopNav, WalletLoginButton, writes)",
+  },
+  {
+    id: "SvmAccountSessionProvider",
+    scope: "global",
+    justifyingConsumer:
+      "SVM Wallet Standard session under useActiveAccount / WalletLoginButton",
   },
   {
     id: "DisplayCurrencyProvider",
@@ -34,7 +40,7 @@ export const PROVIDER_SCOPE: readonly ProviderScopeEntry[] = [
   {
     id: "WalletSessionSync",
     scope: "global",
-    justifyingConsumer: "SIWE clear on wallet address/chain change under Wagmi",
+    justifyingConsumer: "SIWE clear on EVM address/chain change via useActiveAccount",
   },
   {
     id: "NostrKeyProvider",
