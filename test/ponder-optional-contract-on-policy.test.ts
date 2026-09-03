@@ -206,9 +206,22 @@ void ok;
   });
 
   it("local-only omits commercial-only optional address; non-local prefers commercial", () => {
+    // Differing case vs pre-fix `commercial ?? local`:
+    // localOnly=1 + commercial gateway set + local unset → OLD registered the
+    // commercial addr on the localhost chain; NEW returns undefined (omit key).
     const commercial =
       "0x1111111111111111111111111111111111111111" as `0x${string}`;
     const local = "0x2222222222222222222222222222222222222222" as `0x${string}`;
+    const oldResolve = (
+      _localOnly: boolean,
+      commercialAddr: `0x${string}` | undefined,
+      localAddr: `0x${string}` | undefined,
+    ) => commercialAddr ?? localAddr;
+    assert.equal(
+      oldResolve(true, commercial, undefined),
+      commercial,
+      "pre-fix resolver would have registered commercial on local-only",
+    );
     assert.equal(optionalContractAddress(true, commercial, undefined), undefined);
     assert.equal(optionalContractAddress(false, commercial, undefined), commercial);
     assert.equal(optionalContractAddress(true, commercial, local), local);

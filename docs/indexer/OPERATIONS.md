@@ -41,7 +41,17 @@ When S9 cutover runs: include gateway start blocks from `COMMERCIAL_ACTIVE[chain
 
 **S9 also enables `svm-ingest` on VPS** when Solana commercial activation lands — see [§SVM ingest](#svm-ingest-s7c-1) below. Apply **`kargain_svm_raw`** (incl. **`metadata_snapshot`**) + **`kargain_svm_projection`** (incl. `passport` entity table, `custody_determining_event`, provenance tables), smoke ingest `/live` + `/ready`, run **`pnpm svm-projection:replay-digest`** after first raw backfill (entity + provenance path parity), and run bridge + EVM reindex obligations in the same cutover window. Raw/projection schemas are **not** dropped by `ponder-reindex.sql`. First catch-up may backfill metadata snapshots for URI events observed during ingest; projection rebuild reads snapshots from raw only (no HTTP in rebuild).
 
-**Before svm-ingest is live:** any process that serves passport UNION HTTP (entity, provenance, custody SVM arm) must still have **empty** `kargain_svm_projection` tables. Apply [`src/svm-ingest/db/projection-schema.sql`](../../src/svm-ingest/db/projection-schema.sql) once (local e2e does this after Postgres is ready). Do **not** drop the SVM `UNION ALL` arm or key it on `COMMERCIAL_ACTIVE`. Ponder 0.16 stores EVM columns as **snake_case** in `DATABASE_SCHEMA=kargain`.
+**Before svm-ingest is live:** any process that serves passport UNION HTTP (entity, provenance, custody SVM arm) must still have **empty** `kargain_svm_projection` tables. Apply [`src/svm-ingest/db/projection-schema.sql`](../../src/svm-ingest/db/projection-schema.sql) once (local e2e does this after Postgres is ready). Do **not** drop the SVM `UNION ALL` arm or key it on `COMMERCIAL_ACTIVE`.
+
+**Physical column casing (Ponder 0.16):** `DATABASE_SCHEMA=kargain` tables use **snake_case** (`chain_id`, not `"chainId"`). Confirm on any instance with:
+
+```sql
+SELECT column_name FROM information_schema.columns
+WHERE table_schema = 'kargain' AND table_name = 'passport'
+ORDER BY 1;
+```
+
+Drizzle browse on production maps JS `chainId` → physical `chain_id` automatically. Raw SQL owners must spell the physical name.
 
 ---
 

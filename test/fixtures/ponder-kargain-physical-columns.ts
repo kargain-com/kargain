@@ -1,88 +1,133 @@
 /**
  * Physical column names on Ponder 0.16 `DATABASE_SCHEMA=kargain` tables.
- * Captured from information_schema on a Ponder-created Postgres instance
- * (e2e: postgres:16-alpine + ponder:dev). JS schema fields remain camelCase.
+ *
+ * Ponder hardcodes Drizzle `casing: "snake_case"` (see `ponder/dist/.../database/index.js`
+ * and `onchain.js` `toSnakeCase(name)`). Measured 2026-09-03 against a
+ * Ponder-created Postgres (`DATABASE_SCHEMA=kargain`):
+ *   information_schema.columns for kargain.passport includes `chain_id`
+ *   (not `chainId`); `SELECT "chainId" FROM kargain.passport` →
+ *   ERROR: column "chainId" does not exist.
+ *
+ * Do not confuse with:
+ * - JS schema fields in ponder.schema.ts (`chainId`) — API / Drizzle keys
+ * - PASSPORT_BROWSE_INDEXES.column — same JS field names for Drizzle browse
+ * - HTTP JSON wire (`"chainId"`) — result aliases, not physical columns
+ *
+ * Production master `/consignments` uses Drizzle (`ponder-consignment-browse.ts`),
+ * which maps JS → physical via the same casing. Raw `c."chainId"` SQL never
+ * shipped on master; it lived only on the SVM port branch and was wrong against
+ * a Ponder 0.16 database.
  */
 
-export const KARGAIN_PASSPORT_PHYSICAL_COLUMNS = [
+/** Same algorithm as drizzle-orm `toSnakeCase` (Ponder 0.16 dependency). */
+export function ponderPhysicalColumnName(jsField: string): string {
+  const words =
+    jsField.replace(/['\u2019]/g, "").match(/[\da-z]+|[A-Z]+(?![a-z])|[A-Z][\da-z]+/g) ??
+    [];
+  return words.map((word) => word.toLowerCase()).join("_");
+}
+
+/**
+ * JS field names on `passport` in ponder.schema.ts (order matches schema).
+ * Physical PG names = map through ponderPhysicalColumnName.
+ */
+export const PASSPORT_JS_FIELDS = [
   "id",
-  "chain_id",
+  "chainId",
   "owner",
   "status",
   "verifier",
-  "verified_at",
-  "token_uri",
-  "cover_photo_uri",
+  "verifiedAt",
+  "tokenUri",
+  "coverPhotoUri",
   "vin",
   "make",
   "model",
   "year",
-  "mileage_km",
-  "last_disputer",
-  "dispute_reason",
-  "dispute_withdrawn_at",
-  "last_verification_reset_at",
-  "duplicate_vin",
-  "last_metadata_change_at",
-  "verification_reset_count",
-  "had_dispute",
-  "last_dispute_resolved_at",
-  "last_dispute_terminal",
-  "dispute_opened_at",
-  "fuel_type",
-  "body_type",
+  "mileageKm",
+  "lastDisputer",
+  "disputeReason",
+  "disputeWithdrawnAt",
+  "lastVerificationResetAt",
+  "duplicateVin",
+  "lastMetadataChangeAt",
+  "verificationResetCount",
+  "hadDispute",
+  "lastDisputeResolvedAt",
+  "lastDisputeTerminal",
+  "disputeOpenedAt",
+  "fuelType",
+  "bodyType",
   "transmission",
   "condition",
-  "vehicle_type",
+  "vehicleType",
   "colour",
-  "location_label",
-  "location_place_id",
-  "location_country_code",
-  "dispute_deposit",
-  "created_at",
-  "updated_at",
+  "locationLabel",
+  "locationPlaceId",
+  "locationCountryCode",
+  "disputeDeposit",
+  "createdAt",
+  "updatedAt",
 ] as const;
 
-export const KARGAIN_CONSIGNMENT_PHYSICAL_COLUMNS = [
+export const CONSIGNMENT_JS_FIELDS = [
   "id",
-  "chain_id",
+  "chainId",
   "mode",
-  "mode_contract",
-  "token_id",
-  "sale_ordinal",
+  "modeContract",
+  "tokenId",
+  "saleOrdinal",
   "seller",
   "agent",
   "asset",
-  "denomination_kind",
-  "currency_code",
+  "denominationKind",
+  "currencyCode",
   "floor",
-  "compensation_form",
-  "commission_bps",
+  "compensationForm",
+  "commissionBps",
   "price",
-  "platform_fee_bps",
+  "platformFeeBps",
   "phase",
-  "close_reason",
-  "opened_at",
-  "closed_at",
-  "recall_requested_at",
+  "closeReason",
+  "openedAt",
+  "closedAt",
+  "recallRequestedAt",
   "buyer",
-  "settlement_note_set_at",
-  "settlement_note_setter",
-  "open_tx_hash",
-  "open_log_index",
-  "updated_at",
+  "settlementNoteSetAt",
+  "settlementNoteSetter",
+  "openTxHash",
+  "openLogIndex",
+  "updatedAt",
 ] as const;
 
-export const KARGAIN_CUSTODY_DETERMINING_PHYSICAL_COLUMNS = [
+export const CUSTODY_DETERMINING_JS_FIELDS = [
   "id",
-  "token_id",
-  "chain_id",
+  "tokenId",
+  "chainId",
   "kind",
-  "block_number",
-  "log_index",
-  "tx_hash",
+  "blockNumber",
+  "logIndex",
+  "txHash",
   "timestamp",
 ] as const;
+
+export const KARGAIN_PASSPORT_PHYSICAL_COLUMNS = PASSPORT_JS_FIELDS.map(
+  ponderPhysicalColumnName,
+);
+
+export const KARGAIN_CONSIGNMENT_PHYSICAL_COLUMNS = CONSIGNMENT_JS_FIELDS.map(
+  ponderPhysicalColumnName,
+);
+
+export const KARGAIN_CUSTODY_DETERMINING_PHYSICAL_COLUMNS =
+  CUSTODY_DETERMINING_JS_FIELDS.map(ponderPhysicalColumnName);
+
+/**
+ * Historical raw browse fragment from the SVM-port branch before S8-5-fix
+ * (never on master). Against Ponder 0.16 physical schema this is red.
+ */
+export const HISTORICAL_CAMELCASE_BROWSE_FRAGMENT = `c."chainId" AS "chainId",
+  c."denominationKind" AS "denominationKind"`;
 
 /**
  * Quoted camelCase used as a physical column (`c."chainId"` or

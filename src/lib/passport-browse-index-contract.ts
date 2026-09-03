@@ -1,6 +1,11 @@
 /**
  * Contract: every passport index in ponder.schema.ts must match a browse
  * predicate/order key. Pure data — no Ponder schema import (tests + docs).
+ *
+ * `column` values are **JS schema field names** (`mileageKm`, `locationPlaceId`)
+ * as used by Drizzle (`passport.mileageKm`). Ponder 0.16 stores those fields as
+ * **snake_case physical columns** (`mileage_km`, …). Raw SQL must use physical
+ * names; do not read this contract as information_schema column names.
  */
 
 export const PASSPORT_BROWSE_INDEXES = [
