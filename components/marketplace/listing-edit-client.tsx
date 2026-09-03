@@ -12,7 +12,7 @@ import { CommercePausedNotice } from "@/components/commerce/commerce-paused-noti
 import { SellerMessagingBanner } from "@/components/marketplace/seller-messaging-banner";
 import { Button } from "@/components/ui/button";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
-import { WalletLoginButton } from "@/components/wallet-login-button";
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useOpenableTerms } from "@/hooks/use-openable-terms";
 import { useListingChainReads } from "@/hooks/use-listing-chain-reads";
@@ -56,7 +56,6 @@ export function ListingEditClient({
   const { account, switchChain } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const walletChain = evm.ok ? evm.chainId : undefined;
   const switchAvail = evmSwitchChainAvailability(account);
 
@@ -78,7 +77,7 @@ export function ListingEditClient({
 
   const passport = karPassportAddress(chainId);
   const tid = BigInt(tokenId);
-  const wrongChain = walletChain !== chainId;
+  const wrongChain = evm.ok && walletChain !== chainId;
 
   useEffect(() => {
     if (!openOptions.available || openOptions.assets.length === 0) return;
@@ -406,12 +405,13 @@ export function ListingEditClient({
     saveSettlementNote,
   ]);
 
-  if (!isConnected) {
+  if (!evm.ok) {
     return (
-      <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-6">
-        <p className="text-sm text-text-secondary">Connect wallet to manage this listing.</p>
-        <WalletLoginButton />
-      </div>
+      <EvmSessionRefusal
+        cause={evm.cause}
+        disconnectedTitle="Connect wallet to manage this listing."
+        className="space-y-4 rounded-md border border-border-default bg-bg-surface p-6"
+      />
     );
   }
 

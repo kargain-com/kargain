@@ -9,17 +9,21 @@
  * the contract is registered. Always-registered contracts (KarPassport,
  * KarProPass, KarProStaking) continue to use `ponder.on` directly.
  *
- * Runtime: if the contract was not registered, Ponder does not invoke these
- * handlers. No address invention; no unconditional registration.
+ * Registration: skip `ponder.on` when createConfig omitted the contract
+ * (e.g. local-only e2e without a bridge gateway). Ponder build fails if a
+ * handler names an unregistered contract. No address invention.
  *
  * Event name → decoded args: see ponder-optional-contract-events.ts.
  */
 
 import { ponder } from "ponder:registry";
 
+import ponderConfig from "../../ponder.config.ts";
+
 import type {
   OptionalContractEventArgs,
   OptionalContractEventName,
+  OptionalContractName,
 } from "./ponder-optional-contract-events";
 
 export {
@@ -77,15 +81,24 @@ export type OptionalContractIndexingArgs<
  * handler parameter type (always-registered events only) does not overlap
  * OptionalContractIndexingArgs. Claim holds because (1) names are
  * ABI-validated via OptionalContractEventName, (2) args are
- * ContractEventArgsFromTopics for that name, (3) Ponder only invokes handlers
- * for contracts present in createConfig at runtime.
+ * ContractEventArgsFromTopics for that name, (3) registration is skipped
+ * when createConfig omitted the contract (same object ponder.config exported).
  */
+export function isOptionalContractInCreateConfig(
+  name: OptionalContractName,
+): boolean {
+  return Object.prototype.hasOwnProperty.call(ponderConfig.contracts, name);
+}
+
 export function onOptionalContractEvent<N extends OptionalContractEventName>(
   name: N,
   indexingFunction: (
     args: OptionalContractIndexingArgs<N>,
   ) => Promise<void> | void,
 ): void {
+  const contract = name.slice(0, name.indexOf(":")) as OptionalContractName;
+  if (!isOptionalContractInCreateConfig(contract)) return;
+
   type OptionalOn = <EventName extends OptionalContractEventName>(
     eventName: EventName,
     fn: (args: OptionalContractIndexingArgs<EventName>) => Promise<void> | void,

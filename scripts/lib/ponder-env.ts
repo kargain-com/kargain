@@ -235,12 +235,45 @@ export function buildPonderRuntime() {
     return { chain: commercial };
   }
 
+  const optionalAddresses = {
+    FixedPriceConsignment: optionalContractAddress(
+      localOnly,
+      sepoliaAddresses.fixedPriceConsignment,
+      localAddresses?.fixedPriceConsignment,
+    ),
+    AscendingConsignment: optionalContractAddress(
+      localOnly,
+      sepoliaAddresses.ascendingConsignment,
+      localAddresses?.ascendingConsignment,
+    ),
+    KarPassportBridgeGateway: optionalContractAddress(
+      localOnly,
+      sepoliaAddresses.bridgeGateway,
+      localAddresses?.bridgeGateway,
+    ),
+  } as const;
+
   return {
     chains,
     addresses: sepoliaAddresses,
     ethereumSepoliaAddresses: ethereumSepolia?.addresses ?? null,
     localAddresses,
+    localOnly,
+    optionalAddresses,
     contractEntry,
     database: resolvePonderDatabase(enableLocal),
   };
+}
+
+/**
+ * Optional-contract address for createConfig: local-only never falls back to a
+ * commercial address (localhost chain has no baseSepolia).
+ */
+export function optionalContractAddress(
+  localOnly: boolean,
+  commercial: `0x${string}` | undefined,
+  local: `0x${string}` | undefined,
+): `0x${string}` | undefined {
+  if (localOnly) return local;
+  return commercial ?? local;
 }

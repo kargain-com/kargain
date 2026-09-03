@@ -11,7 +11,7 @@ export function formatClaimAmount(params: {
   const { amount, decimals, symbol, nativeSymbol, isNative } = params;
   const unit =
     isNative
-      ? (nativeSymbol ?? "ETH")
+      ? (nativeSymbol && nativeSymbol.length > 0 ? nativeSymbol : null)
       : symbol && symbol.length > 0
         ? symbol
         : null;

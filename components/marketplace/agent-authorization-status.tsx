@@ -58,7 +58,7 @@ export function AgentAuthorizationStatus({
 
   const market = commerceModeAddress("fixedPrice", chainId);
   const tid = BigInt(tokenId);
-  const wrongChain = walletChain !== chainId;
+  const wrongChain = evm.ok && walletChain !== chainId;
 
   const currencyCode: ListingCurrencyCode = "USD";
   const { displayName, isKarPro, profileHref } = usePeerIdentity(mandate.agent, {

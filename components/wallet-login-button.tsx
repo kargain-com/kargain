@@ -32,6 +32,7 @@ import {
 import {
   commercialNamespaceOf,
   requireEvmSession,
+  wrongVmActionCopy,
   useActiveAccount,
 } from "@/hooks/use-active-account";
 import { useClientMounted } from "@/hooks/use-client-mounted";
@@ -132,6 +133,7 @@ export function WalletLoginButton() {
     const profileHref = evm.ok ? `/profile/${evm.address}` : null;
 
     return (
+      <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
@@ -190,6 +192,18 @@ export function WalletLoginButton() {
             <CopyIcon size={14} aria-hidden />
             {copied ? "Copied!" : "Copy address"}
           </DropdownMenuItem>
+          {!evm.ok ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="font-sans text-sm text-text-secondary"
+                onSelect={() => openConnect()}
+              >
+                <WalletIcon size={14} aria-hidden />
+                {wrongVmActionCopy("evm")}
+              </DropdownMenuItem>
+            </>
+          ) : null}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="font-sans text-sm text-red-400 focus:bg-red-400/10 focus:text-red-400"
@@ -200,6 +214,20 @@ export function WalletLoginButton() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <ConnectWalletDialog
+        open={connectOpen}
+        onOpenChange={setConnectOpen}
+        config={config}
+        visibleOptions={visibleOptions}
+        showMobileHint={showMobileHint}
+        isConnectPending={isConnectPending}
+        pendingKey={pendingKey}
+        setPendingKey={setPendingKey}
+        connect={connect}
+        connectError={connectError}
+        setConnectOpen={setConnectOpen}
+      />
+    </>
     );
   }
 
@@ -217,11 +245,55 @@ export function WalletLoginButton() {
         Connect wallet
       </button>
 
-      <Dialog
+      <ConnectWalletDialog
         open={connectOpen}
-        onOpenChange={(open) => {
-          setConnectOpen(open);
-          if (open) {
+        onOpenChange={setConnectOpen}
+        config={config}
+        visibleOptions={visibleOptions}
+        showMobileHint={showMobileHint}
+        isConnectPending={isConnectPending}
+        pendingKey={pendingKey}
+        setPendingKey={setPendingKey}
+        connect={connect}
+        connectError={connectError}
+        setConnectOpen={setConnectOpen}
+      />
+    </>
+  );
+}
+
+function ConnectWalletDialog(props: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  config: ReturnType<typeof useConfig>;
+  visibleOptions: ReturnType<typeof useActiveAccount>["connectOptions"];
+  showMobileHint: boolean;
+  isConnectPending: boolean;
+  pendingKey: string | null;
+  setPendingKey: (key: string | null) => void;
+  connect: ReturnType<typeof useActiveAccount>["connect"];
+  connectError: Error | null;
+  setConnectOpen: (open: boolean) => void;
+}) {
+  const {
+    open,
+    onOpenChange,
+    config,
+    visibleOptions,
+    showMobileHint,
+    isConnectPending,
+    pendingKey,
+    setPendingKey,
+    connect,
+    connectError,
+    setConnectOpen,
+  } = props;
+  return (
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          onOpenChange(next);
+          if (next) {
             void ensureWalletConnectConnector(config);
             ensureSvmWalletDiscovery();
           }
@@ -300,6 +372,5 @@ export function WalletLoginButton() {
           )}
         </DialogContent>
       </Dialog>
-    </>
   );
 }

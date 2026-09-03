@@ -107,7 +107,7 @@ export function AuthorizeAgentDialog({
 
   const market = commerceModeAddress("fixedPrice", chainId);
   const tid = BigInt(tokenId);
-  const wrongChain = walletChain !== chainId;
+  const wrongChain = evm.ok && walletChain !== chainId;
 
   const { options: openOptions, pending: openOptionsPending } =
     useOpenableTerms(chainId, "fixedPrice");

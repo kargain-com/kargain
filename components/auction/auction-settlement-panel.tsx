@@ -4,8 +4,8 @@ import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from 
 
 import { useState } from "react";
 
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
-import { WalletLoginButton } from "@/components/wallet-login-button";
 import { usePassportApproval } from "@/hooks/use-passport-approval";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { auctionTerminalMessage } from "@/lib/auction/auction-terminal-copy";
@@ -98,7 +98,6 @@ export function AuctionSettlementPanel({
   const { account, switchChain } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const walletChainId = evm.ok ? evm.chainId : undefined;
   const switchAvail = evmSwitchChainAvailability(account);
 
@@ -107,7 +106,7 @@ export function AuctionSettlementPanel({
   const [txError, setTxError] = useState<string | null>(null);
 
   const mode = commerceModeAddress("ascending", chainId);
-  const wrongChain = walletChainId !== wagmiChainId(chainId);
+  const wrongChain = evm.ok && walletChainId !== wagmiChainId(chainId);
   const tid = BigInt(tokenId);
   const staking = karProStakingAddress(chainId);
   const wc = wagmiChainId(chainId);
@@ -146,7 +145,7 @@ export function AuctionSettlementPanel({
     tokenId,
     spender: mode,
     enabled: Boolean(
-      isConnected &&
+      evm.ok &&
         mode &&
         (state === "REVERSAL_PENDING" || state === "REVERSAL_EXPIRED"),
     ),
@@ -480,8 +479,11 @@ export function AuctionSettlementPanel({
         </p>
       )}
 
-      {!isConnected ? (
-        <WalletLoginButton />
+      {!evm.ok ? (
+        <EvmSessionRefusal
+          cause={evm.cause}
+          disconnectedTitle="Connect your wallet to act on this settlement."
+        />
       ) : (
         <>
           {feedback}

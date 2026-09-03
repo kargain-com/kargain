@@ -11,7 +11,7 @@ import type {
   ContractEventName,
 } from "viem";
 
-import { COMMERCIAL_CONTRACT_ABIS } from "@/lib/svm/commercial-abi-events";
+import { COMMERCIAL_CONTRACT_ABIS } from "../../lib/svm/commercial-abi-events.js";
 
 /** Runtime-enumerable ABI table — sole name→args source for optional contracts. */
 export const OPTIONAL_CONTRACT_ABIS = {

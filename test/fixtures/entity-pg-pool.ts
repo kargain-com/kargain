@@ -1,6 +1,7 @@
 /**
  * pg-mem Postgres pool for passport entity UNION SQL tests (S7c-4).
  * Executes the same SQL strings as production — not a regex stub.
+ * EVM columns match Ponder 0.16 snake_case physical names.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -17,41 +18,41 @@ const EVM_PASSPORT_DDL = `
 CREATE SCHEMA IF NOT EXISTS kargain;
 CREATE TABLE IF NOT EXISTS kargain.passport (
   id TEXT PRIMARY KEY,
-  "chainId" INTEGER NOT NULL,
+  chain_id INTEGER NOT NULL,
   owner TEXT NOT NULL,
   status TEXT NOT NULL,
   verifier TEXT NOT NULL DEFAULT '',
-  "verifiedAt" BIGINT NOT NULL DEFAULT 0,
-  "tokenUri" TEXT NOT NULL DEFAULT '',
-  "coverPhotoUri" TEXT NOT NULL DEFAULT '',
+  verified_at BIGINT NOT NULL DEFAULT 0,
+  token_uri TEXT NOT NULL DEFAULT '',
+  cover_photo_uri TEXT NOT NULL DEFAULT '',
   vin TEXT NOT NULL DEFAULT '',
   make TEXT NOT NULL DEFAULT '',
   model TEXT NOT NULL DEFAULT '',
   year INTEGER NOT NULL DEFAULT 0,
-  "mileageKm" INTEGER NOT NULL DEFAULT 0,
-  "lastDisputer" TEXT NOT NULL DEFAULT '',
-  "disputeReason" TEXT NOT NULL DEFAULT '',
-  "disputeWithdrawnAt" BIGINT NOT NULL DEFAULT 0,
-  "lastVerificationResetAt" BIGINT NOT NULL DEFAULT 0,
-  "duplicateVin" BOOLEAN NOT NULL DEFAULT false,
-  "lastMetadataChangeAt" BIGINT NOT NULL DEFAULT 0,
-  "verificationResetCount" INTEGER NOT NULL DEFAULT 0,
-  "hadDispute" BOOLEAN NOT NULL DEFAULT false,
-  "lastDisputeResolvedAt" BIGINT NOT NULL DEFAULT 0,
-  "lastDisputeTerminal" TEXT NOT NULL DEFAULT '',
-  "disputeOpenedAt" BIGINT NOT NULL DEFAULT 0,
-  "fuelType" TEXT NOT NULL DEFAULT '',
-  "bodyType" TEXT NOT NULL DEFAULT '',
+  mileage_km INTEGER NOT NULL DEFAULT 0,
+  last_disputer TEXT NOT NULL DEFAULT '',
+  dispute_reason TEXT NOT NULL DEFAULT '',
+  dispute_withdrawn_at BIGINT NOT NULL DEFAULT 0,
+  last_verification_reset_at BIGINT NOT NULL DEFAULT 0,
+  duplicate_vin BOOLEAN NOT NULL DEFAULT false,
+  last_metadata_change_at BIGINT NOT NULL DEFAULT 0,
+  verification_reset_count INTEGER NOT NULL DEFAULT 0,
+  had_dispute BOOLEAN NOT NULL DEFAULT false,
+  last_dispute_resolved_at BIGINT NOT NULL DEFAULT 0,
+  last_dispute_terminal TEXT NOT NULL DEFAULT '',
+  dispute_opened_at BIGINT NOT NULL DEFAULT 0,
+  fuel_type TEXT NOT NULL DEFAULT '',
+  body_type TEXT NOT NULL DEFAULT '',
   transmission TEXT NOT NULL DEFAULT '',
   condition TEXT NOT NULL DEFAULT '',
-  "vehicleType" TEXT NOT NULL DEFAULT '',
+  vehicle_type TEXT NOT NULL DEFAULT '',
   colour TEXT NOT NULL DEFAULT '',
-  "locationLabel" TEXT NOT NULL DEFAULT '',
-  "locationPlaceId" TEXT NOT NULL DEFAULT '',
-  "locationCountryCode" TEXT NOT NULL DEFAULT '',
-  "disputeDeposit" BIGINT,
-  "createdAt" BIGINT NOT NULL,
-  "updatedAt" BIGINT NOT NULL
+  location_label TEXT NOT NULL DEFAULT '',
+  location_place_id TEXT NOT NULL DEFAULT '',
+  location_country_code TEXT NOT NULL DEFAULT '',
+  dispute_deposit BIGINT,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL
 );
 `;
 
@@ -125,12 +126,12 @@ function svmInsertParams(row: PassportEntityRow): unknown[] {
 }
 
 const EVM_INSERT = `INSERT INTO kargain.passport (
-  id, "chainId", owner, status, verifier, "verifiedAt", "tokenUri", "coverPhotoUri",
-  vin, make, model, year, "mileageKm", "lastDisputer", "disputeReason",
-  "disputeWithdrawnAt", "lastVerificationResetAt", "duplicateVin", "lastMetadataChangeAt",
-  "verificationResetCount", "hadDispute", "lastDisputeResolvedAt", "lastDisputeTerminal",
-  "disputeOpenedAt", "fuelType", "bodyType", transmission, condition, "vehicleType", colour,
-  "locationLabel", "locationPlaceId", "locationCountryCode", "disputeDeposit", "createdAt", "updatedAt"
+  id, chain_id, owner, status, verifier, verified_at, token_uri, cover_photo_uri,
+  vin, make, model, year, mileage_km, last_disputer, dispute_reason,
+  dispute_withdrawn_at, last_verification_reset_at, duplicate_vin, last_metadata_change_at,
+  verification_reset_count, had_dispute, last_dispute_resolved_at, last_dispute_terminal,
+  dispute_opened_at, fuel_type, body_type, transmission, condition, vehicle_type, colour,
+  location_label, location_place_id, location_country_code, dispute_deposit, created_at, updated_at
 ) VALUES (
   $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36
 )`;

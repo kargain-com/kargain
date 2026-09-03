@@ -5,6 +5,7 @@ import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account"
 import { useMemo, useState } from "react";
 import { useReadContract } from "wagmi";
 
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
 import { useAscendingAuctionRules } from "@/hooks/use-ascending-auction-rules";
@@ -63,7 +64,6 @@ export function AgentCreateAuctionPanel({
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const walletChainId = evm.ok ? evm.chainId : undefined;
 
       const { writeContractAsync, isPending: isWriting } = useEvmWriteContract();
@@ -77,7 +77,7 @@ export function AgentCreateAuctionPanel({
 
   const mode = commerceModeAddress("ascending", chainId);
   const passport = karPassportAddress(chainId);
-  const wrongChain = walletChainId !== wagmiChainId(chainId);
+  const wrongChain = evm.ok && walletChainId !== wagmiChainId(chainId);
   const { paused: modePaused } = useCommerceModePaused({
     mode: "ascending",
     chainId,
@@ -167,7 +167,17 @@ export function AgentCreateAuctionPanel({
     );
   }
 
-  if (!isConnected || !usable || !mandate) {
+  if (!evm.ok) {
+    return (
+      <EvmSessionRefusal
+        cause={evm.cause}
+        disconnectedTitle="Connect your wallet to start an auction on behalf."
+        className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4"
+      />
+    );
+  }
+
+  if (!usable || !mandate) {
     return (
       <p className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary">
         You do not hold an active mandate for this vehicle, or it expired.

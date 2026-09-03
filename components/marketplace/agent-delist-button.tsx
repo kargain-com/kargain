@@ -4,6 +4,7 @@ import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from 
 
 import { useCallback, useState } from "react";
 
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { commerceModeAddress } from "@/lib/commerce/mode";
@@ -24,7 +25,6 @@ export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props
   const { account, switchChain } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const walletChain = evm.ok ? evm.chainId : undefined;
   const switchAvail = evmSwitchChainAvailability(account);
 
@@ -35,12 +35,11 @@ export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props
 
   const market = commerceModeAddress("fixedPrice", chainId);
   const tid = BigInt(tokenId);
-  const wrongChain = walletChain !== chainId;
+  const wrongChain = evm.ok && walletChain !== chainId;
 
   const [txError, setTxError] = useState<string | null>(null);
 
-  const isAgentWallet =
-    isConnected && address?.toLowerCase() === wallet.toLowerCase();
+  const isAgentWallet = address?.toLowerCase() === wallet.toLowerCase();
 
   const runAgentDelist = useCallback(async () => {
     if (!market || !isAgentWallet) return;
@@ -86,11 +85,17 @@ export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props
           {TX_SYNC_LAG_ADVISORY}
         </p>
       )}
-      {!isAgentWallet && (
+      {!evm.ok ? (
+        <EvmSessionRefusal
+          cause={evm.cause}
+          disconnectedTitle="Connect the agent wallet to return this vehicle to the owner."
+          className="mb-2 space-y-2"
+        />
+      ) : !isAgentWallet ? (
         <p className="mb-2 text-xs text-text-secondary">
           Connect the agent wallet to return this vehicle to the owner.
         </p>
-      )}
+      ) : null}
       <Button
         type="button"
         variant="outline"

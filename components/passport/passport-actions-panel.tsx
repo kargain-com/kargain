@@ -9,11 +9,10 @@ import { useReadContract, useSignMessage } from "wagmi";
 
 import { EvidenceInput } from "@/components/passport/evidence-input";
 import { MetadataDiffPanel } from "@/components/passport/metadata-diff-panel";
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { EmptyState } from "@/components/ui/empty-state";
 import { Textarea } from "@/components/ui/textarea";
-import { WalletLoginButton } from "@/components/wallet-login-button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useNow } from "@/hooks/use-now";
 import { receiptHasClaimForAccount } from "@/lib/claims/receipt-claims";
@@ -121,7 +120,6 @@ export function PassportActionsPanel({
   const { account, signingBinding } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const { signMessageAsync } = useSignMessage();
   const { writeContractAsync, isPending } = useEvmWriteContract();
@@ -524,18 +522,14 @@ export function PassportActionsPanel({
 
   return (
     <>
-      {!isConnected && (
-        <div className="space-y-3">
-          <EmptyState
-            variant="infrastructure"
-            level="B"
-            title="Connect your wallet to verify, dispute, or interact with this passport."
-          />
-          <WalletLoginButton />
-        </div>
+      {!evm.ok && (
+        <EvmSessionRefusal
+          cause={evm.cause}
+          disconnectedTitle="Connect your wallet to verify, dispute, or interact with this passport."
+        />
       )}
 
-      {isConnected && !passport && (
+      {evm.ok && !passport && (
         <p className="text-sm text-text-secondary">Passport contract not configured.</p>
       )}
 

@@ -5,6 +5,7 @@ import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from 
 import { useCallback, useMemo, useState } from "react";
 import { parseUnits, stringToHex } from "viem";
 
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
 import { Label } from "@/components/ui/label";
@@ -63,7 +64,6 @@ export function AgentListOnBehalfPanel({
   const { account, switchChain } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const walletChain = evm.ok ? evm.chainId : undefined;
   const switchAvail = evmSwitchChainAvailability(account);
 
@@ -74,7 +74,7 @@ export function AgentListOnBehalfPanel({
 
   const market = commerceModeAddress("fixedPrice", chainId);
   const tid = BigInt(tokenId);
-  const wrongChain = walletChain !== chainId;
+  const wrongChain = evm.ok && walletChain !== chainId;
   const { paused: modePaused } = useCommerceModePaused({
     mode: "fixedPrice",
     chainId,
@@ -95,8 +95,7 @@ export function AgentListOnBehalfPanel({
     platformFeeBps,
   });
 
-  const isAgentWallet =
-    isConnected && address?.toLowerCase() === wallet.toLowerCase();
+  const isAgentWallet = address?.toLowerCase() === wallet.toLowerCase();
 
   const submitDisabledReason = useMemo(() => {
     if (modePaused === true) return null;
@@ -225,9 +224,14 @@ export function AgentListOnBehalfPanel({
         </p>
       )}
 
-      {submitDisabledReason && !busy && (
+      {!evm.ok ? (
+        <EvmSessionRefusal
+          cause={evm.cause}
+          disconnectedTitle="Connect the agent wallet to list this vehicle."
+        />
+      ) : submitDisabledReason && !busy ? (
         <p className="text-xs text-text-secondary">{submitDisabledReason}</p>
-      )}
+      ) : null}
 
       <Button
         type="button"

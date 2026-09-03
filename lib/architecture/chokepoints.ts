@@ -293,6 +293,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "active-account.test.ts",
       "svm-wallet-adapter-policy.test.ts",
       "solana-web3-app-graph-policy.test.ts",
+      "s8-5-named-unavailability-policy.test.ts",
     ],
   },
   {
@@ -418,7 +419,14 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: [
       "ponder-passport-entity-policy.test.ts",
       "ponder-passport-entity-union.test.ts",
+      "ponder-kargain-physical-columns-policy.test.ts",
     ],
+  },
+  {
+    id: "ponder-read-namespaces",
+    owner: "src/lib/ponder-read-namespaces.ts",
+    rule: "UNION ANY(...) namespaces from indexer owner; commercial-active has no process.env or localhost id",
+    guardTests: ["ponder-read-namespaces.test.ts"],
   },
   {
     id: "passport-custody-fold",

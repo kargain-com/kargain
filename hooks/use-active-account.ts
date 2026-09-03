@@ -147,8 +147,11 @@ export type {
 export {
   commercialNamespaceOf,
   connectedAddress,
+  evmSessionRefusalCopy,
   evmSwitchChainAvailability,
   isAccountConnected,
   requireEvmSession,
   requireEvmSigningBinding,
+  wrongVmActionCopy,
 } from "@/lib/web3/active-account";
+export type { EvmSessionCause, WalletFamilyWanted } from "@/lib/web3/active-account";

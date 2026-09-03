@@ -2,8 +2,8 @@
 
 import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
 
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
-import { WalletLoginButton } from "@/components/wallet-login-button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { formatAuctionAmount } from "@/lib/auction/format-auction";
 import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
@@ -41,7 +41,6 @@ export function AuctionFinalizePanel({
 }: Props) {
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
-  const isConnected = evm.ok;
   const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = phase !== "idle";
@@ -67,11 +66,14 @@ export function AuctionFinalizePanel({
     );
   }
 
-  if (!isConnected) {
+  if (!evm.ok) {
     return (
       <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
         <p className="font-sans text-sm text-text-secondary">{lead}</p>
-        <WalletLoginButton />
+        <EvmSessionRefusal
+          cause={evm.cause}
+          disconnectedTitle="Connect a wallet to finalize this auction."
+        />
       </div>
     );
   }

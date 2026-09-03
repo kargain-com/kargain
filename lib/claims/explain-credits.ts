@@ -31,7 +31,7 @@ function formatCreditAmount(
     amount: credit.amount,
     decimals: display.decimals,
     symbol: display.symbol,
-    nativeSymbol: display.nativeSymbol ?? "ETH",
+    nativeSymbol: display.nativeSymbol,
     isNative,
   });
 }

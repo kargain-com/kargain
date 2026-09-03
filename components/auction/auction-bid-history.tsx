@@ -6,6 +6,7 @@ import {
   formatAuctionAmount,
 } from "@/lib/auction/format-auction";
 import type { AuctionBid } from "@/lib/auction/map-ponder-auction";
+import type { AuctionAssetLabel } from "@/lib/auction/owner-min-asset";
 import { cn } from "@/lib/utils";
 import {
   commercialActive,
@@ -14,7 +15,7 @@ import {
 
 type Props = {
   bids: AuctionBid[];
-  assetLabel: "ETH" | "USDC";
+  assetLabel: AuctionAssetLabel;
   chainId: number;
   className?: string;
 };

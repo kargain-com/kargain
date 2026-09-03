@@ -12,6 +12,7 @@ import {
   loadPassportEntitiesByOwner,
   loadPassportEntityById,
   loadPassportEntityStatusCounts,
+  resolveIncludeSvmProjection,
   type PassportEntityRow,
 } from "../src/lib/ponder-passport-entity.js";
 import { createEntityPgPoolForTests } from "./fixtures/entity-pg-pool.js";
@@ -111,6 +112,8 @@ describe("ponder passport entity union", () => {
     }),
   ];
 
+  const ns = { namespaces: NS };
+
   let pool: Awaited<ReturnType<typeof createEntityPgPoolForTests>>["pool"];
 
   before(async () => {
@@ -123,8 +126,16 @@ describe("ponder passport entity union", () => {
     assert.doesNotMatch(sql, /;\s*SELECT/);
   });
 
+  it("product default always includes the SVM UNION arm", () => {
+    assert.equal(resolveIncludeSvmProjection(), true);
+    assert.match(
+      buildPassportEntityUnionSubquery(NS, resolveIncludeSvmProjection()),
+      /UNION ALL/,
+    );
+  });
+
   it("live union returns SVM-born row by tokenId", async () => {
-    const row = await loadPassportEntityById(tokenId, { namespaces: NS }, pool);
+    const row = await loadPassportEntityById(tokenId, ns, pool);
     assert.ok(row);
     assert.equal(row!.chainId, FIXTURE_NAMESPACE);
     assert.equal(row!.make, "Fixture");
@@ -133,7 +144,7 @@ describe("ponder passport entity union", () => {
   it("profile owner inventory spans SVM arm", async () => {
     const rows = await loadPassportEntitiesByOwner(
       "SvmOwnerBase58Fixture",
-      { namespaces: NS },
+      ns,
       pool,
     );
     assert.equal(rows.length, 1);
@@ -143,7 +154,7 @@ describe("ponder passport entity union", () => {
   it("ordering: naive per-side sort differs from union ORDER BY", async () => {
     const unioned = await loadPassportEntitiesBrowse(
       { verifiedFirst: true, limit: 3, offset: 0 },
-      { namespaces: NS },
+      ns,
       pool,
     );
     const naive = naivePerSideEntityBrowse(
@@ -170,7 +181,7 @@ describe("ponder passport entity union", () => {
     const naive = naivePerSideStatusCounts({ evmPassports, svmPassports }, {
       namespaces: NS,
     });
-    const unioned = await loadPassportEntityStatusCounts({ namespaces: NS }, pool);
+    const unioned = await loadPassportEntityStatusCounts(ns, pool);
     assert.deepEqual(naive, unioned);
 
     const skewedSvm = [
@@ -189,7 +200,7 @@ describe("ponder passport entity union", () => {
       })
     ).pool;
     const unionCorrect = await loadPassportEntityStatusCounts(
-      { namespaces: NS },
+      ns,
       skewedPool,
     );
     assert.equal(unionCorrect.VERIFIED, 3);
@@ -219,12 +230,12 @@ describe("ponder passport entity union", () => {
     );
     const emptyUnion = await loadPassportEntityById(
       "evm-2",
-      { namespaces: [HUB], includeSvmProjection: true },
+      { namespaces: [HUB] },
       emptySvmPool,
     );
     const populated = await loadPassportEntityById(
       tokenId,
-      { namespaces: NS },
+      ns,
       withSvmPool,
     );
 

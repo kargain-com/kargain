@@ -15,8 +15,7 @@ import { KarProProfileSection } from "@/components/kar-pro/kar-pro-profile-secti
 import { KarProSectionNav } from "@/components/kar-pro/kar-pro-section-nav";
 import { MessagingSetupCard } from "@/components/messaging/messaging-setup-card";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/empty-state";
-import { WalletLoginButton } from "@/components/wallet-login-button";
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { useKarProMembershipRoster } from "@/hooks/use-kar-pro-membership-roster";
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { useMessagingSession } from "@/hooks/use-messaging-session";
@@ -38,7 +37,6 @@ export function KarProClient({
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const walletChainId = evm.ok ? evm.chainId : undefined;
   const chainId = resolveKarProTargetChainId(walletChainId);
 
@@ -96,17 +94,13 @@ export function KarProClient({
     ? "space-y-5 text-text-primary"
     : "mx-auto w-full max-w-lg space-y-8 text-text-primary";
 
-  if (!isConnected) {
+  if (!evm.ok) {
     return (
       <div className={containerClass}>
-        <div className="space-y-3">
-          <EmptyState
-            variant="infrastructure"
-            level="B"
-            title="Connect your wallet to become a KarPro verifier."
-          />
-          <WalletLoginButton />
-        </div>
+        <EvmSessionRefusal
+          cause={evm.cause}
+          disconnectedTitle="Connect your wallet to become a KarPro verifier."
+        />
       </div>
     );
   }

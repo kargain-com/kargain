@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useReadContract } from "wagmi";
 
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
 import { InstrumentLink } from "@/components/ui/instrument-link";
 import { useBridge } from "@/hooks/use-bridge";
@@ -14,8 +15,10 @@ import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import type { CommerceMode } from "@/lib/commerce/mode";
 import type { EncumbrancePermissionGate } from "@/lib/passport/encumbrance-permission";
 import {
+  BRIDGE_SECOND_HOP_REQUIRED,
   bridgeActionCopy,
   bridgeBlockReasonCopy,
+  bridgeHopIdLine,
   deriveBridgeCrossingConsent,
   deriveBridgeDirectionMode,
   deriveBridgeSurface,
@@ -26,7 +29,10 @@ import {
 } from "@/lib/passport/passport-owner";
 import { parsePassportTokenId } from "@/lib/passport/passport-token-id";
 import type { PassportStatus } from "@/lib/types/ponder";
-import { bridgeCounterpartChainId } from "@/lib/web3/bridge";
+import {
+  bridgeCounterpartChainId,
+  resolveBridgeRoute,
+} from "@/lib/web3/bridge";
 import {
   commercialActive,
   nativeUnitOf,
@@ -72,7 +78,6 @@ export function PassportBridgePanel({
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const passport = karPassportAddress(chainId);
   const tid = BigInt(tokenId);
   const dstChainId = bridgeCounterpartChainId(chainId);
@@ -109,9 +114,7 @@ export function PassportBridgePanel({
     passportOwner,
   );
   const isOwner =
-    isConnected &&
-    ownerStatus === "success" &&
-    isOnChainNftOwner(address, effectiveOwner);
+    ownerStatus === "success" && isOnChainNftOwner(address, effectiveOwner);
 
   const surface = deriveBridgeSurface({
     isOwner: Boolean(isOwner),
@@ -178,6 +181,19 @@ export function PassportBridgePanel({
   const displayDstName =
     record != null ? shortChainName(record.dstChainId) : dstName;
 
+  // Every hop the route takes — a two-hop move is stated before the send.
+  const route =
+    dstChainId != null ? resolveBridgeRoute(chainId, dstChainId) : null;
+  const hopLines =
+    record != null
+      ? [bridgeHopIdLine(record.srcChainId, record.dstChainId)]
+      : route?.ok
+        ? route.hops.map((hop) =>
+            bridgeHopIdLine(hop.srcChainId, hop.dstChainId),
+          )
+        : [];
+  const multiHop = record == null && route?.ok === true && route.hops.length > 1;
+
   const buttonLabel =
     phase === "approving"
       ? "Approving…"
@@ -224,11 +240,23 @@ export function PassportBridgePanel({
         </ol>
       )}
 
-      {(record != null ? true : dstChainId != null) && (
-        <p className="font-mono text-xs tabular-nums text-text-tertiary">
-          {record?.srcChainId ?? chainId} →{" "}
-          {record?.dstChainId ?? dstChainId}
+      {multiHop && (
+        <p className="font-sans text-sm text-text-secondary" role="status">
+          {BRIDGE_SECOND_HOP_REQUIRED}
         </p>
+      )}
+
+      {hopLines.length > 0 && (
+        <ol aria-label="Bridge hops">
+          {hopLines.map((line) => (
+            <li
+              key={line}
+              className="font-mono text-xs tabular-nums text-text-tertiary"
+            >
+              {line}
+            </li>
+          ))}
+        </ol>
       )}
 
       {surface.canBridge && !transitActive && (
@@ -311,23 +339,30 @@ export function PassportBridgePanel({
         </p>
       )}
 
-      <Button
-        type="button"
-        variant="secondary"
-        className="w-full"
-        disabled={
-          transitActive ||
-          !surface.canBridge ||
-          Boolean(disabledReason) ||
-          busy ||
-          (crossingConsent.requiresAck && !crossingAcked)
-        }
-        onClick={() => {
-          void bridge(tid);
-        }}
-      >
-        {buttonLabel}
-      </Button>
+      {evm.ok ? (
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full"
+          disabled={
+            transitActive ||
+            !surface.canBridge ||
+            Boolean(disabledReason) ||
+            busy ||
+            (crossingConsent.requiresAck && !crossingAcked)
+          }
+          onClick={() => {
+            void bridge(tid);
+          }}
+        >
+          {buttonLabel}
+        </Button>
+      ) : (
+        <EvmSessionRefusal
+          cause={evm.cause}
+          disconnectedTitle="Connect your wallet to move this passport."
+        />
+      )}
     </section>
   );
 }

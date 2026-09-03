@@ -10,6 +10,7 @@ import {
   buildUnionPassportRecordsSql,
   loadAttestationsByAuthor,
   loadPassportRecordsByTokenId,
+  resolveIncludeSvmProjection,
 } from "../src/lib/ponder-passport-provenance.js";
 import {
   attestationFromRecord,
@@ -92,6 +93,16 @@ describe("ponder passport provenance union", () => {
     assert.doesNotMatch(sql, /;\s*SELECT/);
   });
 
+  it("product default always includes the SVM UNION arm", () => {
+    assert.equal(resolveIncludeSvmProjection(), true);
+    const { sql } = buildUnionPassportRecordsSql({
+      tokenId,
+      namespaces: NS,
+      includeSvmProjection: resolveIncludeSvmProjection(),
+    });
+    assert.match(sql, /UNION ALL/);
+  });
+
   it("live union returns EVM + SVM provenance for one tokenId", async () => {
     const records = await loadPassportRecordsByTokenId(
       tokenId,
@@ -157,7 +168,7 @@ describe("ponder passport provenance union", () => {
     );
     const emptySvmUnion = await loadPassportRecordsByTokenId(
       tokenId,
-      { namespaces: [HUB], includeSvmProjection: true },
+      { namespaces: [HUB] },
       emptySvmPool,
     );
     const populated = await loadPassportRecordsByTokenId(

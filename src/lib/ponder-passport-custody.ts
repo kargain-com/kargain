@@ -8,18 +8,18 @@ import pg from "pg";
 import {
   adaptEvmBridgeCrossingRows,
   type EvmBridgeCrossingRow,
-} from "@/lib/custody/adapt-evm-bridge-crossings.js";
+} from "../../lib/custody/adapt-evm-bridge-crossings.js";
 import {
   adaptEvmCustodyDeterminingRows,
   type EvmCustodyDeterminingRow,
-} from "@/lib/custody/adapt-evm-custody-events.js";
-import { foldPassportCustody } from "@/lib/custody/fold.js";
+} from "../../lib/custody/adapt-evm-custody-events.js";
+import { foldPassportCustody } from "../../lib/custody/fold.js";
 import {
   passportCustodyAnswerFromFold,
   type CustodyFoldResult,
   type PassportCustodyAnswer,
-} from "@/lib/custody/normalized-event.js";
-import { registeredCommercialNamespaceIds } from "@/lib/web3/commercial-active";
+} from "../../lib/custody/normalized-event.js";
+import { indexerReadNamespaceIds } from "./ponder-read-namespaces.js";
 
 export type { PassportCustodyAnswer };
 
@@ -47,7 +47,12 @@ function getCustodyPool(): pg.Pool {
 
 function resolveNamespaces(opts?: CustodyQueryOptions): number[] {
   if (opts?.namespaces != null) return [...opts.namespaces];
-  return [...registeredCommercialNamespaceIds()];
+  return [...indexerReadNamespaceIds()];
+}
+
+function resolveIncludeSvm(opts?: CustodyQueryOptions): boolean {
+  if (opts?.includeSvmProjection != null) return opts.includeSvmProjection;
+  return true;
 }
 
 function isRegisteredNamespace(
@@ -70,7 +75,7 @@ export async function loadCustodyFoldInputs(
   opts?: CustodyQueryOptions,
 ): Promise<CustodyFoldInputs> {
   const namespaces = resolveNamespaces(opts);
-  const includeSvm = opts?.includeSvmProjection !== false;
+  const includeSvm = resolveIncludeSvm(opts);
 
   const evmStreamPromise = pool.query<EvmCustodyDeterminingRow>(
     `SELECT token_id AS "tokenId", chain_id AS "chainId", kind,

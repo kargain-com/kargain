@@ -1,5 +1,8 @@
+import {
+  type ActiveAccount,
+  wrongVmActionCopy,
+} from "@/lib/web3/active-account";
 import { getViemChain, kargainChains } from "@/lib/web3/supported-chains";
-import type { ActiveAccount } from "@/lib/web3/active-account";
 
 /** True when `chainId` is in the wagmi write-union (`kargainChains`). */
 export function isKargainWriteChain(chainId: number): boolean {
@@ -13,8 +16,6 @@ export type ChainSelectorState = "ok" | "wrong_network" | "wrong_vm";
  * - `wrong_vm` — connected wallet family cannot act on the expected network
  * - `wrong_network` — same VM, wrong chain / unsupported EVM chain
  * - `ok` — disconnected, or EVM session matches expectation
- *
- * Screen chrome for `wrong_vm` is the screens slice — this slice only owns state.
  */
 export function deriveChainSelectorState(input: {
   account: ActiveAccount;
@@ -32,6 +33,22 @@ export function deriveChainSelectorState(input: {
   if (!isKargainWriteChain(walletChainId)) return "wrong_network";
   if (input.expectedChainId == null) return "ok";
   return walletChainId === input.expectedChainId ? "ok" : "wrong_network";
+}
+
+/**
+ * Selector / action chrome for {@link ChainSelectorState}.
+ * `wrong_vm` never offers a network switch — §4.7 family copy only.
+ */
+export function chainSelectorStateCopy(state: ChainSelectorState): string | null {
+  switch (state) {
+    case "ok":
+      return null;
+    case "wrong_network":
+      return "Wrong network";
+    case "wrong_vm":
+      // Live commercial surfaces are EVM; SVM wanted is the inverse when S9 lands.
+      return wrongVmActionCopy("evm");
+  }
 }
 
 /**

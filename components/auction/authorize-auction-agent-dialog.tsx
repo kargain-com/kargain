@@ -119,7 +119,7 @@ export function AuthorizeAuctionAgentDialog({
 
   const mode = commerceModeAddress("ascending", chainId);
   const tid = BigInt(tokenId);
-  const wrongChain = walletChain !== wc;
+  const wrongChain = evm.ok && walletChain !== wc;
   const busy = isPending || phase !== "idle";
 
   const { options: openOptions, pending: openOptionsPending } =

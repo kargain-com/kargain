@@ -7,7 +7,7 @@ import { useMemo, useState } from "react";
 
 import { ChallengeRow, ChallengeRowSkeleton } from "@/components/challenges/challenge-row";
 import { EmptyState } from "@/components/ui/empty-state";
-import { WalletLoginButton } from "@/components/wallet-login-button";
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { useChallenges } from "@/hooks/use-challenges";
 import {
   CHALLENGE_BROWSE_FILTER_OPTIONS,
@@ -21,7 +21,6 @@ export function ChallengesClient() {
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const [filter, setFilter] = useState<ChallengeBrowseFilterId>("unresolved");
 
   const browse = useMemo(
@@ -31,21 +30,18 @@ export function ChallengesClient() {
 
   const { data, isLoading, isError } = useChallenges(
     browse.ok ? { ...browse.query, limit: 48 } : {},
-    isConnected && browse.ok,
+    evm.ok && browse.ok,
   );
 
   const rows = data?.rows ?? [];
 
-  if (!isConnected) {
+  if (!evm.ok) {
     return (
-      <div className="mt-8 space-y-3">
-        <EmptyState
-          variant="infrastructure"
-          level="B"
-          title="Connect your wallet to see open challenges."
-        />
-        <WalletLoginButton />
-      </div>
+      <EvmSessionRefusal
+        cause={evm.cause}
+        disconnectedTitle="Connect your wallet to see open challenges."
+        className="mt-8 space-y-3"
+      />
     );
   }
 

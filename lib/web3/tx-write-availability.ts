@@ -3,7 +3,10 @@
  * Parallel to requireEvmSession — never an absent value.
  */
 
-import type { ActiveAccount } from "@/lib/web3/active-account";
+import {
+  type ActiveAccount,
+  wrongVmActionCopy,
+} from "@/lib/web3/active-account";
 import { commercialActive } from "@/lib/web3/commercial-active";
 
 export type TxWriteCause =
@@ -37,13 +40,13 @@ export function txWriteAvailability(
   return { available: true, vm: "evm", walletChainId: account.chainId };
 }
 
-/** Stable English for write refusals — not screen chrome. */
+/** Stable English for write refusals — §4.7 vocabulary for wrong_vm. */
 export function txWriteRefusalMessage(cause: TxWriteCause): string {
   switch (cause) {
     case "disconnected":
       return "Connect a wallet to send this transaction.";
     case "wrong_vm":
-      return "This action needs an EVM wallet on a Kargain commercial network.";
+      return wrongVmActionCopy("evm");
     case "unresolved_namespace":
       return "This network is not available for commercial writes.";
   }

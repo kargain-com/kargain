@@ -2,7 +2,7 @@
 
 import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
 
-import { CircleCheckIcon, CommentIcon } from "@/components/ui/icons";
+import { CircleCheckIcon } from "@/components/ui/icons";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useReadContract } from "wagmi";
@@ -81,7 +81,6 @@ export function ListingDetailClientIsland({
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const [sellerNostrPubkey, setSellerNostrPubkey] = useState<string | null>(null);
 
   const passport = karPassportAddress(chainId);
@@ -346,23 +345,12 @@ export function ListingDetailClientIsland({
 
       {contactPeer && !holder && !isSeller && (
         <div className="flex flex-wrap gap-2">
-          {isConnected ? (
-            <SellerContactButton
-              peerAddress={contactPeer}
-              label="Message seller"
-              listingTokenId={listingActive ? tokenId : null}
-            />
-          ) : (
-            <button
-              type="button"
-              disabled
-              aria-label="Message seller"
-              className="inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center gap-2 rounded-sm border border-border-default bg-transparent px-7 py-3.5 font-sans text-sm font-medium text-text-secondary opacity-50 disabled:pointer-events-none"
-            >
-              <CommentIcon size={16} aria-hidden />
-              Message seller
-            </button>
-          )}
+          {/* Entry point stays visible — the button names its own session cause. */}
+          <SellerContactButton
+            peerAddress={contactPeer}
+            label="Message seller"
+            listingTokenId={listingActive ? tokenId : null}
+          />
         </div>
       )}
     </div>

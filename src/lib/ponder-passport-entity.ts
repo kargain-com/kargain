@@ -6,9 +6,7 @@
 import pg from "pg";
 import { getAddress } from "viem";
 
-import {
-  registeredCommercialNamespaceIds,
-} from "@/lib/web3/commercial-active";
+import { indexerReadNamespaceIds } from "./ponder-read-namespaces.js";
 
 export type PassportEntityRow = {
   id: string;
@@ -50,7 +48,7 @@ export type PassportEntityRow = {
 };
 
 export type PassportEntityQueryOptions = {
-  /** Test-only override — production must use registeredCommercialNamespaceIds(). */
+  /** Test-only override — production uses indexerReadNamespaceIds(). */
   namespaces?: readonly number[];
   /** Test-only: omit SVM arm for negative-control proofs. */
   includeSvmProjection?: boolean;
@@ -73,41 +71,41 @@ export type VerifierVerificationCountRow = {
 
 const PASSPORT_ENTITY_EVM_SELECT = `SELECT
   id,
-  "chainId" AS chain_id,
+  chain_id,
   owner,
   status,
   verifier,
-  "verifiedAt" AS verified_at,
-  "tokenUri" AS token_uri,
-  "coverPhotoUri" AS cover_photo_uri,
+  verified_at,
+  token_uri,
+  cover_photo_uri,
   vin,
   make,
   model,
   year,
-  "mileageKm" AS mileage_km,
-  "lastDisputer" AS last_disputer,
-  "disputeReason" AS dispute_reason,
-  "disputeWithdrawnAt" AS dispute_withdrawn_at,
-  "lastVerificationResetAt" AS last_verification_reset_at,
-  "duplicateVin" AS duplicate_vin,
-  "lastMetadataChangeAt" AS last_metadata_change_at,
-  "verificationResetCount" AS verification_reset_count,
-  "hadDispute" AS had_dispute,
-  "lastDisputeResolvedAt" AS last_dispute_resolved_at,
-  "lastDisputeTerminal" AS last_dispute_terminal,
-  "disputeOpenedAt" AS dispute_opened_at,
-  "fuelType" AS fuel_type,
-  "bodyType" AS body_type,
+  mileage_km,
+  last_disputer,
+  dispute_reason,
+  dispute_withdrawn_at,
+  last_verification_reset_at,
+  duplicate_vin,
+  last_metadata_change_at,
+  verification_reset_count,
+  had_dispute,
+  last_dispute_resolved_at,
+  last_dispute_terminal,
+  dispute_opened_at,
+  fuel_type,
+  body_type,
   transmission,
   condition,
-  "vehicleType" AS vehicle_type,
+  vehicle_type,
   colour,
-  "locationLabel" AS location_label,
-  "locationPlaceId" AS location_place_id,
-  "locationCountryCode" AS location_country_code,
-  "disputeDeposit" AS dispute_deposit,
-  "createdAt" AS created_at,
-  "updatedAt" AS updated_at
+  location_label,
+  location_place_id,
+  location_country_code,
+  dispute_deposit,
+  created_at,
+  updated_at
 FROM kargain.passport`;
 
 const PASSPORT_ENTITY_SVM_SELECT = `SELECT
@@ -176,7 +174,15 @@ export function resolveEntityNamespaces(
   opts?: PassportEntityQueryOptions,
 ): number[] {
   if (opts?.namespaces != null) return [...opts.namespaces];
-  return [...registeredCommercialNamespaceIds()];
+  return [...indexerReadNamespaceIds()];
+}
+
+/** Product default is always the SVM UNION arm; `false` is test-only omit. */
+export function resolveIncludeSvmProjection(
+  opts?: PassportEntityQueryOptions,
+): boolean {
+  if (opts?.includeSvmProjection != null) return opts.includeSvmProjection;
+  return true;
 }
 
 type PassportEntityPgRow = {
@@ -273,7 +279,7 @@ function buildPassportEntityUnionSubqueryWithParam(
   namespaceParam: string,
 ): string {
   const evm = `${PASSPORT_ENTITY_EVM_SELECT}
-    WHERE "chainId" = ANY(${namespaceParam}::int[])`;
+    WHERE chain_id = ANY(${namespaceParam}::int[])`;
   if (!includeSvm) return `(${evm})`;
   const svm = `${PASSPORT_ENTITY_SVM_SELECT}
     WHERE chain_id = ANY(${namespaceParam}::int[])`;
@@ -356,7 +362,7 @@ export async function loadPassportEntityById(
   const params: unknown[] = [];
   const fromSql = buildEntityUnionFromClause({
     namespaces,
-    includeSvmProjection: opts?.includeSvmProjection ?? true,
+    includeSvmProjection: resolveIncludeSvmProjection(opts),
     params,
   });
   params.push(tokenId);
@@ -378,7 +384,7 @@ export async function loadPassportEntitiesBrowse(
   const params: unknown[] = [];
   const fromSql = buildEntityUnionFromClause({
     namespaces,
-    includeSvmProjection: opts?.includeSvmProjection ?? true,
+    includeSvmProjection: resolveIncludeSvmProjection(opts),
     params,
   });
   const where = buildEntityWhereClauses(filters, params);
@@ -423,7 +429,7 @@ export async function loadPassportEntitiesFiltered(
   const params: unknown[] = [];
   const fromSql = buildEntityUnionFromClause({
     namespaces,
-    includeSvmProjection: opts?.includeSvmProjection ?? true,
+    includeSvmProjection: resolveIncludeSvmProjection(opts),
     params,
   });
   const where = buildEntityWhereClauses(filters, params);
@@ -445,7 +451,7 @@ export async function loadPassportEntitiesByIds(
   const params: unknown[] = [];
   const fromSql = buildEntityUnionFromClause({
     namespaces,
-    includeSvmProjection: opts?.includeSvmProjection ?? true,
+    includeSvmProjection: resolveIncludeSvmProjection(opts),
     params,
   });
   const where = buildEntityWhereClauses({ ids: [...ids] }, params);
@@ -464,7 +470,7 @@ export async function loadPassportEntitiesByOwner(
   const params: unknown[] = [];
   const fromSql = buildEntityUnionFromClause({
     namespaces,
-    includeSvmProjection: opts?.includeSvmProjection ?? true,
+    includeSvmProjection: resolveIncludeSvmProjection(opts),
     params,
   });
   const where = buildEntityWhereClauses({ owner }, params);
@@ -483,7 +489,7 @@ export async function countVerifiedPassportsByVerifier(
   const params: unknown[] = [];
   const fromSql = buildEntityUnionFromClause({
     namespaces,
-    includeSvmProjection: opts?.includeSvmProjection ?? true,
+    includeSvmProjection: resolveIncludeSvmProjection(opts),
     params,
   });
   params.push("VERIFIED");
@@ -509,7 +515,7 @@ export async function loadVerifiedPassportsByVerifier(
   const params: unknown[] = [];
   const fromSql = buildEntityUnionFromClause({
     namespaces,
-    includeSvmProjection: opts?.includeSvmProjection ?? true,
+    includeSvmProjection: resolveIncludeSvmProjection(opts),
     params,
   });
   const where = buildEntityWhereClauses(
@@ -562,7 +568,7 @@ export async function loadPassportEntityStatusCounts(
   const params: unknown[] = [];
   const fromSql = buildEntityUnionFromClause({
     namespaces,
-    includeSvmProjection: opts?.includeSvmProjection ?? true,
+    includeSvmProjection: resolveIncludeSvmProjection(opts),
     params,
   });
   const sql = `SELECT status, COUNT(*)::int AS total

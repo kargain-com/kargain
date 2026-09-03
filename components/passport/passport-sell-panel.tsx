@@ -15,6 +15,7 @@ import { AuthorizeAgentDialog } from "@/components/marketplace/authorize-agent-d
 import { Button } from "@/components/ui/button";
 import type { PassportCommerceFacts } from "@/hooks/use-passport-commerce-facts";
 import { useCommerceModePaused } from "@/hooks/use-commerce-mode-paused";
+import { usePassportPresence } from "@/hooks/use-passport-presence";
 import {
   AUCTION_REQUIRES_VERIFICATION_HINT,
 } from "@/lib/auction/sale-form-copy";
@@ -39,6 +40,7 @@ import {
   SELL_HEADING,
   SELL_LIST,
 } from "@/lib/passport/sell-copy";
+import { presenceBlocksWrites } from "@/lib/passport/presence";
 import { deriveSellSurface } from "@/lib/passport/sell-surface";
 import {
   isOnChainNftOwner,
@@ -66,6 +68,10 @@ type Props = {
   tokenId: string;
   passportOwner: `0x${string}`;
   passportStatus: PassportStatus;
+  /** Ponder usable-copy location — presence input. Defaults to `chainId`. */
+  ponderCustodyChain?: number;
+  /** Fold incomplete cause from the indexer. */
+  custodyUnresolved?: string | null;
   facts: PassportCommerceFacts;
   now: number;
 };
@@ -82,6 +88,8 @@ export function PassportSellPanel({
   tokenId,
   passportOwner,
   passportStatus,
+  ponderCustodyChain,
+  custodyUnresolved,
   facts,
   now,
 }: Props) {
@@ -89,7 +97,6 @@ export function PassportSellPanel({
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const [fixedPriceDialogOpen, setFixedPriceDialogOpen] = useState(false);
   const [ascendingDialogOpen, setAscendingDialogOpen] = useState(false);
 
@@ -128,10 +135,15 @@ export function PassportSellPanel({
     onChainOwner as `0x${string}` | undefined,
     passportOwner,
   );
-  const isOwner =
-    isConnected &&
-    address != null &&
-    isOnChainNftOwner(address, effectiveOwner);
+  const isOwner = address != null && isOnChainNftOwner(address, effectiveOwner);
+
+  const { presence, presenceCopy } = usePassportPresence({
+    chainId,
+    tokenId,
+    ponderCustodyChain: ponderCustodyChain ?? chainId,
+    custodyUnresolved,
+  });
+  const locationBlocksWrites = presenceBlocksWrites(presence);
 
   const surface = deriveSellSurface({
     isOwner: Boolean(isOwner),
@@ -159,6 +171,20 @@ export function PassportSellPanel({
   };
 
   if (!isOwner) return null;
+
+  // Location gap blocks every sell write — named cause, not an empty card.
+  if (locationBlocksWrites) {
+    return (
+      <section className="space-y-3 rounded-md border border-border-default bg-bg-card p-4">
+        <h2 className="font-sans text-base font-medium text-text-primary">
+          {SELL_HEADING}
+        </h2>
+        <p className="font-sans text-sm text-text-secondary" role="status">
+          {presenceCopy}
+        </p>
+      </section>
+    );
+  }
 
   const fixedMandate = facts.fixedPrice.mandate;
   const ascendingMandate = facts.ascending.mandate;

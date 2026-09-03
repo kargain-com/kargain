@@ -6,6 +6,7 @@ import { SpinnerIcon } from "@/components/ui/icons";
 import { useCallback, useEffect, useState } from "react";
 
 import { MessagingDevicesPanel } from "@/components/messaging/messaging-devices-panel";
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { WalletLoginButton } from "@/components/wallet-login-button";
 import { categoryLabel, sectionScrollAnchor } from "@/lib/design/instrument-classes";
 import { useMessagingSession } from "@/hooks/use-messaging-session";
 import { useXmtpConversations } from "@/hooks/use-xmtp-conversations";
@@ -31,10 +33,12 @@ import {
 } from "@/lib/messaging/installation-display";
 import {
   canWalletEnableMessaging,
+  isSvmMessagingRefusal,
   isUserOpInFlight,
   messagingUnsupportedCopy,
   primaryActionFromSnapshot,
   SECONDARY_REVOKE_ALL_COMMAND,
+  SVM_MESSAGING_UNAVAILABLE,
 } from "@/lib/messaging/snapshot-ui";
 import { shortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
@@ -135,7 +139,29 @@ export function MessagingSettingsSection() {
     setConfirmDisableOpen(true);
   };
 
-  if (!address) return null;
+  if (!evm.ok) {
+    return (
+      <section id="messages" className={cn("flex flex-col gap-4", sectionScrollAnchor)}>
+        <SectionEyebrow>Messages</SectionEyebrow>
+        {isSvmMessagingRefusal(evm.cause) ? (
+          <div className="space-y-3">
+            <div
+              className="rounded-md border border-border-default bg-bg-surface px-4 py-3 text-sm text-text-secondary"
+              role="status"
+            >
+              {SVM_MESSAGING_UNAVAILABLE}
+            </div>
+            <WalletLoginButton />
+          </div>
+        ) : (
+          <EvmSessionRefusal
+            cause={evm.cause}
+            disconnectedTitle="Connect your wallet to manage messages."
+          />
+        )}
+      </section>
+    );
+  }
 
   if (snapshot.state === "unsupported" || !canEnable) {
     return (

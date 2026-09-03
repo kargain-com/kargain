@@ -7,6 +7,7 @@ import { formatUnits, stringToHex } from "viem";
 import { useBalance, useReadContract } from "wagmi";
 
 import { getProfileData } from "@/app/actions/marketplace-listings";
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -94,9 +95,6 @@ type VerificationPaymentModalProps = {
   membershipChainId?: number;
 };
 
-const GHOST_BUTTON_CLASS =
-  "inline-flex items-center justify-center font-sans text-sm font-medium text-text-secondary border-0 bg-transparent px-4 py-2 rounded-sm min-h-11 transition-colors duration-200 hover:text-text-primary hover:bg-bg-surface focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]";
-
 function passportLabel(row: PassportRow): string {
   const id = row.id != null ? String(row.id) : "";
   const title = id ? formatPassportTitle(id) : "Passport";
@@ -137,7 +135,6 @@ export function VerificationPaymentModal({
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const walletChainId = evm.ok ? evm.chainId : undefined;
 
   const chainId =
@@ -295,7 +292,7 @@ export function VerificationPaymentModal({
   );
 
   useEffect(() => {
-    if (!open || !isConnected || !address) return;
+    if (!open || !evm.ok || !address) return;
     let cancelled = false;
     setPassportsLoading(true);
     void (async () => {
@@ -317,7 +314,7 @@ export function VerificationPaymentModal({
     return () => {
       cancelled = true;
     };
-  }, [open, isConnected, address]);
+  }, [open, evm.ok, address]);
 
   useEffect(() => {
     if (phase !== "success" || !open) return;
@@ -561,7 +558,12 @@ export function VerificationPaymentModal({
               </DialogDescription>
             </DialogHeader>
 
-            {!commercialReady ? (
+            {!evm.ok ? (
+              <EvmSessionRefusal
+                cause={evm.cause}
+                disconnectedTitle="Connect your wallet to pay the verification fee."
+              />
+            ) : !commercialReady ? (
               <p className="font-sans text-sm text-text-secondary">
                 Switch to a Kargain network to pay the verification fee.
               </p>
@@ -892,29 +894,20 @@ export function VerificationPayButton({
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const [open, setOpen] = useState(false);
 
   if (feeWei === 0n) return null;
 
-  if (
-    isConnected &&
-    address &&
-    address.toLowerCase() === verifierAddress.toLowerCase()
-  ) {
+  if (address && address.toLowerCase() === verifierAddress.toLowerCase()) {
     return null;
   }
 
-  if (!isConnected) {
+  if (!evm.ok) {
     return (
-      <button
-        type="button"
-        disabled
-        aria-label="Connect wallet to pay for inspection"
-        className={`${GHOST_BUTTON_CLASS} opacity-50 pointer-events-none`}
-      >
-        Pay for inspection
-      </button>
+      <EvmSessionRefusal
+        cause={evm.cause}
+        disconnectedTitle="Connect your wallet to pay for inspection."
+      />
     );
   }
 

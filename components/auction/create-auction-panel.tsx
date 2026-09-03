@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { parseUnits, zeroAddress } from "viem";
 import { useReadContract } from "wagmi";
 
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
 import { useAscendingAuctionRules } from "@/hooks/use-ascending-auction-rules";
@@ -28,7 +29,10 @@ import {
   protectionBoundsErrorMessage,
 } from "@/lib/commerce/format-window-duration";
 import { commerceModeAddress } from "@/lib/commerce/mode";
-import { gateOpenablePairing } from "@/lib/commerce/openable-terms";
+import {
+  fiatUnavailableReasonForAsset,
+  gateOpenablePairing,
+} from "@/lib/commerce/openable-terms";
 import { commercePausedAnnouncementForMode } from "@/lib/commerce/pause-surface";
 import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
 import {
@@ -58,7 +62,6 @@ export function CreateAuctionPanel({
 }: Props) {
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
-  const isConnected = evm.ok;
   const walletChainId = evm.ok ? evm.chainId : undefined;
 
       const { writeContractAsync } = useEvmWriteContract();
@@ -75,7 +78,7 @@ export function CreateAuctionPanel({
   const [formError, setFormError] = useState<string | null>(null);
 
   const mode = commerceModeAddress("ascending", chainId);
-  const wrongChain = walletChainId !== wagmiChainId(chainId);
+  const wrongChain = evm.ok && walletChainId !== wagmiChainId(chainId);
   const busy = phase !== "idle";
   const { paused: modePaused } = useCommerceModePaused({
     mode: "ascending",
@@ -126,7 +129,7 @@ export function CreateAuctionPanel({
     chainId,
     tokenId,
     spender: mode,
-    enabled: Boolean(isConnected && isOwner && mode),
+    enabled: Boolean(evm.ok && isOwner && mode),
   });
 
   const { data: unresolvedSettlement } = useReadContract({
@@ -162,14 +165,19 @@ export function CreateAuctionPanel({
         }
       : null;
 
-  const canShow =
-    isConnected &&
-    isOwner &&
-    isActiveVerifier &&
-    canOpen &&
-    Boolean(mode);
+  const canShow = isOwner && isActiveVerifier && canOpen && Boolean(mode);
 
   if (!canShow) return null;
+
+  if (!evm.ok) {
+    return (
+      <EvmSessionRefusal
+        cause={evm.cause}
+        disconnectedTitle="Connect your wallet to start an auction."
+        className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4"
+      />
+    );
+  }
 
   async function onCreate() {
     setFormError(null);
@@ -265,6 +273,11 @@ export function CreateAuctionPanel({
   }
 
   const assetLabel = selectedAsset?.label ?? "asset";
+  // §4.16 quote asymmetry: ascending is asset-only — state it, do not omit it.
+  const fiatUnavailableReason = fiatUnavailableReasonForAsset(
+    openOptions,
+    settlementAsset,
+  );
 
   return (
     <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
@@ -326,6 +339,35 @@ export function CreateAuctionPanel({
             </p>
           </>
         )}
+      </div>
+
+      <div className="space-y-2">
+        <p className="font-mono text-[10.5px] font-medium uppercase tracking-[0.14em] text-text-tertiary">
+          Pricing
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled
+            aria-pressed="true"
+            className="min-h-11 flex-1 rounded-sm border border-border-hover bg-bg-primary px-3 font-sans text-sm font-medium text-text-primary"
+          >
+            {assetLabel}
+          </button>
+          <button
+            type="button"
+            disabled
+            aria-pressed="false"
+            className="min-h-11 flex-1 rounded-sm border border-border-default px-3 font-sans text-sm font-medium text-text-secondary opacity-50"
+          >
+            Fiat
+          </button>
+        </div>
+        {fiatUnavailableReason ? (
+          <p className="font-sans text-xs text-text-secondary" role="note">
+            {fiatUnavailableReason}
+          </p>
+        ) : null}
       </div>
 
       <div className="space-y-2">

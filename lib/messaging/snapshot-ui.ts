@@ -135,6 +135,20 @@ export function messagingUnsupportedCopy(snapshot: SessionSnapshot): string | nu
   return null;
 }
 
+/**
+ * SVM / wrong-VM messaging refusal (design-spec §4.12).
+ * Entry points stay visible with this reason — never removed.
+ */
+export const SVM_MESSAGING_UNAVAILABLE =
+  "Private messages are not available on this account.";
+
+/** Whether an EVM-session cause is the §4.12 SVM messaging refusal. */
+export function isSvmMessagingRefusal(
+  cause: "disconnected" | "wrong_vm" | undefined,
+): boolean {
+  return cause === "wrong_vm";
+}
+
 export function canWalletEnableMessaging(snapshot: SessionSnapshot): boolean {
   return snapshot.state !== "unsupported" && snapshot.state !== "disconnected";
 }

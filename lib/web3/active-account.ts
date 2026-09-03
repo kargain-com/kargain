@@ -117,6 +117,35 @@ export function requireEvmSession(account: ActiveAccount): EvmSessionResult {
   };
 }
 
+/** Wallet family the surface needs (design-spec §4.7). */
+export type WalletFamilyWanted = "evm" | "svm";
+
+/**
+ * Wrong-VM chrome — exact design-spec §4.7 sentences.
+ * Never a network-switch prompt; connect dialog is the action.
+ */
+export function wrongVmActionCopy(wanted: WalletFamilyWanted): string {
+  switch (wanted) {
+    case "evm":
+      return "Connect an Ethereum wallet to act on this network";
+    case "svm":
+      return "Connect a Solana wallet to act on this network";
+  }
+}
+
+/**
+ * Named refusal when {@link requireEvmSession} is not ok.
+ * `wrong_vm` uses §4.7; disconnected keeps a connect invitation.
+ */
+export function evmSessionRefusalCopy(cause: EvmSessionCause): string {
+  switch (cause) {
+    case "disconnected":
+      return "Connect a wallet to continue.";
+    case "wrong_vm":
+      return wrongVmActionCopy("evm");
+  }
+}
+
 /**
  * Commercial namespace of the active account.
  * SVM sessions have no registry row until S9 → `unresolved_namespace`

@@ -8,7 +8,7 @@ import { useBalance, useReadContract } from "wagmi";
 import { Button } from "@/components/ui/button";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
 import { EnsWalletLink } from "@/components/ui/ens-wallet-link";
-import { WalletLoginButton } from "@/components/wallet-login-button";
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { minNextBid } from "@/lib/auction/auction-bid-math";
 import { formatExtensionHelp } from "@/lib/auction/auction-live-signals";
@@ -95,7 +95,6 @@ export function AuctionBidPanel({
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const walletChainId = evm.ok ? evm.chainId : undefined;
 
       const { writeContractAsync, isPending: isWriting } = useEvmWriteContract();
@@ -157,11 +156,11 @@ export function AuctionBidPanel({
     Boolean(address && auction.highestBidder) &&
     address!.toLowerCase() === auction.highestBidder!.toLowerCase();
 
-  const wrongChain = walletChainId !== wagmiChainId(chainId);
+  const wrongChain = evm.ok && walletChainId !== wagmiChainId(chainId);
 
   const minNext = minNextBid(auction.highestBid, minIncrementBps, auction.reserve);
   const minLabel = formatAuctionAmount(minNext, assetLabel, nativeUnit);
-  const placeholderSuffix = assetLabel === "USDC" ? " USDC" : " ETH";
+  const placeholderSuffix = assetLabel === "USDC" ? " USDC" : ` ${assetLabel}`;
 
   const disputed = uiState === "S4";
   const ended = uiState === "S5";
@@ -188,7 +187,6 @@ export function AuctionBidPanel({
       : ethBalance != null && ethBalance.value < parsedAmount);
 
   const bidDisabled =
-    !isConnected ||
     paused === true ||
     Boolean(disabledReason) ||
     busy ||
@@ -273,14 +271,13 @@ export function AuctionBidPanel({
     });
   }
 
-  if (!isConnected) {
+  if (!evm.ok) {
     return (
-      <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
-        <p className="font-sans text-sm text-text-secondary">
-          Connect your wallet to place a bid.
-        </p>
-        <WalletLoginButton />
-      </div>
+      <EvmSessionRefusal
+        cause={evm.cause}
+        disconnectedTitle="Connect your wallet to place a bid."
+        className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4"
+      />
     );
   }
 

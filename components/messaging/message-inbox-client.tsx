@@ -27,7 +27,12 @@ import {
 import { ContactPeerError, contactPeer } from "@/lib/messaging/contact-peer";
 import { getClientEthereumAddress } from "@/lib/messaging/adapters/xmtp-adapter";
 import { formatRelativeTime } from "@/lib/format/relative-time";
-import { needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
+import {
+  isSvmMessagingRefusal,
+  needsMessagingSetupCard,
+  SVM_MESSAGING_UNAVAILABLE,
+} from "@/lib/messaging/snapshot-ui";
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { shortAddress } from "@/lib/web3/wallet-display";
 import { isMessageablePeerOnCommercialChains } from "@/lib/web3/wallet-account";
 import { cn } from "@/lib/utils";
@@ -197,10 +202,9 @@ export function MessageInboxClient() {
   const { account, signingBinding } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const { client, session, snapshot } = useMessagingSession();
-  useRequestLocalMessagingClient(isConnected);
+  useRequestLocalMessagingClient(evm.ok);
   const needsMessagingCard = needsMessagingSetupCard(snapshot);
   const isReady = snapshot.state === "active" && client != null;
   const {
@@ -264,7 +268,7 @@ export function MessageInboxClient() {
       return;
     }
 
-    if (!isConnected) {
+    if (!evm.ok) {
       return;
     }
 
@@ -281,7 +285,7 @@ export function MessageInboxClient() {
     }
 
     if (!isReady || !client) {
-      if (needsMessagingCard && isConnected && initialToRef.current) {
+      if (needsMessagingCard && evm.ok && initialToRef.current) {
         setToError("Enable private messages to open this conversation.");
       }
       return;
@@ -330,7 +334,7 @@ export function MessageInboxClient() {
     connector,
     conversations,
     requestConversations,
-    isConnected,
+    evm.ok,
     isLoading,
     isReady,
     needsMessagingCard,
@@ -368,18 +372,25 @@ export function MessageInboxClient() {
     [actionBusy, client, refreshConsentLists],
   );
 
-  if (!isConnected) {
+  if (!evm.ok) {
     return (
       <div className="mx-auto max-w-md space-y-4 px-4 py-16 text-center">
         <h1 className="text-xl font-medium text-text-primary">Messages</h1>
-        <div className="space-y-3">
-          <EmptyState
-            variant="infrastructure"
-            level="B"
-            title="Connect your wallet to view your messages."
+        {isSvmMessagingRefusal(evm.cause) ? (
+          <div className="space-y-3">
+            <EmptyState
+              variant="infrastructure"
+              level="B"
+              title={SVM_MESSAGING_UNAVAILABLE}
+            />
+            <WalletLoginButton />
+          </div>
+        ) : (
+          <EvmSessionRefusal
+            cause={evm.cause}
+            disconnectedTitle="Connect your wallet to view your messages."
           />
-          <WalletLoginButton />
-        </div>
+        )}
       </div>
     );
   }

@@ -7,6 +7,11 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import {
+  buildPassportEntityUnionSubquery,
+  resolveIncludeSvmProjection,
+} from "../src/lib/ponder-passport-entity.js";
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OWNER = path.join(ROOT, "src/lib/ponder-passport-entity.ts");
 
@@ -50,6 +55,16 @@ describe("ponder passport entity policy", () => {
     assert.ok(src.includes("loadPassportEntitiesBrowse"));
     assert.ok(src.includes("UNION ALL"));
     assert.ok(src.includes("kargain_svm_projection.passport"));
+    assert.doesNotMatch(src, /commercialSvmProjectionLive/);
+  });
+
+  it("product default always UNION ALL; omit arm is test-only", () => {
+    assert.equal(resolveIncludeSvmProjection(), true);
+    assert.match(buildPassportEntityUnionSubquery([84532], true), /UNION ALL/);
+    assert.doesNotMatch(
+      buildPassportEntityUnionSubquery([84532], false),
+      /UNION ALL/,
+    );
   });
 
   it("api routes do not select passport table directly", () => {

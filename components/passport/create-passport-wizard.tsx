@@ -1,6 +1,10 @@
 "use client";
 
-import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import {
+  useActiveAccount,
+  requireEvmSession,
+  evmSessionRefusalCopy,
+} from "@/hooks/use-active-account";
 
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
@@ -13,7 +17,7 @@ import { PassportUploadPreflightBanner } from "@/components/passport/passport-up
 import { PassportUploadProgressPanel } from "@/components/passport/passport-upload-progress";
 import { PhotoUploadZone } from "@/components/passport/photo-upload-zone";
 import { Button } from "@/components/ui/button";
-import { WalletLoginButton } from "@/components/wallet-login-button";
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useWalletAccountKind } from "@/hooks/use-wallet-account-kind";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
@@ -63,7 +67,6 @@ export function CreatePassportWizard() {
   const { account, signingBinding } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const walletChain = evm.ok ? evm.chainId : undefined;
   const { signMessageAsync } = useSignMessage();
@@ -214,8 +217,8 @@ export function CreatePassportWizard() {
     setFormError(null);
     setErrors({});
 
-    if (!isConnected || !address) {
-      setFormError("Connect your wallet to create a passport.");
+    if (!evm.ok || !address) {
+      setFormError(evmSessionRefusalCopy(evm.ok ? "disconnected" : evm.cause));
       return;
     }
     if (chainId == null) {
@@ -287,14 +290,14 @@ export function CreatePassportWizard() {
 
   const displayError = formError ?? txError;
 
-  if (!isConnected) {
+  if (!evm.ok) {
     return (
       <div className="mx-auto max-w-lg space-y-6 px-4 py-16 text-center">
         <h1 className="text-2xl font-medium text-text-primary">Create passport</h1>
         <p className="text-sm text-text-secondary">
           Mint a KarPassport NFT with basic vehicle details and photos stored on Arweave.
         </p>
-        <WalletLoginButton />
+        <EvmSessionRefusal cause={evm.cause} />
       </div>
     );
   }

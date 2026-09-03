@@ -27,7 +27,6 @@ export function KarProPageContent() {
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const walletChainId = evm.ok ? evm.chainId : undefined;
   const chainId = resolveKarProTargetChainId(walletChainId);
   const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
@@ -40,7 +39,7 @@ export function KarProPageContent() {
     functionName: "isActiveVerifier",
     args: address ? [address] : undefined,
     chainId: wc,
-    query: { enabled: Boolean(staking && address && isConnected && chainId != null) },
+    query: { enabled: Boolean(staking && address && chainId != null) },
   });
 
   const { data: minStake, isPending: minStakePending } = useReadContract({
@@ -57,14 +56,14 @@ export function KarProPageContent() {
     : nativeUnitOf(COMMERCIAL_ACTIVE[84532]!);
   const stakeLabel = formatStakeNative(minStake, unit);
 
-  const [prevIdentity, setPrevIdentity] = useState(`${address}:${isConnected}:${chainId}`);
-  const identity = `${address}:${isConnected}:${chainId}`;
+  const [prevIdentity, setPrevIdentity] = useState(`${address}:${evm.ok}:${chainId}`);
+  const identity = `${address}:${evm.ok}:${chainId}`;
   if (identity !== prevIdentity) {
     setPrevIdentity(identity);
     if (postTxActive !== null) setPostTxActive(null);
   }
 
-  const isActiveVerifier = !isConnected ? false : (postTxActive ?? onChainActive === true);
+  const isActiveVerifier = !evm.ok ? false : (postTxActive ?? onChainActive === true);
   const showValueProps = !isActiveVerifier;
 
   return (

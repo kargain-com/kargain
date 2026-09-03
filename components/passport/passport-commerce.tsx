@@ -124,6 +124,8 @@ export function PassportCommerce({
             tokenId={tokenId}
             passportOwner={passportOwner}
             passportStatus={passportStatus}
+            ponderCustodyChain={chainId}
+            custodyUnresolved={custodyUnresolved}
             facts={facts}
             now={detail.now}
           />

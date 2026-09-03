@@ -37,7 +37,7 @@ import {
   resolvePassportCustodyAnswer,
   resolvePassportCustodyAnswersBatch,
 } from "../lib/ponder-passport-custody";
-import { normalizeProtocolAddressForVm } from "@/lib/web3/protocol-address";
+import { normalizeProtocolAddressForVm } from "../../lib/web3/protocol-address.js";
 import { ponderHttpCacheMiddleware } from "../lib/ponder-http-cache-middleware";
 
 const app = new Hono();

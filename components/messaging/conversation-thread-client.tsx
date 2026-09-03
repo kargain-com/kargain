@@ -1,6 +1,10 @@
 "use client";
 
-import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import {
+  useActiveAccount,
+  requireEvmSession,
+  evmSessionRefusalCopy,
+} from "@/hooks/use-active-account";
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -31,7 +35,11 @@ import {
   blockConversation,
   isRequestConversation,
 } from "@/lib/messaging/consent-actions";
-import { needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
+import {
+  isSvmMessagingRefusal,
+  needsMessagingSetupCard,
+  SVM_MESSAGING_UNAVAILABLE,
+} from "@/lib/messaging/snapshot-ui";
 
 type Props = {
   conversationId: string;
@@ -56,9 +64,8 @@ function parsePeerAddress(raw: string | undefined): `0x${string}` | undefined {
 function ConversationThreadBody({ conversationId }: Props) {
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
-  const isConnected = evm.ok;
   const { client, snapshot } = useMessagingSession();
-  useRequestLocalMessagingClient(isConnected);
+  useRequestLocalMessagingClient(evm.ok);
   const isReady = snapshot.state === "active" && client != null;
   const needsMessagingCard = needsMessagingSetupCard(snapshot);
   const {
@@ -129,8 +136,20 @@ function ConversationThreadBody({ conversationId }: Props) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
-  if (!isConnected) {
-    return null;
+  if (!evm.ok) {
+    return (
+      <div className="mx-auto flex min-h-[50vh] max-w-lg flex-col justify-center gap-4 px-4 py-8">
+        <EmptyState
+          variant="infrastructure"
+          level="B"
+          title={
+            isSvmMessagingRefusal(evm.cause)
+              ? SVM_MESSAGING_UNAVAILABLE
+              : evmSessionRefusalCopy(evm.cause)
+          }
+        />
+      </div>
+    );
   }
 
   if (!isReady || !client) {

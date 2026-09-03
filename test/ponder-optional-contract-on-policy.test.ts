@@ -16,6 +16,7 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { listCommercialAbiEvents } from "../lib/svm/commercial-abi-events.ts";
+import { optionalContractAddress } from "../scripts/lib/ponder-env.ts";
 import {
   listOptionalContractEventKeys,
   OPTIONAL_CONTRACT_ABIS,
@@ -54,6 +55,9 @@ describe("ponder optional-contract registration policy", () => {
     const on = read("src/lib/ponder-optional-contract-on.ts");
     const events = read("src/lib/ponder-optional-contract-events.ts");
     assert.match(on, /export function onOptionalContractEvent/);
+    assert.match(on, /isOptionalContractInCreateConfig/);
+    assert.match(on, /ponder\.config/);
+    assert.doesNotMatch(on, /from ["'][^"']*scripts\//);
     assert.match(events, /export const OPTIONAL_CONTRACT_ABIS/);
     assert.match(events, /ContractEventArgsFromTopics/);
     assert.doesNotMatch(on, /export function eventArgs/);
@@ -199,5 +203,15 @@ void ok;
       cfg,
       /contracts:\s*\{[\s\S]*FixedPriceConsignment:\s*\{[\s\S]*\}\s*,\s*AscendingConsignment:\s*\{/,
     );
+  });
+
+  it("local-only omits commercial-only optional address; non-local prefers commercial", () => {
+    const commercial =
+      "0x1111111111111111111111111111111111111111" as `0x${string}`;
+    const local = "0x2222222222222222222222222222222222222222" as `0x${string}`;
+    assert.equal(optionalContractAddress(true, commercial, undefined), undefined);
+    assert.equal(optionalContractAddress(false, commercial, undefined), commercial);
+    assert.equal(optionalContractAddress(true, commercial, local), local);
+    assert.equal(optionalContractAddress(false, undefined, local), local);
   });
 });

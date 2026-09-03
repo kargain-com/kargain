@@ -12,9 +12,16 @@ import { useMessagingSession } from "@/hooks/use-messaging-session";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachability";
 import { VerificationFeeDisplay } from "@/components/verifier/verification-fee-display";
+import { WalletLoginButton } from "@/components/wallet-login-button";
 import { ContactPeerError, contactPeer } from "@/lib/messaging/contact-peer";
 import { setComposeDraft } from "@/lib/messaging/compose-draft";
-import { awaitActiveSnapshot, needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
+import {
+  awaitActiveSnapshot,
+  isSvmMessagingRefusal,
+  needsMessagingSetupCard,
+  SVM_MESSAGING_UNAVAILABLE,
+} from "@/lib/messaging/snapshot-ui";
+import { evmSessionRefusalCopy } from "@/hooks/use-active-account";
 
 type Props = {
   verifierAddress: `0x${string}`;
@@ -75,7 +82,6 @@ export function VerificationRequestButton({
   const { account, signingBinding } = useActiveAccount();
   const evm = requireEvmSession(account);
   const userAddress = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const { session, dispatch } = useMessagingSession();
   const needsMessagingSetup = needsMessagingSetupCard(
@@ -89,7 +95,6 @@ export function VerificationRequestButton({
   const [actionError, setActionError] = useState<string | null>(null);
 
   if (
-    isConnected &&
     userAddress &&
     userAddress.toLowerCase() === verifierAddress.toLowerCase()
   ) {
@@ -97,7 +102,7 @@ export function VerificationRequestButton({
   }
 
   const handleRequestVerification = async () => {
-    if (!isConnected || !userAddress) return;
+    if (!evm.ok || !userAddress) return;
 
     setActionError(null);
     setLoading(true);
@@ -151,16 +156,16 @@ export function VerificationRequestButton({
 
   const isBusy = loading;
 
-  if (!isConnected) {
+  if (!evm.ok) {
     return (
-      <button
-        type="button"
-        disabled
-        aria-label="Connect wallet to request verification"
-        className={`${GHOST_BUTTON_CLASS} opacity-50 pointer-events-none`}
-      >
-        Request verification
-      </button>
+      <div className="space-y-2">
+        <p className="text-sm text-text-secondary" role="status">
+          {isSvmMessagingRefusal(evm.cause)
+            ? SVM_MESSAGING_UNAVAILABLE
+            : evmSessionRefusalCopy(evm.cause)}
+        </p>
+        <WalletLoginButton />
+      </div>
     );
   }
 

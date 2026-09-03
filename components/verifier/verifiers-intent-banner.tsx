@@ -83,15 +83,15 @@ export function VerifiersIntentBanner() {
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const showBecomeKarPro = useShowBecomeKarPro();
-  const isKarPro = isConnected && !showBecomeKarPro;
+  const isKarPro = evm.ok && !showBecomeKarPro;
 
-  if (!isConnected) {
+  // Status banner about the signed-in verifier — nothing to state without one.
+  if (!address) {
     return null;
   }
 
-  if (isKarPro && address) {
+  if (isKarPro) {
     return (
       <div
         role="status"
@@ -106,10 +106,6 @@ export function VerifiersIntentBanner() {
         </p>
       </div>
     );
-  }
-
-  if (!address) {
-    return null;
   }
 
   return <UnverifiedPassportsBanner key={address} address={address} />;

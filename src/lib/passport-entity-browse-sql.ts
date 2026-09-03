@@ -6,26 +6,27 @@
 
 import pg from "pg";
 
-import { DENOMINATION_KIND } from "@/lib/commerce/denomination";
+import { DENOMINATION_KIND } from "../../lib/commerce/denomination.js";
 import {
   ASKING_NATIVE_ASSET,
   askingAssetUsdScale,
   askingNativeDecimals,
   askingUsdcFacts,
-} from "@/lib/commerce/listing-price-display";
+} from "../../lib/commerce/listing-price-display.js";
 import {
   parseFxRatesFromQuery,
   resolveFilterBoundsUsd1e8,
   type ConsignmentBrowseFilters,
-} from "@/lib/marketplace/consignment-browse-filters";
+} from "../../lib/marketplace/consignment-browse-filters.js";
 import {
   FIAT_SCALE,
   type PartialFxRates,
-} from "@/lib/marketplace/price-normalize";
+} from "../../lib/marketplace/price-normalize.js";
 
 import {
   buildPassportEntityUnionSubquery,
   resolveEntityNamespaces,
+  resolveIncludeSvmProjection,
   type PassportEntityQueryOptions,
 } from "./ponder-passport-entity";
 import {
@@ -33,7 +34,7 @@ import {
   foldStatusCounts,
 } from "./ponder-consignment-browse";
 
-export type { ConsignmentBrowseFilters } from "@/lib/marketplace/consignment-browse-filters";
+export type { ConsignmentBrowseFilters } from "../../lib/marketplace/consignment-browse-filters.js";
 
 export type RawBrowseSqlInput = {
   clauses: string[];
@@ -101,32 +102,32 @@ type ConsignmentPgRow = {
 };
 
 const CONSIGNMENT_SELECT = `c.id,
-  c."chainId" AS "chainId",
+  c.chain_id AS "chainId",
   c.mode,
-  c."modeContract" AS "modeContract",
-  c."tokenId" AS "tokenId",
-  c."saleOrdinal" AS "saleOrdinal",
+  c.mode_contract AS "modeContract",
+  c.token_id AS "tokenId",
+  c.sale_ordinal AS "saleOrdinal",
   c.seller,
   c.agent,
   c.asset,
-  c."denominationKind" AS "denominationKind",
-  c."currencyCode" AS "currencyCode",
+  c.denomination_kind AS "denominationKind",
+  c.currency_code AS "currencyCode",
   c.floor,
-  c."compensationForm" AS "compensationForm",
-  c."commissionBps" AS "commissionBps",
+  c.compensation_form AS "compensationForm",
+  c.commission_bps AS "commissionBps",
   c.price,
-  c."platformFeeBps" AS "platformFeeBps",
+  c.platform_fee_bps AS "platformFeeBps",
   c.phase,
-  c."closeReason" AS "closeReason",
-  c."openedAt" AS "openedAt",
-  c."closedAt" AS "closedAt",
-  c."recallRequestedAt" AS "recallRequestedAt",
+  c.close_reason AS "closeReason",
+  c.opened_at AS "openedAt",
+  c.closed_at AS "closedAt",
+  c.recall_requested_at AS "recallRequestedAt",
   c.buyer,
-  c."settlementNoteSetAt" AS "settlementNoteSetAt",
-  c."settlementNoteSetter" AS "settlementNoteSetter",
-  c."openTxHash" AS "openTxHash",
-  c."openLogIndex" AS "openLogIndex",
-  c."updatedAt" AS "updatedAt"`;
+  c.settlement_note_set_at AS "settlementNoteSetAt",
+  c.settlement_note_setter AS "settlementNoteSetter",
+  c.open_tx_hash AS "openTxHash",
+  c.open_log_index AS "openLogIndex",
+  c.updated_at AS "updatedAt"`;
 
 const PASSPORT_STATUS_ORDER = `CASE p.status
   WHEN 'VERIFIED' THEN 0
@@ -165,7 +166,7 @@ export function consignmentPriceUsdRawSql(rates: PartialFxRates | null): string 
 
   const usdcBranches = askingUsdcFacts().map(
     (fact) =>
-      `WHEN c."denominationKind" = ${DENOMINATION_KIND.Asset} AND c."chainId" = ${fact.chainId} AND lower(c.asset) = '${fact.address.toLowerCase()}' THEN (c.price * ${fiatScale}::numeric) / ${askingAssetUsdScale(fact.decimals).toString()}::numeric`,
+      `WHEN c.denomination_kind = ${DENOMINATION_KIND.Asset} AND c.chain_id = ${fact.chainId} AND lower(c.asset) = '${fact.address.toLowerCase()}' THEN (c.price * ${fiatScale}::numeric) / ${askingAssetUsdScale(fact.decimals).toString()}::numeric`,
   );
 
   const nativeAddr = ASKING_NATIVE_ASSET.toLowerCase();
@@ -173,31 +174,31 @@ export function consignmentPriceUsdRawSql(rates: PartialFxRates | null): string 
   return `(CASE
     WHEN c.price <= 0 THEN NULL
     ${usdcBranches.join("\n    ")}
-    WHEN c."denominationKind" = ${DENOMINATION_KIND.Asset}
+    WHEN c.denomination_kind = ${DENOMINATION_KIND.Asset}
       AND (c.asset = '' OR lower(c.asset) = '${nativeAddr}')
       AND ${eth}::numeric > 0
       THEN (c.price * ${eth}::numeric) / ${nativeScale}::numeric
-    WHEN c."denominationKind" = ${DENOMINATION_KIND.Asset} THEN NULL
-    WHEN upper(c."currencyCode") IN ('USD', '') THEN c.price
-    WHEN upper(c."currencyCode") = 'EUR' AND ${eur}::numeric > 0
+    WHEN c.denomination_kind = ${DENOMINATION_KIND.Asset} THEN NULL
+    WHEN upper(c.currency_code) IN ('USD', '') THEN c.price
+    WHEN upper(c.currency_code) = 'EUR' AND ${eur}::numeric > 0
       THEN (c.price * ${eur}::numeric) / ${fiatScale}::numeric
-    WHEN upper(c."currencyCode") = 'CNY' AND ${cny}::numeric > 0
+    WHEN upper(c.currency_code) = 'CNY' AND ${cny}::numeric > 0
       THEN (c.price * ${cny}::numeric) / ${fiatScale}::numeric
-    WHEN upper(c."currencyCode") = 'INR' AND ${inr}::numeric > 0
+    WHEN upper(c.currency_code) = 'INR' AND ${inr}::numeric > 0
       THEN (c.price * ${inr}::numeric) / ${fiatScale}::numeric
-    WHEN upper(c."currencyCode") = 'BRL' AND ${brl}::numeric > 0
+    WHEN upper(c.currency_code) = 'BRL' AND ${brl}::numeric > 0
       THEN (c.price * ${brl}::numeric) / ${fiatScale}::numeric
-    WHEN upper(c."currencyCode") = 'IDR' AND ${idr}::numeric > 0
+    WHEN upper(c.currency_code) = 'IDR' AND ${idr}::numeric > 0
       THEN (c.price * ${idr}::numeric) / ${fiatScale}::numeric
-    WHEN upper(c."currencyCode") = 'AUD' AND ${aud}::numeric > 0
+    WHEN upper(c.currency_code) = 'AUD' AND ${aud}::numeric > 0
       THEN (c.price * ${aud}::numeric) / ${fiatScale}::numeric
-    WHEN upper(c."currencyCode") = 'AED' AND ${aed}::numeric > 0
+    WHEN upper(c.currency_code) = 'AED' AND ${aed}::numeric > 0
       THEN (c.price * ${aed}::numeric) / ${fiatScale}::numeric
-    WHEN upper(c."currencyCode") = 'KRW' AND ${krw}::numeric > 0
+    WHEN upper(c.currency_code) = 'KRW' AND ${krw}::numeric > 0
       THEN (c.price * ${krw}::numeric) / ${fiatScale}::numeric
-    WHEN upper(c."currencyCode") = 'RUB' AND ${rub}::numeric > 0
+    WHEN upper(c.currency_code) = 'RUB' AND ${rub}::numeric > 0
       THEN (c.price * ${rub}::numeric) / ${fiatScale}::numeric
-    WHEN upper(c."currencyCode") = 'JPY' AND ${jpy}::numeric > 0
+    WHEN upper(c.currency_code) = 'JPY' AND ${jpy}::numeric > 0
       THEN (c.price * ${jpy}::numeric) / ${fiatScale}::numeric
     ELSE NULL
   END)`;
@@ -325,19 +326,19 @@ export function buildBrowseOrderBy(
     case "price_asc":
       order.push(`CASE WHEN ${usd} IS NULL THEN 1 ELSE 0 END`);
       order.push(`${usd} ASC NULLS LAST`);
-      order.push(`c."openedAt" DESC`);
+      order.push(`c.opened_at DESC`);
       break;
     case "price_desc":
       order.push(`CASE WHEN ${usd} IS NULL THEN 1 ELSE 0 END`);
       order.push(`${usd} DESC NULLS LAST`);
-      order.push(`c."openedAt" DESC`);
+      order.push(`c.opened_at DESC`);
       break;
     case "mileage_asc":
       order.push(`p.mileage_km ASC`);
-      order.push(`c."openedAt" DESC`);
+      order.push(`c.opened_at DESC`);
       break;
     default:
-      order.push(`c."openedAt" DESC`);
+      order.push(`c.opened_at DESC`);
       break;
   }
 
@@ -389,7 +390,7 @@ function buildBrowseFromClause(args: {
     args.includeSvmProjection,
   );
   return `kargain.consignment c
-    LEFT JOIN ${unionSubquery} p ON c."tokenId" = p.id`;
+    LEFT JOIN ${unionSubquery} p ON c.token_id = p.id`;
 }
 
 export function buildConsignmentBaseConditionsRaw(args: {
@@ -422,7 +423,7 @@ export function buildConsignmentBaseConditionsRaw(args: {
   }
   if (args.chainId !== undefined) {
     params.push(args.chainId);
-    clauses.push(`c."chainId" = $${params.length}`);
+    clauses.push(`c.chain_id = $${params.length}`);
   }
   if (args.seller) {
     params.push(args.seller);
@@ -456,7 +457,7 @@ export async function queryConsignmentBrowseWithEntityUnion(
   const params: unknown[] = [];
   const fromClause = buildBrowseFromClause({
     namespaces,
-    includeSvmProjection: opts?.includeSvmProjection ?? true,
+    includeSvmProjection: resolveIncludeSvmProjection(opts),
     params,
   });
 

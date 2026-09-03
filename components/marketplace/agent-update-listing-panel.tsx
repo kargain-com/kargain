@@ -7,6 +7,7 @@ import { parseUnits } from "viem";
 import { useReadContract } from "wagmi";
 
 import { AgentLowerCommissionPanel } from "@/components/commerce/agent-lower-commission-panel";
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -90,7 +91,6 @@ export function AgentUpdateListingPanel({
   const { account, switchChain } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const walletChain = evm.ok ? evm.chainId : undefined;
   const switchAvail = evmSwitchChainAvailability(account);
 
@@ -101,7 +101,7 @@ export function AgentUpdateListingPanel({
 
   const market = commerceModeAddress("fixedPrice", chainId);
   const tid = BigInt(tokenId);
-  const wrongChain = walletChain !== chainId;
+  const wrongChain = evm.ok && walletChain !== chainId;
   const listingCurrency: ListingCurrencyCode = "USD";
 
   const [priceInput, setPriceInput] = useState(() =>
@@ -135,8 +135,7 @@ export function AgentUpdateListingPanel({
     platformFeeBps,
   });
 
-  const isAgentWallet =
-    isConnected && address?.toLowerCase() === wallet.toLowerCase();
+  const isAgentWallet = address?.toLowerCase() === wallet.toLowerCase();
 
   const submitDisabledReason = useMemo(() => {
     if (!isAgentWallet) return "Connect the agent wallet to update this sale.";
@@ -237,9 +236,14 @@ export function AgentUpdateListingPanel({
         </p>
       )}
 
-      {submitDisabledReason && !busy && (
+      {!evm.ok ? (
+        <EvmSessionRefusal
+          cause={evm.cause}
+          disconnectedTitle="Connect the agent wallet to update this sale."
+        />
+      ) : submitDisabledReason && !busy ? (
         <p className="text-xs text-text-secondary">{submitDisabledReason}</p>
-      )}
+      ) : null}
 
       <Button
         type="button"

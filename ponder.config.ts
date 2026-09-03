@@ -33,6 +33,7 @@ const {
   addresses,
   ethereumSepoliaAddresses,
   localAddresses,
+  optionalAddresses,
   contractEntry,
   database,
 } = buildPonderRuntime();
@@ -57,12 +58,9 @@ function dualEntry(
   });
 }
 
-const fixedPriceAddress =
-  addresses.fixedPriceConsignment ?? localAddresses?.fixedPriceConsignment;
-const ascendingAddress =
-  addresses.ascendingConsignment ?? localAddresses?.ascendingConsignment;
-const gatewayAddress =
-  addresses.bridgeGateway ?? localAddresses?.bridgeGateway;
+const fixedPriceAddress = optionalAddresses.FixedPriceConsignment;
+const ascendingAddress = optionalAddresses.AscendingConsignment;
+const gatewayAddress = optionalAddresses.KarPassportBridgeGateway;
 
 export default createConfig({
   // Cross-chain consistency for owner/status/uri via global timestamp order.

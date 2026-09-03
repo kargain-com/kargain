@@ -330,3 +330,27 @@ export function bridgeActionCopy(
     idleButton: `Move to ${dstName}`,
   };
 }
+
+/** Mono hop id line (design-spec §4.19). */
+export function bridgeHopIdLine(srcChainId: number, dstChainId: number): string {
+  return `${srcChainId} → ${dstChainId}`;
+}
+
+/**
+ * After the first hop of a multi-hop route settles — operation stays open
+ * (design-spec §4.19). Never frames arrival that has not happened.
+ */
+export const BRIDGE_SECOND_HOP_REQUIRED =
+  "A second hop is required to finish this move.";
+
+/**
+ * Wallet VM mismatch for the next hop (design-spec §4.19 / §4.7).
+ * Never a network-switch prompt.
+ */
+export function bridgeNextHopWrongVmCopy(input: {
+  networkName: string;
+  wantedFamily: "evm" | "svm";
+}): string {
+  const family = input.wantedFamily === "evm" ? "Ethereum" : "Solana";
+  return `The next hop is on ${input.networkName}. Connect a ${family} wallet to continue.`;
+}

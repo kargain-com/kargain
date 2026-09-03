@@ -12,7 +12,7 @@ import { CommercePausedNotice } from "@/components/commerce/commerce-paused-noti
 import { DirectPaymentNote } from "@/components/marketplace/direct-payment-note";
 import { ListingDisplayPrice } from "@/components/marketplace/listing-display-price";
 import { Button } from "@/components/ui/button";
-import { WalletLoginButton } from "@/components/wallet-login-button";
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { useClaimAssetMeta } from "@/hooks/use-claim-asset-meta";
 import { useCommerceModePaused } from "@/hooks/use-commerce-mode-paused";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
@@ -86,7 +86,6 @@ export function ListingBuyPanel({
   const { account, switchChain } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const walletChain = evm.ok ? evm.chainId : undefined;
   const switchAvail = evmSwitchChainAvailability(account);
 
@@ -98,7 +97,7 @@ export function ListingBuyPanel({
 
   const market = commerceModeAddress("fixedPrice", chainId);
   const wc = wagmiChainId(chainId);
-  const wrongChain = walletChain !== chainId;
+  const wrongChain = evm.ok && walletChain !== chainId;
   const tid = BigInt(tokenId);
   const requiresRiskAck = needsBuyRiskAck({ passportStatus, duplicateVin });
   const { paused: modePaused } = useCommerceModePaused({
@@ -380,15 +379,16 @@ export function ListingBuyPanel({
       />
     ) : null;
 
-  if (!isConnected) {
+  if (!evm.ok) {
     return (
       <div className="space-y-3">
         {priceBlock}
         {directPaymentBlock}
-        <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
-          <p className="text-sm text-text-secondary">Connect wallet to buy</p>
-          <WalletLoginButton />
-        </div>
+        <EvmSessionRefusal
+          cause={evm.cause}
+          disconnectedTitle="Connect wallet to buy"
+          className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4"
+        />
       </div>
     );
   }

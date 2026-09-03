@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# One-shot local E2E: Hardhat node → deploy → Ponder (PGlite) → viem lifecycle test → teardown.
+# One-shot local E2E: Hardhat node → deploy → Postgres → Ponder → viem lifecycle → teardown.
 #
 # Usage (from repo root):
 #   ./scripts/e2e-local.sh                    # full strict: chain + indexer assertions
 #   KARGAIN_E2E_CHAIN_ONLY=1 ./scripts/e2e-local.sh   # chain lifecycle only (loud skip)
 #
-# Ponder runs on embedded PGlite in dev — Docker is NOT required. Sets
-# KARGAIN_E2E_STRICT=1 so an unreachable indexer fails the suite (not a silent skip).
+# Strict mode needs Docker Postgres: passport entity / provenance / custody UNION
+# reads use `pg` + DATABASE_URL (PGlite alone cannot serve those HTTP paths).
+# Sets KARGAIN_E2E_STRICT=1 so an unreachable indexer fails the suite.
 #
 # Requires deployments/31337.json to include fixedPriceConsignment + ascendingConsignment
 # (written by `pnpm deploy:local`).
@@ -17,10 +18,13 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 CHAIN_ONLY="${KARGAIN_E2E_CHAIN_ONLY:-0}"
-PONDER_PGLITE_DIR="$ROOT/.ponder/e2e-pglite"
+E2E_PG_NAME="${KARGAIN_E2E_PG_NAME:-kargain-e2e-pg}"
+E2E_PG_PORT="${KARGAIN_E2E_PG_PORT:-55432}"
+E2E_PG_PASSWORD="${KARGAIN_E2E_PG_PASSWORD:-e2e_local}"
 
 NODE_PID=""
 PONDER_PID=""
+STARTED_E2E_PG=0
 
 cleanup() {
   if [[ -n "${PONDER_PID}" ]] && kill -0 "${PONDER_PID}" 2>/dev/null; then
@@ -28,6 +32,9 @@ cleanup() {
   fi
   if [[ -n "${NODE_PID}" ]] && kill -0 "${NODE_PID}" 2>/dev/null; then
     kill "${NODE_PID}" 2>/dev/null || true
+  fi
+  if [[ "${STARTED_E2E_PG}" == "1" ]]; then
+    docker rm -f "${E2E_PG_NAME}" >/dev/null 2>&1 || true
   fi
 }
 
@@ -62,9 +69,7 @@ export PONDER_RPC_URL_31337=http://127.0.0.1:8545
 export PONDER_START_BLOCK=0
 export PONDER_START_BLOCK_31337=0
 export PONDER_SQL_API_URL="${PONDER_SQL_API_URL:-http://localhost:42069}"
-# Embedded PGlite: leave DATABASE_URL unset so resolvePonderDatabase() picks PGlite.
-unset DATABASE_URL PONDER_DATABASE_URL DATABASE_PRIVATE_URL
-export PONDER_PGLITE_DIR
+unset PONDER_DATABASE_URL DATABASE_PRIVATE_URL PONDER_PGLITE_DIR
 
 if [[ "${CHAIN_ONLY}" == "1" ]]; then
   export KARGAIN_E2E_CHAIN_ONLY=1
@@ -75,14 +80,48 @@ if [[ "${CHAIN_ONLY}" == "1" ]]; then
   exit 0
 fi
 
-echo "==> Starting Ponder (embedded PGlite)…"
-rm -rf "${PONDER_PGLITE_DIR}"
+if ! command -v docker >/dev/null 2>&1; then
+  echo "ERROR: docker is required for strict e2e (DATABASE_URL for UNION reads)" >&2
+  echo "       (Run chain-only: KARGAIN_E2E_CHAIN_ONLY=1 ./scripts/e2e-local.sh)" >&2
+  exit 1
+fi
+
+echo "==> Starting ephemeral Postgres (${E2E_PG_NAME} on :${E2E_PG_PORT})…"
+docker rm -f "${E2E_PG_NAME}" >/dev/null 2>&1 || true
+docker run -d --name "${E2E_PG_NAME}" \
+  -e POSTGRES_USER=ponder \
+  -e POSTGRES_PASSWORD="${E2E_PG_PASSWORD}" \
+  -e POSTGRES_DB=kargain_ponder \
+  -p "127.0.0.1:${E2E_PG_PORT}:5432" \
+  postgres:16-alpine >/dev/null
+STARTED_E2E_PG=1
+
+for _ in $(seq 1 60); do
+  if docker exec "${E2E_PG_NAME}" pg_isready -U ponder -d kargain_ponder >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+if ! docker exec "${E2E_PG_NAME}" pg_isready -U ponder -d kargain_ponder >/dev/null 2>&1; then
+  echo "ERROR: Postgres did not become ready" >&2
+  exit 1
+fi
+
+export DATABASE_URL="postgresql://ponder:${E2E_PG_PASSWORD}@127.0.0.1:${E2E_PG_PORT}/kargain_ponder"
+# UNION owners qualify EVM tables as kargain.* (same as VPS compose).
+export DATABASE_SCHEMA=kargain
+
+echo "==> Applying empty kargain_svm_projection (UNION arm)…"
+docker exec -i "${E2E_PG_NAME}" psql -U ponder -d kargain_ponder \
+  < "$ROOT/src/svm-ingest/db/projection-schema.sql" >/dev/null
+
+echo "==> Starting Ponder (Postgres)…"
 pnpm ponder:dev > /tmp/kargain-e2e-ponder.log 2>&1 &
 PONDER_PID=$!
 
-echo "==> Waiting for Ponder /ready (up to 60s)…"
+echo "==> Waiting for Ponder /ready (up to 120s)…"
 PONDER_READY=0
-for _ in $(seq 1 60); do
+for _ in $(seq 1 120); do
   if curl -sf "${PONDER_SQL_API_URL}/ready" >/dev/null 2>&1; then
     PONDER_READY=1
     break
@@ -90,7 +129,7 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 if [[ "${PONDER_READY}" != "1" ]]; then
-  echo "ERROR: ${PONDER_SQL_API_URL}/ready did not return 200 within 60s" >&2
+  echo "ERROR: ${PONDER_SQL_API_URL}/ready did not return 200 within 120s" >&2
   echo "       See /tmp/kargain-e2e-ponder.log" >&2
   echo "       (Run chain-only: KARGAIN_E2E_CHAIN_ONLY=1 ./scripts/e2e-local.sh)" >&2
   exit 1

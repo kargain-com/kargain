@@ -1,4 +1,7 @@
-import { auctionAssetLabelFromAddress } from "@/lib/auction/owner-min-asset";
+import {
+  auctionAssetLabelFromAddress,
+  type AuctionAssetLabel,
+} from "@/lib/auction/owner-min-asset";
 import { formatPassportShortLabel } from "@/lib/passport/passport-token-id";
 import { resolveUri } from "@/lib/storage/resolve-uri";
 import type { PassportStatus } from "@/lib/types/ponder";
@@ -96,7 +99,7 @@ export type AuctionRow = {
   seller: `0x${string}`;
   agent: string | null;
   asset: string;
-  assetLabel: "ETH" | "USDC";
+  assetLabel: AuctionAssetLabel;
   reserve: bigint;
   duration: bigint;
   agentFeeBps: number;
@@ -182,11 +185,11 @@ function normalizePhase(phase: string): PonderAuctionPhase {
   return "CREATED";
 }
 
-/** Native / empty → ETH; otherwise USDC via settlement-asset identity. */
+/** Settlement-asset label for the auction row (native symbol from the stack). */
 export function auctionAssetLabel(
   asset: string | undefined | null,
   chainId: number,
-): "ETH" | "USDC" {
+): AuctionAssetLabel {
   return auctionAssetLabelFromAddress(asset, chainId);
 }
 

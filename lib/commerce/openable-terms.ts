@@ -20,9 +20,12 @@ import { COMPENSATION_FORM_DEFS } from "@/lib/commerce/compensation-form";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 
-/** Seller-facing copy — mirrors `PaymentTokenFeedRequired` mapper sense. */
+/**
+ * Fiat withheld because the network has no measured payment-token feed
+ * (design-spec §4.16 quote asymmetry — stated, not omitted).
+ */
 export const FIAT_TOKEN_FEED_REQUIRED_REASON =
-  "Fiat-priced sales in this token need a payment-token price feed.";
+  "Fiat pricing needs a measured price feed, which this network does not have";
 
 export const FIXED_PRICE_MODE_UNAVAILABLE_REASON =
   "Fixed-price selling is not available on this chain yet.";

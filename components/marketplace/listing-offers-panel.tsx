@@ -147,7 +147,7 @@ export function ListingOffersPanel({
 
   const market = commerceModeAddress("fixedPrice", chainId);
   const tid = BigInt(tokenId);
-  const wrongChain = walletChain !== chainId;
+  const wrongChain = evm.ok && walletChain !== chainId;
 
   const [confirmingBuyer, setConfirmingBuyer] = useState<`0x${string}` | null>(null);
   const [confirmedBuyer, setConfirmedBuyer] = useState<`0x${string}` | null>(null);

@@ -7,7 +7,7 @@
 | [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md) | **Current** | Nuclear #4 dual-chain deploy + reindex |
 | [ops/deploys/archive/84532-v2.md](../ops/deploys/archive/84532-v2.md) | **Historical** | June 2026 v2 deploy + VPS cutover record |
 
-**Production (Nuclear #4 cutover August 2, 2026):** committed start blocks hub **44957457** / Eth **11404204**. **Browse Phase 1 live** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)): Vercel on `master` push; VPS reindex ASAP after schema + B1. Smoke: `/consignments` (+ B1), payment-tokens, obligations, notifications. **S7b–c (September 2026):** `bridge_crossing` + **`custody_determining_event`** indexed on branch; HTTP custody via read-time fold ([`src/lib/ponder-passport-custody.ts`](../../src/lib/ponder-passport-custody.ts)) on `GET /passports/:tokenId`, profile passports, commerce denorm — **`custodyChain` | `custodyUnresolved`**. **S7c-1/2:** **`kargain_svm_raw`** + **`kargain_svm_projection`** via **`svm-ingest`** — provenance UNION on `records[]` / `uriHistory[]`. **VPS full reindex + svm-ingest enable deferred to S9** ([OPERATIONS.md §S9](./OPERATIONS.md)).
+**Production (Nuclear #4 cutover August 2, 2026):** committed start blocks hub **44957457** / Eth **11404204**. **Browse Phase 1 live** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)): Vercel on `master` push; VPS reindex ASAP after schema + B1. Smoke: `/consignments` (+ B1), payment-tokens, obligations, notifications. **S7b–c (September 2026):** `bridge_crossing` + **`custody_determining_event`** indexed on branch; HTTP custody via read-time fold ([`src/lib/ponder-passport-custody.ts`](../../src/lib/ponder-passport-custody.ts)) on `GET /passports/:tokenId`, profile passports, commerce denorm — **`custodyChain` | `custodyUnresolved`**. **S7c-1/2:** **`kargain_svm_raw`** + **`kargain_svm_projection`** via **`svm-ingest`** — provenance UNION on `records[]` / `uriHistory[]`. HTTP UNION SQL **always** includes the SVM arm; apply empty [`src/svm-ingest/db/projection-schema.sql`](../../src/svm-ingest/db/projection-schema.sql) wherever that HTTP is served **before** svm-ingest is live (S9). Ponder 0.16 physical EVM columns on `DATABASE_SCHEMA=kargain` are **snake_case** (`chain_id`, not quoted `"chainId"`). **VPS full reindex + svm-ingest enable deferred to S9** ([OPERATIONS.md §S9](./OPERATIONS.md)).
 
 ## SVM raw ingest (S7c-1)
 
@@ -31,7 +31,7 @@ Materialized schema **`kargain_svm_projection`** — tables `passport_record`, `
 |------|--------|
 | Read owner | [`src/lib/ponder-passport-provenance.ts`](../../src/lib/ponder-passport-provenance.ts) — one `UNION ALL` SQL per call |
 | Union routes | `GET /passports/:tokenId` (`records[]`, `uriHistory[]`); `GET /verifiers/:address/attestations`; notifications owned-passport record loop |
-| Namespace filter | Registered commercial namespaces only — unregistered SVM rows never surface |
+| Namespace filter | [`src/lib/ponder-read-namespaces.ts`](../../src/lib/ponder-read-namespaces.ts) `indexerReadNamespaceIds()` — commercial stacks plus localhost when `PONDER_ENABLE_LOCAL=1`. Unregistered SVM rows never surface. Query shape does **not** depend on a Solana `COMMERCIAL_ACTIVE` row. |
 | Replay proof | `pnpm svm-projection:replay-digest` (requires `SVM_INGEST_RPC_URL` unset) |
 
 **S7c-2 non-goals:** no `passport` entity UNION; no custody fold; no production VPS action until **S9**.

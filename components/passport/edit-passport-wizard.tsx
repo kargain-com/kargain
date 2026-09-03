@@ -17,7 +17,7 @@ import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { PhotoDropZone } from "@/components/passport/photo-drop-zone";
 import { PhotoThumbGrid } from "@/components/passport/photo-thumb-grid";
 import { Button } from "@/components/ui/button";
-import { WalletLoginButton } from "@/components/wallet-login-button";
+import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useWalletAccountKind } from "@/hooks/use-wallet-account-kind";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
@@ -99,7 +99,6 @@ export function EditPassportWizard({
   const { account, switchChain, signingBinding } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const walletChain = evm.ok ? evm.chainId : undefined;
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const switchAvail = evmSwitchChainAvailability(account);
@@ -113,7 +112,7 @@ export function EditPassportWizard({
     syncLagged,
   } = useTxSync(chainId);
   const wc = wagmiChainId(chainId);
-  const wrongChain = isConnected && walletChain !== chainId;
+  const wrongChain = evm.ok && walletChain !== chainId;
   const { kind: accountKind, isLoading: isLoadingAccountKind } = useWalletAccountKind(
     address,
     connector,
@@ -393,12 +392,13 @@ export function EditPassportWizard({
       ? "Save changes"
       : editPhaseLabel(displayPhase);
 
-  if (!isConnected) {
+  if (!evm.ok) {
     return (
-      <div className="space-y-4">
-        <p className="text-sm text-text-secondary">Connect wallet to edit this passport.</p>
-        <WalletLoginButton />
-      </div>
+      <EvmSessionRefusal
+        cause={evm.cause}
+        disconnectedTitle="Connect wallet to edit this passport."
+        className="space-y-4"
+      />
     );
   }
 

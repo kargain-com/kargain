@@ -13,6 +13,7 @@ import {
 } from "@/lib/auction/auction-live-signals";
 import { formatAuctionAmount } from "@/lib/auction/format-auction";
 import type { AuctionUiState } from "@/lib/auction/map-ponder-auction";
+import type { AuctionAssetLabel } from "@/lib/auction/owner-min-asset";
 import {
   commercialActive,
   nativeUnitOf,
@@ -28,7 +29,7 @@ type Args = {
   startedAt: bigint;
   highestBidder: string | null;
   highestBid: bigint;
-  assetLabel: "ETH" | "USDC";
+  assetLabel: AuctionAssetLabel;
   uiState: AuctionUiState;
   wallet: string | undefined;
   extensionWindow: bigint;

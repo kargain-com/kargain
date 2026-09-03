@@ -5,9 +5,7 @@
 
 import pg from "pg";
 
-import {
-  registeredCommercialNamespaceIds,
-} from "@/lib/web3/commercial-active";
+import { indexerReadNamespaceIds } from "./ponder-read-namespaces.js";
 
 export type ProvenancePassportRecord = {
   id: string;
@@ -39,7 +37,7 @@ export type AttestationRow = {
 };
 
 export type ProvenanceQueryOptions = {
-  /** Test-only override — production must use registeredCommercialNamespaceIds(). */
+  /** Test-only override — production uses indexerReadNamespaceIds(). */
   namespaces?: readonly number[];
   /** Test-only: omit SVM arm for negative-control proofs. */
   includeSvmProjection?: boolean;
@@ -66,7 +64,15 @@ export function resolveProvenanceNamespaces(
   opts?: ProvenanceQueryOptions,
 ): number[] {
   if (opts?.namespaces != null) return [...opts.namespaces];
-  return [...registeredCommercialNamespaceIds()];
+  return [...indexerReadNamespaceIds()];
+}
+
+/** Product default is always the SVM UNION arm; `false` is test-only omit. */
+export function resolveIncludeSvmProjection(
+  opts?: ProvenanceQueryOptions,
+): boolean {
+  if (opts?.includeSvmProjection != null) return opts.includeSvmProjection;
+  return true;
 }
 
 function mapRecordRow(row: {
@@ -212,7 +218,7 @@ export async function loadPassportRecordsByTokenId(
   const { sql, params } = buildUnionPassportRecordsSql({
     tokenId,
     namespaces,
-    includeSvmProjection: opts?.includeSvmProjection ?? true,
+    includeSvmProjection: resolveIncludeSvmProjection(opts),
   });
   const res = await pool.query(sql, params);
   return res.rows.map(mapRecordRow);
@@ -227,7 +233,7 @@ export async function loadPassportUriHistoryByTokenId(
   const { sql, params } = buildUnionUriHistorySql({
     tokenId,
     namespaces,
-    includeSvmProjection: opts?.includeSvmProjection ?? true,
+    includeSvmProjection: resolveIncludeSvmProjection(opts),
   });
   const res = await pool.query(sql, params);
   return res.rows.map(mapUriRow);
@@ -243,7 +249,7 @@ export async function loadAttestationsByAuthor(
     author,
     recordType: "attestation",
     namespaces,
-    includeSvmProjection: args.includeSvmProjection ?? true,
+    includeSvmProjection: resolveIncludeSvmProjection(args),
     limit: args.limit,
     offset: args.offset,
   });
@@ -266,7 +272,7 @@ export async function countAttestationsByAuthor(
     author,
     recordType: "attestation",
     namespaces,
-    includeSvmProjection: opts?.includeSvmProjection ?? true,
+    includeSvmProjection: resolveIncludeSvmProjection(opts),
   });
   const res = await pool.query(
     `SELECT COUNT(*)::int AS total FROM (${sql}) AS counted`,

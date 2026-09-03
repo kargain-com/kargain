@@ -17,6 +17,7 @@ import {
   useActiveAccount,
 } from "@/hooks/use-active-account";
 import {
+  chainSelectorStateCopy,
   chainSelectorSwitchTargets,
   deriveChainSelectorState,
 } from "@/lib/web3/chain-selector-state";
@@ -43,7 +44,7 @@ function ChainStatusDot({ wrong }: { wrong?: boolean }) {
 
 /**
  * Chain selector driven by {@link deriveChainSelectorState}.
- * Disconnected → hidden. SVM → visible `wrong_vm` (empty switch targets; chrome copy is screens slice).
+ * Disconnected → hidden. SVM → visible `wrong_vm` (§4.7 copy; empty switch targets).
  */
 export function ChainSelector({ syncSearchParam, expectedChainId, className }: Props) {
   const router = useRouter();
@@ -69,12 +70,9 @@ export function ChainSelector({ syncSearchParam, expectedChainId, className }: P
     syncSearchParam ? (urlChain ?? walletChainId ?? 0) : (walletChainId ?? 0);
   const wrong = selectorState !== "ok";
   const activeChain = getViemChain(displayChainId);
+  const stateCopy = chainSelectorStateCopy(selectorState);
   const chainName =
-    selectorState === "wrong_vm"
-      ? "Wrong network"
-      : selectorState === "wrong_network"
-        ? "Wrong network"
-        : (activeChain?.name ?? `Chain ${displayChainId}`);
+    stateCopy ?? activeChain?.name ?? `Chain ${displayChainId}`;
   const switchTargets = chainSelectorSwitchTargets(expectedChainId, selectorState);
 
   const onSwitchTo = useCallback(
@@ -123,8 +121,10 @@ export function ChainSelector({ syncSearchParam, expectedChainId, className }: P
   const trigger = (
     <>
       <ChainStatusDot wrong={wrong} />
-      <span className="max-w-[9rem] truncate">{chainName}</span>
-      <ChevronDownIcon size={14} className="shrink-0 text-text-secondary" aria-hidden />
+      <span className="max-w-[14rem] truncate">{chainName}</span>
+      {switchTargets.length > 0 ? (
+        <ChevronDownIcon size={14} className="shrink-0 text-text-secondary" aria-hidden />
+      ) : null}
     </>
   );
 
@@ -135,7 +135,7 @@ export function ChainSelector({ syncSearchParam, expectedChainId, className }: P
         : "a Kargain network";
     const ariaLabel =
       selectorState === "wrong_vm"
-        ? "Wrong network — wallet family cannot switch to this network"
+        ? (stateCopy ?? chainName)
         : `Wrong network — switch to ${ariaTarget}`;
     return (
       <DropdownMenu>

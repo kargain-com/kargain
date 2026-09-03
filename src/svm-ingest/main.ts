@@ -109,7 +109,16 @@ async function main(): Promise<void> {
   );
 }
 
-main().catch((err) => {
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+/** Direct CLI only — never run when Ponder's indexer graph loads this file under `src/`. */
+function isExecutedAsCli(): boolean {
+  const entry = process.argv[1];
+  if (entry == null) return false;
+  return /svm-ingest[/\\]main\.(ts|js|mjs|cjs)$/.test(entry);
+}
+
+if (isExecutedAsCli()) {
+  main().catch((err) => {
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
+}

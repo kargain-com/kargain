@@ -7,9 +7,14 @@ import {
   parseNativeAmount,
 } from "@/lib/web3/native-amount";
 
-export type AuctionAssetLabel = "ETH" | "USDC";
+export type AuctionAssetLabel = string;
 
+const USDC_LABEL = "USDC";
 const USDC_DECIMALS = 6;
+
+function isUsdcAuctionLabel(assetLabel: string): boolean {
+  return assetLabel === USDC_LABEL;
+}
 
 /** Parse a human amount string into asset units (native base / USDC 6-decimals). */
 export function parseOwnerMinAsset(
@@ -20,7 +25,7 @@ export function parseOwnerMinAsset(
   const trimmed = input.trim();
   if (!trimmed) return null;
   try {
-    if (assetLabel === "USDC") {
+    if (isUsdcAuctionLabel(assetLabel)) {
       return parseUnits(trimmed, USDC_DECIMALS);
     }
     return parseNativeAmount(trimmed, nativeUnit);
@@ -35,7 +40,7 @@ export function formatOwnerMinAsset(
   assetLabel: AuctionAssetLabel,
   nativeUnit: CommercialNativeUnit,
 ): string {
-  if (assetLabel === "USDC") {
+  if (isUsdcAuctionLabel(assetLabel)) {
     return formatUnits(amount, USDC_DECIMALS);
   }
   return formatNativeAmount(amount, nativeUnit);
@@ -52,18 +57,12 @@ export function isValidOwnerMinAsset(
 }
 
 /**
- * Map chain asset address to ascending UI label (ETH | USDC).
- * Delegates identity to {@link resolveSettlementAssetMeta}; unknown non-native
- * admits collapse to USDC (sole ERC-20 on commercial chains today).
- * Native uses the stack symbol when it is ETH; other symbols still map to the
- * ETH auction label slot until ascending admits non-ETH natives in UI.
+ * Map chain asset address to ascending UI label from settlement meta
+ * (native symbol from the network class — never invent ETH).
  */
 export function auctionAssetLabelFromAddress(
   asset: string | undefined | null,
   chainId: number,
 ): AuctionAssetLabel {
-  const meta = resolveSettlementAssetMeta({ chainId, asset });
-  if (meta.identity === "native") return "ETH";
-  if (meta.identity === "usdc") return "USDC";
-  return "USDC";
+  return resolveSettlementAssetMeta({ chainId, asset }).label;
 }

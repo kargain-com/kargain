@@ -87,7 +87,7 @@ export function OwnerLowerFloorPanel({
   const market = commerceModeAddress(mode, chainId);
   const abi = commerceModeAbi(mode);
   const tid = useMemo(() => BigInt(tokenId), [tokenId]);
-  const wrongChain = walletChain !== chainId;
+  const wrongChain = evm.ok && walletChain !== chainId;
 
   const gate = deriveOwnerLowerFloorConcession({
     live,

@@ -64,7 +64,6 @@ export function AuctionDetailClientIsland({
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const mode = commerceModeAddress("ascending", chainId);
 
   const auction = detail.auction;
@@ -103,8 +102,8 @@ export function AuctionDetailClientIsland({
     ),
   });
 
+  // Mandate match already requires a connected EVM agent address.
   const showAgentCreate =
-    isConnected &&
     canAgentOpenFromMandate({
       mandate,
       agentAddress: address,

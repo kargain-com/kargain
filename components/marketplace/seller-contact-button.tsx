@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { WalletLoginButton } from "@/components/wallet-login-button";
 import { useMessagingSession } from "@/hooks/use-messaging-session";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachability";
@@ -15,7 +16,13 @@ import {
   setComposeDraft,
 } from "@/lib/messaging/compose-draft";
 import { ContactPeerError, contactPeer } from "@/lib/messaging/contact-peer";
-import { awaitActiveSnapshot, needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
+import {
+  awaitActiveSnapshot,
+  isSvmMessagingRefusal,
+  needsMessagingSetupCard,
+  SVM_MESSAGING_UNAVAILABLE,
+} from "@/lib/messaging/snapshot-ui";
+import { evmSessionRefusalCopy } from "@/hooks/use-active-account";
 import { isMessageablePeerOnCommercialChains } from "@/lib/web3/wallet-account";
 
 type Props = {
@@ -28,7 +35,6 @@ export function SellerContactButton({ peerAddress, label, listingTokenId }: Prop
   const { account, signingBinding } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const router = useRouter();
   const { snapshot, dispatch, session } = useMessagingSession();
@@ -46,8 +52,17 @@ export function SellerContactButton({ peerAddress, label, listingTokenId }: Prop
     return null;
   }
 
-  if (!isConnected) {
-    return null;
+  if (!evm.ok) {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm text-text-secondary" role="status">
+          {isSvmMessagingRefusal(evm.cause)
+            ? SVM_MESSAGING_UNAVAILABLE
+            : evmSessionRefusalCopy(evm.cause)}
+        </p>
+        <WalletLoginButton />
+      </div>
+    );
   }
 
   if (!isMessageablePeerOnCommercialChains(peerAddress)) {

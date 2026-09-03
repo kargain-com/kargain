@@ -11,7 +11,7 @@ const USDC_DECIMALS = 6;
 /** Format auction amount for display (native unit or USDC). Mono substitutions. */
 export function formatAuctionAmount(
   amount: bigint,
-  assetLabel: "ETH" | "USDC",
+  assetLabel: string,
   nativeUnit: CommercialNativeUnit,
 ): string {
   if (assetLabel === "USDC") {
