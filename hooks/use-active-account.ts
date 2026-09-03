@@ -148,6 +148,7 @@ export {
   commercialNamespaceOf,
   connectedAddress,
   evmSessionRefusalCopy,
+  evmSessionRefusalTitle,
   evmSwitchChainAvailability,
   isAccountConnected,
   requireEvmSession,

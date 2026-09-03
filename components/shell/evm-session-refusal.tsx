@@ -9,7 +9,7 @@
 import { EmptyState } from "@/components/ui/empty-state";
 import { WalletLoginButton } from "@/components/wallet-login-button";
 import {
-  evmSessionRefusalCopy,
+  evmSessionRefusalTitle,
   type EvmSessionCause,
 } from "@/hooks/use-active-account";
 
@@ -25,10 +25,7 @@ export function EvmSessionRefusal({
   disconnectedTitle,
   className,
 }: Props) {
-  const title =
-    cause === "disconnected" && disconnectedTitle
-      ? disconnectedTitle
-      : evmSessionRefusalCopy(cause);
+  const title = evmSessionRefusalTitle(cause, disconnectedTitle);
   return (
     <div className={className ?? "space-y-3"}>
       <EmptyState variant="infrastructure" level="B" title={title} />

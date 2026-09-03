@@ -12,6 +12,7 @@ import { join } from "node:path";
 
 import {
   evmSessionRefusalCopy,
+  evmSessionRefusalTitle,
   wrongVmActionCopy,
 } from "../lib/web3/active-account.ts";
 import {
@@ -84,6 +85,61 @@ describe("S8-5 named unavailability owners", () => {
     assert.equal(evmSessionRefusalCopy("wrong_vm"), SPEC_WRONG_VM_EVM);
     assert.equal(txWriteRefusalMessage("wrong_vm"), SPEC_WRONG_VM_EVM);
     assert.equal(chainSelectorStateCopy("wrong_vm"), SPEC_WRONG_VM_EVM);
+  });
+
+  it("disconnectedTitle never overrides wrong_vm (verification-modal class)", () => {
+    const feeDisconnected =
+      "Connect your wallet to pay the verification fee.";
+    const inspectDisconnected =
+      "Connect your wallet to pay for inspection.";
+    assert.equal(
+      evmSessionRefusalTitle("wrong_vm", feeDisconnected),
+      SPEC_WRONG_VM_EVM,
+    );
+    assert.equal(
+      evmSessionRefusalTitle("wrong_vm", inspectDisconnected),
+      SPEC_WRONG_VM_EVM,
+    );
+    assert.equal(
+      evmSessionRefusalTitle("disconnected", feeDisconnected),
+      feeDisconnected,
+    );
+    assert.equal(
+      evmSessionRefusalTitle("disconnected", inspectDisconnected),
+      inspectDisconnected,
+    );
+    assert.equal(
+      evmSessionRefusalTitle("disconnected"),
+      evmSessionRefusalCopy("disconnected"),
+    );
+
+    // Planted defect: applying disconnected override on wrong_vm without a cause gate.
+    const plantedBroken = (cause: "disconnected" | "wrong_vm", override?: string) =>
+      override ?? evmSessionRefusalCopy(cause);
+    assert.equal(
+      plantedBroken("wrong_vm", feeDisconnected),
+      feeDisconnected,
+      "control: ungated override would lie to an SVM session",
+    );
+    assert.notEqual(
+      evmSessionRefusalTitle("wrong_vm", feeDisconnected),
+      feeDisconnected,
+    );
+  });
+
+  it("EvmSessionRefusal chrome consumes evmSessionRefusalTitle", () => {
+    const src = readFileSync(
+      join(
+        fileURLToPath(new URL("..", import.meta.url)),
+        "components/shell/evm-session-refusal.tsx",
+      ),
+      "utf8",
+    );
+    assert.match(src, /evmSessionRefusalTitle/);
+    assert.doesNotMatch(
+      src,
+      /cause === "disconnected" && disconnectedTitle/,
+    );
   });
 
   it("wrong_vm never offers network switch targets", () => {

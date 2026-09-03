@@ -147,6 +147,20 @@ export function evmSessionRefusalCopy(cause: EvmSessionCause): string {
 }
 
 /**
+ * Title for EVM-session refusal chrome.
+ * Surface-specific `disconnectedTitle` applies **only** to `disconnected`.
+ * `wrong_vm` always uses {@link evmSessionRefusalCopy} — never a generic
+ * "connect your wallet" override (design-spec §4.7 names the family).
+ */
+export function evmSessionRefusalTitle(
+  cause: EvmSessionCause,
+  disconnectedTitle?: string,
+): string {
+  if (cause === "disconnected" && disconnectedTitle) return disconnectedTitle;
+  return evmSessionRefusalCopy(cause);
+}
+
+/**
  * Commercial namespace of the active account.
  * SVM sessions have no registry row until S9 → `unresolved_namespace`
  * (never an invented endpoint-derived id).
