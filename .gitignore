@@ -75,3 +75,6 @@ svm/lab/test-ledger/
 /docs/ops/plans/
 /docs/ops/relay-strfry.md
 !/docs/design-spec.md
+
+# OS junk — must follow docs/ops un-ignore or .DS_Store reappears as untracked
+**/.DS_Store

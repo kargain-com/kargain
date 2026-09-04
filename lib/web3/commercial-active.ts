@@ -234,14 +234,19 @@ export const COMMERCIAL_ACTIVE: CommercialRegistry = {
 /**
  * Sorted commercial EIP-155 ids (nuclear / feeds / UI OR-loops).
  * Filters `vm === "evm"` — reserved-band SVM namespace keys must never appear here.
- * Optional `registry` is for planted proofs only; product callers omit it.
+ * Live map (no arg) → {@link CommercialChainId}. Injected registry → `number[]`
+ * (arbitrary rows are not the live literal union).
  */
+export function commercialEip155Ids(): readonly CommercialChainId[];
+export function commercialEip155Ids(
+  registry: CommercialRegistry,
+): readonly number[];
 export function commercialEip155Ids(
   registry: CommercialRegistry = COMMERCIAL_ACTIVE,
-): readonly CommercialChainId[] {
+): readonly number[] {
   return Object.values(registry)
     .filter((s): s is EvmCommercialActiveStack => s.vm === "evm")
-    .map((s) => s.chainId as CommercialChainId)
+    .map((s) => s.chainId)
     .sort((a, b) => a - b);
 }
 
@@ -282,11 +287,18 @@ export function commercialActive(
 /**
  * True when `id` is a committed **EVM** commercial EIP-155 chain id.
  * Never true for reserved-band SVM namespaces — use {@link isCommercialNamespace}.
+ * Live map (no registry arg) narrows to {@link CommercialChainId}; injected
+ * registry returns plain `boolean` (not the live literal union).
  */
+export function isCommercialEip155Id(id: number): id is CommercialChainId;
+export function isCommercialEip155Id(
+  id: number,
+  registry: CommercialRegistry,
+): boolean;
 export function isCommercialEip155Id(
   id: number,
   registry: CommercialRegistry = COMMERCIAL_ACTIVE,
-): id is CommercialChainId {
+): boolean {
   const stack = commercialActive(id, registry);
   return stack != null && stack.vm === "evm";
 }

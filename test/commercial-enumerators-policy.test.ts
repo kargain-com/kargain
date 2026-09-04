@@ -88,7 +88,7 @@ describe("commercial enumerators (S9 Unit1)", () => {
 
     const productEip155 = commercialEip155Ids(mixed);
     assert.deepEqual([...productEip155], [84532]);
-    assert.ok(!productEip155.includes(SOLANA_NS as never));
+    assert.ok(!productEip155.includes(SOLANA_NS));
 
     assert.deepEqual([...commercialSvmNamespaceIds(mixed)], [SOLANA_NS]);
     assert.deepEqual(
@@ -98,6 +98,17 @@ describe("commercial enumerators (S9 Unit1)", () => {
     // (b) one input, two answers
     assert.equal(isCommercialEip155Id(SOLANA_NS, mixed), false);
     assert.equal(isCommercialNamespace(SOLANA_NS, mixed), true);
+  });
+
+  it("injectable commercialEip155Ids is number[]; live no-arg path lists CommercialChainId", () => {
+    const mixed: CommercialRegistry = {
+      84532: COMMERCIAL_ACTIVE[84532]!,
+      [SOLANA_NS]: FIXTURE_SVM_STACK,
+    };
+    const injected = commercialEip155Ids(mixed);
+    assert.deepEqual([...injected], [84532]);
+    assert.ok(!injected.includes(SOLANA_NS));
+    assert.deepEqual([...commercialEip155Ids()], [84532, 11155111]);
   });
 
   it("planted (c): custody/origin wrong predicate is red; live chain-context is green", () => {
