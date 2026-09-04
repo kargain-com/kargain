@@ -11,13 +11,37 @@ import { fileURLToPath } from "node:url";
 
 import pg from "pg";
 
-import { applySvmRawSchema } from "../src/lib/svm-raw-writer.js";
+import {
+  applySvmRawSchema,
+  assertSvmRawMetadataSnapshotForm,
+  SvmRawSchemaFormError,
+} from "../src/lib/svm-raw-writer.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const DATABASE_URL =
   process.env.RAW_SENTINEL_DATABASE_URL?.trim() ||
   "postgresql://test:test@127.0.0.1:55432/kargain_test";
+
+/**
+ * Frozen pre-raw-sentinel metadata_snapshot shape (before 815ff5f).
+ * NOT a production schema — planted control only.
+ */
+const PRE_SENTINEL_METADATA_SNAPSHOT_DDL = `
+CREATE SCHEMA IF NOT EXISTS kargain_svm_raw;
+CREATE TABLE IF NOT EXISTS kargain_svm_raw.metadata_snapshot (
+  id TEXT PRIMARY KEY,
+  namespace INTEGER NOT NULL,
+  uri TEXT NOT NULL,
+  content_sha256 TEXT NOT NULL,
+  parsed_json JSONB,
+  source_payload_id TEXT NOT NULL,
+  slot BIGINT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('captured', 'unavailable')),
+  observed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT metadata_snapshot_uri_order UNIQUE (namespace, uri, content_sha256)
+);
+`;
 
 async function canConnect(url: string): Promise<boolean> {
   const client = new pg.Client({ connectionString: url });
@@ -155,5 +179,33 @@ describe("svm metadata snapshot raw-sentinel (real Postgres)", async () => {
     assert.match(sql, /WHERE status = 'captured'/);
     assert.doesNotMatch(sql, /CONSTRAINT metadata_snapshot_uri_order UNIQUE/);
     assert.doesNotMatch(sql, /content_sha256 TEXT NOT NULL/);
+  });
+
+  it("fresh apply leaves digest CHECK + captured partial unique in the catalog", async () => {
+    await assertSvmRawMetadataSnapshotForm(pool);
+  });
+
+  it("pre-sentinel table + applySvmRawSchema refuses by name (IF NOT EXISTS does not reshape)", async () => {
+    await pool.query(`DROP SCHEMA IF EXISTS kargain_svm_raw CASCADE`);
+    await pool.query(PRE_SENTINEL_METADATA_SNAPSHOT_DDL);
+
+    // Without the post-apply assert, IF NOT EXISTS would "succeed" silently.
+    await assert.rejects(
+      () => applySvmRawSchema(pool),
+      (err: unknown) => {
+        assert.ok(err instanceof SvmRawSchemaFormError);
+        assert.ok(
+          err.missing.includes("metadata_snapshot_digest_status_ck"),
+          `expected CHECK missing, got ${err.missing.join(",")}`,
+        );
+        assert.match(err.message, /Drop kargain_svm_raw\.metadata_snapshot/);
+        assert.match(err.message, /raw-sentinel/);
+        return true;
+      },
+    );
+
+    // Restore current form for any later suite reuse of this pool.
+    await pool.query(`DROP SCHEMA IF EXISTS kargain_svm_raw CASCADE`);
+    await applySvmRawSchema(pool);
   });
 });

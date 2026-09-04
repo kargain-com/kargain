@@ -159,6 +159,74 @@ export function createSvmRawWriter(pool: pg.Pool): SvmRawWriter {
   };
 }
 
+export class SvmRawSchemaFormError extends Error {
+  readonly missing: readonly string[];
+
+  constructor(missing: readonly string[]) {
+    const list = missing.join(", ");
+    super(
+      `kargain_svm_raw.metadata_snapshot schema form is stale or incomplete (missing: ${list}). ` +
+        `CREATE TABLE IF NOT EXISTS does not reshape an older table. ` +
+        `Drop kargain_svm_raw.metadata_snapshot (or schema kargain_svm_raw) on databases created before the raw-sentinel form, then restart svm-ingest.`,
+    );
+    this.name = "SvmRawSchemaFormError";
+    this.missing = missing;
+  }
+}
+
+const METADATA_SNAPSHOT_DIGEST_STATUS_CK = "metadata_snapshot_digest_status_ck";
+const METADATA_SNAPSHOT_CAPTURED_URI_DIGEST_UIDX =
+  "metadata_snapshot_captured_uri_digest_uidx";
+
+/**
+ * Fail-closed: after DDL apply, the live catalog must carry the raw-sentinel
+ * form markers. IF NOT EXISTS cannot upgrade a pre-sentinel table.
+ */
+export async function assertSvmRawMetadataSnapshotForm(
+  pool: pg.Pool,
+): Promise<void> {
+  const missing: string[] = [];
+
+  const ck = await pool.query<{ ok: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+       FROM pg_constraint c
+       JOIN pg_class t ON c.conrelid = t.oid
+       JOIN pg_namespace n ON t.relnamespace = n.oid
+       WHERE n.nspname = 'kargain_svm_raw'
+         AND t.relname = 'metadata_snapshot'
+         AND c.conname = $1
+         AND c.contype = 'c'
+     ) AS ok`,
+    [METADATA_SNAPSHOT_DIGEST_STATUS_CK],
+  );
+  if (!ck.rows[0]?.ok) missing.push(METADATA_SNAPSHOT_DIGEST_STATUS_CK);
+
+  const uidx = await pool.query<{ ok: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+       FROM pg_class i
+       JOIN pg_namespace n ON i.relnamespace = n.oid
+       JOIN pg_index idx ON i.oid = idx.indexrelid
+       JOIN pg_class t ON idx.indrelid = t.oid
+       JOIN pg_namespace tn ON t.relnamespace = tn.oid
+       WHERE n.nspname = 'kargain_svm_raw'
+         AND tn.nspname = 'kargain_svm_raw'
+         AND i.relname = $1
+         AND t.relname = 'metadata_snapshot'
+         AND idx.indisunique
+     ) AS ok`,
+    [METADATA_SNAPSHOT_CAPTURED_URI_DIGEST_UIDX],
+  );
+  if (!uidx.rows[0]?.ok) {
+    missing.push(METADATA_SNAPSHOT_CAPTURED_URI_DIGEST_UIDX);
+  }
+
+  if (missing.length > 0) {
+    throw new SvmRawSchemaFormError(missing);
+  }
+}
+
 export async function applySvmRawSchema(pool: pg.Pool): Promise<void> {
   const fs = await import("node:fs/promises");
   const path = await import("node:path");
@@ -169,4 +237,5 @@ export async function applySvmRawSchema(pool: pg.Pool): Promise<void> {
   );
   const sql = await fs.readFile(schemaPath, "utf8");
   await pool.query(sql);
+  await assertSvmRawMetadataSnapshotForm(pool);
 }

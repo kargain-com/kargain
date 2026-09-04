@@ -87,7 +87,7 @@ Default `SVM_INGEST_CATCHUP_MAX_LAG_SLOTS=216000` (~24h at ~400ms/slot). On star
 
 ### Schema bootstrap
 
-On first start, `svm-ingest` applies [`src/svm-ingest/db/schema.sql`](../../src/svm-ingest/db/schema.sql) and [`src/svm-ingest/db/projection-schema.sql`](../../src/svm-ingest/db/projection-schema.sql) if tables are missing. Same Postgres instance as Ponder; separate schema names.
+On start, `svm-ingest` runs [`src/svm-ingest/db/schema.sql`](../../src/svm-ingest/db/schema.sql) and [`src/svm-ingest/db/projection-schema.sql`](../../src/svm-ingest/db/projection-schema.sql), then **asserts** the live `metadata_snapshot` form: CHECK `metadata_snapshot_digest_status_ck` and partial unique index `metadata_snapshot_captured_uri_digest_uidx` must exist. `CREATE TABLE IF NOT EXISTS` does not reshape a table created before that form — bootstrap refuses by name and tells you to drop `kargain_svm_raw.metadata_snapshot` (or schema `kargain_svm_raw`) on that database, then restart. Same Postgres instance as Ponder; separate schema names.
 
 ### S9 obligation
 
