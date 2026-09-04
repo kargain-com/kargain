@@ -2,7 +2,7 @@
 
 > **Верификация потребляет улику, которую уничтожает любая пересборка. Она не шаг, который можно отложить, — она шаг, который истекает.**
 
-**Status: DEPLOYED ON CHAIN — NOT CUT OVER** (August 29, 2026). Parallel stack beside Nuclear #4 (live app), #5, and #6. Explorers **green** for Passport / Staking / Gateway after N7-1. **Do not** edit `COMMERCIAL_ACTIVE`, reindex Ponder, or merge for app cutover until **S9**. App / indexer still serve Nuclear #4.
+**Status: DEPLOYED ON CHAIN — S9-A CUTOVER ON BRANCH** (code September 4, 2026; chain August 29, 2026). `COMMERCIAL_ACTIVE` + SPEC I.9 on `feat/solana-svm-port` point at Nuclear #7. Explorers **green**. **Production `master` / VPS** still Nuclear #4 until Merge + one Ponder reindex (`svm-ingest` **off** for S9-A). Solana commercial row = **S9-B** after S9-0 Devnet modes.
 
 **Local only.** Empty-testnet full redeploy. Manifests: `deployments/84532.json` · `deployments/11155111.json` (gitignored). N6 manifests archived: `docs/ops/deploys/archive/nuclear-6-*.manifest.json`.
 
@@ -140,6 +140,18 @@ Modes / Ascending libs / proxies: verified earlier via Hardhat path (still green
 
 ## Ops sequencing (do not collapse)
 
+**S9-A founder cutover order — wire before Merge** (do not invert):
+
+| Step | What changes | Reversible? | Verify |
+|------|----------------|-------------|--------|
+| 1. Hub↔eth `pnpm bridge:wire` (N7 peers) | On-chain peers / ULN / options / `pathwayConfigHash` | Partial (re-wire / new nuclear) | `bridge:wire:read-only` PASS; hash ≡ SPEC `0x2914d89d…f834` |
+| 2. Merge branch → `master` | Vercel serves N7 `COMMERCIAL_ACTIVE` | Deploy previous commit | App addresses ≡ I.9 |
+| 3. VPS `ponder-reindex.sql` | Wipe+reindex `kargain` from **46119704** / **11591966** | Costly; not silent | `/ready` + `/status`; smoke consignments |
+| 4. Empty `projection-schema.sql` | Empty SVM UNION arm | Re-apply | UNION HTTP 200 |
+| 5. Confirm `svm-ingest` **off** | — | — | compose / process absent |
+
+**Do not Merge before wire** — otherwise the bridge UI offers send on a pathway with no peers.
+
 | Operation | When | Status |
 |-----------|------|--------|
 | N7-0 runbook + evidence guard | August 29 | **Done** |
@@ -148,6 +160,8 @@ Modes / Ascending libs / proxies: verified earlier via Hardhat path (still green
 | Explorer visitor green (Passport/Staking/Gateway) | August 29 | **Done (N7-1)** — direct standard-json submit |
 | Sourcify Exact Match ×6 | August 29 | **Done** |
 | Wire 40245↔40168 (Solana) | **S4b** against N7 hub `0x73240468…1827` | Ready for S4b (needs Squads + DVN) |
-| `COMMERCIAL_ACTIVE` + SPEC I.9 + VPS reindex + Vercel + merge | **S9 once** | Not started |
+| `COMMERCIAL_ACTIVE` + SPEC I.9 (branch) | **S9-A** | **Done on branch** — forfeit sink distinct; N4/N5/N6 denylisted; manifest ≡ registry fail-closed |
+| Hub↔eth `bridge:wire` → Merge → VPS reindex → empty projection → `svm-ingest` off | **S9-A ops** | Founder — **wire first**; start blocks **46119704** / **11591966** |
+| Solana row + `svm-ingest` + three-network walk | **S9-B** | After S9-0 Devnet modes ([s9-0-devnet-modes.md](./s9-0-devnet-modes.md)) |
 
-**Do not** wire against Nuclear #6. S4b targets **this** hub gateway only. Nuclear verify = evidence-backed direct submit (`verify:sepolia`), not Hardhat.
+**Do not** wire against Nuclear #6. S4b targets **this** hub gateway only. Nuclear verify = evidence-backed direct submit (`verify:sepolia`), not Hardhat. Do **not** enable `svm-ingest` in the S9-A reindex window.

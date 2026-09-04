@@ -36,6 +36,7 @@ export const FIXTURE_SVM_STACK = {
   bridgeGateway: "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
   layerZeroEndpoint: "76y77prsiCMvXMjuoZ5VRrhG5qYBrUMYTE5WgHqgjEn6",
   platformRecipient: "11111111111111111111111111111112",
+  forfeitRecipient: "11111111111111111111111111111115",
   deployer: "11111111111111111111111111111113",
   upgradeAuthority: "11111111111111111111111111111114",
   indexFromBlock: 0,

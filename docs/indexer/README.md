@@ -4,10 +4,11 @@
 |----------|-----------|-------------------|
 | [OPERATIONS.md](./OPERATIONS.md) | **Permanent** | Running a reindex on VPS, RPC/start-block issues, Postgres reset |
 | [MIGRATION-V2.md](./MIGRATION-V2.md) | **Reference** | v2 event/schema mapping, FX display extension (§6) |
-| [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md) | **Current** | Nuclear #4 dual-chain deploy + reindex |
+| [ops/deploys/nuclear-7.md](../ops/deploys/nuclear-7.md) | **Current (S9-A)** | Nuclear #7 dual-chain — branch cutover; VPS reindex at Merge |
+| [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md) | **Historical** | Nuclear #4 dual-chain (superseded by N7) |
 | [ops/deploys/archive/84532-v2.md](../ops/deploys/archive/84532-v2.md) | **Historical** | June 2026 v2 deploy + VPS cutover record |
 
-**Production (Nuclear #4 cutover August 2, 2026):** committed start blocks hub **44957457** / Eth **11404204**. **Browse Phase 1 live** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)): Vercel on `master` push; VPS reindex ASAP after schema + B1. Smoke: `/consignments` (+ B1), payment-tokens, obligations, notifications. **S7b–c (September 2026):** `bridge_crossing` + **`custody_determining_event`** indexed on branch; HTTP custody via read-time fold ([`src/lib/ponder-passport-custody.ts`](../../src/lib/ponder-passport-custody.ts)) on `GET /passports/:tokenId`, profile passports, commerce denorm — **`custodyChain` | `custodyUnresolved`**. **S7c-1/2:** **`kargain_svm_raw`** + **`kargain_svm_projection`** via **`svm-ingest`** — provenance UNION on `records[]` / `uriHistory[]`. HTTP UNION SQL **always** includes the SVM arm; apply empty [`src/svm-ingest/db/projection-schema.sql`](../../src/svm-ingest/db/projection-schema.sql) wherever that HTTP is served **before** svm-ingest is live (S9). Ponder 0.16 physical EVM columns on `DATABASE_SCHEMA=kargain` are **snake_case** (`chain_id`, not quoted `"chainId"`). **VPS full reindex + svm-ingest enable deferred to S9** ([OPERATIONS.md §S9](./OPERATIONS.md)).
+**Branch (Nuclear #7 / S9-A):** committed start blocks hub **46119704** / Eth **11591966**. **Live VPS until Merge:** Nuclear #4 **44957457** / **11404204**. **Browse Phase 1 live** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)): Vercel on `master` push; VPS reindex ASAP after schema. Smoke: `/consignments` (+ B1), payment-tokens, obligations, notifications. **S7b–c:** `bridge_crossing` + **`custody_determining_event`**; HTTP custody fold — **`custodyChain` | `custodyUnresolved`**. **S7c-1/2:** **`kargain_svm_raw`** + **`kargain_svm_projection`** — provenance UNION always includes SVM arm; apply empty [`projection-schema.sql`](../../src/svm-ingest/db/projection-schema.sql) before svm-ingest (S9-A). Physical EVM columns **snake_case**. **S9-A:** Ponder reindex only (`svm-ingest` off). **S9-B:** enable ingest after S9-0 ([OPERATIONS.md §S9](./OPERATIONS.md)).
 
 ## SVM raw ingest (S7c-1)
 
@@ -47,7 +48,7 @@ Do **not** copy address tables here. Resolution is **per-chain** (SPEC §I.12.12
 - Diagnostic: `pnpm ponder:config`
 - Reference: [contracts/SPEC.md Part I.9.1](../contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) + Eth nuclear table
 
-**Start blocks:** `PONDER_START_BLOCK_84532=44957457` · `PONDER_START_BLOCK_11155111=11404204`. Per-contract start blocks from each manifest’s `blocks.*`.
+**Start blocks:** `PONDER_START_BLOCK_84532=46119704` · `PONDER_START_BLOCK_11155111=11591966` (Nuclear #7 / S9-A). Per-contract start blocks from each manifest’s `blocks.*`.
 
 ## Dual-chain identity (C3 · July 2026)
 
@@ -64,7 +65,7 @@ Browse: `GET /consignments?chainId=84532` (optional). Passport detail returns `r
 
 Consignment commerce lives entirely in [`src/api/commerce-routes.ts`](../../src/api/commerce-routes.ts): **`GET /consignments*`** browse, **`GET /agents|owners/.../mandates`** portfolio, **`GET /challenges`** (BondedChallenge feed), and commerce claims. The legacy `MarketplaceEscrow` / `AuctionEscrow` schema and HTTP surface (`marketplace_listing`, `auction`, `GET /listings`, `GET /auctions*`, …) have been removed — there is no dual-write path.
 
-**Production state (Nuclear #4):** `COMMERCIAL_ACTIVE` cut over August 2, 2026. VPS must reindex from hub **44957457** + Eth **11404204** before live API matches. Legacy `/listings` is gone.
+**Production state:** Live VPS until S9-A Merge remains Nuclear #4 (`44957457` / `11404204`). Branch / post-Merge: Nuclear #7 start blocks hub **46119704** / Eth **11591966**. Legacy `/listings` is gone.
 
 | Identity | Format |
 |----------|--------|

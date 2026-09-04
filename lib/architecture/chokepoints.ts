@@ -213,12 +213,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "deployments-directory",
     owner:
-      "scripts/lib/load-deployment.ts · scripts/lib/deployment-build-info.ts · scripts/lib/assert-deploy-evidence.ts · scripts/lib/verify-from-deploy-evidence.ts · scripts/lib/etherscan-api.ts",
-    rule: "Sole deployments/ path via deploymentsDirectory (+ KARGAIN_DEPLOYMENTS_DIR); build-info bound as {chainId}.build-info.json; verify:deploy-evidence refuses missing/drifted digests; nuclear explorer verify submits standard-json from stored evidence (not Hardhat verify); tests must not rename/unlink repo manifests",
+      "scripts/lib/load-deployment.ts · scripts/lib/deployment-build-info.ts · scripts/lib/assert-deploy-evidence.ts · scripts/lib/assert-commercial-active-manifest.ts · scripts/lib/verify-from-deploy-evidence.ts · scripts/lib/etherscan-api.ts",
+    rule: "Sole deployments/ path via deploymentsDirectory (+ KARGAIN_DEPLOYMENTS_DIR); build-info bound as {chainId}.build-info.json; verify:deploy-evidence refuses missing/drifted digests; COMMERCIAL_ACTIVE ≡ local manifest fail-closed (absence red); nuclear explorer verify submits standard-json from stored evidence (not Hardhat verify); tests must not rename/unlink repo manifests",
     guardTests: [
       "deployments-mutation-policy.test.ts",
       "deployment-build-info.test.ts",
       "assert-deploy-evidence.test.ts",
+      "commercial-active-manifest-policy.test.ts",
       "verify-from-deploy-evidence.test.ts",
     ],
   },

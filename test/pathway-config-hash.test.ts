@@ -19,18 +19,24 @@ import {
   SOLANA_DEVNET_ENFORCED_RENT_LAMPORTS,
 } from "../scripts/lib/layerzero-pathway.js";
 
-/** Pre-S2 SPEC I.9.2 — whole-snapshot `metadataSha256`. */
+/** Pre-S2 SPEC I.9.2 — whole-snapshot `metadataSha256` (N4 peers). */
 const H1 =
   "0x84c7ea51e28cedf54a79d9edc81b07019ad1a47cc3d5dc08471d681e4e81cf1e";
 
-/** Post-S2 SPEC I.9.2 — per-pathway `metadataSha256` (two chain objects). */
-const H2 =
+/** Post-S2 N4 peers — per-pathway `metadataSha256` (historical; retired at S9-A). */
+const H2_N4 =
   "0x7e8c7fd4c6fbc0687a14335bfaae5d6fd4ecac1ea067ec955a6444e5893983b8";
+
+/** Nuclear #7 hub↔eth peers — SPEC I.9.2 `pathwayConfigHash` (S9-A wire target). */
+const H_N7 =
+  "0x2914d89d0bd495b69f6c08512312f54ddee99c8c2416c800e631078082c9f834";
 
 /** Live 40245↔40168 applied hash (N7 hub + gateway_config PDA; Solana pins in digest). */
 const H_40168 =
   "0xc43a641bc5a50afc987fdc278f9bb1df64e5a1dfc5150b5d66233c1a376a7c98";
 
+const N4_HUB_GATEWAY = "0xb1aEEA9466b8C67Ba9D8931987E26A2Bef59B7Dc";
+const N4_ETH_GATEWAY = "0xec44167ab1e2619C9aCaA87F5B06DcAFe1BF7269";
 const N7_HUB_GATEWAY = "0x7324046854342587999984683c4833852FA81827";
 const SVM_OAPP = "GmLEN2Tff1DfqW3rHTs97jqj5QNPhamRbsouDArmQ4Uj";
 
@@ -42,26 +48,22 @@ const PRE_S2_SNAPSHOT_SHA256 =
   "1e0a5eda896ad43522624e5b0832e92b139076055325c1ff2e42e69072c60782";
 
 /**
- * Hash history for 40245↔40161 (same peers, same snapshot chain objects):
- * H1 — whole-snapshot digest (pre-S2 SPEC).
- * H_mid — current applied fields + PRE_S2_SNAPSHOT_SHA256 → must equal H1
- *         (proves the topology refactor did not drift any other applied field).
- * H2 — per-pathway digest (SPEC after S2).
- * H3 — after adding 40168 → equals H2.
+ * Hash history for 40245↔40161:
+ * H1 — whole-snapshot digest (pre-S2 SPEC) with N4 peers.
+ * H_mid — current applied fields + PRE_S2_SNAPSHOT_SHA256 + N4 peers → H1.
+ * H2_N4 — per-pathway digest with N4 peers (historical after S9-A).
+ * H_N7 — per-pathway digest with Nuclear #7 peers (SPEC I.9.2 wire target).
+ * H3 — adding 40168 does not change 40245↔40161 hash.
  */
 
 describe("pathwayConfigHash 40245↔40161", () => {
-  it("refactor neutrality: whole-snapshot digest still yields H1 (middle proof)", () => {
+  it("refactor neutrality: whole-snapshot digest still yields H1 (N4 peers)", () => {
     const snapshot = loadLayerZeroMetadataSnapshot();
-    const hub = commercialActive(84532);
-    const spoke = commercialActive(11155111);
-    assert.ok(hub);
-    assert.ok(spoke);
     const applied = buildAppliedPathwayConfig(snapshot, {
       hubEid: EID_HUB,
       spokeEid: EID_SPOKE,
-      hubOApp: getAddress(hub.bridgeGateway),
-      spokeOApp: getAddress(spoke.bridgeGateway),
+      hubOApp: getAddress(N4_HUB_GATEWAY),
+      spokeOApp: getAddress(N4_ETH_GATEWAY),
     });
     const mid = hashAppliedPathwayConfig({
       ...applied,
@@ -70,7 +72,18 @@ describe("pathwayConfigHash 40245↔40161", () => {
     assert.equal(mid, H1);
   });
 
-  it("matches SPEC I.9.2 against the committed snapshot (H2)", () => {
+  it("historical N4 peers match retired H2_N4", () => {
+    const snapshot = loadLayerZeroMetadataSnapshot();
+    const applied = buildAppliedPathwayConfig(snapshot, {
+      hubEid: EID_HUB,
+      spokeEid: EID_SPOKE,
+      hubOApp: getAddress(N4_HUB_GATEWAY),
+      spokeOApp: getAddress(N4_ETH_GATEWAY),
+    });
+    assert.equal(hashAppliedPathwayConfig(applied), H2_N4);
+  });
+
+  it("matches SPEC I.9.2 against Nuclear #7 peers (H_N7)", () => {
     const snapshot = loadLayerZeroMetadataSnapshot();
     const hub = commercialActive(84532);
     const spoke = commercialActive(11155111);
@@ -83,10 +96,11 @@ describe("pathwayConfigHash 40245↔40161", () => {
       spokeOApp: getAddress(spoke.bridgeGateway),
     });
     const hash = hashAppliedPathwayConfig(applied);
-    assert.equal(hash, H2);
+    assert.equal(hash, H_N7);
+    assert.notEqual(hash, H2_N4);
   });
 
-  it("adding 40168 does not change the 40245↔40161 hash (H3 === H2)", () => {
+  it("adding 40168 does not change the 40245↔40161 N7 hash", () => {
     const snapshot = loadLayerZeroMetadataSnapshot();
     assert.ok(snapshot.chains[40168]);
     const hub = commercialActive(84532);
@@ -99,7 +113,7 @@ describe("pathwayConfigHash 40245↔40161", () => {
       hubOApp: getAddress(hub.bridgeGateway),
       spokeOApp: getAddress(spoke.bridgeGateway),
     });
-    assert.equal(hashAppliedPathwayConfig(applied), H2);
+    assert.equal(hashAppliedPathwayConfig(applied), H_N7);
   });
 
   it("builds a distinct applied hash for hub↔40168 (N7 gateway + gateway_config PDA)", () => {
@@ -112,7 +126,8 @@ describe("pathwayConfigHash 40245↔40161", () => {
     });
     const hash = hashAppliedPathwayConfig(applied);
     assert.equal(hash, H_40168);
-    assert.notEqual(hash, H2);
+    assert.notEqual(hash, H_N7);
+    assert.notEqual(hash, H2_N4);
     assert.equal(applied.spokeOApp, SVM_OAPP);
     assert.deepEqual(applied.enforcedGas, expectedEnforcedBudgetForSpokeEid(40168));
     assert.equal((applied.requiredDvns[EID_HUB] as string[]).length, 2);
@@ -145,7 +160,7 @@ describe("pathwayConfigHash enforced budget class", () => {
     });
   }
 
-  it("EVM pathway digests EVM enforced options (builder ≡ owner; hash H2)", () => {
+  it("EVM pathway digests EVM enforced options (builder ≡ owner; hash H_N7)", () => {
     const applied = evmApplied();
     const expected = expectedEnforcedBudgetForSpokeEid(EID_SPOKE);
     assert.deepEqual(applied.enforcedGas, expected);
@@ -153,7 +168,7 @@ describe("pathwayConfigHash enforced budget class", () => {
     assert.equal(applied.enforcedGas.send, ENFORCED_GAS_SEND);
     assert.equal(applied.enforcedGas.sendAndCompose, ENFORCED_GAS_SEND_AND_COMPOSE);
     assertAppliedEnforcedBudgetMatchesSpokeVm(applied);
-    assert.equal(hashAppliedPathwayConfig(applied), H2);
+    assert.equal(hashAppliedPathwayConfig(applied), H_N7);
   });
 
   it("SVM pathway digests Solana enforced options (builder ≡ owner; hash pinned)", () => {
@@ -208,7 +223,7 @@ describe("pathwayConfigHash enforced budget class", () => {
     );
   });
 
-  it("Solana magnitude change moves 40168 hash and leaves 40161 H2 unchanged", () => {
+  it("Solana magnitude change moves 40168 hash and leaves 40161 H_N7 unchanged", () => {
     const svm = svmApplied();
     const mutated = {
       ...svm,
@@ -220,7 +235,7 @@ describe("pathwayConfigHash enforced budget class", () => {
     };
     assertAppliedEnforcedBudgetMatchesSpokeVm(mutated);
     assert.notEqual(hashAppliedPathwayConfig(mutated), H_40168);
-    assert.equal(hashAppliedPathwayConfig(evmApplied()), H2);
+    assert.equal(hashAppliedPathwayConfig(evmApplied()), H_N7);
   });
 
   it("EVM magnitude change moves 40161 hash and leaves 40168 pinned hash unchanged", () => {
@@ -233,7 +248,7 @@ describe("pathwayConfigHash enforced budget class", () => {
       },
     };
     assertAppliedEnforcedBudgetMatchesSpokeVm(mutated);
-    assert.notEqual(hashAppliedPathwayConfig(mutated), H2);
+    assert.notEqual(hashAppliedPathwayConfig(mutated), H_N7);
     assert.equal(hashAppliedPathwayConfig(svmApplied()), H_40168);
   });
 });

@@ -38,7 +38,7 @@ export type CommercialActiveBlocks = {
   karProStaking?: number;
   karPassport?: number;
   bridgeGateway?: number;
-  /** Present when commerce modes are on the commercial stack (Nuclear #2+; live Nuclear #4). */
+  /** Present when commerce modes are on the commercial stack (Nuclear #2+). */
   fixedPriceConsignment?: number;
   fixedPriceConsignmentImpl?: number;
   ascendingConsignment?: number;
@@ -67,14 +67,17 @@ type EvmCommercialActiveStackShared = {
   timelock: `0x${string}`;
   /** KarPassportBridgeGateway. */
   bridgeGateway: `0x${string}`;
-  /** Commerce modes — live on Nuclear #4 (August 2, 2026). */
+  /** Commerce modes — live on Nuclear #7 (S9-A). */
   fixedPriceConsignment?: `0x${string}`;
   fixedPriceConsignmentImpl?: `0x${string}`;
   ascendingConsignment?: `0x${string}`;
   ascendingConsignmentImpl?: `0x${string}`;
   /** LayerZero EndpointV2 — EVM hex form. */
   layerZeroEndpoint: `0x${string}`;
+  /** Fee sink (platformRecipient). Distinct from forfeitRecipient (SPEC §8.6 / §19). */
   platformRecipient: `0x${string}`;
+  /** Challenge forfeit sink — distinct key from fee sink (Nuclear #5+). */
+  forfeitRecipient: `0x${string}`;
   deployer: `0x${string}`;
   upgradeAuthority: `0x${string}`;
   indexFromBlock: number;
@@ -99,7 +102,7 @@ export type EvmCommercialActiveStack = EvmCommercialActiveStackShared & {
  * SVM commercial stack shape (SPEC §13.1 reserved-band namespace).
  * Addresses are canonical base58 program / account ids (normalize via
  * `protocol-address`). No EIP-155 `chainId` — registry key is `namespace` alone.
- * Not present in {@link COMMERCIAL_ACTIVE} until programs are live (S4b+) and cut over (S9).
+ * Not present in {@link COMMERCIAL_ACTIVE} until S9-0 modes + S9-B cutover.
  */
 export type SvmCommercialActiveStack = {
   vm: "svm";
@@ -110,13 +113,18 @@ export type SvmCommercialActiveStack = {
   karPassport: string;
   karProPass: string;
   karProStaking: string;
-  /** SPL mint or native sentinel — product path decides in S8. */
+  /**
+   * Admitted SPL USDC mint (Circle Devnet: `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`).
+   * Not a native sentinel — R11.
+   */
   usdc: string;
-  /** Unused on SVM until an oracle path exists; empty string refuse at admit. */
+  /** Unused on SVM until a product FX path pins Pyth; empty string refuse at admit. */
   nativeFeed: string;
   eurFeed?: string;
-  /** Squads / timelock-equivalent upgrade authority (base58). */
+  /** Squads / timelock-equivalent (testnet S4–S9 = deployer pubkey). */
   timelock: string;
+  /** Challenge forfeit sink (base58). */
+  forfeitRecipient: string;
   bridgeGateway: string;
   fixedPriceConsignment?: string;
   fixedPriceConsignmentImpl?: string;
@@ -127,6 +135,7 @@ export type SvmCommercialActiveStack = {
   platformRecipient: string;
   deployer: string;
   upgradeAuthority: string;
+  /** Start cursor: EVM = block; SVM = slot (`indexFromSlot` in evidence). */
   indexFromBlock: number;
   blocks: CommercialActiveBlocks;
 };
@@ -144,75 +153,77 @@ export type CommercialRegistry = Readonly<
 
 const ETH_NATIVE_UNIT = mintCommercialNativeUnit("ETH", 18);
 
-/** Base Sepolia — Nuclear #4 August 2, 2026 (SPEC I.9.1); KarPassport `1.10.0-rc.1` · Ascending `2.4.0-rc.1`. */
+/** Base Sepolia — Nuclear #7 August 29, 2026 (SPEC I.9.1); S9-A cutover. */
 const BASE_SEPOLIA_84532 = {
   vm: "evm",
   namespace: mintKargainNamespace(84532),
   chainId: 84532,
   nativeUnit: ETH_NATIVE_UNIT,
   explorerBaseUrl: mintExplorerOrigin("https://sepolia.basescan.org"),
-  karPassport: "0x8354697d0DdCe6a3AA9aD33DDc1585e4b60CbC76",
-  karProPass: "0x046DB61Ac23520bd6f9466a7f8B033325795B32c",
-  karProStaking: "0xCBfCDfebbb6fDF4C3bbD30F363558FE618C986aE",
+  karPassport: "0x3A7742eac882769351dF11112bf2f8bf2D11a7A5",
+  karProPass: "0x003f379c8592Aab993b43770414C9033fCD7004C",
+  karProStaking: "0x86a3911bd2e06990D2fedE37C9C552f5fFfC4e99",
   usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
   nativeFeed: "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
-  timelock: "0x274515B5b2Ba32bDce7E97122C69cfDa343E85Fb",
-  bridgeGateway: "0xb1aEEA9466b8C67Ba9D8931987E26A2Bef59B7Dc",
-  fixedPriceConsignment: "0x73F41293bb207443990006b951CE9BC38Ef2eB3b",
-  fixedPriceConsignmentImpl: "0xa4A2FE8Bd5A7Ee99ED375BA179861D1DA7F2e8F4",
-  ascendingConsignment: "0xABd47E54595b814625B1B911BC3A078397Abb973",
-  ascendingConsignmentImpl: "0xcdfEe11B2F2eA6501E06576e1a50baa7B8Bd8750",
+  timelock: "0xfDe4c336b23e3a21A3460bA005B4710584E43f27",
+  bridgeGateway: "0x7324046854342587999984683c4833852FA81827",
+  fixedPriceConsignment: "0xEc97fC815055CBD51746F7D6966340a1318Ac6F8",
+  fixedPriceConsignmentImpl: "0x17062580197DC21044A666179373117d5ff8bFe9",
+  ascendingConsignment: "0x496351CD0788c7312DEeA4b15dA71B521d534dc5",
+  ascendingConsignmentImpl: "0xB12941894055f8cEE16b16Ee1d5b7c68Fdb6B6C8",
   layerZeroEndpoint: "0x6EDCE65403992e310A62460808c4b910D972f10f",
-  platformRecipient: "0xcfe194fea9727bD04dA8F78c2362680986e02dF1",
+  platformRecipient: "0x484f2e7bB362bCcE38d41DB7BCE2EAD955890B24",
+  forfeitRecipient: "0x8d97a127A3Cf9a94c460BcaA06a429FFE75eF1A1",
   deployer: "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
-  upgradeAuthority: "0x274515B5b2Ba32bDce7E97122C69cfDa343E85Fb",
-  indexFromBlock: 44_957_457,
+  upgradeAuthority: "0xfDe4c336b23e3a21A3460bA005B4710584E43f27",
+  indexFromBlock: 46_119_704,
   blocks: {
-    timelock: 44_957_467,
-    karProPass: 44_957_471,
-    karProStaking: 44_957_475,
-    karPassport: 44_957_484,
-    fixedPriceConsignmentImpl: 44_957_489,
-    fixedPriceConsignment: 44_957_497,
-    ascendingConsignmentImpl: 44_957_513,
-    ascendingConsignment: 44_957_521,
-    bridgeGateway: 44_957_539,
+    timelock: 46_119_714,
+    karProPass: 46_119_719,
+    karProStaking: 46_119_723,
+    karPassport: 46_119_729,
+    fixedPriceConsignmentImpl: 46_119_733,
+    fixedPriceConsignment: 46_119_736,
+    ascendingConsignmentImpl: 46_119_748,
+    ascendingConsignment: 46_119_751,
+    bridgeGateway: 46_119_765,
   },
 } as const satisfies EvmCommercialActiveStack;
 
-/** Ethereum Sepolia — Nuclear #4 August 2, 2026 (SPEC I.9.2); KarPassport `1.10.0-rc.1` · Ascending `2.4.0-rc.1`. */
+/** Ethereum Sepolia — Nuclear #7 August 29, 2026 (SPEC I.9.2); S9-A cutover. */
 const ETHEREUM_SEPOLIA_11155111 = {
   vm: "evm",
   namespace: mintKargainNamespace(11155111),
   chainId: 11155111,
   nativeUnit: ETH_NATIVE_UNIT,
   explorerBaseUrl: mintExplorerOrigin("https://sepolia.etherscan.io"),
-  karPassport: "0x1016BCA92B98Ea2C648074cAAf04C5d0B3Baf8eC",
-  karProPass: "0xb83b89f4a7303f005dA8c0787e904104a1030128",
-  karProStaking: "0x5dF3f185D9fAb40D1BEBC74b63268F8528a02906",
+  karPassport: "0x1FFdEC27d14567B34548BA63269c0745227f1949",
+  karProPass: "0x886328c407998EA493b757bE9d49034624F8f4BE",
+  karProStaking: "0xF4bCec8dC6f699c311d75c7aaEb7790c76f0FF43",
   usdc: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
   nativeFeed: "0x694AA1769357215DE4FAC081bf1f309aDC325306",
-  timelock: "0x95D9A432B53ceB42a0681b1900f52e7Fe2247586",
-  bridgeGateway: "0xec44167ab1e2619C9aCaA87F5B06DcAFe1BF7269",
-  fixedPriceConsignment: "0xc416f642a85E3E104A42c2B067bB31485947891d",
-  fixedPriceConsignmentImpl: "0x49e8ce3e99Fa7413133b04f4085E55BF332BFC60",
-  ascendingConsignment: "0xbFdA994743feF37b268aA70ffF8a91eF3d10936E",
-  ascendingConsignmentImpl: "0x689D4A780a0d65A3f6dd02BD1013b1d3a5f60660",
+  timelock: "0xbD13C4B92d7Ec454401AE242A0aa8E841EEba977",
+  bridgeGateway: "0x910631Df5aA4d47Ce20a6D485cd9DdC2E68D8eBc",
+  fixedPriceConsignment: "0xDf8412E8d61675523AB0843d0A24Fd6E22dD10Ab",
+  fixedPriceConsignmentImpl: "0xEf7403424Ce96f0e1845AB70800022c78D97a52C",
+  ascendingConsignment: "0x233B0e6780d52275caE1f1d08035F6a3C932B99E",
+  ascendingConsignmentImpl: "0xf1d84e984CE294C35A654C9d3B7F580104Fa8773",
   layerZeroEndpoint: "0x6EDCE65403992e310A62460808c4b910D972f10f",
-  platformRecipient: "0xcfe194fea9727bD04dA8F78c2362680986e02dF1",
+  platformRecipient: "0x484f2e7bB362bCcE38d41DB7BCE2EAD955890B24",
+  forfeitRecipient: "0x8d97a127A3Cf9a94c460BcaA06a429FFE75eF1A1",
   deployer: "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
-  upgradeAuthority: "0x95D9A432B53ceB42a0681b1900f52e7Fe2247586",
-  indexFromBlock: 11_404_204,
+  upgradeAuthority: "0xbD13C4B92d7Ec454401AE242A0aa8E841EEba977",
+  indexFromBlock: 11_591_966,
   blocks: {
-    timelock: 11_404_214,
-    karProPass: 11_404_216,
-    karProStaking: 11_404_217,
-    karPassport: 11_404_220,
-    fixedPriceConsignmentImpl: 11_404_221,
-    fixedPriceConsignment: 11_404_222,
-    ascendingConsignmentImpl: 11_404_228,
-    ascendingConsignment: 11_404_229,
-    bridgeGateway: 11_404_235,
+    timelock: 11_591_976,
+    karProPass: 11_591_977,
+    karProStaking: 11_591_978,
+    karPassport: 11_591_980,
+    fixedPriceConsignmentImpl: 11_591_981,
+    fixedPriceConsignment: 11_591_982,
+    ascendingConsignmentImpl: 11_591_985,
+    ascendingConsignment: 11_591_986,
+    bridgeGateway: 11_591_991,
   },
 } as const satisfies EvmCommercialActiveStack;
 
@@ -327,10 +338,10 @@ function commercialActiveMissingMessage(chainId: number): string {
   );
 }
 
-export function requireCommercialActive(chainId: number): CommercialActiveStack {
-  const stack = commercialActive(chainId);
+export function requireCommercialActive(namespace: number): CommercialActiveStack {
+  const stack = commercialActive(namespace);
   if (!stack) {
-    throw new Error(commercialActiveMissingMessage(chainId));
+    throw new Error(commercialActiveMissingMessage(namespace));
   }
   return stack;
 }

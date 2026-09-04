@@ -13,8 +13,8 @@ export const SEPOLIA_CHAIN_ID = 84532;
 export const SEPOLIA_PUBLIC_RPC = "https://base-sepolia-rpc.publicnode.com";
 
 /**
- * Active Nuclear #4 stack on Base Sepolia — alias of COMMERCIAL_ACTIVE[84532].
- * KarPassport `1.10.0-rc.1` · FixedPrice `2.4.0-rc.1` · Ascending `2.4.0-rc.1`.
+ * Active Nuclear #7 stack on Base Sepolia — alias of COMMERCIAL_ACTIVE[84532].
+ * KarPassport `1.11.0-rc.1` · FixedPrice `2.4.0-rc.1` · Ascending `2.5.0-rc.1`.
  */
 export const SEPOLIA_ACTIVE = requireEvmCommercialActive(SEPOLIA_CHAIN_ID);
 
@@ -29,6 +29,10 @@ export const SEPOLIA_ACTIVE = requireEvmCommercialActive(SEPOLIA_CHAIN_ID);
  * Normative: SPEC §I.12.12.
  *
  * Nuclear #4 cutover August 2, 2026: Nuclear #3 hub + prior stacks retired.
+ * Nuclear #7 / S9-A cutover September 2026: Nuclear #4 hub retired; N5+N6 hub
+ * stacks denylisted (deployed, never served the app). Cross-chain CREATE
+ * collisions: some N7 Eth live hexes appear on this Base list as historical —
+ * they stay Base-scoped and are not “N7 denylisted on Eth” (SPEC §I.12.12).
  */
 export const SEPOLIA_HISTORICAL_DENYLIST: readonly `0x${string}`[] = [
   "0x6378469256907D7DC14BBfce0261ceDE22314507",
@@ -72,6 +76,32 @@ export const SEPOLIA_HISTORICAL_DENYLIST: readonly `0x${string}`[] = [
   "0xf1d84e984CE294C35A654C9d3B7F580104Fa8773",
   "0xC0ADc29De760195d5BBB5d3c11f040B388872039",
   "0x254340154a0C5B1d8679f49400AF292e33E1e855",
+  // Nuclear #4 hub (superseded by Nuclear #7 / S9-A)
+  "0x274515B5b2Ba32bDce7E97122C69cfDa343E85Fb",
+  "0x046DB61Ac23520bd6f9466a7f8B033325795B32c",
+  "0xCBfCDfebbb6fDF4C3bbD30F363558FE618C986aE",
+  "0x8354697d0DdCe6a3AA9aD33DDc1585e4b60CbC76",
+  "0x73F41293bb207443990006b951CE9BC38Ef2eB3b",
+  "0xa4A2FE8Bd5A7Ee99ED375BA179861D1DA7F2e8F4",
+  "0xABd47E54595b814625B1B911BC3A078397Abb973",
+  "0xcdfEe11B2F2eA6501E06576e1a50baa7B8Bd8750",
+  "0xb1aEEA9466b8C67Ba9D8931987E26A2Bef59B7Dc",
+  // Nuclear #5 hub (deployed, never app-served — ops/deploys/nuclear-5.md)
+  "0x4e75F7d0D5847e6730da328F92890f1FcE3628F4",
+  "0x3C2E19AdE259453D43a20E94D4Bf979250BC32c3",
+  "0x408c0DB8cDf1bC31aa69aD73bf260e70803a2379",
+  "0x8542Dd53345d851a320C7d1B2e78E1786743a70e",
+  "0x74a659E081317bB63Bb552ab1C3d886e4728CceE",
+  "0x88821bfb1A2C9dAB404C4a86a88685469b74101a",
+  "0x66aF522A26C7650f63Bc82f611a623F3E863888b",
+  // Nuclear #6 hub (explorers red; never app-served — archive/nuclear-6-84532.manifest.json)
+  "0xb2762a11C14991E5EdD5270c44ab10f5956E3aAA",
+  "0x8E6D4e07f45913fcf94a92261AE51522141AAF9f",
+  "0xB081b8e3c6a5f72e07D5628F60A77Fb018BF0029",
+  "0x8fc3325c2d018812Fcf782e3DE0f0F954B3f1915",
+  "0x6aD4409089FcF8f2513b7E90CB7818d04D80Dedb",
+  "0x6f309EdABCfcd3243E63eAc6EC2c476a9Ef3526e",
+  "0xFA4FcEf7a1bF882438f70BaC63401410d4f6DB29",
 ];
 
 /**
@@ -81,6 +111,9 @@ export const SEPOLIA_HISTORICAL_DENYLIST: readonly `0x${string}`[] = [
  * (see `SEPOLIA_HISTORICAL_DENYLIST`). Normative rule: SPEC §I.12.12.
  *
  * Nuclear #4 cutover August 2, 2026: Nuclear #3 Eth stack + prior Nuclear/legacy retired.
+ * Nuclear #7 / S9-A cutover September 2026: Nuclear #4 Eth retired; N5+N6 Eth
+ * stacks denylisted (deployed, never served the app). Live N7 Eth addresses must
+ * not appear on this list (own-chain ban); Base-list collisions are Base-scoped.
  */
 export const ETHEREUM_SEPOLIA_HISTORICAL_DENYLIST: readonly `0x${string}`[] = [
   "0x4FC74e0B7eE0A741707A553D43Efff68126D198B",
@@ -110,6 +143,32 @@ export const ETHEREUM_SEPOLIA_HISTORICAL_DENYLIST: readonly `0x${string}`[] = [
   "0x1424084C800b4712D835d244904915D1e62B2f21",
   "0x07f9c182F176C2C4A82Fcb80c4f942864420542D",
   "0x3ef0bD0e9446D5C3B7A10A1e0563b1d5a96afc4E",
+  // Nuclear #4 Eth (superseded by Nuclear #7 / S9-A)
+  "0x95D9A432B53ceB42a0681b1900f52e7Fe2247586",
+  "0xb83b89f4a7303f005dA8c0787e904104a1030128",
+  "0x5dF3f185D9fAb40D1BEBC74b63268F8528a02906",
+  "0x1016BCA92B98Ea2C648074cAAf04C5d0B3Baf8eC",
+  "0xc416f642a85E3E104A42c2B067bB31485947891d",
+  "0x49e8ce3e99Fa7413133b04f4085E55BF332BFC60",
+  "0xbFdA994743feF37b268aA70ffF8a91eF3d10936E",
+  "0x689D4A780a0d65A3f6dd02BD1013b1d3a5f60660",
+  "0xec44167ab1e2619C9aCaA87F5B06DcAFe1BF7269",
+  // Nuclear #5 Eth (deployed, never app-served — ops/deploys/nuclear-5.md)
+  "0x8A3529d2B4CC482476Bd40f81a1E2F9E335867F7",
+  "0xcAa270392eEa2AD4471C12267Ed9Bf7567ECa498",
+  "0xfe9b6477C32dB849E7C5520BF1e055b2e5ABA6C9",
+  "0x2961A0fDa331E1ecaF4e9F8A3515fe4346f60b2d",
+  "0x6d1169F4b639Ee27442786b160FB3F06fDe6c28E",
+  "0xD9Ea579DD90b4c5386A55688036d73B9d6bA5d4f",
+  "0x2f74620F74A9addb441225356Abe79b2691F39B9",
+  // Nuclear #6 Eth (explorers red; never app-served — archive/nuclear-6-11155111.manifest.json)
+  "0xbAf046a0433644C5f8Eb16ceC1E42F4EF67A6802",
+  "0x379BA6b8368Fc5C457fFaa4d7b5816a335754b3E",
+  "0x2F1036251227EdaFaC51934AB5157854d2632Dc4",
+  "0xFCC3FB7e926483778898f8Dd38bDb1Db51412a41",
+  "0xf06BD41AA01BC31Dcb9e9B4eAA739E170A29147b",
+  "0x77C881b9FB3cD425367c99378588b2790669F51F",
+  "0xb9B649e13cA11a87c8842dD593E2008FBd130ECb",
 ];
 
 /**
