@@ -22,7 +22,10 @@ import {
   type LegacyFiatCurrency,
 } from "@/lib/marketplace/currency-code";
 import { FIAT_SCALE } from "@/lib/marketplace/price-normalize";
-import { COMMERCIAL_ACTIVE } from "@/lib/web3/commercial-active";
+import {
+  commercialEip155Ids,
+  requireEvmCommercialActive,
+} from "@/lib/web3/commercial-active";
 
 export type ListingAskingPrice =
   | {
@@ -65,7 +68,8 @@ export function askingAssetUsdScale(decimals: number): bigint {
  */
 export function askingUsdcFacts(): AskingUsdcFact[] {
   const facts: AskingUsdcFact[] = [];
-  for (const stack of Object.values(COMMERCIAL_ACTIVE)) {
+  for (const chainId of commercialEip155Ids()) {
+    const stack = requireEvmCommercialActive(chainId);
     const meta = resolveSettlementAssetMeta({
       chainId: stack.chainId,
       asset: stack.usdc,
@@ -84,10 +88,11 @@ export function askingUsdcFacts(): AskingUsdcFact[] {
   return facts;
 }
 
-/** Native Asking decimals — must agree across COMMERCIAL_ACTIVE. */
+/** Native Asking decimals — must agree across commercial EVM stacks. */
 export function askingNativeDecimals(): number {
   const found = new Set<number>();
-  for (const stack of Object.values(COMMERCIAL_ACTIVE)) {
+  for (const chainId of commercialEip155Ids()) {
+    const stack = requireEvmCommercialActive(chainId);
     const meta = resolveSettlementAssetMeta({
       chainId: stack.chainId,
       asset: ASKING_NATIVE_ASSET,

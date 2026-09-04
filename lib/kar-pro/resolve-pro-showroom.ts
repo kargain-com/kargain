@@ -3,7 +3,7 @@ import {
   ponderFetch,
 } from "@/lib/web3/ponder-fetch";
 import { commercialChainIds } from "@/lib/web3/chain-context";
-import { isCommercialChainId } from "@/lib/web3/commercial-active";
+import { isCommercialEip155Id } from "@/lib/web3/commercial-active";
 import {
   readActiveVerifierMemberships,
   verifierMembershipKey,
@@ -73,7 +73,7 @@ export async function resolveProShowroomBySlug(
   if (!trimmed) return { kind: "missing" };
 
   if (chainId != null) {
-    if (!isCommercialChainId(chainId)) return { kind: "missing" };
+    if (!isCommercialEip155Id(chainId)) return { kind: "missing" };
     const hit = await fetchBySlugOnChain(trimmed, chainId);
     if (!hit) return { kind: "missing" };
     return { kind: "resolved", chainId: hit.chainId, address: hit.address };

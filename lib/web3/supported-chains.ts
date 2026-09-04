@@ -1,7 +1,7 @@
 import type { Chain } from "viem/chains";
 import { baseSepolia, hardhat, sepolia } from "viem/chains";
 
-import { eip155Of, isCommercialChainId } from "@/lib/web3/commercial-active";
+import { eip155Of, isCommercialEip155Id, isCommercialNamespace } from "@/lib/web3/commercial-active";
 
 const enableLocalChain = process.env.NEXT_PUBLIC_ENABLE_LOCAL_CHAIN === "1";
 
@@ -19,7 +19,13 @@ for (const c of kargainChains) byId.set(c.id, c);
  * Commercial namespaces resolve EIP-155 via `eip155Of` (never a blind cast).
  */
 export function wagmiChainId(chainId: number): KargainChainId {
-  const eip155 = isCommercialChainId(chainId) ? eip155Of(chainId) : chainId;
+  // Commercial but not EVM EIP-155 ⇒ reserved-band / SVM namespace — never a wagmi chain.
+  if (isCommercialNamespace(chainId) && !isCommercialEip155Id(chainId)) {
+    throw new Error(
+      `wagmiChainId: namespace ${chainId} is SVM — not an EIP-155 wagmi chain`,
+    );
+  }
+  const eip155 = isCommercialEip155Id(chainId) ? eip155Of(chainId) : chainId;
   if (!byId.has(eip155)) {
     throw new Error(`wagmiChainId: ${chainId} is not in the Kargain write-union`);
   }

@@ -6,12 +6,16 @@
  * local deployments/<chainId>.json → COMMERCIAL_ACTIVE[namespace].
  * Gitignored manifests stay deploy-machine artifacts only.
  *
- * Sole owner of the commercial-network set / `isCommercialChainId` predicate.
- * Tooling (feeds, nuclear) imports from here — do not redefine the allowlist.
+ * Sole owner of the commercial-network set. Tooling (feeds, nuclear) imports
+ * from here — do not redefine the allowlist.
  *
  * Registry key = namespace (SPEC §13.1). EVM rows use EIP-155 as namespace;
  * SVM rows (when live) use the reserved-band namespace — never invent a fake EIP-155.
- * No Solana row until programs are deployed and cut over (S4b / S9).
+ * No Solana row until S9-0 Devnet modes + S9-B cutover.
+ *
+ * Enumerators: `commercialEip155Ids` is EVM-only (`vm === "evm"`). Never treat
+ * reserved-band namespace keys as EIP-155 (S9 research §1.1.23 class).
+ * `isCommercialEip155Id` ≠ `isCommercialNamespace` — audit call sites by name.
  */
 
 import {
@@ -127,8 +131,16 @@ export type SvmCommercialActiveStack = {
   blocks: CommercialActiveBlocks;
 };
 
-/** Discriminated commercial stack — live registry is EVM-only; SVM shape is typed for S4b+. */
+/** Discriminated commercial stack — live registry is EVM-only until S9-B. */
 export type CommercialActiveStack = EvmCommercialActiveStack | SvmCommercialActiveStack;
+
+/**
+ * Registry shape — namespace → stack. Enumerators accept this so tests can inject
+ * a mixed fixture through the product filter (not a reimplemented predicate).
+ */
+export type CommercialRegistry = Readonly<
+  Record<number, CommercialActiveStack>
+>;
 
 const ETH_NATIVE_UNIT = mintCommercialNativeUnit("ETH", 18);
 
@@ -210,46 +222,84 @@ export type CommercialChainId =
   | typeof ETHEREUM_SEPOLIA_11155111.chainId;
 
 /**
- * Active commercial protocol stacks. Add a new entry when bringing up another chain;
- * do not reuse addresses across namespaces (SPEC §I.12.12).
- * Registry key = namespace (equals EIP-155 for current EVM rows).
- * Live registry is EVM-only — no Solana row until S4b deploy + S9 cutover.
+ * Active commercial protocol stacks. Key = namespace (EIP-155 for EVM rows).
+ * Type admits SVM rows; live map is EVM-only until S9-B.
+ * Do not reuse addresses across namespaces (SPEC §I.12.12).
  */
-export const COMMERCIAL_ACTIVE: Readonly<
-  Record<CommercialChainId, EvmCommercialActiveStack>
-> = {
+export const COMMERCIAL_ACTIVE: CommercialRegistry = {
   [BASE_SEPOLIA_84532.chainId]: BASE_SEPOLIA_84532,
   [ETHEREUM_SEPOLIA_11155111.chainId]: ETHEREUM_SEPOLIA_11155111,
 };
 
-/** Sorted commercial EIP-155 ids (nuclear / feeds / UI lists). */
-export function commercialEip155Ids(): readonly CommercialChainId[] {
-  return (Object.keys(COMMERCIAL_ACTIVE) as unknown as CommercialChainId[])
-    .map(Number)
-    .sort((a, b) => a - b) as CommercialChainId[];
+/**
+ * Sorted commercial EIP-155 ids (nuclear / feeds / UI OR-loops).
+ * Filters `vm === "evm"` — reserved-band SVM namespace keys must never appear here.
+ * Optional `registry` is for planted proofs only; product callers omit it.
+ */
+export function commercialEip155Ids(
+  registry: CommercialRegistry = COMMERCIAL_ACTIVE,
+): readonly CommercialChainId[] {
+  return Object.values(registry)
+    .filter((s): s is EvmCommercialActiveStack => s.vm === "evm")
+    .map((s) => s.chainId as CommercialChainId)
+    .sort((a, b) => a - b);
 }
 
 /**
- * Namespace ids allowed to surface on provenance UNION reads (S7c-2).
+ * Sorted reserved-band namespace ids for registered SVM commercial stacks.
+ * Empty until S9-B inserts a `vm: "svm"` row.
+ */
+export function commercialSvmNamespaceIds(
+  registry: CommercialRegistry = COMMERCIAL_ACTIVE,
+): readonly number[] {
+  return Object.values(registry)
+    .filter((s): s is SvmCommercialActiveStack => s.vm === "svm")
+    .map((s) => Number(s.namespace))
+    .sort((a, b) => a - b);
+}
+
+/**
+ * Namespace ids allowed to surface on provenance/entity UNION reads.
  * EVM rows use EIP-155; SVM rows use reserved-band namespace when registered.
  */
-export function registeredCommercialNamespaceIds(): readonly number[] {
-  return commercialEip155Ids().map((id) => Number(COMMERCIAL_ACTIVE[id].namespace));
+export function registeredCommercialNamespaceIds(
+  registry: CommercialRegistry = COMMERCIAL_ACTIVE,
+): readonly number[] {
+  return Object.values(registry)
+    .map((s) => Number(s.namespace))
+    .sort((a, b) => a - b);
 }
 
 export function commercialActive(
-  chainId: number,
+  namespace: number,
+  registry: CommercialRegistry = COMMERCIAL_ACTIVE,
 ): CommercialActiveStack | undefined {
-  return Object.prototype.hasOwnProperty.call(COMMERCIAL_ACTIVE, chainId)
-    ? COMMERCIAL_ACTIVE[chainId as CommercialChainId]
+  return Object.prototype.hasOwnProperty.call(registry, namespace)
+    ? registry[namespace]
     : undefined;
 }
 
-/** True when `chainId` has a committed commercial stack (84532, 11155111, …). */
-export function isCommercialChainId(
-  chainId: number,
-): chainId is CommercialChainId {
-  return Object.prototype.hasOwnProperty.call(COMMERCIAL_ACTIVE, chainId);
+/**
+ * True when `id` is a committed **EVM** commercial EIP-155 chain id.
+ * Never true for reserved-band SVM namespaces — use {@link isCommercialNamespace}.
+ */
+export function isCommercialEip155Id(
+  id: number,
+  registry: CommercialRegistry = COMMERCIAL_ACTIVE,
+): id is CommercialChainId {
+  const stack = commercialActive(id, registry);
+  return stack != null && stack.vm === "evm";
+}
+
+/**
+ * True when `namespace` has any committed commercial stack (EVM or SVM).
+ * Custody / origin / UNION keys — not wagmi / nuclear EIP-155 gates.
+ */
+export function isCommercialNamespace(
+  namespace: number,
+  registry: CommercialRegistry = COMMERCIAL_ACTIVE,
+): boolean {
+  return commercialActive(namespace, registry) != null;
 }
 
 function commercialActiveMissingMessage(chainId: number): string {
@@ -277,11 +327,15 @@ export function requireCommercialActive(chainId: number): CommercialActiveStack 
  * Committed EVM commercial stack for a known EIP-155 id.
  * Fails by name when the registry row is missing or not EVM (SVM rows use namespace keys).
  */
-export function requireEvmCommercialActive(chainId: CommercialChainId): EvmCommercialActiveStack {
-  const stack = COMMERCIAL_ACTIVE[chainId];
-  if (stack.vm !== "evm") {
+export function requireEvmCommercialActive(
+  chainId: number,
+): EvmCommercialActiveStack {
+  const stack = commercialActive(chainId);
+  if (!stack || stack.vm !== "evm") {
     throw new Error(
-      `requireEvmCommercialActive: chain ${chainId} is not an EVM commercial stack (vm=${stack.vm})`,
+      stack == null
+        ? commercialActiveMissingMessage(chainId)
+        : `requireEvmCommercialActive: chain ${chainId} is not an EVM commercial stack (vm=${stack.vm})`,
     );
   }
   return stack;

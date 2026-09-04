@@ -16,7 +16,7 @@ describe("peer identity KarPro policy", () => {
     );
     assert.match(src, /useKarProMembershipRoster/);
     assert.match(src, /karProAnyActive/);
-    assert.match(src, /isCommercialChainId/);
+    assert.match(src, /isCommercialEip155Id/);
   });
 
   it("agent authorization passes mandate chainId into usePeerIdentity", () => {

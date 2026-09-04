@@ -14,7 +14,8 @@
 
 import {
   commercialEip155Ids,
-  isCommercialChainId,
+  isCommercialEip155Id,
+  isCommercialNamespace,
   requireCommercialActive,
   type CommercialActiveStack,
 } from "@/lib/web3/commercial-active";
@@ -27,13 +28,13 @@ export function commercialChainIds(): readonly number[] {
 
 /**
  * Wallet write target for commerce / KarPro / mint / fee.
- * Commercial wallet only; missing / NaN / non-commercial → null.
+ * Commercial **EVM** wallet only; missing / NaN / non-EVM-commercial → null.
  */
 export function resolveWalletCommercialChainId(
   walletChainId: number | undefined,
 ): number | null {
   if (walletChainId == null || !Number.isFinite(walletChainId)) return null;
-  if (!isCommercialChainId(walletChainId)) return null;
+  if (!isCommercialEip155Id(walletChainId)) return null;
   return walletChainId;
 }
 
@@ -56,21 +57,24 @@ export function resolveUrlExpectedChainId(
   return isKargainWriteChain(parsed) ? parsed : null;
 }
 
-/** Commerce page chain: custody only; non-commercial / missing → null. */
+/**
+ * Commerce page chain: custody namespace (EVM EIP-155 or SVM reserved-band).
+ * Non-commercial / missing → null.
+ */
 export function resolveCustodyCommerceChainId(
   custodyChain: number | null | undefined,
 ): number | null {
   if (custodyChain == null || !Number.isFinite(custodyChain)) return null;
-  if (!isCommercialChainId(custodyChain)) return null;
+  if (!isCommercialNamespace(custodyChain)) return null;
   return custodyChain;
 }
 
-/** Origin for titles/labels; optional, never invent hub. */
+/** Origin for titles/labels; any commercial namespace; never invent hub. */
 export function resolveOriginChainId(
   originChain: number | null | undefined,
 ): number | null {
   if (originChain == null || !Number.isFinite(originChain)) return null;
-  if (!isCommercialChainId(originChain)) return null;
+  if (!isCommercialNamespace(originChain)) return null;
   return originChain;
 }
 

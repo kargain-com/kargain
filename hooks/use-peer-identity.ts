@@ -9,7 +9,7 @@ import {
   karProAnyActive,
   preferActiveMembershipChainId,
 } from "@/lib/kar-pro/membership-roster";
-import { isCommercialChainId } from "@/lib/web3/commercial-active";
+import { isCommercialEip155Id } from "@/lib/web3/commercial-active";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
@@ -41,7 +41,7 @@ export function usePeerIdentity(
   const membershipChainId =
     options?.chainId != null &&
     Number.isFinite(options.chainId) &&
-    isCommercialChainId(options.chainId)
+    isCommercialEip155Id(options.chainId)
       ? options.chainId
       : null;
 

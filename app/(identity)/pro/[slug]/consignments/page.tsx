@@ -13,7 +13,7 @@ import {
 } from "@/lib/design/instrument-classes";
 import { proConsignmentsHref, proShowroomHref } from "@/lib/kar-pro/pro-showroom-href";
 import { parseOptionalChainParam } from "@/lib/web3/chain-context";
-import { isCommercialChainId } from "@/lib/web3/commercial-active";
+import { isCommercialEip155Id } from "@/lib/web3/commercial-active";
 import { shortChainName } from "@/lib/web3/supported-chains";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
@@ -27,7 +27,7 @@ function resolveShowroomChainParam(
   raw: string | string[] | undefined,
 ): number | null {
   const parsed = parseOptionalChainParam(raw);
-  if (parsed == null || !isCommercialChainId(parsed)) return null;
+  if (parsed == null || !isCommercialEip155Id(parsed)) return null;
   return parsed;
 }
 

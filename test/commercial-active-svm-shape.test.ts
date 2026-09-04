@@ -9,7 +9,8 @@ import { describe, it } from "node:test";
 import {
   COMMERCIAL_ACTIVE,
   commercialActive,
-  isCommercialChainId,
+  isCommercialEip155Id,
+  isCommercialNamespace,
   requireCommercialActive,
   type CommercialActiveStack,
 } from "../lib/web3/commercial-active.ts";
@@ -40,7 +41,8 @@ describe("commercial-active SVM shape (S4a T3)", () => {
 
   it("live registry stays EVM-only — no Solana row", () => {
     assert.equal(commercialActive(SOLANA_DEVNET_NAMESPACE), undefined);
-    assert.equal(isCommercialChainId(SOLANA_DEVNET_NAMESPACE), false);
+    assert.equal(isCommercialEip155Id(SOLANA_DEVNET_NAMESPACE), false);
+    assert.equal(isCommercialNamespace(SOLANA_DEVNET_NAMESPACE), false);
     assert.ok(!(SOLANA_DEVNET_NAMESPACE in COMMERCIAL_ACTIVE));
     for (const stack of Object.values(COMMERCIAL_ACTIVE)) {
       assert.equal(stack.vm, "evm");

@@ -196,8 +196,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "commercial-stack-registry",
     owner: "lib/web3/commercial-active.ts · lib/web3/kargain-namespace.ts",
-    rule: "Sole commercial-network set / isCommercialChainId; vm-tagged registry; eip155Of",
-    guardTests: ["network-class-policy.test.ts"],
+    rule: "Sole commercial-network set; isCommercialEip155Id ≠ isCommercialNamespace; injectable vm-filtered enumerators; eip155Of",
+    guardTests: [
+      "network-class-policy.test.ts",
+      "commercial-enumerators-policy.test.ts",
+      "commercial-active.test.ts",
+      "commercial-active-svm-shape.test.ts",
+    ],
   },
   {
     id: "on-chain-bytecode-identity",

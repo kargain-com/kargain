@@ -7,7 +7,7 @@ import { getAddress } from "viem";
 
 import {
   commercialEip155Ids,
-  isCommercialChainId,
+  isCommercialEip155Id,
   type CommercialChainId,
 } from "../../lib/web3/commercial-active.js";
 import {
@@ -86,7 +86,7 @@ export function buildNuclearDeployPlan(
   chainId: number,
   roles: NuclearRoleParams,
 ): NuclearDeployPlan {
-  if (!isCommercialChainId(chainId)) {
+  if (!isCommercialEip155Id(chainId)) {
     throw new Error(
       `Nuclear deploy only supports commercial EIP-155 ids (${commercialEip155Ids().join("|")}), got ${chainId}`,
     );

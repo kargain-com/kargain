@@ -4,7 +4,6 @@
  */
 
 import {
-  COMMERCIAL_ACTIVE,
   requireEvmCommercialActive,
 } from "./commercial-active";
 
@@ -17,7 +16,7 @@ export const SEPOLIA_PUBLIC_RPC = "https://base-sepolia-rpc.publicnode.com";
  * Active Nuclear #4 stack on Base Sepolia — alias of COMMERCIAL_ACTIVE[84532].
  * KarPassport `1.10.0-rc.1` · FixedPrice `2.4.0-rc.1` · Ascending `2.4.0-rc.1`.
  */
-export const SEPOLIA_ACTIVE = COMMERCIAL_ACTIVE[SEPOLIA_CHAIN_ID]!;
+export const SEPOLIA_ACTIVE = requireEvmCommercialActive(SEPOLIA_CHAIN_ID);
 
 /**
  * Abandoned / historical Kargain contracts on **Base Sepolia only**.

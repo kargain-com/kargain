@@ -13,7 +13,7 @@ import {
   COMMERCIAL_ACTIVE,
   commercialEip155Ids,
   eip155Of,
-  isCommercialChainId,
+  isCommercialEip155Id,
 } from "../lib/web3/commercial-active.ts";
 import {
   DECLARED_ASCENDING_CHALLENGE_BOND_WEI,
@@ -42,7 +42,7 @@ const WAGMI_OWNER = path.join(ROOT, "lib/web3/supported-chains.ts");
 
 /** Second definition of the commercial predicate (function body with OR literals). */
 const SECOND_IS_COMMERCIAL =
-  /function\s+isCommercialChainId\s*\([^)]*\)\s*(?::[^{]+)?\{[^}]*chainId\s*===\s*84532/;
+  /function\s+isCommercialEip155Id\s*\([^)]*\)\s*(?::[^{]+)?\{[^}]*chainId\s*===\s*84532/;
 
 /** Weight wei literals that must live only in declared-weights. */
 const WEIGHT_LITERALS = [
@@ -71,7 +71,7 @@ function rel(file: string): string {
 }
 
 describe("commercial stack registry policy", () => {
-  it("isCommercialChainId is defined only in commercial-active.ts", () => {
+  it("isCommercialEip155Id is defined only in commercial-active.ts", () => {
     const violations: string[] = [];
     for (const dir of SCAN_DIRS) {
       for (const file of listTsFiles(dir)) {
@@ -105,10 +105,10 @@ describe("commercial stack registry policy", () => {
     assert.match(nuclear, /from\s+["'].*commercial-active/);
     assert.doesNotMatch(nuclear, /export\s+const\s+COMMERCIAL_CHAIN_IDS/);
     assert.match(feeds, /from\s+["'].*commercial-active/);
-    assert.match(feeds, /isCommercialChainId/);
+    assert.match(feeds, /isCommercialEip155Id/);
     assert.doesNotMatch(
       feeds,
-      /export\s+(?:type\s+)?\{[^}]*(?:CommercialChainId|isCommercialChainId|commercialEip155Ids)/,
+      /export\s+(?:type\s+)?\{[^}]*(?:CommercialChainId|isCommercialEip155Id|commercialEip155Ids)/,
     );
     assert.ok(!/chainId === 84532 \|\| chainId === 11155111/.test(feeds));
   });
@@ -117,9 +117,9 @@ describe("commercial stack registry policy", () => {
     const violations: string[] = [];
     /** Re-export of registry predicate / type / id list from a non-owner module. */
     const REEXPORT =
-      /export\s+(?:type\s+)?\{[^}]*(?:\bisCommercialChainId\b|\bCommercialChainId\b|\bcommercialEip155Ids\b)[^}]*\}\s*from\s*["'][^"']+["']/;
+      /export\s+(?:type\s+)?\{[^}]*(?:\bisCommercialEip155Id\b|\bCommercialChainId\b|\bcommercialEip155Ids\b)[^}]*\}\s*from\s*["'][^"']+["']/;
     const REEXPORT_VALUE =
-      /export\s*\{[^}]*(?:\bisCommercialChainId\b|\bcommercialEip155Ids\b)[^}]*\}/;
+      /export\s*\{[^}]*(?:\bisCommercialEip155Id\b|\bcommercialEip155Ids\b)[^}]*\}/;
     const ALIAS_LIST = /export\s+const\s+COMMERCIAL_CHAIN_IDS\b/;
     for (const dir of SCAN_DIRS) {
       for (const file of listTsFiles(dir)) {
@@ -151,9 +151,9 @@ describe("commercial stack registry policy", () => {
   });
 
   it("registry exports type guard and two EVM stacks", () => {
-    assert.equal(isCommercialChainId(84532), true);
-    assert.equal(isCommercialChainId(11155111), true);
-    assert.equal(isCommercialChainId(1), false);
+    assert.equal(isCommercialEip155Id(84532), true);
+    assert.equal(isCommercialEip155Id(11155111), true);
+    assert.equal(isCommercialEip155Id(1), false);
     assert.deepEqual(commercialEip155Ids(), [84532, 11155111]);
     for (const id of commercialEip155Ids()) {
       const stack = COMMERCIAL_ACTIVE[id];
@@ -170,7 +170,7 @@ describe("eip155 accessor policy", () => {
   it("wagmiChainId consumes eip155Of for commercial ids", () => {
     const text = fs.readFileSync(WAGMI_OWNER, "utf8");
     assert.match(text, /eip155Of/);
-    assert.match(text, /isCommercialChainId/);
+    assert.match(text, /isCommercialEip155Id/);
     assert.ok(
       !/return chainId as KargainChainId/.test(text),
       "blind cast removed",

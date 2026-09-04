@@ -1,7 +1,7 @@
 import { getAddress } from "viem";
 
 import {
-  isCommercialChainId,
+  isCommercialEip155Id,
   requireCommercialActive,
   requireEvmCommercialActive,
   type EvmCommercialActiveStack,
@@ -67,7 +67,7 @@ function parseStartBlockEnv(chainId: number): number | undefined {
 }
 
 function stackFromCommitted(chainId: number): ResolvedCommercialStack {
-  if (!isCommercialChainId(chainId)) {
+  if (!isCommercialEip155Id(chainId)) {
     throw new Error(
       `stackFromCommitted: chain ${chainId} is not a committed EVM commercial stack`,
     );
@@ -186,7 +186,7 @@ export function resolveCommercialStack(chainId: number): ResolvedCommercialStack
     if (fromEnv) return fromEnv;
   }
 
-  if (!isCommercialChainId(chainId)) {
+  if (!isCommercialEip155Id(chainId)) {
     requireCommercialActive(chainId);
     throw new Error(`resolveCommercialStack: unreachable after requireCommercialActive(${chainId})`);
   }

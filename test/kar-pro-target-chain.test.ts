@@ -5,17 +5,17 @@ import {
   resolveKarProTargetChainId,
   shouldShowBecomeKarPro,
 } from "../lib/kar-pro/kar-pro-target-chain.ts";
-import { isCommercialChainId } from "../lib/web3/commercial-active.ts";
+import { isCommercialEip155Id } from "../lib/web3/commercial-active.ts";
 
-describe("isCommercialChainId", () => {
+describe("isCommercialEip155Id", () => {
   it("accepts hub and spoke", () => {
-    assert.equal(isCommercialChainId(84532), true);
-    assert.equal(isCommercialChainId(11155111), true);
+    assert.equal(isCommercialEip155Id(84532), true);
+    assert.equal(isCommercialEip155Id(11155111), true);
   });
 
   it("rejects unknown and mainnet", () => {
-    assert.equal(isCommercialChainId(1), false);
-    assert.equal(isCommercialChainId(31337), false);
+    assert.equal(isCommercialEip155Id(1), false);
+    assert.equal(isCommercialEip155Id(31337), false);
   });
 });
 

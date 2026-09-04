@@ -25,7 +25,7 @@ import {
   ETHEREUM_SEPOLIA_PUBLIC_RPC,
   SEPOLIA_PUBLIC_RPC,
 } from "../lib/web3/sepolia-addresses.js";
-import { isCommercialChainId } from "../lib/web3/commercial-active.js";
+import { isCommercialEip155Id } from "../lib/web3/commercial-active.js";
 import {
   assertNuclearFeedsFresh,
   getChainFeedConfig,
@@ -344,7 +344,7 @@ async function runLiveDeploy() {
   try {
     const publicClient = await viem.getPublicClient();
     const chainId = await publicClient.getChainId();
-    if (!isCommercialChainId(chainId)) {
+    if (!isCommercialEip155Id(chainId)) {
       throw new Error(`Expected commercial chain 84532|11155111, got ${chainId}`);
     }
 

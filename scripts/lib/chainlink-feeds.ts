@@ -1,7 +1,7 @@
 import { type PublicClient, getAddress, type Hex, type Abi } from "viem";
 
 import {
-  isCommercialChainId,
+  isCommercialEip155Id,
   type CommercialChainId,
 } from "../../lib/web3/commercial-active.js";
 
@@ -91,7 +91,7 @@ export function deriveFeedStalenessTolerance(
  * Committed Chainlink proxy addresses — bytecode verified at deploy via RPC.
  * Tolerances from P4 rule (probe + directory 2026-07-30) — see deriveFeedStalenessTolerance.
  * Mainnet rows (1, 8453) are configuration only; Nuclear deploy stays
- * `isCommercialChainId` → 84532 | 11155111 (§7.6 / commercial allowlist).
+ * `isCommercialEip155Id` → 84532 | 11155111 (§7.6 / commercial allowlist).
  */
 export const CHAINLINK_FEEDS: Record<number, ChainFeedConfig> = {
   84532: {
@@ -234,7 +234,7 @@ export const LZ_ENDPOINT_V2_BY_CHAIN: {
 };
 
 export function lzEndpointForChain(chainId: number): `0x${string}` {
-  if (!isCommercialChainId(chainId)) {
+  if (!isCommercialEip155Id(chainId)) {
     throw new Error(`No LayerZero EndpointV2 map for chainId ${chainId}`);
   }
   return getAddress(LZ_ENDPOINT_V2_BY_CHAIN[chainId]);
