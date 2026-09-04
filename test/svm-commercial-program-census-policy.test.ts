@@ -224,7 +224,7 @@ describe("svm commercial program census (S9-0 / S9-0-close)", () => {
     assert.notEqual(resolveIngestStartSlot(evidence), evidence.slotAtEvidence);
   });
 
-  it("S9-0-close: four programs load + gateway ok; census/verify refuse modes", () => {
+  it("S9-0-close: four programs load + gateway ok; census assert refuses modes", () => {
     const four = evidenceWith(FOUR_PROGRAMS);
     assert.equal(
       requireSvmGatewayProgramId(four),
@@ -242,6 +242,63 @@ describe("svm commercial program census (S9-0 / S9-0-close)", () => {
         assert.ok(err.missingEvidenceKeys.includes("kar_ascending"));
         return true;
       },
+    );
+  });
+
+  it("S9-0-close-2: assertSvmCommercialEvidence only at ingest entry (and owner)", () => {
+    const needle = "assertSvmCommercialEvidence(";
+    const allowed = new Set([
+      "lib/svm/ingest-config.ts",
+      "src/svm-ingest/main.ts",
+    ]);
+    const hits: string[] = [];
+
+    function walk(dir: string) {
+      for (const name of readdirSync(dir)) {
+        if (
+          name === "node_modules" ||
+          name === "target" ||
+          name === ".git" ||
+          name === "test"
+        ) {
+          continue;
+        }
+        const p = join(dir, name);
+        const st = statSync(p);
+        if (st.isDirectory()) {
+          walk(p);
+          continue;
+        }
+        if (!/\.(ts|tsx)$/.test(name)) continue;
+        const rel = relative(ROOT, p);
+        const text = readFileSync(p, "utf8");
+        if (!/\bassertSvmCommercialEvidence\s*\(/.test(text)) continue;
+        if (!allowed.has(rel)) hits.push(rel);
+      }
+    }
+
+    for (const r of ["lib", "scripts", "src", "app", "components", "hooks"]) {
+      walk(join(ROOT, r));
+    }
+
+    assert.deepEqual(
+      hits,
+      [],
+      `assertSvmCommercialEvidence must not be called outside ingest entry + owner:\n${hits.join("\n")}`,
+    );
+
+    const ingestMain = readFileSync(join(ROOT, "src/svm-ingest/main.ts"), "utf8");
+    assert.match(
+      ingestMain,
+      /\bassertSvmCommercialEvidence\s*\(/,
+      "ingest entry must call assertSvmCommercialEvidence (sole hard census gate)",
+    );
+
+    assert.ok(
+      !readFileSync(
+        join(ROOT, "scripts/assert-svm-upgrade-authority.ts"),
+        "utf8",
+      ).includes(needle),
     );
   });
 

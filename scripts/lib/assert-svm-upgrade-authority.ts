@@ -1,13 +1,21 @@
 /**
  * Sole owner: evidence `programs.*.upgradeAuthority` ≡ on-chain ProgramData
- * Authority for every live SVM commercial program (I4).
+ * Authority for every live SVM program row with a programId (I4).
  *
  * Does not upgrade, hand off, or rewrite evidence. Abandoned prior program ids
  * are not asserted (they live under `abandonedPriorPrograms` only).
+ * Commercial census completeness is NOT this owner's job — ingest entry only.
  */
+import { COMMERCIAL_PROGRAM_EVIDENCE_KEY_LIST } from "../../lib/svm/ingest-config.js";
 import type { SvmDevnetEvidence } from "./load-deployment.js";
 
-export type SvmAuthorityOk = { ok: true; checked: number };
+export type SvmAuthorityOk = {
+  ok: true;
+  /** Commercial rows (excludes mock_staking) that matched on-chain Authority. */
+  checked: number;
+  /** Stand-only mock_staking matched when present. */
+  standOnlyChecked: number;
+};
 
 export type SvmAuthorityFail = {
   ok: false;
@@ -30,9 +38,10 @@ export type FetchProgramAuthority = (
 ) => Promise<string | null>;
 
 /**
- * Compare each live evidence program's recorded UA to chain.
+ * Compare each evidence program row with a programId to on-chain Authority.
  * Refuses missing per-program UA, fetch failure, and mismatch.
  * Refuses leftover `plannedFinalUpgradeAuthority` (not a live ops field).
+ * Incomplete commercial census is not a refusal here.
  */
 export async function assertSvmUpgradeAuthority(
   evidence: SvmDevnetEvidence,
@@ -65,10 +74,12 @@ export async function assertSvmUpgradeAuthority(
   }
 
   let checked = 0;
+  let standOnlyChecked = 0;
   for (const [name, row] of entries) {
     const programId = row.programId?.trim();
     const recorded = row.upgradeAuthority?.trim();
     if (!programId) {
+      // Present key with empty id is malformed; absent optional keys are not listed.
       reasons.push(`programs.${name} missing programId`);
       continue;
     }
@@ -101,11 +112,15 @@ export async function assertSvmUpgradeAuthority(
       );
       continue;
     }
-    checked += 1;
+    if (name === "mock_staking") {
+      standOnlyChecked += 1;
+    } else {
+      checked += 1;
+    }
   }
 
   if (reasons.length > 0) return { ok: false, reasons };
-  return { ok: true, checked };
+  return { ok: true, checked, standOnlyChecked };
 }
 
 export function formatSvmAuthorityFailure(result: SvmAuthorityFail): string {
@@ -113,4 +128,42 @@ export function formatSvmAuthorityFailure(result: SvmAuthorityFail): string {
     "SVM upgrade-authority evidence mismatch — refuse (fix evidence or redeploy):",
     ...result.reasons.map((r) => `  - ${r}`),
   ].join("\n");
+}
+
+/**
+ * Census summary for verify stdout — never refuses.
+ * Counts only the six commercial keys; mock_staking is never included.
+ */
+export function formatSvmCommercialCensusSummary(
+  evidence: SvmDevnetEvidence,
+): string {
+  const present: string[] = [];
+  const missing: string[] = [];
+  for (const key of COMMERCIAL_PROGRAM_EVIDENCE_KEY_LIST) {
+    const id = evidence.programs[key]?.programId?.trim();
+    if (id) present.push(key);
+    else missing.push(key);
+  }
+  const k = present.length;
+  if (missing.length === 0) {
+    return `census: checked ${k} of 6; complete`;
+  }
+  return `census: checked ${k} of 6; incomplete: ${missing.sort().join(", ")}`;
+}
+
+/** Format success lines after authority check (founder-visible). */
+export function formatSvmAuthoritySuccessLines(
+  result: SvmAuthorityOk,
+  evidence: SvmDevnetEvidence,
+): string[] {
+  const lines = [
+    `  OK ${result.checked} program(s) evidence ≡ on-chain Authority`,
+  ];
+  if (result.standOnlyChecked > 0) {
+    lines.push(
+      `  stand-only mock_staking: OK (${result.standOnlyChecked})`,
+    );
+  }
+  lines.push(`  ${formatSvmCommercialCensusSummary(evidence)}`);
+  return lines;
 }

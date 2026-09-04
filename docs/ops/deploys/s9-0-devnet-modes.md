@@ -8,7 +8,7 @@ Standing UA: [svm-devnet.md](./svm-devnet.md) — S4–S9 deployer retains upgra
 
 ## Why
 
-S9 readiness requires lots, portfolios, and claims on three networks. Passport+gateway+staking alone cannot satisfy that criterion. Ingest follows **six** commercial programs and refuses when any `programId` or `deploySlot` is missing (`lib/svm/ingest-config.ts` → `assertSvmCommercialEvidence`).
+S9 readiness requires lots, portfolios, and claims on three networks. Passport+gateway+staking alone cannot satisfy that criterion. Ingest follows **six** commercial programs and refuses when any `programId` or `deploySlot` is missing (`lib/svm/ingest-config.ts` → `assertSvmCommercialEvidence` at the **ingest entry** only).
 
 ## Founder order
 
@@ -16,7 +16,13 @@ S9 readiness requires lots, portfolios, and claims on three networks. Passport+g
 
 - `.env.local`: `SOLANA_RPC_URL`, `SOLANA_DEPLOYER_PRIVATE_KEY`, `SOLANA_UPGRADE_AUTHORITY` (= deployer pubkey)
 - Four live programs untouched: `kar_passport`, `kar_gateway`, `kar_pro_staking`, `kar_pro_pass`
-- UA ≡ deployer for those four (`pnpm verify:svm-authority` should already pass for them)
+- UA ≡ deployer for those four — run anytime:
+
+```bash
+pnpm verify:svm-authority
+```
+
+Exit 0 with `census: checked 4 of 6; incomplete: kar_ascending, kar_fixed_price` is expected before modes deploy. Incomplete census is a summary, not a refuse.
 
 ### 2. Dry-run / build modes
 
@@ -53,12 +59,14 @@ Edit `deployments/svm-40168.json`:
 
 Optional root fields `indexFromSlot` / `slotAtEvidence` are **annotations / snapshots only** — ingest **ignores** them.
 
-### 5. Verify UA
+### 5. Re-verify UA + dry-run
 
 ```bash
-pnpm verify:svm-authority
+pnpm verify:svm-authority   # expect census: checked 6 of 6; complete
 pnpm deploy:svm:dry-run
 ```
+
+A complete six-program census (`programId` + `deploySlot` on all six) is the condition to **enable ingest** (S9-B) — not a condition for `verify:svm-authority`.
 
 ### 6. Explicit non-goals
 
@@ -80,4 +88,4 @@ Mode config init (USDC mint Circle Devnet `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJg
 ## Gates
 
 - `test:verify` includes `svm-deploy-plan` (six names) + `svm-commercial-program-census-policy`
-- Load / ingest startup throws `MissingCommercialProgramError` if evidence lacks a commercial `programId` or `deploySlot`
+- Ingest startup throws `MissingCommercialProgramError` if evidence lacks a commercial `programId` or `deploySlot`

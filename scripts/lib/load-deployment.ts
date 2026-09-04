@@ -428,7 +428,7 @@ function isSvmDevnetEvidenceShape(raw: unknown): raw is SvmDevnetEvidence {
 /**
  * Load SVM Devnet evidence with document-shape validation only.
  * Missing / malformed file → null. Commercial six-program census is NOT applied here —
- * call `assertSvmCommercialEvidence` at ingest / verify:svm-authority.
+ * call `assertSvmCommercialEvidence` at the svm-ingest entry only.
  */
 export function loadSvmDevnetEvidence(eid: number = 40168): SvmDevnetEvidence | null {
   const raw = readJsonFile<unknown>(svmDevnetEvidencePath(eid));

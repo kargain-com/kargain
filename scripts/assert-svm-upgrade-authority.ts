@@ -1,6 +1,7 @@
 /**
- * Read-only: every live program in svm-{eid} evidence must match on-chain
- * ProgramData Authority. Commercial six-program census required (verify path).
+ * Read-only: evidence `programs.*.upgradeAuthority` ≡ on-chain ProgramData
+ * Authority for every listed program with a programId. Incomplete commercial
+ * census is reported on the summary line — not a refusal (ingest owns that gate).
  *
  *   pnpm verify:svm-authority
  *   pnpm verify:svm-authority -- --eid=40168
@@ -10,12 +11,9 @@ import { spawnSync } from "node:child_process";
 import { config as loadEnv } from "dotenv";
 
 import {
-  assertSvmCommercialEvidence,
-  MissingCommercialProgramError,
-} from "../lib/svm/ingest-config.js";
-import {
   assertSvmUpgradeAuthority,
   formatSvmAuthorityFailure,
+  formatSvmAuthoritySuccessLines,
   parseProgramShowAuthority,
 } from "./lib/assert-svm-upgrade-authority.js";
 import {
@@ -66,16 +64,6 @@ async function main() {
     process.exit(1);
   }
 
-  try {
-    assertSvmCommercialEvidence(evidence);
-  } catch (err) {
-    if (err instanceof MissingCommercialProgramError) {
-      console.error(err.message);
-      process.exit(1);
-    }
-    throw err;
-  }
-
   console.log(
     `SVM upgrade authority — eid ${eid} rpc=${rpc} evidence=${svmDevnetEvidencePath(eid)}`,
   );
@@ -89,7 +77,9 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`  OK ${result.checked} live program(s) evidence ≡ on-chain Authority`);
+  for (const line of formatSvmAuthoritySuccessLines(result, evidence)) {
+    console.log(line);
+  }
   console.log("\nAuthority evidence intact.");
 }
 
