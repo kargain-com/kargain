@@ -26,6 +26,8 @@ import {
 import { protocolAddressToBytes32 } from "../lib/web3/protocol-address.ts";
 import {
   requireSvmDevnetEvidence,
+  requireSvmGatewayProgramId,
+  requireSvmPassportProgramId,
   svmDevnetEvidencePath,
 } from "./lib/load-deployment.ts";
 import { materializeSolanaDeployer } from "./lib/svm-materialize-deployer.ts";
@@ -148,8 +150,8 @@ async function main(): Promise<void> {
   const rpc = requireEnv("SOLANA_RPC_URL");
   const endpointId = new PublicKey(requireEnv("SOLANA_LZ_ENDPOINT"));
   const evidence = requireSvmDevnetEvidence(SVM_EID);
-  const gatewayId = new PublicKey(evidence.programs.kar_gateway.programId);
-  const passportId = new PublicKey(evidence.programs.kar_passport.programId);
+  const gatewayId = new PublicKey(requireSvmGatewayProgramId(evidence));
+  const passportId = new PublicKey(requireSvmPassportProgramId(evidence));
 
   const hubManifest = JSON.parse(
     readFileSync(join(process.cwd(), "deployments/84532.json"), "utf8"),

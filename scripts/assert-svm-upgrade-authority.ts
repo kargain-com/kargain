@@ -1,6 +1,6 @@
 /**
  * Read-only: every live program in svm-{eid} evidence must match on-chain
- * ProgramData Authority.
+ * ProgramData Authority. Commercial six-program census required (verify path).
  *
  *   pnpm verify:svm-authority
  *   pnpm verify:svm-authority -- --eid=40168
@@ -9,6 +9,10 @@ import { spawnSync } from "node:child_process";
 
 import { config as loadEnv } from "dotenv";
 
+import {
+  assertSvmCommercialEvidence,
+  MissingCommercialProgramError,
+} from "../lib/svm/ingest-config.js";
 import {
   assertSvmUpgradeAuthority,
   formatSvmAuthorityFailure,
@@ -60,6 +64,16 @@ async function main() {
   } catch {
     console.error(`Missing ${svmDevnetEvidencePath(eid)} — run deploy:svm first`);
     process.exit(1);
+  }
+
+  try {
+    assertSvmCommercialEvidence(evidence);
+  } catch (err) {
+    if (err instanceof MissingCommercialProgramError) {
+      console.error(err.message);
+      process.exit(1);
+    }
+    throw err;
   }
 
   console.log(

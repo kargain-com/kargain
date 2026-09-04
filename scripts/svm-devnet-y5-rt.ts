@@ -45,7 +45,12 @@ import {
 } from "./lib/deployer-viem.ts";
 import { EID_HUB, EID_SOLANA_DEVNET } from "./lib/layerzero-metadata.ts";
 import { onftSentGuidFromLogs } from "./lib/onft-sent.ts";
-import { requireSepoliaDeployment, requireSvmDevnetEvidence } from "./lib/load-deployment.ts";
+import {
+  requireSepoliaDeployment,
+  requireSvmDevnetEvidence,
+  requireSvmGatewayProgramId,
+  requireSvmPassportProgramId,
+} from "./lib/load-deployment.ts";
 import { materializeSolanaDeployer } from "./lib/svm-materialize-deployer.ts";
 
 const require = createRequire(import.meta.url);
@@ -255,8 +260,9 @@ async function nudgeHubDelivery(
         PublicKey.findProgramAddressSync(
           [CONFIG_SEED],
           new PublicKey(
-            requireSvmDevnetEvidence(EID_SOLANA_DEVNET).programs.kar_gateway
-              .programId,
+            requireSvmGatewayProgramId(
+              requireSvmDevnetEvidence(EID_SOLANA_DEVNET),
+            ),
           ),
         )[0].toBytes(),
       ).toString("hex")}`,
@@ -293,8 +299,8 @@ async function main(): Promise<void> {
   const evidence = requireSvmDevnetEvidence(EID_SOLANA_DEVNET);
   const hubPassport = getAddress(hubManifest.karPassport);
   const hubGateway = getAddress(hubManifest.bridgeGateway!);
-  const gatewayId = new PublicKey(evidence.programs.kar_gateway.programId);
-  const passportId = new PublicKey(evidence.programs.kar_passport.programId);
+  const gatewayId = new PublicKey(requireSvmGatewayProgramId(evidence));
+  const passportId = new PublicKey(requireSvmPassportProgramId(evidence));
   const gatewayConfig = pda([CONFIG_SEED], gatewayId);
   const passportConfig = pda([CONFIG_SEED], passportId);
   const freeze = pda([FREEZE_SEED], gatewayId);

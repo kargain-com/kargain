@@ -17,7 +17,7 @@ import {
   testnetMinStakeLamports,
   testnetMinStakePinRecord,
 } from "../lib/web3/min-stake-sol.ts";
-import { loadSvmDevnetEvidence, type SvmDevnetEvidence } from "./lib/load-deployment.ts";
+import { loadSvmDevnetEvidence, requireSvmGatewayProgramId, requireSvmPassportProgramId, type SvmDevnetEvidence } from "./lib/load-deployment.ts";
 import { assertSolanaUpgradeAuthorityMatchesDeployer } from "./lib/svm-deploy-plan.ts";
 import {
   STAKE_ACCOUNT_SPACE,
@@ -153,12 +153,12 @@ async function main() {
   }
 
   const prior = loadSvmDevnetEvidence(40168);
-  if (!prior?.programs?.kar_passport?.programId) {
+  if (!prior) {
     throw new Error(
-      "Missing prior svm-40168 evidence with kar_passport — upgrade passport BPF then SetStakingProgram",
+      "Missing prior svm-40168 evidence — upgrade passport BPF then SetStakingProgram",
     );
   }
-  const passportId = new PublicKey(prior.programs.kar_passport.programId);
+  const passportId = new PublicKey(requireSvmPassportProgramId(prior));
   const [passportConfig] = pda([CONFIG], passportId);
 
   // SetStakingProgram (requires passport BPF with disc 10)
@@ -178,7 +178,7 @@ async function main() {
 
   // Mint passport to a distinct owner; deployer joins as verifier (CannotSelfVerify).
   const owner = Keypair.generate();
-  const gatewayId = new PublicKey(prior.programs.kar_gateway.programId);
+  const gatewayId = new PublicKey(requireSvmGatewayProgramId(prior));
   const [gatewayFreeze] = pda([FREEZE], gatewayId);
 
   const cfgData = (await connection.getAccountInfo(passportConfig))!.data;

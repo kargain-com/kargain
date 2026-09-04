@@ -1,12 +1,16 @@
 /**
  * Sole type owner: Solana Devnet deploy evidence wire shape (`deployments/svm-{eid}.json`).
  * Loaders live in scripts/lib/load-deployment.ts — lib must not import scripts.
+ *
+ * Progressive fill: passport + gateway are the baseline Devnet shape; staking / pass /
+ * modes become present as S5 / S9-0 land. Commercial completeness is
+ * `assertSvmCommercialEvidence` — not the shared loader.
  */
 
 export type SvmDevnetProgramEvidence = {
   programId: string;
-  /** Slot at which this programId became followable on-cluster (per-program deploy boundary). */
-  deploySlot: number;
+  /** Slot at which this programId became followable — required by commercial census. */
+  deploySlot?: number;
   soSha256?: string;
   soBytes?: number;
   upgradeAuthority?: string;
@@ -22,7 +26,8 @@ export type SvmDevnetPathwayPeers = {
 export type SvmDevnetEvidence = {
   cluster: string;
   eid: number;
-  namespace: number;
+  /** Commercial / ingest namespace — confirmable by SVM_INGEST_NAMESPACE. */
+  namespace?: number;
   /**
    * Optional annotation only — ingest ignores this.
    * Follow cursor = min(programs[k].deploySlot) over the six commercial keys.
@@ -35,10 +40,10 @@ export type SvmDevnetEvidence = {
   programs: {
     kar_passport: SvmDevnetProgramEvidence;
     kar_gateway: SvmDevnetProgramEvidence;
-    kar_pro_staking: SvmDevnetProgramEvidence;
-    kar_pro_pass: SvmDevnetProgramEvidence;
-    kar_fixed_price: SvmDevnetProgramEvidence;
-    kar_ascending: SvmDevnetProgramEvidence;
+    kar_pro_staking?: SvmDevnetProgramEvidence;
+    kar_pro_pass?: SvmDevnetProgramEvidence;
+    kar_fixed_price?: SvmDevnetProgramEvidence;
+    kar_ascending?: SvmDevnetProgramEvidence;
     /** Stand-only mock — never a commercial ingest follow. */
     mock_staking?: SvmDevnetProgramEvidence;
   };

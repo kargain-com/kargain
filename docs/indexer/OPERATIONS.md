@@ -78,8 +78,8 @@ Default `SVM_INGEST_CATCHUP_MAX_LAG_SLOTS=216000` (~24h at ~400ms/slot). On star
 
 **Operator recovery (do not silent deep-fetch):**
 
-1. Confirm intentional re-anchor vs RPC outage — check Solana RPC health and evidence `indexFromSlot`.
-2. If re-anchor is correct: stop `svm-ingest`, set cursor via SQL on `kargain_svm_raw.ingest_cursor` to the chosen contiguous slot (or truncate raw tables + reset cursor if rebuilding from evidence start), set `SVM_INGEST_START_SLOT` if needed, restart service.
+1. Confirm intentional re-anchor vs RPC outage — check Solana RPC health and evidence `programs.*.deploySlot` (follow start = `min` over the six commercial keys).
+2. If re-anchor is correct: stop `svm-ingest`, set cursor via SQL on `kargain_svm_raw.ingest_cursor` to the chosen contiguous slot (or truncate raw tables + reset cursor if rebuilding from evidence `min(deploySlot)`), restart service. Raising the evidence minimum permanently skips earlier slots without a raw rebuild.
 3. If RPC was transient: restore RPC, restart; service catches up within window.
 4. Verify `/ready` 200 and run `pnpm svm-raw:replay-digest` on a snapshot if validating rebuild integrity.
 

@@ -73,6 +73,7 @@ import {
   loadSpokeDeployment,
   requireSepoliaDeployment,
   requireSvmDevnetEvidence,
+  requireSvmGatewayProgramId,
   SEPOLIA_CHAIN_ID,
   SEPOLIA_DEPLOYMENT_PATH,
   SPOKE_CHAIN_ID,
@@ -698,7 +699,7 @@ async function main(): Promise<void> {
   if (svmSpoke) {
     const evidence = requireSvmDevnetEvidence(spokeEid);
     // LZ OApp identity on Solana is the gateway_config PDA, not the program id.
-    spokeOApp = svmGatewayOAppPeer(evidence.programs.kar_gateway.programId);
+    spokeOApp = svmGatewayOAppPeer(requireSvmGatewayProgramId(evidence));
   } else {
     const ethCommercial = loadCommercialDeployment(SPOKE_CHAIN_ID);
     if (ethCommercial?.bridgeGateway) {

@@ -18,7 +18,7 @@ import { getAddress } from "viem";
 
 import { protocolAddressToBytes32 } from "../lib/web3/protocol-address.ts";
 import { loadLayerZeroMetadataSnapshot, isSvmLayerZeroChain } from "./lib/layerzero-metadata.ts";
-import { requireSvmDevnetEvidence } from "./lib/load-deployment.ts";
+import { requireSvmDevnetEvidence, requireSvmGatewayProgramId } from "./lib/load-deployment.ts";
 import { materializeSolanaDeployer } from "./lib/svm-materialize-deployer.ts";
 import { asLzSdkConnection } from "./lib/solana-lz-connection.ts";
 
@@ -74,7 +74,7 @@ async function main(): Promise<void> {
   const rpc = requireEnv("SOLANA_RPC_URL");
   const endpointId = new PublicKey(requireEnv("SOLANA_LZ_ENDPOINT"));
   const evidence = requireSvmDevnetEvidence(SVM_EID);
-  const gatewayId = new PublicKey(evidence.programs.kar_gateway.programId);
+  const gatewayId = new PublicKey(requireSvmGatewayProgramId(evidence));
   const gatewayConfig = PublicKey.findProgramAddressSync(
     [Buffer.from("config")],
     gatewayId,

@@ -7,6 +7,7 @@ import { createRequire } from "node:module";
 import pg from "pg";
 
 import {
+  assertSvmCommercialEvidence,
   followedProgramsFromEvidence,
   resolveCatchupMaxLagSlots,
   resolveIngestNamespace,
@@ -48,12 +49,10 @@ async function main(): Promise<void> {
     throw new Error(`Missing deploy evidence deployments/svm-${eid}.json`);
   }
 
+  assertSvmCommercialEvidence(evidence);
   const namespace = resolveIngestNamespace(evidence);
   const startSlot = resolveIngestStartSlot(evidence);
   const followedPrograms = followedProgramsFromEvidence(evidence);
-  if (followedPrograms.length === 0) {
-    throw new Error("No followed commercial programs in deploy evidence");
-  }
 
   const pool = new pg.Pool({ connectionString: databaseUrl });
   await applySvmRawSchema(pool);

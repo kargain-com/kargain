@@ -97,25 +97,42 @@ export function followedProgramIdSet(programs: readonly FollowedProgram[]): Set<
 
 /**
  * Follow cursor = minimum deploySlot over the six commercial programs.
- * No fallback to slotAtEvidence, indexFromSlot, or SVM_INGEST_START_SLOT.
+ * No env or root-field fallback.
  */
 export function resolveIngestStartSlot(evidence: SvmDevnetEvidence): number {
   assertSvmCommercialEvidence(evidence);
   let min = Number.POSITIVE_INFINITY;
   for (const evidenceKey of COMMERCIAL_PROGRAM_EVIDENCE_KEY_LIST) {
     const slot = programRow(evidence, evidenceKey)!.deploySlot;
-    if (slot < min) min = slot;
+    if (slot! < min) min = slot!;
   }
   return min;
 }
 
+/**
+ * One namespace truth: evidence.namespace, optionally confirmed by SVM_INGEST_NAMESPACE.
+ * Env may fill when evidence has no namespace; disagreeing values refuse by name.
+ * After a Solana COMMERCIAL_ACTIVE row exists, equality must also hold with the
+ * registry (S9-B) — not implemented here.
+ */
 export function resolveIngestNamespace(evidence: SvmDevnetEvidence): number {
   const envRaw = process.env.SVM_INGEST_NAMESPACE?.trim();
-  if (envRaw) {
-    const parsed = Number(envRaw);
-    if (Number.isInteger(parsed)) return parsed;
+  const envParsed =
+    envRaw && Number.isInteger(Number(envRaw)) ? Number(envRaw) : undefined;
+  const evidenceNs =
+    typeof evidence.namespace === "number" ? evidence.namespace : undefined;
+
+  if (envParsed !== undefined && evidenceNs !== undefined) {
+    if (envParsed !== evidenceNs) {
+      throw new Error(
+        `SVM ingest namespace mismatch: SVM_INGEST_NAMESPACE=${envParsed} ` +
+          `evidence.namespace=${evidenceNs}`,
+      );
+    }
+    return evidenceNs;
   }
-  if (typeof evidence.namespace === "number") return evidence.namespace;
+  if (evidenceNs !== undefined) return evidenceNs;
+  if (envParsed !== undefined) return envParsed;
   throw new Error("SVM ingest namespace unset — evidence.namespace or SVM_INGEST_NAMESPACE");
 }
 

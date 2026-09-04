@@ -17,7 +17,7 @@ Separate Node service — **not** inside the Ponder image. Append-only Postgres 
 |------|--------|
 | Health | `GET /live` (liveness) · `GET /ready` (readiness; 503 on catch-up incident) on **:42100** |
 | Programs | Six production BPF slugs from S7a manifest (`kar-passport`, `kar-pro-staking`, `kar-pro-pass`, `kar-fixed-price`, `kar-ascending`, `kar-gateway`) — IDs from `deployments/svm-{eid}.json` |
-| Start slot | `indexFromSlot` in deploy evidence or `SVM_INGEST_START_SLOT` override |
+| Start slot | `min(programs.*.deploySlot)` over the six commercial programs in deploy evidence |
 | Ordering key | `(slot, tx_index_in_block, log_index)` — writer-local total order |
 | Refusal kinds | `log_truncated` · `unknown_discriminator` · `payload_malformed` · `sequence_gap` |
 

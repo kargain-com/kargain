@@ -8,9 +8,6 @@ import type {
   SvmDevnetPathwayPeers,
   SvmDevnetProgramEvidence,
 } from "../../lib/svm/devnet-evidence.js";
-import {
-  assertSvmCommercialEvidence,
-} from "../../lib/svm/ingest-config.js";
 import type { LocalStackAddresses } from "./local-stack.js";
 import type { ContractVersionName } from "./contract-versions.js";
 
@@ -416,26 +413,64 @@ export function svmDevnetEvidencePath(eid: number = 40168): string {
   return join(deploymentsDirectory(), `svm-${eid}.json`);
 }
 
+/** Document shape only — not commercial census. */
+function isSvmDevnetEvidenceShape(raw: unknown): raw is SvmDevnetEvidence {
+  if (raw == null || typeof raw !== "object") return false;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.cluster !== "string") return false;
+  if (typeof o.eid !== "number" || !Number.isInteger(o.eid)) return false;
+  if (o.programs == null || typeof o.programs !== "object" || Array.isArray(o.programs)) {
+    return false;
+  }
+  return true;
+}
+
 /**
- * Load + assert six commercial programs (programId + deploySlot).
- * Missing file → null. Incomplete census → throws MissingCommercialProgramError by name.
+ * Load SVM Devnet evidence with document-shape validation only.
+ * Missing / malformed file → null. Commercial six-program census is NOT applied here —
+ * call `assertSvmCommercialEvidence` at ingest / verify:svm-authority.
  */
 export function loadSvmDevnetEvidence(eid: number = 40168): SvmDevnetEvidence | null {
   const raw = readJsonFile<unknown>(svmDevnetEvidencePath(eid));
-  if (raw == null || typeof raw !== "object") return null;
-  const evidence = raw as SvmDevnetEvidence;
-  assertSvmCommercialEvidence(evidence);
-  return evidence;
+  if (!isSvmDevnetEvidenceShape(raw)) return null;
+  return raw;
 }
 
 export function requireSvmDevnetEvidence(eid: number = 40168): SvmDevnetEvidence {
   const evidence = loadSvmDevnetEvidence(eid);
   if (!evidence) {
     throw new Error(
-      `Missing SVM deploy evidence ${svmDevnetEvidencePath(eid)} (run S9-0 modes deploy + fill six programIds/deploySlots)`,
+      `Missing or malformed SVM deploy evidence ${svmDevnetEvidencePath(eid)}`,
     );
   }
   return evidence;
+}
+
+/**
+ * Bridge / pathway / RT tools: require gateway programId by name.
+ * Does not require FixedPrice, Ascending, or deploySlot.
+ */
+export function requireSvmGatewayProgramId(evidence: SvmDevnetEvidence): string {
+  const id = evidence.programs.kar_gateway?.programId?.trim();
+  if (!id) {
+    throw new Error(
+      "SVM evidence missing programs.kar_gateway.programId — deploy kar_gateway and record it in svm-{eid}.json",
+    );
+  }
+  return id;
+}
+
+/**
+ * Tools that read passport (y4 / y5 / s5): require passport programId by name.
+ */
+export function requireSvmPassportProgramId(evidence: SvmDevnetEvidence): string {
+  const id = evidence.programs.kar_passport?.programId?.trim();
+  if (!id) {
+    throw new Error(
+      "SVM evidence missing programs.kar_passport.programId — deploy kar_passport and record it in svm-{eid}.json",
+    );
+  }
+  return id;
 }
 
 /** Map a commercial deployment manifest to the Ponder address bundle. */
