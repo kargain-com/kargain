@@ -14,10 +14,12 @@ import {
   COMMERCIAL_PROGRAM_EVIDENCE_KEYS,
   MissingCommercialProgramError,
   assertSvmCommercialEvidence,
+  commercialProgramCensusGaps,
   followedProgramsFromEvidence,
   resolveIngestNamespace,
   resolveIngestStartSlot,
 } from "../lib/svm/ingest-config.ts";
+import { formatSvmCommercialCensusSummary } from "../scripts/lib/assert-svm-upgrade-authority.ts";
 import {
   loadSvmDevnetEvidence,
   requireSvmGatewayProgramId,
@@ -198,6 +200,21 @@ describe("svm commercial program census (S9-0 / S9-0-close)", () => {
         assert.ok(err.missingEvidenceKeys.includes("kar_ascending"));
         return true;
       },
+    );
+
+    // S9-0-close-2 fix: summary ↔ gaps ↔ assert share one predicate
+    const ev = evidenceWith(missingSlot);
+    const gaps = commercialProgramCensusGaps(ev);
+    assert.deepEqual(gaps, [
+      { key: "kar_ascending", cause: "missing_deploy_slot" },
+    ]);
+    assert.equal(
+      formatSvmCommercialCensusSummary(ev),
+      "census: checked 5 of 6; incomplete: missing deploySlot: kar_ascending",
+    );
+    assert.throws(
+      () => assertSvmCommercialEvidence(ev),
+      MissingCommercialProgramError,
     );
 
     const staggered = withSlots(

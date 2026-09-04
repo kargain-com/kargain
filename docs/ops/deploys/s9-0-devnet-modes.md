@@ -22,7 +22,7 @@ S9 readiness requires lots, portfolios, and claims on three networks. Passport+g
 pnpm verify:svm-authority
 ```
 
-Exit 0 with `census: checked 4 of 6; incomplete: kar_ascending, kar_fixed_price` is expected before modes deploy. Incomplete census is a summary, not a refuse.
+Exit 0 with `census: checked 4 of 6; incomplete: missing programId: kar_ascending, kar_fixed_price` is expected before modes deploy. Incomplete census is a summary, not a refuse — same completeness predicate as ingest (`programId` + `deploySlot`).
 
 ### 2. Dry-run / build modes
 

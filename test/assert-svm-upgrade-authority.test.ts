@@ -9,6 +9,10 @@ import {
   parseProgramShowAuthority,
 } from "../scripts/lib/assert-svm-upgrade-authority.ts";
 import type { SvmDevnetEvidence } from "../scripts/lib/load-deployment.ts";
+import {
+  MissingCommercialProgramError,
+  assertSvmCommercialEvidence,
+} from "../lib/svm/ingest-config.ts";
 
 const AUTH = "Auth111111111111111111111111111111111111111";
 const OTHER = "OtherAuth111111111111111111111111111111111";
@@ -96,13 +100,44 @@ describe("assertSvmUpgradeAuthority (S9-0-close-2)", () => {
     assert.equal(result.standOnlyChecked, 0);
     assert.equal(
       formatSvmCommercialCensusSummary(evidence),
-      "census: checked 4 of 6; incomplete: kar_ascending, kar_fixed_price",
+      "census: checked 4 of 6; incomplete: missing programId: kar_ascending, kar_fixed_price",
     );
     const lines = formatSvmAuthoritySuccessLines(result, evidence);
     assert.deepEqual(lines, [
       "  OK 4 program(s) evidence ≡ on-chain Authority",
-      "  census: checked 4 of 6; incomplete: kar_ascending, kar_fixed_price",
+      "  census: checked 4 of 6; incomplete: missing programId: kar_ascending, kar_fixed_price",
     ]);
+  });
+
+  it("six programIds with one missing deploySlot → summary not complete; gate refuses", async () => {
+    const evidence = baseEvidence({
+      programs: {
+        ...FULL_PROGRAMS,
+        kar_ascending: {
+          programId: FULL_PROGRAMS.kar_ascending!.programId,
+          upgradeAuthority: AUTH,
+          // deploySlot omitted
+        },
+      },
+    });
+    const summary = formatSvmCommercialCensusSummary(evidence);
+    assert.equal(
+      summary,
+      "census: checked 5 of 6; incomplete: missing deploySlot: kar_ascending",
+    );
+    assert.ok(!summary.endsWith("; complete"));
+    assert.throws(
+      () => assertSvmCommercialEvidence(evidence),
+      (err: unknown) => {
+        assert.ok(err instanceof MissingCommercialProgramError);
+        assert.deepEqual([...err.missingEvidenceKeys], ["kar_ascending"]);
+        return true;
+      },
+    );
+    // Authority can still be green — census summary is separate from UA refuse.
+    const result = await assertSvmUpgradeAuthority(evidence, async () => AUTH);
+    assert.equal(result.ok, true);
+    if (result.ok) assert.equal(result.checked, 6);
   });
 
   it("four programs with one authority mismatched → refuse naming program and both authorities", async () => {

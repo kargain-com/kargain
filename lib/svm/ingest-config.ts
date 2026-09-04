@@ -56,21 +56,47 @@ function isValidDeploySlot(slot: unknown): slot is number {
   return typeof slot === "number" && Number.isInteger(slot) && slot >= 0;
 }
 
+export type CommercialProgramCensusGapCause =
+  | "missing_program_id"
+  | "missing_deploy_slot";
+
+export type CommercialProgramCensusGap = {
+  key: CommercialProgramEvidenceKey;
+  cause: CommercialProgramCensusGapCause;
+};
+
+/**
+ * Sole completeness predicate for the six commercial keys.
+ * Gate and verify summary both consume this — no second truth.
+ * Does not read `mock_staking`.
+ */
+export function commercialProgramCensusGaps(
+  evidence: SvmDevnetEvidence,
+): CommercialProgramCensusGap[] {
+  const gaps: CommercialProgramCensusGap[] = [];
+  for (const evidenceKey of COMMERCIAL_PROGRAM_EVIDENCE_KEY_LIST) {
+    const row = programRow(evidence, evidenceKey);
+    const programId = row?.programId?.trim();
+    if (!programId) {
+      gaps.push({ key: evidenceKey, cause: "missing_program_id" });
+      continue;
+    }
+    if (!isValidDeploySlot(row?.deploySlot)) {
+      gaps.push({ key: evidenceKey, cause: "missing_deploy_slot" });
+    }
+  }
+  return gaps;
+}
+
 /**
  * Refuse incomplete commercial evidence by key name.
  * Requires programId and deploySlot on each of the six census keys.
  * Does not read `mock_staking`.
  */
 export function assertSvmCommercialEvidence(evidence: SvmDevnetEvidence): void {
-  const missing: string[] = [];
-  for (const evidenceKey of COMMERCIAL_PROGRAM_EVIDENCE_KEY_LIST) {
-    const row = programRow(evidence, evidenceKey);
-    if (!row?.programId || !isValidDeploySlot(row.deploySlot)) {
-      missing.push(evidenceKey);
-    }
-  }
-  if (missing.length > 0) {
-    throw new MissingCommercialProgramError(missing);
+  const gaps = commercialProgramCensusGaps(evidence);
+  if (gaps.length > 0) {
+    throw new MissingCommercialProgramError(gaps.map((g) => g.key));
   }
 }
 

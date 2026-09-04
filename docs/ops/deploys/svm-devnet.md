@@ -35,7 +35,7 @@ solana program show <PROGRAM_ID> -u "$SOLANA_RPC_URL"
 
 ## Evidence honesty
 
-`pnpm verify:svm-authority` runs **at any time** over the program rows the evidence lists (each with a `programId`). Every such row’s `upgradeAuthority` must equal on-chain ProgramData Authority (sole owner: `scripts/lib/assert-svm-upgrade-authority.ts`). Incomplete commercial census is printed as a **summary** (`checked N of 6; incomplete: …`) — it does **not** refuse. Full six-program census is the condition to **enable svm-ingest**, not to verify authority. Do not keep a live `plannedFinalUpgradeAuthority` field.
+`pnpm verify:svm-authority` runs **at any time** over the program rows the evidence lists (each with a `programId`). Every such row’s `upgradeAuthority` must equal on-chain ProgramData Authority (sole owner: `scripts/lib/assert-svm-upgrade-authority.ts`). Incomplete commercial census is printed as a **summary** (`checked N of 6; incomplete: missing programId: …` and/or `missing deploySlot: …`) — same predicate as ingest (`programId` + `deploySlot`); it does **not** refuse. Full six-program census is the condition to **enable svm-ingest**, not to verify authority. Do not keep a live `plannedFinalUpgradeAuthority` field.
 
 ## Related
 
