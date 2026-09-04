@@ -53,13 +53,15 @@ export async function buildMetadataSnapshotDraft(args: {
   if (result.status === "unavailable") {
     return {
       id: metadataSnapshotRowId({
+        status: "unavailable",
         namespace: args.payload.namespace,
         uri,
-        contentSha256: "unavailable",
+        sourcePayloadId: args.payload.id,
+        slot: args.payload.slot,
       }),
       namespace: args.payload.namespace,
       uri,
-      contentSha256: "unavailable",
+      contentSha256: null,
       parsedJson: null,
       denorm: null,
       sourcePayloadId: args.payload.id,
@@ -84,6 +86,7 @@ export async function buildMetadataSnapshotDraft(args: {
 
   return {
     id: metadataSnapshotRowId({
+      status: "captured",
       namespace: args.payload.namespace,
       uri,
       contentSha256,

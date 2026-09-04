@@ -78,14 +78,23 @@ CREATE TABLE IF NOT EXISTS kargain_svm_raw.metadata_snapshot (
   id TEXT PRIMARY KEY,
   namespace INTEGER NOT NULL,
   uri TEXT NOT NULL,
-  content_sha256 TEXT NOT NULL,
+  -- Digest of captured body bytes; NULL exactly when status = unavailable (never a sentinel string).
+  content_sha256 TEXT,
   parsed_json JSONB,
   source_payload_id TEXT NOT NULL,
   slot BIGINT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('captured', 'unavailable')),
   observed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT metadata_snapshot_uri_order UNIQUE (namespace, uri, content_sha256)
+  CONSTRAINT metadata_snapshot_digest_status_ck CHECK (
+    (status = 'captured' AND content_sha256 IS NOT NULL)
+    OR (status = 'unavailable' AND content_sha256 IS NULL)
+  )
 );
+
+-- Captured bodies are content-addressed; unavailable rows are observation-keyed (id) and not collapsed.
+CREATE UNIQUE INDEX IF NOT EXISTS metadata_snapshot_captured_uri_digest_uidx
+  ON kargain_svm_raw.metadata_snapshot (namespace, uri, content_sha256)
+  WHERE status = 'captured';
 
 CREATE INDEX IF NOT EXISTS metadata_snapshot_uri_idx
   ON kargain_svm_raw.metadata_snapshot (namespace, uri, slot DESC);

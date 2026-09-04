@@ -39,7 +39,7 @@ export type MetadataSnapshotRow = {
   id: string;
   namespace: number;
   uri: string;
-  content_sha256: string;
+  content_sha256: string | null;
   parsed_json: Record<string, unknown> | null;
   source_payload_id: string;
   slot: number;

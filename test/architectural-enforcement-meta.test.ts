@@ -140,6 +140,7 @@ describe("architectural enforcement meta", () => {
       "notification-state-coverage.test.ts",
       "profile-publish-coverage.test.ts",
       "server-action-home-concurrency-policy.test.ts",
+      "svm-metadata-digest-sentinel-policy.test.ts",
     ].sort();
     assert.deepEqual(
       ungarded.sort(),

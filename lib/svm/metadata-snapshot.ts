@@ -1,5 +1,6 @@
 /**
  * Raw metadata snapshot types — captured once at ingest observation (S7c-4).
+ * contentSha256 is a content digest or null (unavailable) — never a sentinel string.
  */
 
 import { createHash } from "node:crypto";
@@ -9,11 +10,15 @@ import { parseMetadataJson } from "@/lib/passport/parse-metadata-json";
 
 export type MetadataSnapshotStatus = "captured" | "unavailable";
 
+/** Forbidden digest sentinel — status owns unavailability; digests are hex or null. */
+export const FORBIDDEN_METADATA_DIGEST_SENTINEL = "unavailable";
+
 export type MetadataSnapshotDraft = {
   id: string;
   namespace: number;
   uri: string;
-  contentSha256: string;
+  /** Hex digest when status=captured; null when unavailable. */
+  contentSha256: string | null;
   /** Parsed metadata document when status=captured; absent when unavailable. */
   parsedJson: Record<string, unknown> | null;
   denorm: IndexedPassportMetadata | null;
@@ -22,12 +27,46 @@ export type MetadataSnapshotDraft = {
   status: MetadataSnapshotStatus;
 };
 
-export function metadataSnapshotRowId(args: {
-  namespace: number;
-  uri: string;
-  contentSha256: string;
-}): string {
-  return `${args.namespace}:${args.uri}:${args.contentSha256}`;
+/** Refuse non-digest values (incl. the retired `"unavailable"` sentinel). */
+export function requireCapturedContentDigest(contentSha256: string): string {
+  const trimmed = contentSha256.trim();
+  if (
+    !trimmed ||
+    trimmed === FORBIDDEN_METADATA_DIGEST_SENTINEL ||
+    !/^[0-9a-f]{64}$/i.test(trimmed)
+  ) {
+    throw new Error(
+      `metadata snapshot content digest must be 64-hex (got ${JSON.stringify(contentSha256)})`,
+    );
+  }
+  return trimmed.toLowerCase();
+}
+
+/**
+ * Captured rows: namespace:uri:digest (content-addressed).
+ * Unavailable rows: namespace:uri:obs:sourcePayloadId:slot (observation-keyed).
+ */
+export function metadataSnapshotRowId(
+  args:
+    | {
+        status: "captured";
+        namespace: number;
+        uri: string;
+        contentSha256: string;
+      }
+    | {
+        status: "unavailable";
+        namespace: number;
+        uri: string;
+        sourcePayloadId: string;
+        slot: number;
+      },
+): string {
+  if (args.status === "captured") {
+    const digest = requireCapturedContentDigest(args.contentSha256);
+    return `${args.namespace}:${args.uri}:${digest}`;
+  }
+  return `${args.namespace}:${args.uri}:obs:${args.sourcePayloadId}:${args.slot}`;
 }
 
 export function sha256Hex(bytes: Buffer | string): string {
@@ -115,7 +154,7 @@ export type MetadataSnapshotRow = {
   id: string;
   namespace: number;
   uri: string;
-  content_sha256: string;
+  content_sha256: string | null;
   parsed_json: Record<string, unknown> | null;
   source_payload_id: string;
   slot: number;
