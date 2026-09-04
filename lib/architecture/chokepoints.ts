@@ -412,6 +412,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     ],
   },
   {
+    id: "svm-commercial-program-census",
+    owner: "lib/svm/ingest-config.ts",
+    rule: "Six commercial evidence keys; assertSvmCommercialEvidence + follow set + min(deploySlot) cursor; mock_staking never followed",
+    guardTests: ["svm-commercial-program-census-policy.test.ts"],
+  },
+  {
     id: "ponder-passport-provenance",
     owner: "src/lib/ponder-passport-provenance.ts",
     rule: "Chain-sharded passport_record / uri_history UNION reads only via provenance owner SQL",

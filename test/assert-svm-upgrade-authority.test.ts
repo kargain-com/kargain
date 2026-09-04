@@ -8,6 +8,41 @@ import {
 } from "../scripts/lib/assert-svm-upgrade-authority.ts";
 import type { SvmDevnetEvidence } from "../scripts/lib/load-deployment.ts";
 
+const AUTH = "Auth111111111111111111111111111111111111111";
+
+const FULL_PROGRAMS: SvmDevnetEvidence["programs"] = {
+  kar_passport: {
+    programId: "Pass111111111111111111111111111111111111111",
+    deploySlot: 100,
+    upgradeAuthority: AUTH,
+  },
+  kar_gateway: {
+    programId: "Gate111111111111111111111111111111111111111",
+    deploySlot: 100,
+    upgradeAuthority: AUTH,
+  },
+  kar_pro_staking: {
+    programId: "Stak111111111111111111111111111111111111111",
+    deploySlot: 100,
+    upgradeAuthority: AUTH,
+  },
+  kar_pro_pass: {
+    programId: "Ppas111111111111111111111111111111111111111",
+    deploySlot: 100,
+    upgradeAuthority: AUTH,
+  },
+  kar_fixed_price: {
+    programId: "Fixe1111111111111111111111111111111111111",
+    deploySlot: 100,
+    upgradeAuthority: AUTH,
+  },
+  kar_ascending: {
+    programId: "Asce111111111111111111111111111111111111111",
+    deploySlot: 100,
+    upgradeAuthority: AUTH,
+  },
+};
+
 function baseEvidence(
   overrides: Partial<SvmDevnetEvidence> = {},
 ): SvmDevnetEvidence {
@@ -15,16 +50,7 @@ function baseEvidence(
     cluster: "solana-devnet",
     eid: 40168,
     namespace: 40168,
-    programs: {
-      kar_passport: {
-        programId: "Pass111111111111111111111111111111111111111",
-        upgradeAuthority: "Auth111111111111111111111111111111111111111",
-      },
-      kar_gateway: {
-        programId: "Gate111111111111111111111111111111111111111",
-        upgradeAuthority: "Auth111111111111111111111111111111111111111",
-      },
-    },
+    programs: { ...FULL_PROGRAMS },
     ...overrides,
   };
 }
@@ -53,13 +79,9 @@ describe("parseProgramShowAuthority", () => {
 describe("assertSvmUpgradeAuthority", () => {
   it("passes when every live program matches", async () => {
     const evidence = baseEvidence();
-    const result = await assertSvmUpgradeAuthority(evidence, async (id) => {
-      if (id.startsWith("Pass")) return "Auth111111111111111111111111111111111111111";
-      if (id.startsWith("Gate")) return "Auth111111111111111111111111111111111111111";
-      return null;
-    });
+    const result = await assertSvmUpgradeAuthority(evidence, async () => AUTH);
     assert.equal(result.ok, true);
-    if (result.ok) assert.equal(result.checked, 2);
+    if (result.ok) assert.equal(result.checked, 6);
   });
 
   it("refuses evidence ≠ chain", async () => {
@@ -75,14 +97,14 @@ describe("assertSvmUpgradeAuthority", () => {
   it("refuses missing per-program upgradeAuthority", async () => {
     const evidence = baseEvidence({
       programs: {
-        kar_passport: { programId: "Pass111111111111111111111111111111111111111" },
-        kar_gateway: {
-          programId: "Gate111111111111111111111111111111111111111",
-          upgradeAuthority: "Auth111111111111111111111111111111111111111",
+        ...FULL_PROGRAMS,
+        kar_passport: {
+          programId: "Pass111111111111111111111111111111111111111",
+          deploySlot: 100,
         },
       },
     });
-    const result = await assertSvmUpgradeAuthority(evidence, async () => "Auth");
+    const result = await assertSvmUpgradeAuthority(evidence, async () => AUTH);
     assert.equal(result.ok, false);
     if (!result.ok) {
       assert.ok(result.reasons.some((r) => r.includes("missing upgradeAuthority")));
@@ -93,10 +115,7 @@ describe("assertSvmUpgradeAuthority", () => {
     const evidence = baseEvidence({
       plannedFinalUpgradeAuthority: "BSuJ…",
     } as unknown as SvmDevnetEvidence);
-    const result = await assertSvmUpgradeAuthority(
-      evidence,
-      async () => "Auth111111111111111111111111111111111111111",
-    );
+    const result = await assertSvmUpgradeAuthority(evidence, async () => AUTH);
     assert.equal(result.ok, false);
     if (!result.ok) {
       assert.ok(

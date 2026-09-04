@@ -3,7 +3,7 @@
  * Mirrors nuclear-deploy-plan discipline: no cluster I/O in the builder;
  * upgrade authority fail-closed like resolveNuclearRoles.
  *
- * S4–S8: SOLANA_UPGRADE_AUTHORITY must equal the deployer pubkey (EVM-parity
+ * S4–S9: SOLANA_UPGRADE_AUTHORITY must equal the deployer pubkey (EVM-parity
  * simplest testnet). No scheduled handoff to a different env pubkey.
  */
 
@@ -17,7 +17,7 @@ export const SOLANA_DEVNET_EID = 40168;
 
 export type SvmDeployCluster = "solana-devnet" | "local";
 
-/** Production commercial programs (SPEC). Mocks are stand-only. */
+/** Production commercial programs (port plan §3.2 — six programs). Mocks are stand-only. */
 export const SVM_COMMERCIAL_PROGRAMS = [
   {
     name: "kar_passport",
@@ -38,6 +38,16 @@ export const SVM_COMMERCIAL_PROGRAMS = [
     name: "kar_pro_pass",
     dir: "kar-pro-pass",
     role: "soulbound Core pass (projection of stake)",
+  },
+  {
+    name: "kar_fixed_price",
+    dir: "kar-fixed-price",
+    role: "FixedPrice consignment mode",
+  },
+  {
+    name: "kar_ascending",
+    dir: "kar-ascending",
+    role: "Ascending consignment mode",
   },
 ] as const;
 
@@ -72,21 +82,21 @@ export function estimateRentExemptLamports(dataLen: number): number {
  * Env names parallel EVM deploy roles — see .env.example "Solana Devnet deploy".
  */
 
-/** Who may replace BPF bytecode (S4–S8 = deployer pubkey). */
+/** Who may replace BPF bytecode (S4–S9 = deployer pubkey). */
 export function resolveSolanaUpgradeAuthority(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
   const raw = env.SOLANA_UPGRADE_AUTHORITY?.trim();
   if (!raw) {
     throw new Error(
-      "SOLANA_UPGRADE_AUTHORITY is required (public base58; must equal deployer pubkey on S4–S8)",
+      "SOLANA_UPGRADE_AUTHORITY is required (public base58; must equal deployer pubkey on S4–S9)",
     );
   }
   return raw;
 }
 
 /**
- * Refuse when env UA ≠ deployer pubkey (S4–S8 standing rule).
+ * Refuse when env UA ≠ deployer pubkey (S4–S9 standing rule).
  * `deployerPubkey` is the base58 pubkey of `SOLANA_DEPLOYER_PRIVATE_KEY`.
  */
 export function assertSolanaUpgradeAuthorityMatchesDeployer(
@@ -101,7 +111,7 @@ export function assertSolanaUpgradeAuthorityMatchesDeployer(
   if (ua !== deployer) {
     throw new Error(
       `SOLANA_UPGRADE_AUTHORITY (${ua}) ≠ deployer pubkey (${deployer}) — ` +
-        `S4–S8 requires UA ≡ deployer (set SOLANA_UPGRADE_AUTHORITY to the deployer pubkey)`,
+        `S4–S9 requires UA ≡ deployer (set SOLANA_UPGRADE_AUTHORITY to the deployer pubkey)`,
     );
   }
   return ua;
@@ -172,7 +182,7 @@ export type SvmDeployProgramRow = {
   programAccountRentLamports: number;
   /** ProgramData rent-exempt estimate for soBytes + header (0 if size unknown). */
   programDataRentLamports: number | null;
-  /** On-chain UA after deploy (S4–S8 = deployer pubkey, retained). */
+  /** On-chain UA after deploy (S4–S9 = deployer pubkey, retained). */
   retainedUpgradeAuthority: string;
 };
 
@@ -202,7 +212,7 @@ export function buildSvmDeployPlan(opts: BuildSvmDeployPlanOpts): SvmDeployPlan 
   const authority = opts.upgradeAuthority.trim();
   if (!authority) {
     throw new Error(
-      "SOLANA_UPGRADE_AUTHORITY is required (public base58; must equal deployer pubkey on S4–S8)",
+      "SOLANA_UPGRADE_AUTHORITY is required (public base58; must equal deployer pubkey on S4–S9)",
     );
   }
 

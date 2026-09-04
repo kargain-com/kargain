@@ -8,6 +8,9 @@ import type {
   SvmDevnetPathwayPeers,
   SvmDevnetProgramEvidence,
 } from "../../lib/svm/devnet-evidence.js";
+import {
+  assertSvmCommercialEvidence,
+} from "../../lib/svm/ingest-config.js";
 import type { LocalStackAddresses } from "./local-stack.js";
 import type { ContractVersionName } from "./contract-versions.js";
 
@@ -413,15 +416,23 @@ export function svmDevnetEvidencePath(eid: number = 40168): string {
   return join(deploymentsDirectory(), `svm-${eid}.json`);
 }
 
+/**
+ * Load + assert six commercial programs (programId + deploySlot).
+ * Missing file → null. Incomplete census → throws MissingCommercialProgramError by name.
+ */
 export function loadSvmDevnetEvidence(eid: number = 40168): SvmDevnetEvidence | null {
-  return readJsonFile<SvmDevnetEvidence>(svmDevnetEvidencePath(eid));
+  const raw = readJsonFile<unknown>(svmDevnetEvidencePath(eid));
+  if (raw == null || typeof raw !== "object") return null;
+  const evidence = raw as SvmDevnetEvidence;
+  assertSvmCommercialEvidence(evidence);
+  return evidence;
 }
 
 export function requireSvmDevnetEvidence(eid: number = 40168): SvmDevnetEvidence {
   const evidence = loadSvmDevnetEvidence(eid);
-  if (!evidence?.programs?.kar_gateway?.programId) {
+  if (!evidence) {
     throw new Error(
-      `Missing SVM deploy evidence ${svmDevnetEvidencePath(eid)} (run pnpm deploy:svm)`,
+      `Missing SVM deploy evidence ${svmDevnetEvidencePath(eid)} (run S9-0 modes deploy + fill six programIds/deploySlots)`,
     );
   }
   return evidence;

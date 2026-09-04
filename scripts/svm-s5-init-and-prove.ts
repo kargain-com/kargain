@@ -446,6 +446,7 @@ async function main() {
   console.log("==> retain deployer upgrade authority (no handoff)");
 
   const pin = testnetMinStakePinRecord();
+  const slotAtWrite = await connection.getSlot("confirmed");
   const evidence: SvmDevnetEvidence = {
     ...prior,
     programs: {
@@ -456,10 +457,12 @@ async function main() {
       },
       kar_pro_staking: {
         programId: stakingId.toBase58(),
+        deploySlot: prior.programs.kar_pro_staking?.deploySlot ?? slotAtWrite,
         upgradeAuthority: deployerPub,
       },
       kar_pro_pass: {
         programId: passId.toBase58(),
+        deploySlot: prior.programs.kar_pro_pass?.deploySlot ?? slotAtWrite,
         upgradeAuthority: deployerPub,
       },
     },
@@ -468,7 +471,7 @@ async function main() {
       at: new Date().toISOString(),
       prove:
         "join(active)→verify(status)→leave(inactive)→close(tombstone)→claim-early(UnbondNotReady)→claim(amount+rent)",
-      upgradeAuthority: "deployer retained (S4–S8)",
+      upgradeAuthority: "deployer retained (S4–S9)",
     },
   };
   writeSvmDevnetEvidence(evidencePath, evidence);

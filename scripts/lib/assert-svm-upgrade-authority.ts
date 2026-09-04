@@ -44,7 +44,7 @@ export async function assertSvmUpgradeAuthority(
     Object.prototype.hasOwnProperty.call(evidence, "plannedFinalUpgradeAuthority")
   ) {
     reasons.push(
-      "Evidence still has plannedFinalUpgradeAuthority — remove; S4–S8 UA is deployer (env ≡ pubkey)",
+      "Evidence still has plannedFinalUpgradeAuthority — remove; S4–S9 UA is deployer (env ≡ pubkey)",
     );
   }
 

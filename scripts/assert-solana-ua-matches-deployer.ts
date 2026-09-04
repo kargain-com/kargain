@@ -1,5 +1,5 @@
 /**
- * Fail-closed: SOLANA_UPGRADE_AUTHORITY ≡ deployer pubkey (S4–S8).
+ * Fail-closed: SOLANA_UPGRADE_AUTHORITY ≡ deployer pubkey (S4–S9).
  * Sole CLI entry for live bash deploy paths — calls svm-deploy-plan owner.
  *
  *   pnpm exec tsx scripts/assert-solana-ua-matches-deployer.ts
