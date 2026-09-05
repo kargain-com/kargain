@@ -3,34 +3,23 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
-import type { TransactionReceipt } from "viem";
-import { useConfig } from "wagmi";
 
 import { getIndexerBlockNumber } from "@/app/actions/indexer-status";
 import { revalidateIndexerCache } from "@/app/actions/revalidate-indexer-cache";
-import {
-  useActiveAccount,
-  evmSwitchChainAvailability,
-} from "@/hooks/use-active-account";
+import { useActiveAccount } from "@/hooks/use-active-account";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
-import { confirmEvmTransaction } from "@/lib/web3/evm-tx-confirm";
+import {
+  awaitEvmWriteReceipt,
+  runEvmWriteLifecycle,
+  useEvmWriteLifecycleConfig,
+  type EvmWriteLifecycleSuccess,
+} from "@/lib/web3/evm-write-lifecycle";
 import { invalidateIndexerQueries } from "@/lib/web3/indexer-query-keys";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
-import {
-  TX_SYNC_LAG_ADVISORY,
-  waitForIndexerBlock,
-} from "@/lib/web3/tx-sync";
-import {
-  txWriteAvailability,
-  txWriteRefusalMessage,
-} from "@/lib/web3/tx-write-availability";
+import { TX_SYNC_LAG_ADVISORY } from "@/lib/web3/tx-sync";
 
 export type TxSyncPhase = "idle" | "wallet" | "confirming" | "indexing";
 
-export type TxSyncSuccess = {
-  receipt: TransactionReceipt;
-  synced: boolean;
-};
+export type TxSyncSuccess = Pick<EvmWriteLifecycleSuccess, "receipt" | "synced">;
 
 export type TxSyncResult = TxSyncSuccess | false;
 
@@ -46,20 +35,11 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function isEvmTxHash(value: string): value is `0x${string}` {
-  return /^0x[0-9a-fA-F]{64}$/.test(value);
-}
-
 export function useTxSync(chainId: number) {
-  const config = useConfig();
+  const config = useEvmWriteLifecycleConfig();
   const queryClient = useQueryClient();
   const router = useRouter();
   const { account, switchChain } = useActiveAccount();
-  const writeAvail = txWriteAvailability(account, chainId);
-  const walletChainId = writeAvail.available
-    ? writeAvail.walletChainId
-    : undefined;
-  const switchAvail = evmSwitchChainAvailability(account);
   const [phase, setPhase] = useState<TxSyncPhase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [syncLagged, setSyncLagged] = useState(false);
@@ -86,15 +66,14 @@ export function useTxSync(chainId: number) {
         setError(null);
         setSyncLagged(false);
       }
-      const avail = txWriteAvailability(account, chainId);
-      if (!avail.available) {
-        const message = txWriteRefusalMessage(avail.cause);
-        setError(message);
-        throw new Error(message);
-      }
-      setPhase("confirming");
       try {
-        return await confirmEvmTransaction(config, hash);
+        return await awaitEvmWriteReceipt({
+          account,
+          chainId,
+          config,
+          hash,
+          onPhase: setPhase,
+        });
       } catch (err) {
         const message = (options?.mapError ?? txErrorMessage)(err);
         setError(message);
@@ -138,40 +117,24 @@ export function useTxSync(chainId: number) {
     ): Promise<TxSyncResult> => {
       setError(null);
       setSyncLagged(false);
-      setPhase("wallet");
       activeRunDepthRef.current += 1;
 
       try {
-        const avail = txWriteAvailability(account, chainId);
-        if (!avail.available) {
-          throw new Error(txWriteRefusalMessage(avail.cause));
-        }
-
-        const targetChainId = wagmiChainId(chainId);
-        if (walletChainId !== targetChainId) {
-          if (!switchAvail.available) {
-            throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
-          }
-          await switchChain(chainId);
-        }
-
-        const hash = await writeFn();
-        if (!isEvmTxHash(hash)) {
-          throw new Error("Transaction hash is not a valid EVM hash.");
-        }
-        setPhase("confirming");
-        const receipt = await confirmEvmTransaction(config, hash);
-
-        setPhase("indexing");
-        const { synced } = await waitForIndexerBlock({
-          targetBlock: receipt.blockNumber,
-          fetchStatus: () => getIndexerBlockNumber(chainId),
+        const lifecycle = await runEvmWriteLifecycle({
+          account,
+          chainId,
+          config,
+          switchChain,
+          writeFn,
+          fetchIndexerStatus: () => getIndexerBlockNumber(chainId),
           wait,
+          onPhase: setPhase,
         });
 
+        const synced = lifecycle.synced;
         const revalidate = await syncReads();
         setSyncLagged(!synced || !revalidate.ok);
-        return { receipt, synced };
+        return { receipt: lifecycle.receipt, synced };
       } catch (err) {
         setError((options?.mapError ?? txErrorMessage)(err));
         return false;
@@ -180,7 +143,7 @@ export function useTxSync(chainId: number) {
         setPhase("idle");
       }
     },
-    [account, chainId, config, syncReads, switchChain, walletChainId, switchAvail],
+    [account, chainId, config, syncReads, switchChain],
   );
 
   const busy = phase !== "idle" || flowActive;

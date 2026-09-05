@@ -1,6 +1,6 @@
 /**
  * S8-3 — wagmi write/send hooks only in evm-write-adapter;
- * receipt / SVM confirm only reachable from use-tx-sync / confirm owners.
+ * receipt / SVM confirm only reachable from lifecycle / confirm owners.
  */
 
 import assert from "node:assert/strict";
@@ -15,6 +15,7 @@ import {
 const WRITE_ADAPTER = "lib/web3/evm-write-adapter.ts";
 const TX_SYNC = "hooks/use-tx-sync.ts";
 const EVM_CONFIRM = "lib/web3/evm-tx-confirm.ts";
+const EVM_LIFECYCLE = "lib/web3/evm-write-lifecycle.ts";
 const SVM_CONFIRM = "lib/web3/svm-tx-confirm.ts";
 
 const WRITE_HOOK_FROM_WAGMI =
@@ -80,10 +81,13 @@ describe("tx confirm ownership policy", () => {
     );
   });
 
-  it("use-tx-sync consumes confirmEvmTransaction (not raw receipt wait)", () => {
-    const source = readFileSync(`${POLICY_SCAN_ROOT}/${TX_SYNC}`, "utf8");
+  it("lifecycle owner consumes confirmEvmTransaction while use-tx-sync stays receipt-blind", () => {
+    const source = readFileSync(`${POLICY_SCAN_ROOT}/${EVM_LIFECYCLE}`, "utf8");
     assert.match(source, /confirmEvmTransaction/);
     assert.ok(!RECEIPT_WAIT.test(source));
+    const hook = readFileSync(`${POLICY_SCAN_ROOT}/${TX_SYNC}`, "utf8");
+    assert.doesNotMatch(hook, /\bconfirmEvmTransaction\b/);
+    assert.match(hook, /\brunEvmWriteLifecycle\b/);
   });
 
   it("confirmSvmTransaction is not called from product outside its owner", () => {

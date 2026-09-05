@@ -1,14 +1,27 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import type { TransactionReceipt } from "viem";
 
 import {
   INDEXER_SYNC_CONSECUTIVE_FAILURES,
   INDEXER_SYNC_INTERVAL_MS,
   INDEXER_SYNC_MAX_ATTEMPTS,
+  type IndexerBlockNumberResult,
   pollUntil,
   waitForIndexerBlock,
-  type IndexerBlockNumberResult,
 } from "../lib/web3/tx-sync.ts";
+import {
+  awaitEvmWriteReceipt,
+  runEvmWriteLifecycle,
+  type EvmWriteLifecyclePhase,
+  type EvmWriteLifecycleSuccess,
+} from "../lib/web3/evm-write-lifecycle.ts";
+import { commercialActive } from "../lib/web3/commercial-active.ts";
+import { evmSwitchChainAvailability } from "../lib/web3/active-account.ts";
+import {
+  txWriteAvailability,
+  txWriteRefusalMessage,
+} from "../lib/web3/tx-write-availability.ts";
 
 function fakeWait() {
   const calls: number[] = [];
@@ -31,6 +44,100 @@ function sequenceFetcher(results: IndexerBlockNumberResult[]) {
       calls += 1;
       return result;
     },
+  };
+}
+
+function fixtureEvmAccount(walletChainId = 84532) {
+  const stack = commercialActive(84532);
+  if (!stack || stack.vm !== "evm") {
+    throw new Error("Missing 84532 EVM commercial stack");
+  }
+  return {
+    status: "connected" as const,
+    vm: "evm" as const,
+    address: "0x0000000000000000000000000000000000000001" as const,
+    namespace: stack.namespace,
+    chainId: walletChainId,
+  };
+}
+
+function fakeReceipt(
+  hash: `0x${string}`,
+  blockNumber: bigint,
+): TransactionReceipt {
+  return {
+    blockHash: `0x${"a".repeat(64)}`,
+    blockNumber,
+    contractAddress: null,
+    cumulativeGasUsed: 1n,
+    effectiveGasPrice: 1n,
+    from: "0x0000000000000000000000000000000000000001",
+    gasUsed: 1n,
+    logs: [],
+    logsBloom: `0x${"0".repeat(512)}`,
+    status: "success",
+    to: "0x0000000000000000000000000000000000000002",
+    transactionHash: hash,
+    transactionIndex: 0,
+    type: "eip1559",
+  } as TransactionReceipt;
+}
+
+type LegacyLifecycleOptions = {
+  account: ReturnType<typeof fixtureEvmAccount>;
+  chainId: number;
+  switchChain: (chainId: number) => Promise<void>;
+  writeFn: () => Promise<string>;
+  fetchIndexerStatus: () => Promise<IndexerBlockNumberResult>;
+  wait: (ms: number) => Promise<void>;
+  onPhase?: (phase: EvmWriteLifecyclePhase) => void;
+  confirmTransaction: (
+    _config: never,
+    hash: `0x${string}`,
+  ) => Promise<TransactionReceipt>;
+  resolveTargetChainId?: (chainId: number) => number;
+};
+
+async function legacyRunEvmWriteLifecycle({
+  account,
+  chainId,
+  switchChain,
+  writeFn,
+  fetchIndexerStatus,
+  wait,
+  onPhase,
+  confirmTransaction,
+  resolveTargetChainId = (value) => value,
+}: LegacyLifecycleOptions): Promise<EvmWriteLifecycleSuccess> {
+  const avail = txWriteAvailability(account, chainId);
+  if (!avail.available) {
+    throw new Error(txWriteRefusalMessage(avail.cause));
+  }
+  onPhase?.("wallet");
+  const targetChainId = resolveTargetChainId(chainId);
+  if (avail.walletChainId !== targetChainId) {
+    const switchAvail = evmSwitchChainAvailability(account);
+    if (!switchAvail.available) {
+      throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+    }
+    await switchChain(chainId);
+  }
+  const hash = await writeFn();
+  if (!/^0x[0-9a-fA-F]{64}$/.test(hash)) {
+    throw new Error("Transaction hash is not a valid EVM hash.");
+  }
+  const txHash = hash as `0x${string}`;
+  onPhase?.("confirming");
+  const receipt = await confirmTransaction(undefined as never, txHash);
+  onPhase?.("indexing");
+  const { synced } = await waitForIndexerBlock({
+    targetBlock: receipt.blockNumber,
+    fetchStatus: fetchIndexerStatus,
+    wait,
+  });
+  return {
+    receipt,
+    synced,
   };
 }
 
@@ -293,5 +400,246 @@ describe("pollUntil", () => {
     assert.equal(result.status, "cancelled");
     assert.equal(result.attempts, 1);
     assert.equal(polls, 1);
+  });
+});
+
+describe("runEvmWriteLifecycle equivalence", () => {
+  it("matches the legacy observable sequence for a successful write", async () => {
+    const events: string[] = [];
+    const account = fixtureEvmAccount(84532);
+    const hash = `0x${"1".repeat(64)}` as const;
+    const receipt = fakeReceipt(hash, 100n);
+    const wait = async (ms: number) => {
+      events.push(`wait:${ms}`);
+    };
+    const shared = {
+      account,
+      chainId: 84532,
+      switchChain: async (target: number) => {
+        events.push(`switch:${target}`);
+      },
+      writeFn: async () => {
+        events.push("write");
+        return hash;
+      },
+      fetchIndexerStatus: async () => ({ ok: true, blockNumber: 100 }),
+      wait,
+      onPhase: (phase: EvmWriteLifecyclePhase) => {
+        events.push(`phase:${phase}`);
+      },
+      confirmTransaction: async (_config: never, confirmedHash: `0x${string}`) => {
+        events.push(`confirm:${confirmedHash}`);
+        return receipt;
+      },
+      resolveTargetChainId: (value: number) => value,
+    } satisfies LegacyLifecycleOptions;
+
+    const legacyEvents: string[] = [];
+    const legacy = await legacyRunEvmWriteLifecycle({
+      ...shared,
+      onPhase: (phase) => legacyEvents.push(`phase:${phase}`),
+      switchChain: async (target) => {
+        legacyEvents.push(`switch:${target}`);
+      },
+      writeFn: async () => {
+        legacyEvents.push("write");
+        return hash;
+      },
+      fetchIndexerStatus: async () => {
+        const result = {
+          ok: true,
+          blockNumber: legacyEvents.includes("status:99") ? 100 : 99,
+        } as IndexerBlockNumberResult;
+        legacyEvents.push(`status:${result.ok ? result.blockNumber : "unavailable"}`);
+        return result;
+      },
+      wait: async (ms) => {
+        legacyEvents.push(`wait:${ms}`);
+      },
+      confirmTransaction: async (_config, confirmedHash) => {
+        legacyEvents.push(`confirm:${confirmedHash}`);
+        return receipt;
+      },
+    });
+
+    const actual = await runEvmWriteLifecycle({
+      account,
+      chainId: 84532,
+      config: undefined as never,
+      switchChain: async (target) => {
+        events.push(`switch:${target}`);
+      },
+      writeFn: async () => {
+        events.push("write");
+        return hash;
+      },
+      fetchIndexerStatus: async () => {
+        const result = {
+          ok: true,
+          blockNumber: events.includes("status:99") ? 100 : 99,
+        } as IndexerBlockNumberResult;
+        events.push(`status:${result.ok ? result.blockNumber : "unavailable"}`);
+        return result;
+      },
+      wait,
+      onPhase: (phase: EvmWriteLifecyclePhase) => {
+        events.push(`phase:${phase}`);
+      },
+      confirmTransaction: async (_config, confirmedHash) => {
+        events.push(`confirm:${confirmedHash}`);
+        return receipt;
+      },
+      resolveTargetChainId: (value: number) => value,
+    });
+
+    assert.deepEqual(actual, legacy);
+    assert.deepEqual(events, legacyEvents);
+  });
+
+  it("matches the legacy observable sequence for a wrong-chain write that switches first", async () => {
+    const account = fixtureEvmAccount(11155111);
+    const hash = `0x${"2".repeat(64)}` as const;
+    const receipt = fakeReceipt(hash, 55n);
+    const legacyEvents: string[] = [];
+    const actualEvents: string[] = [];
+
+    const legacy = await legacyRunEvmWriteLifecycle({
+      account,
+      chainId: 84532,
+      switchChain: async (target) => {
+        legacyEvents.push(`switch:${target}`);
+      },
+      writeFn: async () => {
+        legacyEvents.push("write");
+        return hash;
+      },
+      fetchIndexerStatus: async () => {
+        legacyEvents.push("status:55");
+        return { ok: true, blockNumber: 55 };
+      },
+      wait: async (ms) => {
+        legacyEvents.push(`wait:${ms}`);
+      },
+      onPhase: (phase) => legacyEvents.push(`phase:${phase}`),
+      confirmTransaction: async (_config, confirmedHash) => {
+        legacyEvents.push(`confirm:${confirmedHash}`);
+        return receipt;
+      },
+      resolveTargetChainId: (value) => value,
+    });
+
+    const actual = await runEvmWriteLifecycle({
+      account,
+      chainId: 84532,
+      config: undefined as never,
+      switchChain: async (target) => {
+        actualEvents.push(`switch:${target}`);
+      },
+      writeFn: async () => {
+        actualEvents.push("write");
+        return hash;
+      },
+      fetchIndexerStatus: async () => {
+        actualEvents.push("status:55");
+        return { ok: true, blockNumber: 55 };
+      },
+      wait: async (ms) => {
+        actualEvents.push(`wait:${ms}`);
+      },
+      onPhase: (phase) => actualEvents.push(`phase:${phase}`),
+      confirmTransaction: async (_config, confirmedHash) => {
+        actualEvents.push(`confirm:${confirmedHash}`);
+        return receipt;
+      },
+      resolveTargetChainId: (value) => value,
+    });
+
+    assert.deepEqual(actual, legacy);
+    assert.deepEqual(actualEvents, legacyEvents);
+  });
+
+  it("matches the legacy failure sequence when the write throws", async () => {
+    const account = fixtureEvmAccount(84532);
+    const legacyEvents: string[] = [];
+    const actualEvents: string[] = [];
+
+    await assert.rejects(
+      () =>
+        legacyRunEvmWriteLifecycle({
+          account,
+          chainId: 84532,
+          switchChain: async (target) => {
+            legacyEvents.push(`switch:${target}`);
+          },
+          writeFn: async () => {
+            legacyEvents.push("write");
+            throw new Error("boom");
+          },
+          fetchIndexerStatus: async () => {
+            legacyEvents.push("status:unexpected");
+            return { ok: false };
+          },
+          wait: async (ms) => {
+            legacyEvents.push(`wait:${ms}`);
+          },
+          onPhase: (phase) => legacyEvents.push(`phase:${phase}`),
+          confirmTransaction: async () => {
+            legacyEvents.push("confirm:unexpected");
+            throw new Error("unexpected");
+          },
+        }),
+      /boom/,
+    );
+
+    await assert.rejects(
+      () =>
+        runEvmWriteLifecycle({
+          account,
+          chainId: 84532,
+          config: undefined as never,
+          switchChain: async (target) => {
+            actualEvents.push(`switch:${target}`);
+          },
+          writeFn: async () => {
+            actualEvents.push("write");
+            throw new Error("boom");
+          },
+          fetchIndexerStatus: async () => {
+            actualEvents.push("status:unexpected");
+            return { ok: false };
+          },
+          wait: async (ms) => {
+            actualEvents.push(`wait:${ms}`);
+          },
+          onPhase: (phase) => actualEvents.push(`phase:${phase}`),
+          confirmTransaction: async () => {
+            actualEvents.push("confirm:unexpected");
+            throw new Error("unexpected");
+          },
+        }),
+      /boom/,
+    );
+
+    assert.deepEqual(actualEvents, legacyEvents);
+  });
+
+  it("awaitEvmWriteReceipt preserves the legacy confirming path", async () => {
+    const account = fixtureEvmAccount(84532);
+    const hash = `0x${"3".repeat(64)}` as const;
+    const phases: string[] = [];
+    const receipt = fakeReceipt(hash, 77n);
+    const result = await awaitEvmWriteReceipt({
+      account,
+      chainId: 84532,
+      config: undefined as never,
+      hash,
+      onPhase: (phase) => phases.push(phase),
+      confirmTransaction: async (_config, confirmedHash) => {
+        assert.equal(confirmedHash, hash);
+        return receipt;
+      },
+    });
+    assert.equal(result.transactionHash, hash);
+    assert.deepEqual(phases, ["confirming"]);
   });
 });

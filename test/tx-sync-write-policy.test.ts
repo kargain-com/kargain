@@ -19,6 +19,20 @@ const ROUTER_REFRESH_ALLOWLIST = new Set([
   path.join(HOOKS, "use-tx-sync.ts"),
 ]);
 
+const TX_SYNC_HOOK = path.join(HOOKS, "use-tx-sync.ts");
+
+const TX_SYNC_EVM_SPECIFICS = [
+  /\buseConfig\b/,
+  /\bconfirmEvmTransaction\b/,
+  /\bwaitForTransactionReceipt\b/,
+  /\bTransactionReceipt\b/,
+  /\bwagmiChainId\b/,
+  /\btxWriteAvailability\b/,
+  /\btxWriteRefusalMessage\b/,
+  /\bwalletChainId\b/,
+  /\bisEvmTxHash\b/,
+] as const;
+
 function listTsxFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -33,6 +47,38 @@ function listTsxFiles(dir: string): string[] {
 }
 
 describe("tx-sync write policy", () => {
+  it("use-tx-sync stays free of direct EVM sequencing specifics", () => {
+    const text = fs.readFileSync(TX_SYNC_HOOK, "utf8");
+    for (const pattern of TX_SYNC_EVM_SPECIFICS) {
+      assert.doesNotMatch(text, pattern, `use-tx-sync must not match ${pattern}`);
+    }
+    assert.match(text, /\brunEvmWriteLifecycle\b/);
+    assert.match(text, /\bawaitEvmWriteReceipt\b/);
+  });
+
+  it("constructed dirty hook import is red for wagmi / receipt / hash-shape specifics", () => {
+    const dirty = `
+import { useConfig } from "wagmi";
+import type { TransactionReceipt } from "viem";
+import { waitForTransactionReceipt } from "wagmi/actions";
+import { confirmEvmTransaction } from "@/lib/web3/evm-tx-confirm";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { txWriteAvailability, txWriteRefusalMessage } from "@/lib/web3/tx-write-availability";
+const walletChainId = 1;
+const target = wagmiChainId(84532);
+function isEvmTxHash(value: string) { return value.startsWith("0x"); }
+void waitForTransactionReceipt;
+void confirmEvmTransaction;
+void TransactionReceipt;
+void txWriteAvailability;
+void txWriteRefusalMessage;
+void target;
+`;
+    for (const pattern of TX_SYNC_EVM_SPECIFICS) {
+      assert.match(dirty, pattern);
+    }
+  });
+
   it("requires useTxSync in every component that calls writeContractAsync", () => {
     const missing: string[] = [];
     for (const file of listTsxFiles(COMPONENTS)) {
