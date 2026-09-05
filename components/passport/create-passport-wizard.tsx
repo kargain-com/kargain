@@ -8,7 +8,7 @@ import {
 
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
-import { parseEventLogs, UserRejectedRequestError, type Hash } from "viem";
+import { UserRejectedRequestError, type Hash } from "viem";
 import { useSignMessage } from "wagmi";
 
 import { KarProNetworkPrompt } from "@/components/kar-pro/kar-pro-network-prompt";
@@ -42,6 +42,7 @@ import {
 import { reorderArrayItem } from "@/lib/reorder-array";
 import { resetIrysUploaderCache } from "@/lib/storage/irys-client";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import { passportMintedFromWriteOutcome } from "@/lib/web3/evm-write-lifecycle";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
@@ -189,25 +190,23 @@ export function CreatePassportWizard() {
         return;
       }
 
-      const events = parseEventLogs({
-        abi: KarPassportAbi,
-        logs: result.receipt.logs,
-        eventName: "PassportMinted",
-      });
-      const minted = events[0];
-      if (!minted || minted.eventName !== "PassportMinted") {
-        setPhase("error");
-        setFormError(MINT_PARSE_ERROR_MESSAGE);
-        resetWrite();
+      const minted = passportMintedFromWriteOutcome(result);
+      if (!minted.ok) {
+        if (minted.cause === "missing_minted_passport") {
+          setPhase("error");
+          setFormError(MINT_PARSE_ERROR_MESSAGE);
+          resetWrite();
+          return;
+        }
         return;
       }
 
-      const tokenId = minted.args.tokenId.toString();
-      const txHash = result.receipt.transactionHash;
+      const tokenId = minted.tokenId;
+      const txRef = result.writeReference;
       setPhase("success");
       resetWrite();
       router.push(
-        `/marketplace/${tokenId}/created?chain=${chainId}&tx=${txHash}`,
+        `/marketplace/${tokenId}/created?chain=${chainId}&tx=${txRef}`,
       );
     },
     [address, chainId, resetWrite, router, runTx, wc, writeContractAsync],

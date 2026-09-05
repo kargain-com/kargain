@@ -4,10 +4,7 @@ import { encodeEventTopics, zeroAddress, type Log } from "viem";
 
 import { claimablePayoutsAbi } from "../lib/claims/claimable-payouts-abi.ts";
 import { formatClaimAmount } from "../lib/claims/format-claim-amount.ts";
-import {
-  claimRecordedFromReceipt,
-  receiptHasClaimForAccount,
-} from "../lib/claims/receipt-claims.ts";
+import { claimRecordedFromReceipt } from "../lib/claims/receipt-claims.ts";
 import { claimableContractsForChain } from "../lib/web3/claimable-contracts.ts";
 
 const ACCOUNT = "0x1111111111111111111111111111111111111111" as const;
@@ -81,7 +78,7 @@ describe("receipt claim parsing", () => {
     const claims = claimRecordedFromReceipt({ logs: [log] }, ACCOUNT);
     assert.equal(claims.length, 1);
     assert.equal(claims[0]!.amount, 100n);
-    assert.equal(receiptHasClaimForAccount({ logs: [log] }, ACCOUNT), true);
-    assert.equal(receiptHasClaimForAccount({ logs: [log] }, OTHER), false);
+    assert.equal(claims[0]!.account, ACCOUNT);
+    assert.equal(claimRecordedFromReceipt({ logs: [log] }, OTHER).length, 0);
   });
 });

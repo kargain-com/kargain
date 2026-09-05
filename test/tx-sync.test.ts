@@ -1,7 +1,25 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { describe, it } from "node:test";
-import type { TransactionReceipt } from "viem";
+import { fileURLToPath } from "node:url";
+import {
+  encodeAbiParameters,
+  encodeEventTopics,
+  getAddress,
+  parseEventLogs,
+  zeroAddress,
+  type Abi,
+  type Log,
+  type TransactionReceipt,
+} from "viem";
 
+import { claimablePayoutsAbi } from "../lib/claims/claimable-payouts-abi.ts";
+import { claimRecordedFromReceipt } from "../lib/claims/receipt-claims.ts";
+import {
+  KarPassportAbi,
+  KarPassportBridgeGatewayAbi,
+} from "../lib/contracts/abis.generated.ts";
 import {
   INDEXER_SYNC_CONSECUTIVE_FAILURES,
   INDEXER_SYNC_INTERVAL_MS,
@@ -12,16 +30,26 @@ import {
 } from "../lib/web3/tx-sync.ts";
 import {
   awaitEvmWriteReceipt,
+  bridgeSendGuidFromWriteOutcome,
+  passportMintedFromWriteOutcome,
   runEvmWriteLifecycle,
+  writeOutcomeHasClaimRecipient,
   type EvmWriteLifecyclePhase,
-  type EvmWriteLifecycleSuccess,
+  type WriteOutcome,
 } from "../lib/web3/evm-write-lifecycle.ts";
+import { onftSentGuidFromLogs } from "../lib/web3/bridge/bridge-guid.ts";
 import { commercialActive } from "../lib/web3/commercial-active.ts";
 import { evmSwitchChainAvailability } from "../lib/web3/active-account.ts";
 import {
   txWriteAvailability,
   txWriteRefusalMessage,
 } from "../lib/web3/tx-write-availability.ts";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const CREATE_PASSPORT_WIZARD = path.join(
+  ROOT,
+  "components/passport/create-passport-wizard.tsx",
+);
 
 function fakeWait() {
   const calls: number[] = [];
@@ -64,6 +92,7 @@ function fixtureEvmAccount(walletChainId = 84532) {
 function fakeReceipt(
   hash: `0x${string}`,
   blockNumber: bigint,
+  logs: Log[] = [],
 ): TransactionReceipt {
   return {
     blockHash: `0x${"a".repeat(64)}`,
@@ -73,7 +102,7 @@ function fakeReceipt(
     effectiveGasPrice: 1n,
     from: "0x0000000000000000000000000000000000000001",
     gasUsed: 1n,
-    logs: [],
+    logs,
     logsBloom: `0x${"0".repeat(512)}`,
     status: "success",
     to: "0x0000000000000000000000000000000000000002",
@@ -81,6 +110,79 @@ function fakeReceipt(
     transactionIndex: 0,
     type: "eip1559",
   } as TransactionReceipt;
+}
+
+function makeBaseLog(
+  hash: `0x${string}`,
+  index: number,
+): Omit<Log, "topics" | "data" | "address"> {
+  return {
+    blockHash: ("0x" + "11".repeat(32)) as `0x${string}`,
+    blockNumber: 1n,
+    logIndex: index,
+    transactionHash: hash,
+    transactionIndex: 0,
+    removed: false,
+  };
+}
+
+function makePassportMintedLog(
+  hash: `0x${string}`,
+  tokenId: bigint,
+  uri = "ar://passport",
+): Log {
+  const topics = encodeEventTopics({
+    abi: KarPassportAbi as Abi,
+    eventName: "PassportMinted",
+    args: { tokenId },
+  });
+  return {
+    address: "0x3333333333333333333333333333333333333333",
+    data: encodeAbiParameters([{ type: "string" }], [uri]),
+    topics: topics as [`0x${string}`, ...`0x${string}`[]],
+    ...makeBaseLog(hash, 0),
+  };
+}
+
+function makeClaimRecordedLog(
+  hash: `0x${string}`,
+  account: `0x${string}`,
+  amount = 100n,
+): Log {
+  const topics = encodeEventTopics({
+    abi: claimablePayoutsAbi,
+    eventName: "ClaimRecorded",
+    args: { account, asset: zeroAddress },
+  });
+  return {
+    address: "0x4444444444444444444444444444444444444444",
+    data: encodeAbiParameters([{ type: "uint256" }], [amount]),
+    topics: topics as [`0x${string}`, ...`0x${string}`[]],
+    ...makeBaseLog(hash, 1),
+  };
+}
+
+function makeOnftSentLog(
+  hash: `0x${string}`,
+  guid: `0x${string}`,
+): Log {
+  const topics = encodeEventTopics({
+    abi: KarPassportBridgeGatewayAbi as Abi,
+    eventName: "ONFTSent",
+    args: {
+      guid,
+      fromAddress: "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
+    },
+  });
+  return {
+    address: "0x5555555555555555555555555555555555555555",
+    data: encodeAbiParameters(
+      [{ type: "uint32" }, { type: "uint256" }],
+      [40161, 1n],
+    ),
+    topics: topics as [`0x${string}`, ...`0x${string}`[]],
+    ...makeBaseLog(hash, 2),
+  };
 }
 
 type LegacyLifecycleOptions = {
@@ -98,6 +200,11 @@ type LegacyLifecycleOptions = {
   resolveTargetChainId?: (chainId: number) => number;
 };
 
+type LegacyEvmLifecycleSuccess = {
+  receipt: TransactionReceipt;
+  synced: boolean;
+};
+
 async function legacyRunEvmWriteLifecycle({
   account,
   chainId,
@@ -108,7 +215,7 @@ async function legacyRunEvmWriteLifecycle({
   onPhase,
   confirmTransaction,
   resolveTargetChainId = (value) => value,
-}: LegacyLifecycleOptions): Promise<EvmWriteLifecycleSuccess> {
+}: LegacyLifecycleOptions): Promise<LegacyEvmLifecycleSuccess> {
   const avail = txWriteAvailability(account, chainId);
   if (!avail.available) {
     throw new Error(txWriteRefusalMessage(avail.cause));
@@ -139,6 +246,49 @@ async function legacyRunEvmWriteLifecycle({
     receipt,
     synced,
   };
+}
+
+function legacyMintedPassportTokenId(receipt: TransactionReceipt): string | null {
+  const parsed = parseEventLogs({
+    abi: KarPassportAbi,
+    logs: receipt.logs,
+    eventName: "PassportMinted",
+  });
+  const minted = parsed[0];
+  if (!minted || minted.eventName !== "PassportMinted") return null;
+  return minted.args.tokenId.toString();
+}
+
+function mintedRouteForLegacyReceipt(
+  receipt: TransactionReceipt,
+  chainId: number,
+): string | null {
+  const tokenId = legacyMintedPassportTokenId(receipt);
+  if (tokenId == null) return null;
+  return `/marketplace/${tokenId}/created?chain=${chainId}&tx=${receipt.transactionHash}`;
+}
+
+function mintedRouteForWriteOutcome(
+  outcome: WriteOutcome,
+  chainId: number,
+): string | null {
+  const minted = passportMintedFromWriteOutcome(outcome);
+  if (!minted.ok) return null;
+  return `/marketplace/${minted.tokenId}/created?chain=${chainId}&tx=${outcome.writeReference}`;
+}
+
+function legacyClaimRecordedForAccount(
+  receipt: TransactionReceipt,
+  account: `0x${string}`,
+): boolean {
+  return claimRecordedFromReceipt(receipt, account).length > 0;
+}
+
+function claimRecordedForOutcome(
+  outcome: WriteOutcome,
+  account: string,
+): boolean {
+  return writeOutcomeHasClaimRecipient(outcome, account);
 }
 
 describe("waitForIndexerBlock", () => {
@@ -492,7 +642,8 @@ describe("runEvmWriteLifecycle equivalence", () => {
       resolveTargetChainId: (value: number) => value,
     });
 
-    assert.deepEqual(actual, legacy);
+    assert.equal(actual.synced, legacy.synced);
+    assert.equal(actual.writeReference, legacy.receipt.transactionHash);
     assert.deepEqual(events, legacyEvents);
   });
 
@@ -554,7 +705,8 @@ describe("runEvmWriteLifecycle equivalence", () => {
       resolveTargetChainId: (value) => value,
     });
 
-    assert.deepEqual(actual, legacy);
+    assert.equal(actual.synced, legacy.synced);
+    assert.equal(actual.writeReference, legacy.receipt.transactionHash);
     assert.deepEqual(actualEvents, legacyEvents);
   });
 
@@ -641,5 +793,104 @@ describe("runEvmWriteLifecycle equivalence", () => {
     });
     assert.equal(result.transactionHash, hash);
     assert.deepEqual(phases, ["confirming"]);
+  });
+
+  it("preserves the minted-route outcome before and after normalization", async () => {
+    const hash = `0x${"4".repeat(64)}` as const;
+    const receipt = fakeReceipt(hash, 88n, [
+      makePassportMintedLog(hash, 28764749040560770193485982315422230450798602n),
+    ]);
+    const legacy = mintedRouteForLegacyReceipt(receipt, 84532);
+    const outcome = await runEvmWriteLifecycle({
+      account: fixtureEvmAccount(84532),
+      chainId: 84532,
+      config: undefined as never,
+      switchChain: async () => {},
+      writeFn: async () => hash,
+      fetchIndexerStatus: async () => ({ ok: true, blockNumber: 88 }),
+      wait: async () => {},
+      confirmTransaction: async () => receipt,
+      resolveTargetChainId: (value) => value,
+    });
+    assert.equal(
+      mintedRouteForWriteOutcome(outcome, 84532),
+      legacy,
+    );
+  });
+
+  it("preserves claim-credit detection for both claim surfaces after normalization", async () => {
+    const hash = `0x${"5".repeat(64)}` as const;
+    const account = fixtureEvmAccount(84532).address;
+    const receipt = fakeReceipt(hash, 89n, [makeClaimRecordedLog(hash, account)]);
+    const outcome = await runEvmWriteLifecycle({
+      account: fixtureEvmAccount(84532),
+      chainId: 84532,
+      config: undefined as never,
+      switchChain: async () => {},
+      writeFn: async () => hash,
+      fetchIndexerStatus: async () => ({ ok: true, blockNumber: 89 }),
+      wait: async () => {},
+      confirmTransaction: async () => receipt,
+      resolveTargetChainId: (value) => value,
+    });
+    assert.equal(legacyClaimRecordedForAccount(receipt, account), true);
+    assert.equal(claimRecordedForOutcome(outcome, account), true);
+    assert.equal(claimRecordedForOutcome(outcome, "0x2222222222222222222222222222222222222222"), false);
+  });
+
+  it("preserves bridge guid propagation after normalization", async () => {
+    const hash = `0x${"6".repeat(64)}` as const;
+    const guid =
+      "0x93f0463fc0cd85f24087e86d415447e74d56dd3d9f941c54968608b195e11670" as const;
+    const receipt = fakeReceipt(hash, 90n, [makeOnftSentLog(hash, guid)]);
+    const legacyGuid = onftSentGuidFromLogs(
+      KarPassportBridgeGatewayAbi as Abi,
+      receipt.logs,
+    );
+    const outcome = await runEvmWriteLifecycle({
+      account: fixtureEvmAccount(84532),
+      chainId: 84532,
+      config: undefined as never,
+      switchChain: async () => {},
+      writeFn: async () => hash,
+      fetchIndexerStatus: async () => ({ ok: true, blockNumber: 90 }),
+      wait: async () => {},
+      confirmTransaction: async () => receipt,
+      resolveTargetChainId: (value) => value,
+    });
+    const actualGuid = bridgeSendGuidFromWriteOutcome(outcome);
+    assert.equal(actualGuid.ok, true);
+    if (actualGuid.ok) {
+      assert.equal(actualGuid.guid, legacyGuid);
+    }
+  });
+
+  it("returns a named refusal when the minted fact is absent", async () => {
+    const hash = `0x${"7".repeat(64)}` as const;
+    const outcome = await runEvmWriteLifecycle({
+      account: fixtureEvmAccount(84532),
+      chainId: 84532,
+      config: undefined as never,
+      switchChain: async () => {},
+      writeFn: async () => hash,
+      fetchIndexerStatus: async () => ({ ok: true, blockNumber: 91 }),
+      wait: async () => {},
+      confirmTransaction: async () => fakeReceipt(hash, 91n),
+      resolveTargetChainId: (value) => value,
+    });
+    assert.deepEqual(passportMintedFromWriteOutcome(outcome), {
+      ok: false,
+      cause: "missing_minted_passport",
+    });
+  });
+
+  it("create-passport wizard maps missing minted fact to the existing parse-failure message", () => {
+    const source = fs.readFileSync(CREATE_PASSPORT_WIZARD, "utf8");
+    assert.match(source, /passportMintedFromWriteOutcome/);
+    assert.match(source, /missing_minted_passport/);
+    assert.match(
+      source,
+      /Mint succeeded but token ID could not be read\. Check your wallet for the NFT\./,
+    );
   });
 });

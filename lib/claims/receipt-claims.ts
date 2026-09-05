@@ -35,9 +35,3 @@ export function claimRecordedFromReceipt(
   return out;
 }
 
-export function receiptHasClaimForAccount(
-  receipt: TransactionReceipt | { logs: Log[] },
-  account: `0x${string}`,
-): boolean {
-  return claimRecordedFromReceipt(receipt, account).length > 0;
-}

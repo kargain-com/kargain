@@ -15,7 +15,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useNow } from "@/hooks/use-now";
-import { receiptHasClaimForAccount } from "@/lib/claims/receipt-claims";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
 import {
   elevatedAdvisoryPanel,
@@ -62,6 +61,7 @@ import {
   nativeUnitOf,
 } from "@/lib/web3/commercial-active";
 import { formatNativeAmountLabeled } from "@/lib/web3/native-amount";
+import { writeOutcomeHasClaimRecipient } from "@/lib/web3/evm-write-lifecycle";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { usePassportCommerceFacts } from "@/hooks/use-passport-commerce-facts";
@@ -293,11 +293,7 @@ export function PassportActionsPanel({
       if (!passport) return;
       const result = await runTx(fn);
       if (!result) return;
-      if (
-        claimSuccess &&
-        address &&
-        receiptHasClaimForAccount(result.receipt, address)
-      ) {
+      if (claimSuccess && address && writeOutcomeHasClaimRecipient(result, address)) {
         setMessage(claimSuccess);
       } else {
         setMessage(success);

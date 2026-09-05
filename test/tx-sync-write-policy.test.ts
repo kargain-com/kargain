@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+const APP = path.join(ROOT, "app");
 const COMPONENTS = path.join(ROOT, "components");
 const HOOKS = path.join(ROOT, "hooks");
 
@@ -31,6 +32,16 @@ const TX_SYNC_EVM_SPECIFICS = [
   /\btxWriteRefusalMessage\b/,
   /\bwalletChainId\b/,
   /\bisEvmTxHash\b/,
+] as const;
+
+const OUTCOME_DECODE_BANS = [
+  /\bparseEventLogs\b/,
+  /\bdecodeEventLog\b/,
+  /\breceiptHasClaimForAccount\b/,
+  /\bonftSentGuidFromLogs\b/,
+  /\btransactionHash\b/,
+  /\.receipt\b/,
+  /\.logs\b/,
 ] as const;
 
 function listTsxFiles(dir: string): string[] {
@@ -89,6 +100,43 @@ void target;
       }
     }
     assert.deepEqual(missing, []);
+  });
+
+  it("forbids receipt/log/ABI outcome decoding in app, components, and hooks", () => {
+    const violations: string[] = [];
+    for (const dir of [APP, COMPONENTS, HOOKS]) {
+      if (!fs.existsSync(dir)) continue;
+      for (const file of listTsxFiles(dir)) {
+        const text = fs.readFileSync(file, "utf8");
+        for (const re of OUTCOME_DECODE_BANS) {
+          if (re.test(text)) {
+            violations.push(`${path.relative(ROOT, file)}: ${re.source}`);
+          }
+        }
+      }
+    }
+    assert.deepEqual(violations, []);
+  });
+
+  it("constructed dirty screen receipt/log decoder is red", () => {
+    const dirty = `
+import { parseEventLogs } from "viem";
+import { decodeEventLog } from "viem";
+import { receiptHasClaimForAccount } from "@/lib/claims/receipt-claims";
+import { onftSentGuidFromLogs } from "@/lib/web3/bridge";
+export function Bad({ result }: { result: { receipt: { logs: unknown[]; transactionHash: string } } }) {
+  void result.receipt.logs;
+  void result.receipt.transactionHash;
+  void parseEventLogs;
+  void decodeEventLog;
+  void receiptHasClaimForAccount;
+  void onftSentGuidFromLogs;
+  return null;
+}
+`;
+    for (const re of OUTCOME_DECODE_BANS) {
+      assert.match(dirty, re);
+    }
   });
 
   it("forbids panel/hook invalidateQueries outside useTxSync", () => {

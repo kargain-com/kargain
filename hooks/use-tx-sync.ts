@@ -12,14 +12,14 @@ import {
   awaitEvmWriteReceipt,
   runEvmWriteLifecycle,
   useEvmWriteLifecycleConfig,
-  type EvmWriteLifecycleSuccess,
+  type WriteOutcome,
 } from "@/lib/web3/evm-write-lifecycle";
 import { invalidateIndexerQueries } from "@/lib/web3/indexer-query-keys";
 import { TX_SYNC_LAG_ADVISORY } from "@/lib/web3/tx-sync";
 
 export type TxSyncPhase = "idle" | "wallet" | "confirming" | "indexing";
 
-export type TxSyncSuccess = Pick<EvmWriteLifecycleSuccess, "receipt" | "synced">;
+export type TxSyncSuccess = WriteOutcome;
 
 export type TxSyncResult = TxSyncSuccess | false;
 
@@ -134,7 +134,7 @@ export function useTxSync(chainId: number) {
         const synced = lifecycle.synced;
         const revalidate = await syncReads();
         setSyncLagged(!synced || !revalidate.ok);
-        return { receipt: lifecycle.receipt, synced };
+        return lifecycle;
       } catch (err) {
         setError((options?.mapError ?? txErrorMessage)(err));
         return false;
