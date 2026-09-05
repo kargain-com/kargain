@@ -40,9 +40,10 @@ Historical: … Nuclear #4 hub **44957457** / Eth **11404204** — superseded by
 1. Cut over `COMMERCIAL_ACTIVE` + SPEC I.9 to Nuclear #7 (`indexFromBlock` **46119704** / **11591966**) — **done on branch**; Merge still owed.
 2. Full `ponder-reindex.sql` dual-chain; include gateway start blocks from `COMMERCIAL_ACTIVE[chainId].blocks.bridgeGateway` (N7 hub **46119765** / Eth **11591991**).
 3. Apply **empty** [`projection-schema.sql`](../../src/svm-ingest/db/projection-schema.sql) so UNION HTTP keeps an empty SVM arm.
-4. Smoke fold-at-read via [`src/lib/ponder-passport-custody.ts`](../../src/lib/ponder-passport-custody.ts) — `GET /passports/:tokenId` → `custodyChain` or `custodyUnresolved`.
-5. **`svm-ingest` stays down.** No Solana `COMMERCIAL_ACTIVE` row.
-6. `pnpm bridge:wire` N7 hub↔eth peers; `bridge:wire:read-only` PASS.
+4. Smoke **both** readiness classes: Ponder `/ready` for sync state, then `GET /read-path-ready` for the custom EVM+SVM `UNION ALL` read path. A green `/ready` alone is insufficient.
+5. Smoke fold-at-read via [`src/lib/ponder-passport-custody.ts`](../../src/lib/ponder-passport-custody.ts) — `GET /passports/:tokenId` → `custodyChain` or `custodyUnresolved`.
+6. **`svm-ingest` stays down.** No Solana `COMMERCIAL_ACTIVE` row.
+7. `pnpm bridge:wire` N7 hub↔eth peers; `bridge:wire:read-only` PASS.
 
 ### S9-B — Solana commercial activation (after S9-0 Devnet modes)
 
@@ -345,6 +346,7 @@ Wait until logs show:
 
 ```bash
 curl -si https://ponder.kargain.com/ready | head -5    # expect HTTP/2 200 when caught up (503 during backfill)
+curl -s https://ponder.kargain.com/read-path-ready | python3 -m json.tool
 curl -si https://ponder.kargain.com/status | head -20
 curl -s https://ponder.kargain.com/passports | jq '.total'
 curl -s https://ponder.kargain.com/consignments | jq '.total'   # 0 until first Nuclear #7 consignment opens (post-Merge reindex)
@@ -374,7 +376,7 @@ curl -s 'https://ponder.kargain.com/consignments?limit=50&active=true&fuelType=P
 
 **EXPLAIN ANALYZE (optional, VPS Postgres only):** confirm planner uses `lower(make)` / `lower(fuel_type)` expression indexes on filtered browse. Not available from the public HTTP API — run on the indexer DB host after reindex. With one live lot the plan is not diagnostic; revisit when `consignment` volume grows (see MIGRATION-V2). Does **not** block Phase 2 HTTP cache headers.
 
-Replace `<tokenId>` with a known minted passport. `/health` is Ponder’s reserved liveness route (empty body is normal); use `/ready` and `/status` for sync state. Custom app routes are listed in [indexer/README.md](./README.md#http-api).
+Replace `<tokenId>` with a known minted passport. `/health` is Ponder’s reserved liveness route (empty body is normal); use `/ready` and `/status` for sync state, and `GET /read-path-ready` for the custom read-path check that names missing relations. The examples use `python3 -m json.tool` because it is present on the VPS without requiring `jq`. Custom app routes are listed in [indexer/README.md](./README.md#http-api).
 
 ### 6.0 App ↔ indexer shipping (normative, keep light)
 
@@ -384,7 +386,7 @@ Monorepo reality: **one `git push` to `master` deploys the Next app on Vercel au
 
 1. Push schema/index/handler changes to `master` as usual (Vercel ships the app).
 2. On the VPS, pull and run this reindex runbook **as soon as practical**.
-3. Smoke `/ready` + `/status` (tip) + **B1** above. Until B1 passes, treat marketplace filters as not proven — during the window the UI may send browse params the old indexer ignores (**fail-open**: wider unfiltered results, not corrupt money/custody).
+3. Smoke `/ready` + `/read-path-ready` + `/status` (tip) + **B1** above. Until `/read-path-ready` and B1 pass, treat the read path as unproven — during the window the UI may send browse params the old indexer ignores (**fail-open**: wider unfiltered results, not corrupt money/custody), or the indexer may be caught up while the unioned projection path is unreadable.
 4. Do **not** build staging-branch / Ignore-Build / two-commit / “indexer-before-push” rituals unless a change fails closed on money, custody, or auth, or the ignore-window becomes hours of user-visible lies.
 
 ### 6.1 Browse Phase 1 cutover proof (August 14, 2026)

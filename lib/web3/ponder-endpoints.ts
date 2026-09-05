@@ -66,6 +66,12 @@ export const CONSIGNMENT_BROWSE_FILTER_QUERY_KEYS = [
 /** Routes that exist on the indexer today. */
 export const PONDER_IMPLEMENTED_ROUTES: readonly PonderRouteDef[] = [
   {
+    id: "readPathReady",
+    method: "GET",
+    path: "/read-path-ready",
+    query: [],
+  },
+  {
     id: "consignments.list",
     method: "GET",
     path: "/consignments",

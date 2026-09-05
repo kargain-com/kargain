@@ -8,7 +8,7 @@
 | [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md) | **Historical** | Nuclear #4 dual-chain (superseded by N7) |
 | [ops/deploys/archive/84532-v2.md](../ops/deploys/archive/84532-v2.md) | **Historical** | June 2026 v2 deploy + VPS cutover record |
 
-**Branch (Nuclear #7 / S9-A):** committed start blocks hub **46119704** / Eth **11591966**. **Live VPS until Merge:** Nuclear #4 **44957457** / **11404204**. **Browse Phase 1 live** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)): Vercel on `master` push; VPS reindex ASAP after schema. Smoke: `/consignments` (+ B1), payment-tokens, obligations, notifications. **S7b–c:** `bridge_crossing` + **`custody_determining_event`**; HTTP custody fold — **`custodyChain` | `custodyUnresolved`**. **S7c-1/2:** **`kargain_svm_raw`** + **`kargain_svm_projection`** — provenance UNION always includes SVM arm; apply empty [`projection-schema.sql`](../../src/svm-ingest/db/projection-schema.sql) before svm-ingest (S9-A). Physical EVM columns **snake_case**. **S9-A:** Ponder reindex only (`svm-ingest` off). **S9-B:** enable ingest after S9-0 ([OPERATIONS.md §S9](./OPERATIONS.md)).
+**Branch (Nuclear #7 / S9-A):** committed start blocks hub **46119704** / Eth **11591966**. **Live VPS until Merge:** Nuclear #4 **44957457** / **11404204**. **Browse Phase 1 live** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)): Vercel on `master` push; VPS reindex ASAP after schema. Smoke: `/read-path-ready`, `/consignments` (+ B1), payment-tokens, obligations, notifications. **S7b–c:** `bridge_crossing` + **`custody_determining_event`**; HTTP custody fold — **`custodyChain` | `custodyUnresolved`**. **S7c-1/2:** **`kargain_svm_raw`** + **`kargain_svm_projection`** — provenance UNION always includes SVM arm; apply empty [`projection-schema.sql`](../../src/svm-ingest/db/projection-schema.sql) before svm-ingest (S9-A). Physical EVM columns **snake_case**. **S9-A:** Ponder reindex only (`svm-ingest` off). **S9-B:** enable ingest after S9-0 ([OPERATIONS.md §S9](./OPERATIONS.md)).
 
 ## SVM raw ingest (S7c-1)
 
@@ -112,6 +112,7 @@ Custom routes live in [`src/api/index.ts`](../../src/api/index.ts) (passport, ve
 
 | Endpoint | Purpose |
 |----------|---------|
+| `GET /read-path-ready` | Custom read-path readiness. Returns **200** when the API can execute the same empty-arm EVM+SVM `UNION ALL` forms as product reads, **503** with named `missingRelations[]` when required relations like `kargain_svm_projection.*` are absent. This is **not** Ponder sync state. |
 | `GET /passports` | Browse/filter passports (`owner`, `verifier`, `status`, `vin`, `verifiedFirst`) |
 | `GET /passports/:tokenId` | Passport detail + `records[]` + `uriHistory[]` (**provenance UNION** across EVM Ponder + SVM projection by global `tokenId`; per-row `chainId` = emitting network) |
 | `GET /passports/batch` | Batch passport lookup (`?ids=`) |
@@ -133,6 +134,8 @@ Do **not** define these in `src/api/index.ts` — Ponder owns them ([docs](https
 | `GET /health` | Liveness — HTTP 200 when the process is up (may have empty body) |
 | `GET /ready` | Readiness — HTTP 503 during backfill, 200 when caught up |
 | `GET /status` | Indexing sync status |
+
+`GET /read-path-ready` is **not** reserved: it is Kargain's own route in `src/api/index.ts`, and it complements `/ready` by checking read-path executability rather than indexer sync state.
 
 Smoke checks after reindex: [OPERATIONS.md §6](./OPERATIONS.md#6-smoke-checks).
 

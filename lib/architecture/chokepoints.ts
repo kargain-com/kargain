@@ -455,7 +455,10 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     owner:
       "lib/passport/presence.ts · lib/passport/action-surface.ts · lib/passport/bridge-surface.ts · hooks/use-passport-presence.ts",
     rule: "derivePassportPresence only in named owners; components/routes consume answers",
-    guardTests: ["passport-presence-owner-policy.test.ts"],
+    guardTests: [
+      "passport-presence-owner-policy.test.ts",
+      "passport-action-surface.test.ts",
+    ],
   },
   {
     id: "ponder-passport-custody",
@@ -465,6 +468,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "custody-fold-consumer-policy.test.ts",
       "custody-fold-policy.test.ts",
     ],
+  },
+  {
+    id: "ponder-read-path-readiness",
+    owner: "src/lib/ponder-read-path-ready.ts",
+    rule: "Read-path readiness owns projection relation checks and executes the same empty-arm UNION query forms as product reads",
+    guardTests: ["ponder-read-path-ready.test.ts", "ponder-http-freshness-policy.test.ts"],
   },
   {
     id: "lib-scripts-boundary",

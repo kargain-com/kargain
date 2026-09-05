@@ -55,6 +55,8 @@ export const HONO_ROUTE_HTTP_FRESHNESS: readonly {
   path: string;
   classId: HttpFreshnessClassId;
 }[] = [
+  { path: "/read-path-ready", classId: "ephemeral" },
+
   // Specific /consignments/* before /consignments/:id
   { path: "/consignments/by-token/:tokenId", classId: "entity" },
   { path: "/consignments/:id/bids", classId: "entity" },

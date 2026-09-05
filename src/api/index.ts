@@ -37,6 +37,7 @@ import {
   resolvePassportCustodyAnswer,
   resolvePassportCustodyAnswersBatch,
 } from "../lib/ponder-passport-custody";
+import { resolveReadPathReadiness } from "../lib/ponder-read-path-ready";
 import { normalizeProtocolAddressForVm } from "../../lib/web3/protocol-address.js";
 import { ponderHttpCacheMiddleware } from "../lib/ponder-http-cache-middleware";
 
@@ -92,6 +93,24 @@ function parseProfileOwnerParam(raw: string): string | null {
   if (evm) return evm;
   return normalizeProtocolAddressForVm("svm", trimmed);
 }
+
+app.get("/read-path-ready", async (c) => {
+  const readiness = await resolveReadPathReadiness();
+  return c.json(
+    readiness.ready
+      ? {
+          status: "ready",
+          checkedRelations: readiness.checkedRelations,
+          probeQueries: readiness.probeQueries,
+        }
+      : {
+          status: "not_ready",
+          checkedRelations: readiness.checkedRelations,
+          missingRelations: readiness.missingRelations,
+        },
+    readiness.ready ? 200 : 503,
+  );
+});
 
 app.get("/passports", async (c) => {
   const page = parsePage(c.req.query("page"));
