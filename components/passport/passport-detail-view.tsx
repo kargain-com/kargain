@@ -34,9 +34,9 @@ import type { PonderPassportDetail } from "@/lib/types/ponder";
 import { shortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
 
-type Props = {
+type CommonProps = {
   tokenId: string;
-  /** Custody chain — commerce RPCs and panels. */
+  /** Current page chain context (route / chrome), which may differ from commerce during transit. */
   chainId: number;
   /** Origin / mint home — titles and id labels. */
   originChainId?: number;
@@ -47,6 +47,22 @@ type Props = {
   listing?: FixedPriceListingDetailProp | null;
   auction?: AuctionRow | null;
 };
+
+type TransitProps = CommonProps & {
+  /** Custody chain for commerce panels only; null while a crossing is in flight. */
+  commerceChainId: null;
+  /** Departure/origin chain used by the bridge progress owner during transit. */
+  transitBridgeChainId: number;
+};
+
+type ResolvedProps = CommonProps & {
+  /** Custody chain for commerce panels only when the passport is not in transit. */
+  commerceChainId: number;
+  /** Transit bridge chain is absent outside in-flight crossings. */
+  transitBridgeChainId?: null;
+};
+
+type Props = TransitProps | ResolvedProps;
 
 function buildTitle(metadata: PassportMetadata | null, tokenId: string, chainId: number): string {
   if (metadata?.name?.trim()) return metadata.name.trim();
@@ -74,17 +90,18 @@ function sealSublabel(status: PonderPassportDetail["status"], verifier: string):
   return undefined;
 }
 
-export function PassportDetailView({
-  tokenId,
-  chainId,
-  originChainId,
-  passport,
-  metadata,
-  metadataError,
-  indexerPending = false,
-  listing = null,
-  auction = null,
-}: Props) {
+export function PassportDetailView(props: Props) {
+  const {
+    tokenId,
+    chainId,
+    originChainId,
+    passport,
+    metadata,
+    metadataError,
+    indexerPending = false,
+    listing = null,
+    auction = null,
+  } = props;
   const titleChainId = originChainId ?? passport.chainId ?? chainId;
   const title = buildTitle(metadata, tokenId, titleChainId);
   const isDisputed = passport.status === "DISPUTED";
@@ -102,17 +119,34 @@ export function PassportDetailView({
   const statusSublabel = sealSublabel(passport.status, passport.verifier);
 
   const commerce = (
-    <PassportCommerce
-      chainId={chainId}
-      tokenId={tokenId}
-      listing={listing}
-      initialAuction={auction}
-      passportOwner={passport.owner as `0x${string}`}
-      passportStatus={passport.status}
-      custodyUnresolved={passport.custodyUnresolved}
-      duplicateVin={passport.duplicateVin}
-      hadDispute={passport.hadDispute}
-    />
+    props.commerceChainId == null ? (
+      <PassportCommerce
+        viewChainId={chainId}
+        commerceChainId={null}
+        transitBridgeChainId={props.transitBridgeChainId}
+        tokenId={tokenId}
+        listing={listing}
+        initialAuction={auction}
+        passportOwner={passport.owner as `0x${string}`}
+        passportStatus={passport.status}
+        custodyUnresolved={passport.custodyUnresolved}
+        duplicateVin={passport.duplicateVin}
+        hadDispute={passport.hadDispute}
+      />
+    ) : (
+      <PassportCommerce
+        viewChainId={chainId}
+        commerceChainId={props.commerceChainId}
+        tokenId={tokenId}
+        listing={listing}
+        initialAuction={auction}
+        passportOwner={passport.owner as `0x${string}`}
+        passportStatus={passport.status}
+        custodyUnresolved={passport.custodyUnresolved}
+        duplicateVin={passport.duplicateVin}
+        hadDispute={passport.hadDispute}
+      />
+    )
   );
 
   const overview = (

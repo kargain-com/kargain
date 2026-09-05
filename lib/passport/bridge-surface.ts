@@ -45,7 +45,7 @@ export type BridgeSurfaceInput = {
   /**
    * `may(tokenId, LeaveChain)` gate — the authoritative leave permission.
    */
-  leaveChainPermission: EncumbrancePermissionGate;
+  leaveChainPermission?: EncumbrancePermissionGate;
   /** Live consignment mode, when known, so the block copy can be specific. */
   liveConsignmentMode?: CommerceMode | null;
   /** Open passport challenge (bonded verification challenge). */
@@ -146,7 +146,6 @@ export function deriveBridgeSurface(
     return { ...HIDDEN };
   }
 
-  const gate = input.leaveChainPermission;
   const loc = locationFields(input);
   const locationBlocks = loc.locationCopy != null;
 
@@ -161,6 +160,18 @@ export function deriveBridgeSurface(
       ...loc,
     };
   }
+
+  if (input.leaveChainPermission == null) {
+    if (input.transitActive) {
+      return {
+        ...TRANSIT_VISIBLE,
+        ...loc,
+      };
+    }
+    return { ...HIDDEN };
+  }
+
+  const gate = input.leaveChainPermission;
 
   if (gate.status === "blocked" && gate.cause === "reads_unresolved") {
     return {

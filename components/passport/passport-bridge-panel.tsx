@@ -73,7 +73,7 @@ type Props = {
    */
   custodyLocked?: boolean;
   /** `may(tokenId, LeaveChain)` gate from commerce facts. */
-  leaveChainPermission: EncumbrancePermissionGate;
+  leaveChainPermission?: EncumbrancePermissionGate;
   /** Mode holding a live consignment, when one does — drives block copy. */
   liveConsignmentMode: CommerceMode | null;
   /** Bonded verification challenge open on the passport. */
@@ -110,6 +110,7 @@ export function PassportBridgePanel({
     ? bridgeActionCopy(directionMode, dstName)
     : null;
   const crossingConsent = deriveBridgeCrossingConsent(passportStatus);
+  const hasBridgeActionContext = leaveChainPermission != null;
 
   const { record, ui, scanUrl: transitScanUrl, transitActive } =
     useBridgeTransit({
@@ -165,9 +166,11 @@ export function PassportBridgePanel({
   const scanUrl = liveScanUrl ?? transitScanUrl;
 
   useEffect(() => {
-    if (!surface.canBridge || !configured || transitActive) return;
+    if (!hasBridgeActionContext || !surface.canBridge || !configured || transitActive) {
+      return;
+    }
     void quote(tid);
-  }, [surface.canBridge, configured, quote, tid, transitActive]);
+  }, [hasBridgeActionContext, surface.canBridge, configured, quote, tid, transitActive]);
 
   // Soft-nav to destination URL once on-chain delivery is confirmed.
   // Working commerce UI returns after indexer catch-up → syncReads (transit hook).
@@ -192,7 +195,7 @@ export function PassportBridgePanel({
           surface.blockReason,
           surface.unanswerableSource,
         )
-      : !configured || dstChainId == null
+      : !hasBridgeActionContext || !configured || dstChainId == null
         ? "Bridge is not configured on this chain."
         : null;
 
@@ -268,13 +271,13 @@ export function PassportBridgePanel({
         </ol>
       )}
 
-      {multiHop && (
+      {multiHop && hasBridgeActionContext && (
         <p className="font-sans text-sm text-text-secondary" role="status">
           {BRIDGE_SECOND_HOP_REQUIRED}
         </p>
       )}
 
-      {nextHopWrongVmCopyText && (
+      {nextHopWrongVmCopyText && hasBridgeActionContext && (
         <p className="font-sans text-sm text-text-secondary" role="status">
           {nextHopWrongVmCopyText}
         </p>
@@ -293,7 +296,10 @@ export function PassportBridgePanel({
         </ol>
       )}
 
-      {surface.canBridge && !transitActive && !nextHopWrongVmCopyText && (
+      {surface.canBridge &&
+        hasBridgeActionContext &&
+        !transitActive &&
+        !nextHopWrongVmCopyText && (
         <div className="space-y-2">
           <p className="font-sans text-sm text-text-secondary">
             {crossingConsent.disclosure}
@@ -315,7 +321,10 @@ export function PassportBridgePanel({
         </div>
       )}
 
-      {feeWei != null && surface.canBridge && !transitActive && (
+      {feeWei != null &&
+        surface.canBridge &&
+        hasBridgeActionContext &&
+        !transitActive && (
         <dl className="flex items-baseline justify-between gap-3">
           <dt className="font-sans text-sm text-text-secondary">
             Estimated fee

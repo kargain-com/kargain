@@ -150,22 +150,23 @@ async function MarketplaceListingInner({
   }
 
   // Location gap — named refusal, never notFound (§4.21).
+  let location: ReturnType<typeof resolvePassportLocationRefusal> | null = null;
   if (result.passport.custodyUnresolved || result.passport.custodyChain == null) {
-    const refusal = resolvePassportLocationRefusal({
+    location = resolvePassportLocationRefusal({
       viewChainId: result.passport.chainId,
       custodyLocked: undefined,
       ponderCustodyChain: result.passport.custodyChain,
       custodyUnresolved: result.passport.custodyUnresolved ?? null,
     });
-    if (refusal.status === "refuse") {
+    if (location.status === "refuse") {
       return (
         <div className="min-h-dvh bg-bg-primary px-6 py-24 text-text-primary md:px-8">
           <div className="mx-auto max-w-lg">
             <EmptyState
               variant="content"
               level="B"
-              title={refusal.title}
-              description={refusal.description}
+              title={location.title}
+              description={location.description}
               action={{
                 label: "← Back to marketplace",
                 href: marketplaceHref,
@@ -177,28 +178,48 @@ async function MarketplaceListingInner({
     }
   }
 
-  const commerceChainId = result.passport.custodyChain!;
+  const viewChainId = hintChainId ?? result.passport.chainId;
+  const commerceChainId =
+    location?.status === "transit" ? null : result.passport.custodyChain!;
   const originChainId = result.passport.chainId;
   const auctionResult = await getAuctionDetail(raw);
 
   // Prefer custody-scoped consignment when the parallel hint fetch missed chain.
   const listingProp =
-    listing ??
-    (await fetchListingDetail(raw, commerceChainId));
+    commerceChainId == null
+      ? null
+      : listing ?? (await fetchListingDetail(raw, commerceChainId));
 
   return (
     <div className="min-h-dvh bg-bg-primary">
-      <PassportDetailView
-        tokenId={raw}
-        chainId={commerceChainId}
-        originChainId={originChainId}
-        passport={result.passport}
-        metadata={result.metadata}
-        metadataError={result.metadataError}
-        indexerPending={result.indexerPending}
-        listing={listingProp}
-        auction={auctionResult.ok ? auctionResult.auction : null}
-      />
+      {location?.status === "transit" ? (
+        <PassportDetailView
+          tokenId={raw}
+          chainId={viewChainId}
+          commerceChainId={null}
+          transitBridgeChainId={result.passport.chainId}
+          originChainId={originChainId}
+          passport={result.passport}
+          metadata={result.metadata}
+          metadataError={result.metadataError}
+          indexerPending={result.indexerPending}
+          listing={listingProp}
+          auction={auctionResult.ok ? auctionResult.auction : null}
+        />
+      ) : (
+        <PassportDetailView
+          tokenId={raw}
+          chainId={viewChainId}
+          commerceChainId={result.passport.custodyChain!}
+          originChainId={originChainId}
+          passport={result.passport}
+          metadata={result.metadata}
+          metadataError={result.metadataError}
+          indexerPending={result.indexerPending}
+          listing={listingProp}
+          auction={auctionResult.ok ? auctionResult.auction : null}
+        />
+      )}
     </div>
   );
 }

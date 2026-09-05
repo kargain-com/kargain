@@ -19,8 +19,8 @@ import type { FixedPriceListingDetailProp } from "@/lib/passport/fetch-passport-
 import type { PassportStatus } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
 
-type Props = {
-  chainId: number;
+type CommonProps = {
+  viewChainId: number;
   tokenId: string;
   listing: FixedPriceListingDetailProp | null;
   initialAuction: AuctionRow | null;
@@ -31,12 +31,43 @@ type Props = {
   hadDispute: boolean;
 };
 
-/**
- * Passport commerce rail: fixed-price XOR ascending (design-spec §4.18).
- * Live consignment + `may` drive the mutex — never status-as-permission.
- */
-export function PassportCommerce({
-  chainId,
+type TransitProps = CommonProps & {
+  commerceChainId: null;
+  transitBridgeChainId: number;
+};
+
+type ResolvedProps = CommonProps & {
+  commerceChainId: number;
+  transitBridgeChainId?: null;
+};
+
+type Props = TransitProps | ResolvedProps;
+
+function TransitPassportCommerce({
+  transitBridgeChainId,
+  tokenId,
+  passportOwner,
+  passportStatus,
+  custodyUnresolved,
+}: TransitProps) {
+  return (
+    <div id="passport-commerce" className={cn("space-y-4", sectionScrollAnchor)}>
+      <WatchlistButton tokenId={tokenId} />
+      <PassportBridgePanel
+        chainId={transitBridgeChainId}
+        tokenId={tokenId}
+        passportOwner={passportOwner}
+        passportStatus={passportStatus}
+        custodyUnresolved={custodyUnresolved}
+        liveConsignmentMode={null}
+        challengeOpen={undefined}
+      />
+    </div>
+  );
+}
+
+function ResolvedPassportCommerce({
+  commerceChainId,
   tokenId,
   listing,
   initialAuction,
@@ -45,9 +76,11 @@ export function PassportCommerce({
   custodyUnresolved,
   duplicateVin,
   hadDispute,
-}: Props) {
-  const facts = usePassportCommerceFacts({ chainId, tokenId });
-
+}: ResolvedProps) {
+  const facts = usePassportCommerceFacts({
+    chainId: commerceChainId,
+    tokenId,
+  });
   const listingBlocksAuction = marketplaceListingBlocksAuction({
     ponderActive: Boolean(listing?.active) || Boolean(facts.fixedPrice.live),
     chainIsListed: facts.fixedPrice.live === true,
@@ -55,7 +88,7 @@ export function PassportCommerce({
   });
 
   const detail = useAuctionDetail({
-    chainId,
+    chainId: commerceChainId,
     tokenId,
     initialAuction,
     passportStatus,
@@ -93,44 +126,44 @@ export function PassportCommerce({
       <WatchlistButton tokenId={tokenId} />
       {ascendingLive ? (
         <AuctionDetailClientIsland
-          chainId={chainId}
+          chainId={commerceChainId}
           tokenId={tokenId}
           passportOwner={passportOwner}
           canOpenConsignment={canOpenConsignment}
           listingBlocksAuction={listingBlocksAuction}
-          ponderCustodyChain={chainId}
+          ponderCustodyChain={commerceChainId}
           custodyUnresolved={custodyUnresolved}
           detail={detail}
         />
       ) : (
         <>
           <AuctionDetailClientIsland
-            chainId={chainId}
+            chainId={commerceChainId}
             tokenId={tokenId}
             passportOwner={passportOwner}
             canOpenConsignment={canOpenConsignment}
             listingBlocksAuction={listingBlocksAuction}
-            ponderCustodyChain={chainId}
+            ponderCustodyChain={commerceChainId}
             custodyUnresolved={custodyUnresolved}
             detail={detail}
           />
           <ListingDetailClientIsland
-            chainId={chainId}
+            chainId={commerceChainId}
             tokenId={tokenId}
             listing={listing}
             passportOwner={passportOwner}
             passportStatus={passportStatus}
-            ponderCustodyChain={chainId}
+            ponderCustodyChain={commerceChainId}
             custodyUnresolved={custodyUnresolved}
             duplicateVin={duplicateVin}
             hadDispute={hadDispute}
           />
           <PassportSellPanel
-            chainId={chainId}
+            chainId={commerceChainId}
             tokenId={tokenId}
             passportOwner={passportOwner}
             passportStatus={passportStatus}
-            ponderCustodyChain={chainId}
+            ponderCustodyChain={commerceChainId}
             custodyUnresolved={custodyUnresolved}
             facts={facts}
             now={detail.now}
@@ -138,7 +171,7 @@ export function PassportCommerce({
         </>
       )}
       <PassportBridgePanel
-        chainId={chainId}
+        chainId={commerceChainId}
         tokenId={tokenId}
         passportOwner={passportOwner}
         passportStatus={passportStatus}
@@ -149,10 +182,21 @@ export function PassportCommerce({
         challengeOpen={facts.challengeOpen}
       />
       <PassportEncumbranceRegistry
-        chainId={chainId}
+        chainId={commerceChainId}
         registry={facts.encumbranceRegistry}
         unanswerableSource={unanswerableSource}
       />
     </div>
   );
+}
+
+/**
+ * Passport commerce rail: fixed-price XOR ascending (design-spec §4.18).
+ * Live consignment + `may` drive the mutex — never status-as-permission.
+ */
+export function PassportCommerce(props: Props) {
+  if (props.commerceChainId == null) {
+    return <TransitPassportCommerce {...props} />;
+  }
+  return <ResolvedPassportCommerce {...props} />;
 }

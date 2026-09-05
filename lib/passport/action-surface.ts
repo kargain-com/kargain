@@ -95,6 +95,14 @@ export type PassportLocationRefusal =
       readonly presence: PassportPresence;
     }
   | {
+      readonly status: "transit";
+      readonly presence: PassportPresence & {
+        readonly status: "location_unresolved";
+        readonly cause: "departure_without_arrival";
+      };
+      readonly cause: "departure_without_arrival";
+    }
+  | {
       readonly status: "refuse";
       readonly presence: PassportPresence;
       readonly cause: "reads_unresolved" | "custody_unresolved";
@@ -209,6 +217,16 @@ export function resolvePassportLocationRefusal(
     };
   }
   if (presence.status === "location_unresolved") {
+    if (presence.cause === "departure_without_arrival") {
+      return {
+        status: "transit",
+        presence: {
+          status: "location_unresolved",
+          cause: "departure_without_arrival",
+        },
+        cause: "departure_without_arrival",
+      };
+    }
     return {
       status: "refuse",
       presence,

@@ -179,6 +179,29 @@ describe("deriveBridgeSurface", () => {
     assert.equal(surface.canBridge, false);
     assert.equal(surface.blockReason, null);
   });
+
+  it("keeps transit chrome without leave permission when the page has no commerce chain", () => {
+    const surface = deriveBridgeSurface({
+      isOwner: false,
+      chainId: 84532,
+      transitActive: true,
+      custodyUnresolved: "departure_without_arrival",
+    });
+    assert.equal(surface.visible, true);
+    assert.equal(surface.canBridge, false);
+    assert.equal(surface.blockReason, null);
+    assert.equal(surface.location?.status, "location_unresolved");
+  });
+
+  it("negative control: without commerce chain or transit, bridge stays hidden", () => {
+    const surface = deriveBridgeSurface({
+      isOwner: true,
+      chainId: 84532,
+      custodyLocked: false,
+      ponderCustodyChain: 84532,
+    });
+    assert.equal(surface.visible, false);
+  });
 });
 
 describe("deriveBridgeSurface — fold vs leave unread", () => {

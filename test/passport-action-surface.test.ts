@@ -403,7 +403,7 @@ describe("resolvePassportEditAccess", () => {
 });
 
 describe("cause × surface — §4.21 lines and consequences", () => {
-  it("edit refusal copy and location refusal contain each cause line + consequence", () => {
+  it("edit refusal copy contains each cause line, while route transit is separated from terminal refusal", () => {
     for (const cause of CUSTODY_UNRESOLVED_CAUSES) {
       const expected = locationUnresolvedCauseCopy(cause);
       const edit = resolvePassportEditAccess({
@@ -428,11 +428,20 @@ describe("cause × surface — §4.21 lines and consequences", () => {
         custodyLocked: undefined,
         custodyUnresolved: cause,
       });
-      assert.equal(market.status, "refuse");
+      if (cause === "departure_without_arrival") {
+        assert.equal(market.status, "transit");
+        if (market.status === "transit") {
+          assert.equal(market.cause, "departure_without_arrival");
+          assert.equal(market.presence.status, "location_unresolved");
+          assert.equal(market.presence.cause, cause);
+        }
+        continue;
+      }
+      assert.equal(market.status, "refuse", cause);
       if (market.status === "refuse") {
-        assert.equal(market.cause, "custody_unresolved");
+        assert.equal(market.cause, "custody_unresolved", cause);
         assert.equal(market.description, expected, cause);
-        assert.equal(market.title, "Passport location is unresolved");
+        assert.equal(market.title, "Passport location is unresolved", cause);
       }
     }
   });
@@ -464,8 +473,13 @@ describe("cause × surface — §4.21 lines and consequences", () => {
         custodyLocked: undefined,
         custodyUnresolved: cause,
       });
-      assert.equal(market.status, "refuse");
+      assert.notEqual(market.status, "ok");
       assert.notEqual(market.status, "not_found" as string);
+      if (cause === "departure_without_arrival") {
+        assert.equal(market.status, "transit");
+        continue;
+      }
+      assert.equal(market.status, "refuse");
     }
     const unread = resolvePassportLocationRefusal({
       viewChainId: 84532,
@@ -476,6 +490,54 @@ describe("cause × surface — §4.21 lines and consequences", () => {
       assert.equal(unread.cause, "reads_unresolved");
       assert.match(unread.description, /chain to answer/i);
     }
+  });
+
+  it("marketplace detail route consumes transit as a non-terminal state", () => {
+    const src = readFileSync(
+      join(ROOT, "app/(identity)/marketplace/[tokenId]/page.tsx"),
+      "utf8",
+    );
+    assert.match(src, /const viewChainId = hintChainId \?\? result\.passport\.chainId/);
+    assert.match(src, /const commerceChainId =\s+location\?\.status === "transit" \? null : result\.passport\.custodyChain!/);
+    assert.match(src, /location\?\.status === "transit" \? \(/);
+    assert.match(src, /transitBridgeChainId=\{result\.passport\.chainId\}/);
+    assert.doesNotMatch(src, /transitBridgeChainId=\{viewChainId\}/);
+    assert.match(src, /if \(location\.status === "refuse"\) \{/);
+  });
+
+  it("passport commerce does not invent a commerce chain during transit", () => {
+    const src = readFileSync(
+      join(ROOT, "components/passport/passport-commerce.tsx"),
+      "utf8",
+    );
+    assert.doesNotMatch(src, /const activeChainId = commerceChainId \?\? viewChainId/);
+    const transitStart = src.indexOf("function TransitPassportCommerce(");
+    const transitReturn = src.indexOf("return (", transitStart);
+    const transitEnd = src.indexOf("\n}\n\nfunction ResolvedPassportCommerce(", transitStart);
+    assert.ok(transitStart >= 0 && transitReturn > transitStart && transitEnd > transitReturn);
+    const transitBlock = src.slice(transitStart, transitEnd);
+    assert.match(transitBlock, /<PassportBridgePanel/);
+    assert.match(transitBlock, /chainId=\{transitBridgeChainId\}/);
+    assert.doesNotMatch(transitBlock, /viewChainId/);
+    assert.doesNotMatch(transitBlock, /transitBridgeChainId \?\?/);
+    assert.doesNotMatch(transitBlock, /leaveChainPermission=\{facts\.leaveChainPermission\}/);
+    assert.doesNotMatch(transitBlock, /usePassportCommerceFacts\(/);
+    assert.doesNotMatch(transitBlock, /useAuctionDetail\(/);
+    assert.doesNotMatch(transitBlock, /<ListingDetailClientIsland/);
+    assert.doesNotMatch(transitBlock, /<PassportSellPanel/);
+  });
+
+  it("detail view threads a required transit bridge chain only on the no-commerce branch", () => {
+    const src = readFileSync(
+      join(ROOT, "components/passport/passport-detail-view.tsx"),
+      "utf8",
+    );
+    assert.match(src, /type TransitProps = CommonProps & \{/);
+    assert.match(src, /commerceChainId: null;/);
+    assert.match(src, /transitBridgeChainId: number;/);
+    assert.match(src, /props\.commerceChainId == null \? \(/);
+    assert.match(src, /transitBridgeChainId=\{props\.transitBridgeChainId\}/);
+    assert.doesNotMatch(src, /transitBridgeChainId=\{.*\?\?.*\}/);
   });
 });
 

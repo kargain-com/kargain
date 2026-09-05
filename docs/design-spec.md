@@ -1063,7 +1063,9 @@ Cross-surface contract for the question "where does this passport live". Consume
 
 Each line is followed by the same consequence sentence: **Actions that depend on custody stay unavailable until the location resolves.** `unknown_namespace` instead reads: **This passport cannot be acted on from Kargain while its location is outside the served networks.**
 
-**Absent location is never absent passport.** A passport whose location is unread or unresolved exists. Routes must refuse by name through the refusal surface they already own — [`EditRefusalShell`](../app/(identity)/passport/[tokenId]/edit/page.tsx) on the edit route, the detail shell on marketplace and passport detail — and must not call `notFound()`. `notFound()` stays reserved for a token that does not exist.
+**Absent location is never absent passport.** A passport whose location is unread or unresolved exists. Routes must refuse by name through the refusal surface they already own — [`EditRefusalShell`](../app/(identity)/passport/[tokenId]/edit/page.tsx) on the edit route, the detail shell on marketplace and passport detail — and must not call `notFound()`. The transit-shaped fold cause `departure_without_arrival` is the exception: marketplace detail renders the detail tree so the bridge transit owner can keep showing in-page progress. `notFound()` stays reserved for a token that does not exist.
+
+**No fallback operators for location facts.** If a value denotes a network, namespace, or location, `??` must not fabricate it from a hint or adjacent context. Either the owner proves the value and types it as present, or the absence is named and carried as absence. A fallback chain id is still a location claim, and code that does not own the location answer must not invent one.
 
 **Write-block causes.** `reads_unresolved` keeps its literal meaning — a chain read has not answered. A block that originates in the custody fold is `custody_unresolved` and carries the cause. A surface that reports a fold gap as `reads_unresolved` is stating something untrue about where the gap is.
 
