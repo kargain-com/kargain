@@ -36,9 +36,17 @@ export type WriteOutcome = {
   writeReference: string;
   synced: boolean;
   claimRecipients: readonly string[];
-  mintedPassportTokenId: string | null;
-  bridgeSendGuid: Hex | null;
+  mintedPassportTokenId: PassportMintedWriteFact;
+  bridgeSendGuid: BridgeSendGuidWriteFact;
 };
+
+export type PassportMintedWriteFact =
+  | { ok: true; tokenId: string }
+  | { ok: false; cause: "missing_minted_passport" };
+
+export type BridgeSendGuidWriteFact =
+  | { ok: true; guid: Hex }
+  | { ok: false; cause: "missing_bridge_send_guid" };
 
 type EvmReceiptAwaitOptions = {
   account: ActiveAccount;
@@ -68,18 +76,6 @@ type RunEvmWriteLifecycleOptions = {
   resolveTargetChainId?: (chainId: number) => number;
 };
 
-export type WriteOutcomeExpectedFactCause =
-  | "missing_minted_passport"
-  | "missing_bridge_send_guid";
-
-export type PassportMintedWriteFact =
-  | { ok: true; tokenId: string }
-  | { ok: false; cause: "missing_minted_passport" };
-
-export type BridgeSendGuidWriteFact =
-  | { ok: true; guid: Hex }
-  | { ok: false; cause: "missing_bridge_send_guid" };
-
 function assertEvmTxHash(value: string): `0x${string}` {
   if (!/^0x[0-9a-fA-F]{64}$/.test(value)) {
     throw new Error("Transaction hash is not a valid EVM hash.");
@@ -87,9 +83,9 @@ function assertEvmTxHash(value: string): `0x${string}` {
   return value as `0x${string}`;
 }
 
-function mintedPassportTokenIdFromReceipt(
+function passportMintedFromReceipt(
   receipt: TransactionReceipt,
-): string | null {
+): PassportMintedWriteFact {
   const parsed = parseEventLogs({
     abi: KarPassportAbi,
     logs: receipt.logs,
@@ -97,16 +93,21 @@ function mintedPassportTokenIdFromReceipt(
   });
   const minted = parsed[0];
   if (!minted || minted.eventName !== "PassportMinted") {
-    return null;
+    return { ok: false, cause: "missing_minted_passport" };
   }
-  return minted.args.tokenId.toString();
+  return { ok: true, tokenId: minted.args.tokenId.toString() };
 }
 
-function bridgeSendGuidFromReceipt(receipt: TransactionReceipt): Hex | null {
+function bridgeSendGuidFromReceipt(
+  receipt: TransactionReceipt,
+): BridgeSendGuidWriteFact {
   try {
-    return onftSentGuidFromLogs(KarPassportBridgeGatewayAbi, receipt.logs);
+    return {
+      ok: true,
+      guid: onftSentGuidFromLogs(KarPassportBridgeGatewayAbi, receipt.logs),
+    };
   } catch {
-    return null;
+    return { ok: false, cause: "missing_bridge_send_guid" };
   }
 }
 
@@ -124,27 +125,9 @@ function buildWriteOutcome(
     writeReference: receipt.transactionHash,
     synced,
     claimRecipients: claimRecipientsFromReceipt(receipt),
-    mintedPassportTokenId: mintedPassportTokenIdFromReceipt(receipt),
+    mintedPassportTokenId: passportMintedFromReceipt(receipt),
     bridgeSendGuid: bridgeSendGuidFromReceipt(receipt),
   };
-}
-
-export function passportMintedFromWriteOutcome(
-  outcome: WriteOutcome,
-): PassportMintedWriteFact {
-  if (outcome.mintedPassportTokenId == null) {
-    return { ok: false, cause: "missing_minted_passport" };
-  }
-  return { ok: true, tokenId: outcome.mintedPassportTokenId };
-}
-
-export function bridgeSendGuidFromWriteOutcome(
-  outcome: WriteOutcome,
-): BridgeSendGuidWriteFact {
-  if (outcome.bridgeSendGuid == null) {
-    return { ok: false, cause: "missing_bridge_send_guid" };
-  }
-  return { ok: true, guid: outcome.bridgeSendGuid };
 }
 
 export function writeOutcomeHasClaimRecipient(

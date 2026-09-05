@@ -44,7 +44,6 @@ import {
   type BridgeSendParam,
 } from "@/lib/web3/bridge";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
-import { bridgeSendGuidFromWriteOutcome } from "@/lib/web3/evm-write-lifecycle";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
@@ -259,7 +258,7 @@ export function useBridge(
             return false;
           }
 
-          const sent = bridgeSendGuidFromWriteOutcome(result);
+          const sent = result.bridgeSendGuid;
           if (!sent.ok) {
             throw new Error("ONFTSent guid missing from transaction logs");
           }

@@ -42,7 +42,6 @@ import {
 import { reorderArrayItem } from "@/lib/reorder-array";
 import { resetIrysUploaderCache } from "@/lib/storage/irys-client";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
-import { passportMintedFromWriteOutcome } from "@/lib/web3/evm-write-lifecycle";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
@@ -190,7 +189,7 @@ export function CreatePassportWizard() {
         return;
       }
 
-      const minted = passportMintedFromWriteOutcome(result);
+      const minted = result.mintedPassportTokenId;
       if (!minted.ok) {
         if (minted.cause === "missing_minted_passport") {
           setPhase("error");

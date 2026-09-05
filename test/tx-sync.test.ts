@@ -30,8 +30,6 @@ import {
 } from "../lib/web3/tx-sync.ts";
 import {
   awaitEvmWriteReceipt,
-  bridgeSendGuidFromWriteOutcome,
-  passportMintedFromWriteOutcome,
   runEvmWriteLifecycle,
   writeOutcomeHasClaimRecipient,
   type EvmWriteLifecyclePhase,
@@ -272,7 +270,7 @@ function mintedRouteForWriteOutcome(
   outcome: WriteOutcome,
   chainId: number,
 ): string | null {
-  const minted = passportMintedFromWriteOutcome(outcome);
+  const minted = outcome.mintedPassportTokenId;
   if (!minted.ok) return null;
   return `/marketplace/${minted.tokenId}/created?chain=${chainId}&tx=${outcome.writeReference}`;
 }
@@ -290,6 +288,17 @@ function claimRecordedForOutcome(
 ): boolean {
   return writeOutcomeHasClaimRecipient(outcome, account);
 }
+
+function typecheckPublicWriteOutcomeSeam(outcome: WriteOutcome) {
+  // @ts-expect-error public seam no longer exposes raw nullable mint facts
+  const rawMintFact: string | null = outcome.mintedPassportTokenId;
+  // @ts-expect-error public seam no longer exposes raw nullable bridge facts
+  const rawBridgeFact: string | null = outcome.bridgeSendGuid;
+  void rawMintFact;
+  void rawBridgeFact;
+}
+
+void typecheckPublicWriteOutcomeSeam;
 
 describe("waitForIndexerBlock", () => {
   it("catches up on the first poll", async () => {
@@ -858,7 +867,7 @@ describe("runEvmWriteLifecycle equivalence", () => {
       confirmTransaction: async () => receipt,
       resolveTargetChainId: (value) => value,
     });
-    const actualGuid = bridgeSendGuidFromWriteOutcome(outcome);
+    const actualGuid = outcome.bridgeSendGuid;
     assert.equal(actualGuid.ok, true);
     if (actualGuid.ok) {
       assert.equal(actualGuid.guid, legacyGuid);
@@ -878,7 +887,7 @@ describe("runEvmWriteLifecycle equivalence", () => {
       confirmTransaction: async () => fakeReceipt(hash, 91n),
       resolveTargetChainId: (value) => value,
     });
-    assert.deepEqual(passportMintedFromWriteOutcome(outcome), {
+    assert.deepEqual(outcome.mintedPassportTokenId, {
       ok: false,
       cause: "missing_minted_passport",
     });
@@ -886,7 +895,7 @@ describe("runEvmWriteLifecycle equivalence", () => {
 
   it("create-passport wizard maps missing minted fact to the existing parse-failure message", () => {
     const source = fs.readFileSync(CREATE_PASSPORT_WIZARD, "utf8");
-    assert.match(source, /passportMintedFromWriteOutcome/);
+    assert.match(source, /result\.mintedPassportTokenId/);
     assert.match(source, /missing_minted_passport/);
     assert.match(
       source,
