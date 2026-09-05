@@ -71,6 +71,7 @@ async function runProbeQueries(
   pool: pg.Pool,
   namespaces: readonly number[],
 ): Promise<readonly ReadPathProbeName[]> {
+  const entityParams = [[...namespaces]];
   const entitySql = `SELECT 1
     FROM ${buildPassportEntityUnionSubquery(namespaces, true)} AS passport_union
     LIMIT 0`;
@@ -103,8 +104,8 @@ async function runProbeQueries(
     LIMIT 0`;
 
   await Promise.all([
-    pool.query(entitySql),
-    pool.query(browseSql),
+    pool.query(entitySql, entityParams),
+    pool.query(browseSql, entityParams),
     pool.query(provenanceSql.sql, provenanceSql.params),
     pool.query(uriSql.sql, uriSql.params),
     pool.query(custodySql, ["0", [...namespaces]]),

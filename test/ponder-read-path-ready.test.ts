@@ -165,11 +165,40 @@ async function createReadinessPool(args: { withProjection: boolean }): Promise<p
   return new adapter.Pool() as unknown as pg.Pool;
 }
 
+function strictSqlPool(pool: pg.Pool): pg.Pool {
+  return {
+    ...pool,
+    async query(
+      text: string,
+      values?: readonly unknown[],
+    ): Promise<Awaited<ReturnType<pg.Pool["query"]>>> {
+      const matches = [...text.matchAll(/\$(\d+)/g)];
+      const highestParam = matches.reduce((max, match) => {
+        const value = Number.parseInt(match[1] ?? "0", 10);
+        return Number.isFinite(value) && value > max ? value : max;
+      }, 0);
+      const paramCount = values?.length ?? 0;
+      if (highestParam > 0 && paramCount < highestParam) {
+        throw new Error(
+          `missing SQL parameters: expected ${highestParam}, received ${paramCount}`,
+        );
+      }
+      if (highestParam === 0 && paramCount > 0) {
+        throw new Error(
+          `unexpected SQL parameters: expected 0, received ${paramCount}`,
+        );
+      }
+      return pool.query(text, values as unknown[]);
+    },
+  } as pg.Pool;
+}
+
 function readinessApp(pool: pg.Pool): Hono {
   const app = new Hono();
+  const strictPool = strictSqlPool(pool);
   app.get("/ready", (c) => c.text(""));
   app.get("/read-path-ready", async (c) => {
-    const readiness = await resolveReadPathReadiness(pool);
+    const readiness = await resolveReadPathReadiness(strictPool);
     return c.json(
       readiness.ready
         ? {
@@ -186,11 +215,11 @@ function readinessApp(pool: pg.Pool): Hono {
     );
   });
   app.get("/consignments", async (c) => {
-    await pool.query(`SELECT c.id
+    await strictPool.query(`SELECT c.id
       FROM kargain.consignment c
       LEFT JOIN ${buildPassportEntityUnionSubquery([84532, 11155111], true)} p
         ON c.token_id = p.id
-      LIMIT 0`);
+      LIMIT 0`, [[84532, 11155111]]);
     return c.json({
       consignments: [],
       total: 0,
