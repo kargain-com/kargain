@@ -29,19 +29,35 @@ import {
   waitForIndexerBlock,
 } from "../lib/web3/tx-sync.ts";
 import {
-  awaitEvmWriteReceipt,
   runEvmWriteLifecycle,
-  writeOutcomeHasClaimRecipient,
   type EvmWriteLifecyclePhase,
-  type WriteOutcome,
 } from "../lib/web3/evm-write-lifecycle.ts";
 import { onftSentGuidFromLogs } from "../lib/web3/bridge/bridge-guid.ts";
 import { commercialActive } from "../lib/web3/commercial-active.ts";
 import { evmSwitchChainAvailability } from "../lib/web3/active-account.ts";
+import { encodeSvmPubkeyBytes } from "../lib/web3/protocol-address.ts";
+import {
+  awaitWriteReceipt,
+  runWriteLifecycle,
+} from "../lib/web3/write-lifecycle.ts";
+import {
+  writeOutcomeHasClaimRecipient,
+  type WriteIndexerBarrier,
+  type WriteOutcome,
+} from "../lib/web3/write-outcome.ts";
 import {
   txWriteAvailability,
   txWriteRefusalMessage,
 } from "../lib/web3/tx-write-availability.ts";
+import {
+  FIXTURE_SVM_NAMESPACE,
+  FIXTURE_SVM_STACK,
+} from "./fixtures/commercial-svm-stack.ts";
+import {
+  buildPassportMintedBody,
+  globalTokenId,
+  PASSPORT_MINTED_DISC,
+} from "./fixtures/svm-ingest/borsh-fixtures.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CREATE_PASSPORT_WIZARD = path.join(
@@ -108,6 +124,94 @@ function fakeReceipt(
     transactionIndex: 0,
     type: "eip1559",
   } as TransactionReceipt;
+}
+
+function fixtureSvmAccount() {
+  return {
+    status: "connected" as const,
+    vm: "svm" as const,
+    address: encodeSvmPubkeyBytes(pubkey32FromSeed(7)),
+    namespace: FIXTURE_SVM_STACK.namespace,
+  };
+}
+
+function bytes32FromBigint(value: bigint): Buffer {
+  const out = Buffer.alloc(32);
+  let v = value;
+  for (let i = 31; i >= 0; i--) {
+    out[i] = Number(v & 0xffn);
+    v >>= 8n;
+  }
+  return out;
+}
+
+function bytes32FromHex(hex: `0x${string}`): Buffer {
+  return Buffer.from(hex.slice(2).padStart(64, "0"), "hex");
+}
+
+function pubkey32FromSeed(seed: number): Buffer {
+  const out = Buffer.alloc(32);
+  out[31] = seed & 0xff;
+  return out;
+}
+
+function u32le(value: number): Buffer {
+  const out = Buffer.alloc(4);
+  out.writeUInt32LE(value, 0);
+  return out;
+}
+
+function u64le(value: bigint): Buffer {
+  const out = Buffer.alloc(8);
+  out.writeBigUInt64LE(value, 0);
+  return out;
+}
+
+function svmPayload(args: {
+  discriminatorHex: string;
+  body: Buffer;
+  eventName: string;
+  contractName: string;
+}) {
+  const payloadBytes = Buffer.concat([
+    Buffer.from(args.discriminatorHex, "hex"),
+    args.body,
+  ]);
+  return {
+    id: `${args.contractName}:${args.eventName}`,
+    namespace: FIXTURE_SVM_NAMESPACE,
+    slot: 123,
+    txIndexInBlock: 0,
+    logIndex: 0,
+    txSignature: "svm-signature-1",
+    emittingProgram: FIXTURE_SVM_STACK.karPassport,
+    discriminator: Buffer.from(args.discriminatorHex, "hex"),
+    eventName: args.eventName,
+    contractName: args.contractName,
+    payloadBytes,
+  };
+}
+
+function buildClaimRecordedBody(accountSeed: number): Buffer {
+  return Buffer.concat([
+    pubkey32FromSeed(accountSeed),
+    pubkey32FromSeed(8),
+    u64le(42n),
+  ]);
+}
+
+function buildOnftSentBody(args: {
+  guid: `0x${string}`;
+  dstEid: number;
+  tokenId: bigint;
+  fromSeed?: number;
+}): Buffer {
+  return Buffer.concat([
+    bytes32FromHex(args.guid),
+    u32le(args.dstEid),
+    pubkey32FromSeed(args.fromSeed ?? 9),
+    bytes32FromBigint(args.tokenId),
+  ]);
 }
 
 function makeBaseLog(
@@ -220,6 +324,9 @@ async function legacyRunEvmWriteLifecycle({
   }
   onPhase?.("wallet");
   const targetChainId = resolveTargetChainId(chainId);
+  if (avail.vm !== "evm") {
+    throw new Error(txWriteRefusalMessage("wrong_vm"));
+  }
   if (avail.walletChainId !== targetChainId) {
     const switchAvail = evmSwitchChainAvailability(account);
     if (!switchAvail.available) {
@@ -290,12 +397,10 @@ function claimRecordedForOutcome(
 }
 
 function typecheckPublicWriteOutcomeSeam(outcome: WriteOutcome) {
-  // @ts-expect-error public seam no longer exposes raw nullable mint facts
-  const rawMintFact: string | null = outcome.mintedPassportTokenId;
-  // @ts-expect-error public seam no longer exposes raw nullable bridge facts
-  const rawBridgeFact: string | null = outcome.bridgeSendGuid;
-  void rawMintFact;
-  void rawBridgeFact;
+  const barrier: WriteIndexerBarrier = outcome.indexerBarrier;
+  const writeRef: string = outcome.writeReference;
+  void barrier;
+  void writeRef;
 }
 
 void typecheckPublicWriteOutcomeSeam;
@@ -651,7 +756,7 @@ describe("runEvmWriteLifecycle equivalence", () => {
       resolveTargetChainId: (value: number) => value,
     });
 
-    assert.equal(actual.synced, legacy.synced);
+    assert.deepEqual(actual.indexerBarrier, { status: "observed" });
     assert.equal(actual.writeReference, legacy.receipt.transactionHash);
     assert.deepEqual(events, legacyEvents);
   });
@@ -714,7 +819,7 @@ describe("runEvmWriteLifecycle equivalence", () => {
       resolveTargetChainId: (value) => value,
     });
 
-    assert.equal(actual.synced, legacy.synced);
+    assert.deepEqual(actual.indexerBarrier, { status: "observed" });
     assert.equal(actual.writeReference, legacy.receipt.transactionHash);
     assert.deepEqual(actualEvents, legacyEvents);
   });
@@ -784,15 +889,15 @@ describe("runEvmWriteLifecycle equivalence", () => {
     assert.deepEqual(actualEvents, legacyEvents);
   });
 
-  it("awaitEvmWriteReceipt preserves the legacy confirming path", async () => {
+  it("awaitWriteReceipt preserves the legacy confirming path", async () => {
     const account = fixtureEvmAccount(84532);
     const hash = `0x${"3".repeat(64)}` as const;
     const phases: string[] = [];
     const receipt = fakeReceipt(hash, 77n);
-    const result = await awaitEvmWriteReceipt({
+    const result = await awaitWriteReceipt({
       account,
       chainId: 84532,
-      config: undefined as never,
+      config: { wagmiConfig: undefined as never },
       hash,
       onPhase: (phase) => phases.push(phase),
       confirmTransaction: async (_config, confirmedHash) => {
@@ -901,5 +1006,160 @@ describe("runEvmWriteLifecycle equivalence", () => {
       source,
       /Mint succeeded but token ID could not be read\. Check your wallet for the NFT\./,
     );
+  });
+});
+
+describe("runWriteLifecycle dispatcher", () => {
+  const svmRegistry = {
+    [FIXTURE_SVM_NAMESPACE]: FIXTURE_SVM_STACK,
+  } as const;
+
+  it("selects the SVM sibling only via injected fixture registry", async () => {
+    const tokenId = globalTokenId(FIXTURE_SVM_NAMESPACE, 77);
+    const claimRecipient = encodeSvmPubkeyBytes(pubkey32FromSeed(7));
+    const phases: string[] = [];
+    let createConfirmPortCalls = 0;
+
+    const result = await runWriteLifecycle({
+      account: fixtureSvmAccount(),
+      chainId: FIXTURE_SVM_NAMESPACE,
+      config: { wagmiConfig: undefined as never },
+      switchChain: async () => {
+        throw new Error("switchChain should not run for SVM");
+      },
+      writeFn: async () => "svm-signature-1",
+      fetchIndexerStatus: async () => ({ ok: true, blockNumber: 1 }),
+      wait: async () => undefined,
+      onPhase: (phase) => phases.push(phase),
+      registry: svmRegistry,
+      createConfirmPort: (stack) => {
+        createConfirmPortCalls += 1;
+        assert.equal(stack.namespace, FIXTURE_SVM_STACK.namespace);
+        return {
+          confirmSignature: async (signature) => ({ signature, slot: 123n }),
+        };
+      },
+      fetchStructuredPayloads: async () => [
+        svmPayload({
+          discriminatorHex: PASSPORT_MINTED_DISC,
+          body: buildPassportMintedBody({ tokenId }),
+          eventName: "PassportMinted",
+          contractName: "KarPassport",
+        }),
+        svmPayload({
+          discriminatorHex: "2eb720503bab8ae0",
+          body: buildClaimRecordedBody(7),
+          eventName: "ClaimRecorded",
+          contractName: "KarPassport",
+        }),
+        svmPayload({
+          discriminatorHex: "b6f8fb5cdad3ab62",
+          body: buildOnftSentBody({
+            guid: `0x${"ab".repeat(32)}`,
+            dstEid: 40161,
+            tokenId,
+          }),
+          eventName: "ONFTSent",
+          contractName: "KarPassportBridgeGateway",
+        }),
+      ],
+    });
+
+    assert.equal(createConfirmPortCalls, 1);
+    assert.deepEqual(phases, ["wallet", "confirming", "indexing"]);
+    assert.equal(result.writeReference, "svm-signature-1");
+    assert.deepEqual(result.indexerBarrier, {
+      status: "unavailable",
+      cause: "svm_ingest_unavailable",
+    });
+    assert.deepEqual(result.claimRecipients, [claimRecipient]);
+    assert.equal(writeOutcomeHasClaimRecipient(result, claimRecipient), true);
+    assert.deepEqual(result.mintedPassportTokenId, {
+      ok: true,
+      tokenId: tokenId.toString(),
+    });
+    assert.deepEqual(result.bridgeSendGuid, {
+      ok: true,
+      guid: `0x${"ab".repeat(32)}`,
+    });
+  });
+
+  it("live product registry cannot dispatch the dark SVM arm", async () => {
+    await assert.rejects(
+      () =>
+        runWriteLifecycle({
+          account: fixtureSvmAccount(),
+          chainId: FIXTURE_SVM_NAMESPACE,
+          config: { wagmiConfig: undefined as never },
+          switchChain: async () => undefined,
+          writeFn: async () => "svm-signature-1",
+          fetchIndexerStatus: async () => ({ ok: true, blockNumber: 1 }),
+          wait: async () => undefined,
+        }),
+      /This network is not available for commercial writes\./,
+    );
+  });
+
+  it("keeps EVM lagging distinct from SVM barrier unavailable", async () => {
+    const evmHash = `0x${"4".repeat(64)}` as const;
+    const evmOutcome = await runWriteLifecycle({
+      account: fixtureEvmAccount(84532),
+      chainId: 84532,
+      config: { wagmiConfig: undefined as never },
+      switchChain: async () => undefined,
+      writeFn: async () => evmHash,
+      fetchIndexerStatus: async () => ({ ok: true, blockNumber: 10 }),
+      wait: async () => undefined,
+      confirmTransaction: async () => fakeReceipt(evmHash, 11n),
+      resolveTargetChainId: (chainId) => chainId,
+    });
+
+    const svmOutcome = await runWriteLifecycle({
+      account: fixtureSvmAccount(),
+      chainId: FIXTURE_SVM_NAMESPACE,
+      config: { wagmiConfig: undefined as never },
+      switchChain: async () => undefined,
+      writeFn: async () => "svm-signature-1",
+      fetchIndexerStatus: async () => ({ ok: true, blockNumber: 1 }),
+      wait: async () => undefined,
+      registry: svmRegistry,
+      createConfirmPort: () => ({
+        confirmSignature: async (signature) => ({ signature, slot: 1n }),
+      }),
+      fetchStructuredPayloads: async () => [],
+    });
+
+    assert.deepEqual(evmOutcome.indexerBarrier, { status: "lagging" });
+    assert.deepEqual(svmOutcome.indexerBarrier, {
+      status: "unavailable",
+      cause: "svm_ingest_unavailable",
+    });
+    assert.notDeepEqual(evmOutcome.indexerBarrier, svmOutcome.indexerBarrier);
+  });
+
+  it("returns named SVM fact absences when program events do not carry them", async () => {
+    const result = await runWriteLifecycle({
+      account: fixtureSvmAccount(),
+      chainId: FIXTURE_SVM_NAMESPACE,
+      config: { wagmiConfig: undefined as never },
+      switchChain: async () => undefined,
+      writeFn: async () => "svm-signature-1",
+      fetchIndexerStatus: async () => ({ ok: true, blockNumber: 1 }),
+      wait: async () => undefined,
+      registry: svmRegistry,
+      createConfirmPort: () => ({
+        confirmSignature: async (signature) => ({ signature, slot: 1n }),
+      }),
+      fetchStructuredPayloads: async () => [],
+    });
+
+    assert.deepEqual(result.mintedPassportTokenId, {
+      ok: false,
+      cause: "missing_minted_passport",
+    });
+    assert.deepEqual(result.bridgeSendGuid, {
+      ok: false,
+      cause: "missing_bridge_send_guid",
+    });
   });
 });

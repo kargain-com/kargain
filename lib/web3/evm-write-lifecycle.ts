@@ -2,12 +2,7 @@
 
 import { useConfig } from "wagmi";
 import type { Config } from "wagmi";
-import {
-  getAddress,
-  parseEventLogs,
-  type Hex,
-  type TransactionReceipt,
-} from "viem";
+import { getAddress, parseEventLogs, type TransactionReceipt } from "viem";
 
 import { claimRecordedFromReceipt } from "@/lib/claims/receipt-claims";
 import {
@@ -29,24 +24,14 @@ import {
   txWriteAvailability,
   txWriteRefusalMessage,
 } from "@/lib/web3/tx-write-availability";
+import {
+  buildWriteOutcome,
+  type BridgeSendGuidWriteFact,
+  type PassportMintedWriteFact,
+  type WriteOutcome,
+} from "@/lib/web3/write-outcome";
 
 export type EvmWriteLifecyclePhase = "wallet" | "confirming" | "indexing";
-
-export type WriteOutcome = {
-  writeReference: string;
-  synced: boolean;
-  claimRecipients: readonly string[];
-  mintedPassportTokenId: PassportMintedWriteFact;
-  bridgeSendGuid: BridgeSendGuidWriteFact;
-};
-
-export type PassportMintedWriteFact =
-  | { ok: true; tokenId: string }
-  | { ok: false; cause: "missing_minted_passport" };
-
-export type BridgeSendGuidWriteFact =
-  | { ok: true; guid: Hex }
-  | { ok: false; cause: "missing_bridge_send_guid" };
 
 type EvmReceiptAwaitOptions = {
   account: ActiveAccount;
@@ -117,26 +102,6 @@ function claimRecipientsFromReceipt(
   return claimRecordedFromReceipt(receipt).map((claim) => getAddress(claim.account));
 }
 
-function buildWriteOutcome(
-  receipt: TransactionReceipt,
-  synced: boolean,
-): WriteOutcome {
-  return {
-    writeReference: receipt.transactionHash,
-    synced,
-    claimRecipients: claimRecipientsFromReceipt(receipt),
-    mintedPassportTokenId: passportMintedFromReceipt(receipt),
-    bridgeSendGuid: bridgeSendGuidFromReceipt(receipt),
-  };
-}
-
-export function writeOutcomeHasClaimRecipient(
-  outcome: WriteOutcome,
-  address: string,
-): boolean {
-  return outcome.claimRecipients.includes(getAddress(address));
-}
-
 export async function awaitEvmWriteReceipt({
   account,
   chainId,
@@ -172,6 +137,9 @@ export async function runEvmWriteLifecycle({
 
   onPhase?.("wallet");
   const targetChainId = resolveTargetChainId(chainId);
+  if (avail.vm !== "evm") {
+    throw new Error(txWriteRefusalMessage("wrong_vm"));
+  }
   if (avail.walletChainId !== targetChainId) {
     const switchAvail = evmSwitchChainAvailability(account);
     if (!switchAvail.available) {
@@ -192,7 +160,13 @@ export async function runEvmWriteLifecycle({
     wait,
   });
 
-  return buildWriteOutcome(receipt, synced);
+  return buildWriteOutcome({
+    writeReference: receipt.transactionHash,
+    indexerBarrier: { status: synced ? "observed" : "lagging" },
+    claimRecipients: claimRecipientsFromReceipt(receipt),
+    mintedPassportTokenId: passportMintedFromReceipt(receipt),
+    bridgeSendGuid: bridgeSendGuidFromReceipt(receipt),
+  });
 }
 
 export function useEvmWriteLifecycleConfig(): Config {

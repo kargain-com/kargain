@@ -9,13 +9,13 @@ import { revalidateIndexerCache } from "@/app/actions/revalidate-indexer-cache";
 import { useActiveAccount } from "@/hooks/use-active-account";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import {
-  awaitEvmWriteReceipt,
-  runEvmWriteLifecycle,
-  useEvmWriteLifecycleConfig,
-  type WriteOutcome,
-} from "@/lib/web3/evm-write-lifecycle";
+  awaitWriteReceipt,
+  runWriteLifecycle,
+  useWriteLifecycleConfig,
+} from "@/lib/web3/write-lifecycle";
 import { invalidateIndexerQueries } from "@/lib/web3/indexer-query-keys";
 import { TX_SYNC_LAG_ADVISORY } from "@/lib/web3/tx-sync";
+import { type WriteOutcome } from "@/lib/web3/write-outcome";
 
 export type TxSyncPhase = "idle" | "wallet" | "confirming" | "indexing";
 
@@ -36,7 +36,7 @@ function wait(ms: number): Promise<void> {
 }
 
 export function useTxSync(chainId: number) {
-  const config = useEvmWriteLifecycleConfig();
+  const config = useWriteLifecycleConfig();
   const queryClient = useQueryClient();
   const router = useRouter();
   const { account, switchChain } = useActiveAccount();
@@ -67,7 +67,7 @@ export function useTxSync(chainId: number) {
         setSyncLagged(false);
       }
       try {
-        return await awaitEvmWriteReceipt({
+        return await awaitWriteReceipt({
           account,
           chainId,
           config,
@@ -120,7 +120,7 @@ export function useTxSync(chainId: number) {
       activeRunDepthRef.current += 1;
 
       try {
-        const lifecycle = await runEvmWriteLifecycle({
+        const lifecycle = await runWriteLifecycle({
           account,
           chainId,
           config,
@@ -131,9 +131,10 @@ export function useTxSync(chainId: number) {
           onPhase: setPhase,
         });
 
-        const synced = lifecycle.synced;
         const revalidate = await syncReads();
-        setSyncLagged(!synced || !revalidate.ok);
+        setSyncLagged(
+          lifecycle.indexerBarrier.status === "lagging" || !revalidate.ok,
+        );
         return lifecycle;
       } catch (err) {
         setError((options?.mapError ?? txErrorMessage)(err));

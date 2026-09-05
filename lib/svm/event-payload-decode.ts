@@ -7,7 +7,7 @@ import eventsManifest from "../../svm/crates/kargain-events/events.manifest.json
   type: "json",
 };
 
-import { splitDiscriminatorAndBody } from "./event-discriminators.js";
+import { splitDiscriminatorAndBody } from "./event-discriminators";
 
 export type ManifestFieldEncoding =
   | "bytes32"

@@ -61,7 +61,7 @@ import {
   nativeUnitOf,
 } from "@/lib/web3/commercial-active";
 import { formatNativeAmountLabeled } from "@/lib/web3/native-amount";
-import { writeOutcomeHasClaimRecipient } from "@/lib/web3/evm-write-lifecycle";
+import { writeOutcomeHasClaimRecipient } from "@/lib/web3/write-outcome";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { usePassportCommerceFacts } from "@/hooks/use-passport-commerce-facts";

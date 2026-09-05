@@ -4,10 +4,13 @@
  */
 
 import {
+  commercialActive,
+  type CommercialRegistry,
+} from "@/lib/web3/commercial-active";
+import {
   type ActiveAccount,
   wrongVmActionCopy,
 } from "@/lib/web3/active-account";
-import { commercialActive } from "@/lib/web3/commercial-active";
 
 export type TxWriteCause =
   | "disconnected"
@@ -16,6 +19,7 @@ export type TxWriteCause =
 
 export type TxWriteAvailability =
   | { available: true; vm: "evm"; walletChainId: number }
+  | { available: true; vm: "svm"; namespace: number }
   | { available: false; cause: TxWriteCause };
 
 /**
@@ -26,18 +30,25 @@ export type TxWriteAvailability =
 export function txWriteAvailability(
   account: ActiveAccount,
   chainId: number,
+  registry?: CommercialRegistry,
 ): TxWriteAvailability {
   if (account.status !== "connected") {
     return { available: false, cause: "disconnected" };
   }
-  if (account.vm === "svm") {
-    return { available: false, cause: "wrong_vm" };
-  }
-  const stack = commercialActive(chainId);
-  if (stack == null || stack.vm !== "evm") {
+  const stack = commercialActive(chainId, registry);
+  if (stack == null) {
     return { available: false, cause: "unresolved_namespace" };
   }
-  return { available: true, vm: "evm", walletChainId: account.chainId };
+  if (stack.vm === "evm") {
+    if (account.vm !== "evm") {
+      return { available: false, cause: "wrong_vm" };
+    }
+    return { available: true, vm: "evm", walletChainId: account.chainId };
+  }
+  if (account.vm !== "svm") {
+    return { available: false, cause: "wrong_vm" };
+  }
+  return { available: true, vm: "svm", namespace: Number(stack.namespace) };
 }
 
 /** Stable English for write refusals — §4.7 vocabulary for wrong_vm. */

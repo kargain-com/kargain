@@ -25,8 +25,10 @@ export type ArchitecturalChokepoint = {
 export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "tx-sync-writes",
-    owner: "hooks/use-tx-sync.ts · lib/web3/evm-write-lifecycle.ts",
-    rule: "Post-truth invalidate + router.refresh only via syncReads / runTx; EVM write lifecycle sequencing lives in lib/web3 while the hook remains React orchestration only",
+    owner:
+      "hooks/use-tx-sync.ts · lib/web3/write-lifecycle.ts · lib/web3/evm-write-lifecycle.ts · lib/web3/svm-write-lifecycle.ts · lib/web3/write-outcome.ts",
+    rule:
+      "Post-truth invalidate + router.refresh only via syncReads / runTx; neutral write dispatch + barrier truth live in lib/web3 while the hook remains React orchestration only",
     guardTests: [
       "tx-sync-write-policy.test.ts",
       "evm-write-adapter-policy.test.ts",

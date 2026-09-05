@@ -12,7 +12,7 @@ import { monoLinkSm, sansLink } from "@/lib/design/instrument-classes";
 import { formatKarProPassTitle, proPassTokenIdFromAddress } from "@/lib/kar-pro/pro-pass-token-id";
 import { karProLeaveNetworkScopeCopy } from "@/lib/kar-pro/membership-roster";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { writeOutcomeHasClaimRecipient } from "@/lib/web3/evm-write-lifecycle";
+import { writeOutcomeHasClaimRecipient } from "@/lib/web3/write-outcome";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { requireCommercialActive } from "@/lib/web3/commercial-active";
 import { explorerAddressUrl } from "@/lib/web3/network-explorer";

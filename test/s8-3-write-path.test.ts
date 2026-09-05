@@ -21,7 +21,10 @@ import {
   txWriteRefusalMessage,
 } from "../lib/web3/tx-write-availability.ts";
 import { SVM_TX_CONFIRM_COMMITMENT, confirmSvmTransaction } from "../lib/web3/svm-tx-confirm.ts";
-import { FIXTURE_SVM_NAMESPACE } from "./fixtures/commercial-svm-stack.ts";
+import {
+  FIXTURE_SVM_NAMESPACE,
+  FIXTURE_SVM_STACK,
+} from "./fixtures/commercial-svm-stack.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const KARGAIN_ERRORS_RS = path.join(
@@ -62,6 +65,33 @@ describe("txWriteAvailability", () => {
       assert.equal(r.vm, "evm");
       assert.equal(r.walletChainId, 84532);
     }
+  });
+
+  it("allows SVM session only through an injected mixed registry fixture", () => {
+    const r = txWriteAvailability(
+      {
+        status: "connected",
+        vm: "svm",
+        address: "So11111111111111111111111111111111111111112",
+      },
+      FIXTURE_SVM_NAMESPACE,
+      { [FIXTURE_SVM_NAMESPACE]: FIXTURE_SVM_STACK },
+    );
+    assert.deepEqual(r, {
+      available: true,
+      vm: "svm",
+      namespace: FIXTURE_SVM_NAMESPACE,
+    });
+
+    const live = txWriteAvailability(
+      {
+        status: "connected",
+        vm: "svm",
+        address: "So11111111111111111111111111111111111111112",
+      },
+      FIXTURE_SVM_NAMESPACE,
+    );
+    assert.deepEqual(live, { available: false, cause: "unresolved_namespace" });
   });
 
   it("does not invent a commercial stack for an unknown chainId", () => {

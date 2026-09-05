@@ -3,6 +3,7 @@
  */
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import { scanProductSources } from "./policy-scan-helpers.ts";
@@ -38,6 +39,17 @@ describe("svm wallet adapter policy (S8-2)", () => {
     assert.equal(
       svmDepPredicate("components/invented-svm.tsx", dirty),
       "Solana wallet dep outside SVM adapter (components/invented-svm.tsx)",
+    );
+  });
+
+  it("svm-rpc stays green by avoiding wallet deps, and the parked placement stays red for the original reason", () => {
+    const source = readFileSync("lib/web3/svm-rpc.ts", "utf8");
+    assert.doesNotMatch(source, SVM_DEP_IMPORT);
+
+    const parked = `import { createSolanaRpc } from "@solana/kit";\n`;
+    assert.equal(
+      svmDepPredicate("lib/web3/svm-rpc.ts", parked),
+      "Solana wallet dep outside SVM adapter (lib/web3/svm-rpc.ts)",
     );
   });
 });

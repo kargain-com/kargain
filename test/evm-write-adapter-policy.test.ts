@@ -17,6 +17,7 @@ const TX_SYNC = "hooks/use-tx-sync.ts";
 const EVM_CONFIRM = "lib/web3/evm-tx-confirm.ts";
 const EVM_LIFECYCLE = "lib/web3/evm-write-lifecycle.ts";
 const SVM_CONFIRM = "lib/web3/svm-tx-confirm.ts";
+const SVM_LIFECYCLE = "lib/web3/svm-write-lifecycle.ts";
 
 const WRITE_HOOK_FROM_WAGMI =
   /import\s*(?:type\s+)?\{[^}]*\b(?:useWriteContract|useSendTransaction)\b[^}]*\}\s*from\s*["']wagmi["']/;
@@ -81,18 +82,21 @@ describe("tx confirm ownership policy", () => {
     );
   });
 
-  it("lifecycle owner consumes confirmEvmTransaction while use-tx-sync stays receipt-blind", () => {
+  it("lifecycle owners consume confirm ports while use-tx-sync stays confirm-blind", () => {
     const source = readFileSync(`${POLICY_SCAN_ROOT}/${EVM_LIFECYCLE}`, "utf8");
     assert.match(source, /confirmEvmTransaction/);
     assert.ok(!RECEIPT_WAIT.test(source));
+    const svmSource = readFileSync(`${POLICY_SCAN_ROOT}/${SVM_LIFECYCLE}`, "utf8");
+    assert.match(svmSource, /confirmSvmTransaction/);
     const hook = readFileSync(`${POLICY_SCAN_ROOT}/${TX_SYNC}`, "utf8");
     assert.doesNotMatch(hook, /\bconfirmEvmTransaction\b/);
-    assert.match(hook, /\brunEvmWriteLifecycle\b/);
+    assert.doesNotMatch(hook, /\bconfirmSvmTransaction\b/);
+    assert.match(hook, /\brunWriteLifecycle\b/);
   });
 
-  it("confirmSvmTransaction is not called from product outside its owner", () => {
+  it("confirmSvmTransaction is only called from the SVM lifecycle owner", () => {
     const violations = scanProductSources(svmConfirmPredicate, {
-      owners: [SVM_CONFIRM],
+      owners: [SVM_CONFIRM, SVM_LIFECYCLE],
     });
     assert.deepEqual(
       violations,

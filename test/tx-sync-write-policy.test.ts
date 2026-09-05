@@ -25,6 +25,7 @@ const TX_SYNC_HOOK = path.join(HOOKS, "use-tx-sync.ts");
 const TX_SYNC_EVM_SPECIFICS = [
   /\buseConfig\b/,
   /\bconfirmEvmTransaction\b/,
+  /\bconfirmSvmTransaction\b/,
   /\bwaitForTransactionReceipt\b/,
   /\bTransactionReceipt\b/,
   /\bwagmiChainId\b/,
@@ -32,6 +33,8 @@ const TX_SYNC_EVM_SPECIFICS = [
   /\btxWriteRefusalMessage\b/,
   /\bwalletChainId\b/,
   /\bisEvmTxHash\b/,
+  /\bcreateConfirmPort\b/,
+  /\bfetchStructuredPayloads\b/,
 ] as const;
 
 const OUTCOME_DECODE_BANS = [
@@ -63,27 +66,33 @@ describe("tx-sync write policy", () => {
     for (const pattern of TX_SYNC_EVM_SPECIFICS) {
       assert.doesNotMatch(text, pattern, `use-tx-sync must not match ${pattern}`);
     }
-    assert.match(text, /\brunEvmWriteLifecycle\b/);
-    assert.match(text, /\bawaitEvmWriteReceipt\b/);
+    assert.match(text, /\brunWriteLifecycle\b/);
+    assert.match(text, /\bawaitWriteReceipt\b/);
   });
 
-  it("constructed dirty hook import is red for wagmi / receipt / hash-shape specifics", () => {
+  it("constructed dirty hook import is red for VM-specific sequencing and confirm-port injection", () => {
     const dirty = `
 import { useConfig } from "wagmi";
 import type { TransactionReceipt } from "viem";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import { confirmEvmTransaction } from "@/lib/web3/evm-tx-confirm";
+import { confirmSvmTransaction } from "@/lib/web3/svm-tx-confirm";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { txWriteAvailability, txWriteRefusalMessage } from "@/lib/web3/tx-write-availability";
 const walletChainId = 1;
 const target = wagmiChainId(84532);
+const createConfirmPort = () => null;
+const fetchStructuredPayloads = () => [];
 function isEvmTxHash(value: string) { return value.startsWith("0x"); }
 void waitForTransactionReceipt;
 void confirmEvmTransaction;
+void confirmSvmTransaction;
 void TransactionReceipt;
 void txWriteAvailability;
 void txWriteRefusalMessage;
 void target;
+void createConfirmPort;
+void fetchStructuredPayloads;
 `;
     for (const pattern of TX_SYNC_EVM_SPECIFICS) {
       assert.match(dirty, pattern);

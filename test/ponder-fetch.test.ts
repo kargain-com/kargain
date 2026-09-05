@@ -98,6 +98,9 @@ describe("revalidateIndexerCache contract (point 8)", () => {
       revalidateAt < refreshAt,
       "updateTag SA must run before router.refresh",
     );
-    assert.match(src, /setSyncLagged\(!synced \|\| !revalidate\.ok\)/);
+    assert.match(
+      src,
+      /setSyncLagged\(\s*lifecycle\.indexerBarrier\.status === "lagging" \|\| !revalidate\.ok,\s*\)/,
+    );
   });
 });

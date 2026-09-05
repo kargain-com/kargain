@@ -6,7 +6,7 @@
 import type {
   SvmDevnetEvidence,
   SvmDevnetProgramEvidence,
-} from "./devnet-evidence.js";
+} from "./devnet-evidence";
 
 /** Slug → evidence `programs` key (six production BPF programs — sole ingest census). */
 export const COMMERCIAL_PROGRAM_EVIDENCE_KEYS = {

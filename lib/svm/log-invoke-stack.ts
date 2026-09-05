@@ -2,7 +2,7 @@
  * Parse Solana meta.logMessages invoke stack → emitting program per program-data line.
  */
 
-import { isLogTruncationSuspect, PROGRAM_DATA_PREFIX } from "./program-data-decode.js";
+import { isLogTruncationSuspect, PROGRAM_DATA_PREFIX } from "./program-data-decode";
 
 const PROGRAM_INVOKE_RE =
   /^Program ([1-9A-HJ-NP-Za-km-z]{32,44}) invoke \[(\d+)\]/;

@@ -38,3 +38,48 @@ export async function confirmSvmTransaction(
   }
   return port.confirmSignature(signature);
 }
+
+/**
+ * Polling confirm port: waits for `confirmed` (or stronger `finalized`) and
+ * returns the reached slot. Transport details stay outside this owner.
+ */
+export function createSvmTxConfirmPort(opts: {
+  getSignatureStatuses: (
+    signatures: string[],
+  ) => Promise<
+    ReadonlyArray<{
+      confirmationStatus?: string | null;
+      err?: unknown;
+      slot?: number | bigint | null;
+    } | null>
+  >;
+  pollIntervalMs?: number;
+  timeoutMs?: number;
+}): SvmTxConfirmPort {
+  const pollIntervalMs = opts.pollIntervalMs ?? 400;
+  const timeoutMs = opts.timeoutMs ?? 60_000;
+  return {
+    async confirmSignature(signature: string): Promise<SvmTxConfirmStatus> {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        const [row] = await opts.getSignatureStatuses([signature]);
+        if (row?.err) {
+          throw new Error(`svm confirm: signature failed (${String(row.err)})`);
+        }
+        const status = row?.confirmationStatus;
+        if (status === SVM_TX_CONFIRM_COMMITMENT || status === "finalized") {
+          const slotRaw = row?.slot;
+          const slot =
+            typeof slotRaw === "bigint"
+              ? slotRaw
+              : typeof slotRaw === "number"
+                ? BigInt(slotRaw)
+                : 0n;
+          return { signature, slot };
+        }
+        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      }
+      throw new Error("svm confirm: timed out waiting for confirmed");
+    },
+  };
+}

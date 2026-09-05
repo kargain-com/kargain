@@ -2,8 +2,8 @@
  * Map program id → contract slug for ingest attribution.
  */
 
-import type { FollowedProgram } from "./ingest-config.js";
-import { contractNameForProgramSlug } from "./event-discriminators.js";
+import type { FollowedProgram } from "./ingest-config";
+import { contractNameForProgramSlug } from "./event-discriminators";
 
 export function programIdToSlug(
   programs: readonly FollowedProgram[],

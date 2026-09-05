@@ -7,19 +7,19 @@ import {
   isLogTruncationSuspect,
   programDataPayloadFromLogLine,
   PROGRAM_DATA_PREFIX,
-} from "./program-data-decode.js";
+} from "./program-data-decode";
 import {
   lookupEventForProgram,
   splitDiscriminatorAndBody,
-} from "./event-discriminators.js";
-import { parseProgramDataFromLogMessages } from "./log-invoke-stack.js";
+} from "./event-discriminators";
+import { parseProgramDataFromLogMessages } from "./log-invoke-stack";
 import {
   ingestRefusalRowId,
   structuredPayloadRowId,
   type IngestRefusalKind,
-} from "./ingest-refusal.js";
-import { contractNameForProgramId } from "./ingest-program-map.js";
-import type { FollowedProgram } from "./ingest-config.js";
+} from "./ingest-refusal";
+import { contractNameForProgramId } from "./ingest-program-map";
+import type { FollowedProgram } from "./ingest-config";
 
 export type StructuredPayloadDraft = {
   id: string;
