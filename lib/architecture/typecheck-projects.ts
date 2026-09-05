@@ -29,7 +29,7 @@ export const TYPECHECK_PROJECTS: readonly TypecheckProject[] = [
   {
     id: "node",
     tsconfig: "tsconfig.node.json",
-    role: "tsx / Hardhat Node tooling (scripts, hardhat.config) — no DOM",
+    role: "tsx / Hardhat / adapter TypeScript outside app roots (scripts, adapters, hardhat.config) — no DOM",
   },
   {
     id: "test",

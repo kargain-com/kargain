@@ -9,7 +9,9 @@ import {
   irysUploadPlanRefusalMessage,
   planIrysUpload,
   type IrysPaymentToken,
+  type IrysUploadPlan,
 } from "@/lib/storage/irys-upload-plan";
+import type { CommercialActiveStack } from "@/lib/web3/commercial-active";
 import { commercialActive } from "@/lib/web3/commercial-active";
 
 export const IRYS_GATEWAY = "https://arweave.net";
@@ -35,9 +37,21 @@ const FUND_POLL_TIMEOUT_MS = 60_000;
 
 type IrysBalance = Awaited<ReturnType<IrysUploader["getBalance"]>>;
 
-type IrysTokenConstructable = typeof WebBaseEth | typeof WebEthereum;
+type IrysEvmTokenConstructable = typeof WebBaseEth | typeof WebEthereum;
 
-function irysTokenConstructable(token: IrysPaymentToken): IrysTokenConstructable {
+type IrysSolanaAdapterModule = {
+  buildIrysSolanaUploader: (
+    plan: IrysUploadPlan,
+    provider: unknown,
+    timeoutMs: number,
+  ) => Promise<IrysUploader>;
+};
+
+type LoadIrysSolanaAdapter = () => Promise<IrysSolanaAdapterModule>;
+
+function irysEvmTokenConstructable(
+  token: Exclude<IrysPaymentToken, "solana">,
+): IrysEvmTokenConstructable {
   switch (token) {
     case "base-eth":
       return WebBaseEth;
@@ -68,7 +82,7 @@ async function waitForFundingConfirmation(
 
 let cachedUploader: {
   provider: unknown;
-  chainId: number;
+  cacheKey: string;
   uploader: IrysUploader;
 } | null = null;
 
@@ -130,6 +144,81 @@ async function ensureFunded(uploader: IrysUploader, totalBytes: number): Promise
   }
 }
 
+async function loadIrysSolanaAdapter(
+  loadModule: LoadIrysSolanaAdapter = () => import("@/adapters/irys-solana/build-uploader"),
+): Promise<IrysSolanaAdapterModule> {
+  try {
+    const mod = await loadModule();
+    if (typeof mod.buildIrysSolanaUploader !== "function") {
+      throw new Error("module does not export buildIrysSolanaUploader");
+    }
+    return mod;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to load Solana Irys adapter: ${message}`);
+  }
+}
+
+export async function buildIrysUploaderFromPlan(
+  plan: IrysUploadPlan,
+  provider: unknown,
+  options?: {
+    loadSolanaAdapter?: LoadIrysSolanaAdapter;
+  },
+): Promise<IrysUploader> {
+  if (plan.paymentToken === "solana") {
+    const solana = await loadIrysSolanaAdapter(options?.loadSolanaAdapter);
+    return solana.buildIrysSolanaUploader(plan, provider, UPLOAD_TIMEOUT_MS);
+  }
+
+  const eip1193 = resolveProvider(provider);
+  const ethersProvider = new BrowserProvider(eip1193);
+  const Token = irysEvmTokenConstructable(plan.paymentToken);
+
+  let builder = WebUploader(Token)
+    .withAdapter(EthersV6Adapter(ethersProvider))
+    .bundlerUrl(plan.bundlerUrl)
+    .withRpc(plan.rpcUrl)
+    .timeout(UPLOAD_TIMEOUT_MS);
+
+  if (plan.devnet) {
+    builder = builder.devnet();
+  }
+
+  return builder;
+}
+
+export async function getIrysUploaderForStack(
+  stack: CommercialActiveStack,
+  provider: unknown,
+  options?: {
+    loadSolanaAdapter?: LoadIrysSolanaAdapter;
+  },
+): Promise<IrysUploader> {
+  assertBrowser();
+  const planned = planIrysUpload(stack);
+  if (!planned.ok) {
+    throw new Error(irysUploadPlanRefusalMessage(planned.cause));
+  }
+  const { plan } = planned;
+  const cacheKey = [
+    plan.paymentToken,
+    plan.bundlerUrl,
+    plan.rpcUrl,
+    plan.devnet ? "devnet" : "mainnet",
+  ].join("|");
+  if (
+    cachedUploader &&
+    cachedUploader.provider === provider &&
+    cachedUploader.cacheKey === cacheKey
+  ) {
+    return cachedUploader.uploader;
+  }
+  const uploader = await buildIrysUploaderFromPlan(plan, provider, options);
+  cachedUploader = { provider, cacheKey, uploader };
+  return uploader;
+}
+
 export async function getIrysUploader(provider: unknown): Promise<IrysUploader> {
   assertBrowser();
   const providerKey = provider ?? window.ethereum;
@@ -137,40 +226,11 @@ export async function getIrysUploader(provider: unknown): Promise<IrysUploader> 
   try {
     const eip1193 = resolveProvider(providerKey);
     const chainId = await readChainId(eip1193);
-
-    if (
-      cachedUploader &&
-      cachedUploader.provider === providerKey &&
-      cachedUploader.chainId === chainId
-    ) {
-      return cachedUploader.uploader;
-    }
-
     const stack = commercialActive(chainId);
     if (!stack) {
       throw new Error(irysUploadPlanRefusalMessage("unsupported_network"));
     }
-    const planned = planIrysUpload(stack);
-    if (!planned.ok) {
-      throw new Error(irysUploadPlanRefusalMessage(planned.cause));
-    }
-    const plan = planned.plan;
-    const ethersProvider = new BrowserProvider(eip1193);
-    const Token = irysTokenConstructable(plan.paymentToken);
-
-    let builder = WebUploader(Token)
-      .withAdapter(EthersV6Adapter(ethersProvider))
-      .bundlerUrl(plan.bundlerUrl)
-      .withRpc(plan.rpcUrl)
-      .timeout(UPLOAD_TIMEOUT_MS);
-
-    if (plan.devnet) {
-      builder = builder.devnet();
-    }
-
-    const uploader = await builder;
-    cachedUploader = { provider: providerKey, chainId, uploader };
-    return uploader;
+    return getIrysUploaderForStack(stack, providerKey);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`Failed to connect Irys uploader: ${message}`);

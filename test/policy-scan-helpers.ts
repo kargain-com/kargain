@@ -7,9 +7,12 @@
  * product roots alone miss those collection builders.
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import { builtinModules } from "node:module";
 
 export const POLICY_SCAN_ROOT = join(
   fileURLToPath(new URL(".", import.meta.url)),
@@ -22,6 +25,12 @@ export const PRODUCT_POLICY_SCAN_ROOTS = [
   "components",
   "hooks",
   "lib",
+] as const;
+
+/** Additional repo roots needed for product graph reachability policies. */
+export const PRODUCT_GRAPH_SCAN_ROOTS = [
+  ...PRODUCT_POLICY_SCAN_ROOTS,
+  "adapters",
 ] as const;
 
 export type ProductPolicyScanRoot = (typeof PRODUCT_POLICY_SCAN_ROOTS)[number];
@@ -47,6 +56,11 @@ export type ProductSourcePredicate = (
   source: string,
 ) => string | false;
 
+export type StaticImportGraphNode = {
+  localDeps: string[];
+  externalDeps: string[];
+};
+
 function walkTsFiles(dir: string, out: string[] = []): string[] {
   let entries: string[];
   try {
@@ -63,6 +77,17 @@ function walkTsFiles(dir: string, out: string[] = []): string[] {
     } else if (/\.(ts|tsx)$/.test(name) && !name.endsWith(".d.ts")) {
       out.push(full);
     }
+  }
+  return out;
+}
+
+export function walkTsFilesFromRoots(
+  roots: readonly string[],
+  rootDir: string = POLICY_SCAN_ROOT,
+): string[] {
+  const out: string[] = [];
+  for (const root of roots) {
+    walkTsFiles(join(rootDir, root), out);
   }
   return out;
 }
@@ -90,6 +115,220 @@ export function walkCommercialAbiEnumerationTsFiles(
     out.push(join(rootDir, rel));
   }
   return out;
+}
+
+function stripComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+}
+
+const STATIC_IMPORT_RE =
+  /\bimport\s+(?:type\s+)?(?:[\w*\s{},]+\s+from\s+)?["']([^"']+)["']|\bexport\s+(?:type\s+)?(?:[\w*\s{},]+\s+from\s+)?["']([^"']+)["']|\brequire\s*\(\s*["']([^"']+)["']\s*\)/g;
+
+export function extractStaticImportSpecifiers(source: string): string[] {
+  const stripped = stripComments(source);
+  const matches: string[] = [];
+  for (const match of stripped.matchAll(STATIC_IMPORT_RE)) {
+    const spec = match[1] ?? match[2] ?? match[3];
+    if (spec) matches.push(spec);
+  }
+  return matches;
+}
+
+function packageNameFromSpecifier(specifier: string): string | null {
+  if (specifier.startsWith("node:")) return null;
+  if (specifier.startsWith("@")) {
+    const [scope, name] = specifier.split("/");
+    return name ? `${scope}/${name}` : specifier;
+  }
+  const [name] = specifier.split("/");
+  if (!name || builtinModules.includes(name)) return null;
+  return name;
+}
+
+function resolveRepoModuleSpecifier(
+  fromRel: string,
+  specifier: string,
+  rootDir: string,
+): string | null {
+  let candidateBase: string | null = null;
+  if (specifier.startsWith("@/")) {
+    candidateBase = specifier.slice(2);
+  } else if (specifier.startsWith("./") || specifier.startsWith("../")) {
+    candidateBase = path
+      .normalize(path.join(path.dirname(fromRel), specifier))
+      .replace(/\\/g, "/");
+  } else {
+    return null;
+  }
+
+  const candidates = [
+    candidateBase,
+    `${candidateBase}.ts`,
+    `${candidateBase}.tsx`,
+    `${candidateBase}/index.ts`,
+    `${candidateBase}/index.tsx`,
+  ];
+  for (const rel of candidates) {
+    if (existsSync(join(rootDir, rel))) return rel;
+  }
+  return null;
+}
+
+export function buildStaticImportGraph(
+  roots: readonly string[],
+  rootDir: string = POLICY_SCAN_ROOT,
+): Map<string, StaticImportGraphNode> {
+  const graph = new Map<string, StaticImportGraphNode>();
+  const files = walkTsFilesFromRoots(roots, rootDir);
+  for (const file of files) {
+    const rel = relative(rootDir, file).replace(/\\/g, "/");
+    const source = readFileSync(file, "utf8");
+    const localDeps: string[] = [];
+    const externalDeps = new Set<string>();
+    for (const specifier of extractStaticImportSpecifiers(source)) {
+      const local = resolveRepoModuleSpecifier(rel, specifier, rootDir);
+      if (local) {
+        localDeps.push(local);
+        continue;
+      }
+      const packageName = packageNameFromSpecifier(specifier);
+      if (packageName) externalDeps.add(packageName);
+    }
+    graph.set(rel, {
+      localDeps: [...new Set(localDeps)].sort(),
+      externalDeps: [...externalDeps].sort(),
+    });
+  }
+  return graph;
+}
+
+type ReachabilityOptions = {
+  rootDir?: string;
+  startRoots?: readonly string[];
+  graphRoots?: readonly string[];
+  owners?: readonly string[];
+};
+
+function resolvePackageRootDir(
+  packageName: string,
+  rootDir: string,
+): string | null {
+  try {
+    const packageJsonPath = existsSync(join(rootDir, "package.json"))
+      ? join(rootDir, "package.json")
+      : join(POLICY_SCAN_ROOT, "package.json");
+    const resolver = createRequire(packageJsonPath);
+    const entry = resolver.resolve(packageName);
+    let current = path.dirname(entry);
+    while (true) {
+      const pkg = join(current, "package.json");
+      if (existsSync(pkg)) {
+        try {
+          const json = JSON.parse(readFileSync(pkg, "utf8")) as { name?: string };
+          if (json.name === packageName) return current;
+        } catch {
+          // Keep walking upward until the package root.
+        }
+      }
+      const parent = path.dirname(current);
+      if (parent === current) return null;
+      current = parent;
+    }
+  } catch {
+    return null;
+  }
+}
+
+function packageDependencies(
+  packageName: string,
+  rootDir: string,
+): readonly string[] {
+  const pkgRoot = resolvePackageRootDir(packageName, rootDir);
+  if (!pkgRoot) return [];
+  try {
+    const pkg = JSON.parse(readFileSync(join(pkgRoot, "package.json"), "utf8")) as {
+      dependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+    };
+    return [
+      ...Object.keys(pkg.dependencies ?? {}),
+      ...Object.keys(pkg.peerDependencies ?? {}),
+    ].sort();
+  } catch {
+    return [];
+  }
+}
+
+export function traceStaticReachabilityToPackages(
+  bannedPackages: readonly string[],
+  options?: ReachabilityOptions,
+): ProductSourceHit[] {
+  const rootDir = options?.rootDir ?? POLICY_SCAN_ROOT;
+  const owners = new Set((options?.owners ?? []).map((p) => p.replace(/\\/g, "/")));
+  const graph = buildStaticImportGraph(
+    options?.graphRoots ?? PRODUCT_GRAPH_SCAN_ROOTS,
+    rootDir,
+  );
+  const hits: ProductSourceHit[] = [];
+  const banned = new Set(bannedPackages);
+  for (const file of walkTsFilesFromRoots(
+    options?.startRoots ?? PRODUCT_POLICY_SCAN_ROOTS,
+    rootDir,
+  )) {
+    const startRel = relative(rootDir, file).replace(/\\/g, "/");
+    if (owners.has(startRel)) continue;
+    const queue: Array<{ kind: "file" | "pkg"; name: string; path: string[] }> = [
+      { kind: "file", name: startRel, path: [startRel] },
+    ];
+    const seen = new Set<string>([`file:${startRel}`]);
+    let foundPath: string[] | null = null;
+
+    while (queue.length > 0 && !foundPath) {
+      const current = queue.shift()!;
+      if (current.kind === "file") {
+        const node = graph.get(current.name);
+        if (!node) continue;
+        for (const dep of node.localDeps) {
+          const key = `file:${dep}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          queue.push({ kind: "file", name: dep, path: [...current.path, dep] });
+        }
+        for (const dep of node.externalDeps) {
+          if (banned.has(dep)) {
+            foundPath = [...current.path, dep];
+            break;
+          }
+          const key = `pkg:${dep}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          queue.push({ kind: "pkg", name: dep, path: [...current.path, dep] });
+        }
+        continue;
+      }
+
+      for (const dep of packageDependencies(current.name, rootDir)) {
+        if (banned.has(dep)) {
+          foundPath = [...current.path, dep];
+          break;
+        }
+        const key = `pkg:${dep}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        queue.push({ kind: "pkg", name: dep, path: [...current.path, dep] });
+      }
+    }
+
+    if (foundPath) {
+      hits.push({
+        path: startRel,
+        reason: `static import reachability to banned Solana SDK (${foundPath.join(" -> ")})`,
+      });
+    }
+  }
+  return hits.sort((a, b) => a.path.localeCompare(b.path));
 }
 
 /**

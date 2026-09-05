@@ -22,6 +22,7 @@
     }
   },
   "include": [
+    "adapters/**/*.ts",
     "hardhat.config.ts",
     "scripts/**/*.ts"
   ],

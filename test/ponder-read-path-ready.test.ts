@@ -168,10 +168,7 @@ async function createReadinessPool(args: { withProjection: boolean }): Promise<p
 function strictSqlPool(pool: pg.Pool): pg.Pool {
   return {
     ...pool,
-    async query(
-      text: string,
-      values?: readonly unknown[],
-    ): Promise<Awaited<ReturnType<pg.Pool["query"]>>> {
+    query: (async (text: string, values?: readonly unknown[]) => {
       const matches = [...text.matchAll(/\$(\d+)/g)];
       const highestParam = matches.reduce((max, match) => {
         const value = Number.parseInt(match[1] ?? "0", 10);
@@ -189,7 +186,7 @@ function strictSqlPool(pool: pg.Pool): pg.Pool {
         );
       }
       return pool.query(text, values as unknown[]);
-    },
+    }) as pg.Pool["query"],
   } as pg.Pool;
 }
 

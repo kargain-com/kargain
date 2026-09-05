@@ -55,6 +55,14 @@ describe("typecheck project membership policy", () => {
     );
   });
 
+  it("live adapter file belongs to exactly one typecheck project", () => {
+    const membership = buildTypecheckMembership(ROOT);
+    assert.deepEqual(
+      membership.get("adapters/irys-solana/build-uploader.ts"),
+      ["node"],
+    );
+  });
+
   it("package.json typecheck invokes -p for every registry tsconfig", () => {
     const body = PKG.scripts.typecheck;
     assert.ok(body, "package.json scripts.typecheck missing");
@@ -109,6 +117,15 @@ describe("typecheck project membership policy", () => {
       none: [],
       dual: [],
     });
+  });
+
+  it("constructed violation: adapter file in no project is detected", () => {
+    const membership: TypecheckMembership = new Map([
+      ["adapters/irys-solana/build-uploader.ts", []],
+    ]);
+    const { none, dual } = findMembershipViolations(membership);
+    assert.deepEqual(none, ["adapters/irys-solana/build-uploader.ts"]);
+    assert.deepEqual(dual, []);
   });
 
   it("parseTypecheckProjectFlags extracts chained -p targets", () => {

@@ -3,20 +3,30 @@
  */
 
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, it } from "node:test";
 
-import { scanProductSources } from "./policy-scan-helpers.ts";
+import {
+  scanProductSources,
+  traceStaticReachabilityToPackages,
+} from "./policy-scan-helpers.ts";
 
-const WEB3JS_IMPORT = /from\s*["']@solana\/web3\.js["']|require\s*\(\s*["']@solana\/web3\.js["']\s*\)/;
+const SOLANA_SDK_IMPORT =
+  /from\s*["']@solana\/(?:web3\.js|spl-token)["']|require\s*\(\s*["']@solana\/(?:web3\.js|spl-token)["']\s*\)/;
 
-function web3jsPredicate(rel: string, source: string): string | false {
-  if (!WEB3JS_IMPORT.test(source)) return false;
-  return `@solana/web3.js in app graph (${rel})`;
+function solanaSdkTextPredicate(rel: string, source: string): string | false {
+  if (!SOLANA_SDK_IMPORT.test(source)) return false;
+  return `direct @solana SDK import in app graph (${rel})`;
 }
 
 describe("solana web3.js app-graph policy (S8-2)", () => {
-  it("no product file imports @solana/web3.js", () => {
-    const violations = scanProductSources(web3jsPredicate);
+  it("no product file statically reaches banned Solana SDKs", () => {
+    const violations = traceStaticReachabilityToPackages([
+      "@solana/web3.js",
+      "@solana/spl-token",
+    ]);
     assert.deepEqual(
       violations,
       [],
@@ -24,11 +34,56 @@ describe("solana web3.js app-graph policy (S8-2)", () => {
     );
   });
 
-  it("constructed dirty import is red", () => {
+  it("constructed direct import is red under the legacy text scan", () => {
     const dirty = `import { Connection } from "@solana/web3.js";\n`;
     assert.equal(
-      web3jsPredicate("lib/web3/invented-rpc.ts", dirty),
-      "@solana/web3.js in app graph (lib/web3/invented-rpc.ts)",
+      solanaSdkTextPredicate("lib/web3/invented-rpc.ts", dirty),
+      "direct @solana SDK import in app graph (lib/web3/invented-rpc.ts)",
     );
+  });
+
+  it("transitive reachability is red even when the old text scan stays green", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "kargain-irys-scan-"));
+    fs.mkdirSync(path.join(root, "lib"), { recursive: true });
+    fs.mkdirSync(path.join(root, "adapters/irys-solana"), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, "lib/helper.ts"),
+      'import { build } from "@/adapters/irys-solana/build-uploader";\nexport const x = build;\n',
+    );
+    fs.writeFileSync(
+      path.join(root, "adapters/irys-solana/build-uploader.ts"),
+      'import { WebSolana } from "@irys/web-upload-solana";\nexport const build = WebSolana;\n',
+    );
+
+    const oldScan = scanProductSources(solanaSdkTextPredicate, { rootDir: root });
+    assert.deepEqual(oldScan, []);
+
+    const reachability = traceStaticReachabilityToPackages(
+      ["@solana/web3.js", "@solana/spl-token"],
+      { rootDir: root },
+    );
+    assert.equal(reachability.length, 1);
+    assert.equal(reachability[0]?.path, "lib/helper.ts");
+    assert.match(reachability[0]?.reason ?? "", /@irys\/web-upload-solana/);
+    assert.match(reachability[0]?.reason ?? "", /@solana\/web3\.js|@solana\/spl-token/);
+  });
+
+  it("constructed control: dynamic import boundary is not treated as static reachability", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "kargain-irys-scan-"));
+    fs.mkdirSync(path.join(root, "lib"), { recursive: true });
+    fs.mkdirSync(path.join(root, "adapters/irys-solana"), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, "lib/helper.ts"),
+      'export async function load() { return import("@/adapters/irys-solana/build-uploader"); }\n',
+    );
+    fs.writeFileSync(
+      path.join(root, "adapters/irys-solana/build-uploader.ts"),
+      'import { WebSolana } from "@irys/web-upload-solana";\nexport const build = WebSolana;\n',
+    );
+    const reachability = traceStaticReachabilityToPackages(
+      ["@solana/web3.js", "@solana/spl-token"],
+      { rootDir: root },
+    );
+    assert.deepEqual(reachability, []);
   });
 });

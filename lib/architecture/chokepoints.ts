@@ -276,9 +276,15 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["irys-upload-plan.test.ts", "native-amount-policy.test.ts"],
   },
   {
+    id: "irys-solana-adapter",
+    owner: "adapters/irys-solana/build-uploader.ts · lib/storage/irys-client.ts",
+    rule: "Solana Irys SDK lives outside product roots and is reached only by one dynamic import from irys-client; EVM path does not fetch it",
+    guardTests: ["irys-solana-adapter-policy.test.ts", "solana-web3-app-graph-policy.test.ts"],
+  },
+  {
     id: "product-policy-scan",
     owner: "test/policy-scan-helpers.ts",
-    rule: "Sole product ownership-policy walk (app|components|hooks|lib); policies supply predicate + owners only",
+    rule: "Sole product ownership-policy walk and static import reachability helper; policies supply predicate + owners only",
     guardTests: [
       "network-explorer-owner-policy.test.ts",
       "network-vm-component-policy.test.ts",
@@ -286,6 +292,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "s8-1-consumer-wiring-policy.test.ts",
       "active-account-owner-policy.test.ts",
       "solana-web3-app-graph-policy.test.ts",
+      "irys-solana-adapter-policy.test.ts",
       "svm-wallet-adapter-policy.test.ts",
       "native-amount-policy.test.ts",
     ],
