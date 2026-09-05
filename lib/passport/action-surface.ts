@@ -1,7 +1,6 @@
 import {
   type ActionGate,
   AVAILABLE,
-  blocked,
   isAvailable,
 } from "@/lib/challenge/action-gate";
 import type {
@@ -49,6 +48,29 @@ export type PassportEditRefusalCause =
   | "listing_active"
   | "not_configured";
 
+export type PassportWriteNonPresenceBlockCause = Exclude<
+  PassportWriteBlockCause,
+  "away" | "custody_unresolved"
+>;
+
+export type PassportPresenceBlockedGate = {
+  readonly status: "blocked";
+  readonly blockedBy: "presence";
+  readonly cause: PassportPresenceBlockCause;
+  readonly presence: PassportPresence;
+};
+
+export type PassportWriteBlockedGate = {
+  readonly status: "blocked";
+  readonly blockedBy: "write";
+  readonly cause: PassportWriteNonPresenceBlockCause;
+};
+
+export type PassportWriteGate =
+  | { readonly status: "available" }
+  | PassportPresenceBlockedGate
+  | PassportWriteBlockedGate;
+
 export type PassportEditAccess =
   | { readonly status: "allow"; readonly presence: PassportPresence }
   | {
@@ -84,17 +106,17 @@ export type PassportActionSurface = {
   readonly presence: PassportPresence;
   /** Factual copy when presence blocks writes; empty when here. */
   readonly presenceCopy: string;
-  readonly editMetadata: ActionGate<PassportWriteBlockCause>;
-  readonly verify: ActionGate<PassportWriteBlockCause>;
-  readonly appendRecord: ActionGate<PassportWriteBlockCause>;
+  readonly editMetadata: PassportWriteGate;
+  readonly verify: PassportWriteGate;
+  readonly appendRecord: PassportWriteGate;
   /** Owner clarification during DISPUTED — same entrypoint as appendRecord. */
-  readonly ownerClarification: ActionGate<PassportWriteBlockCause>;
-  readonly reportDiscrepancy: ActionGate<PassportWriteBlockCause>;
-  readonly appendAttestation: ActionGate<PassportWriteBlockCause>;
-  readonly open: ActionGate<PassportWriteBlockCause>;
-  readonly withdraw: ActionGate<PassportWriteBlockCause>;
-  readonly judge: ActionGate<PassportWriteBlockCause>;
-  readonly conclude: ActionGate<PassportWriteBlockCause>;
+  readonly ownerClarification: PassportWriteGate;
+  readonly reportDiscrepancy: PassportWriteGate;
+  readonly appendAttestation: PassportWriteGate;
+  readonly open: PassportWriteGate;
+  readonly withdraw: PassportWriteGate;
+  readonly judge: PassportWriteGate;
+  readonly conclude: PassportWriteGate;
   /** Challenge phase chrome — from the composed challenge surface. */
   readonly challenge: ChallengeSurface;
 };
@@ -113,24 +135,49 @@ export type DerivePassportActionSurfaceInput = {
 
 function presenceGate(
   presence: PassportPresence,
-): ActionGate<PassportWriteBlockCause> | null {
+): PassportPresenceBlockedGate | null {
   if (presence.status === "location_unread") {
-    return blocked("reads_unresolved");
+    return {
+      status: "blocked",
+      blockedBy: "presence",
+      cause: "reads_unresolved",
+      presence,
+    };
   }
   if (presence.status === "location_unresolved") {
-    return blocked("custody_unresolved");
+    return {
+      status: "blocked",
+      blockedBy: "presence",
+      cause: "custody_unresolved",
+      presence,
+    };
   }
   if (presence.status === "away") {
-    return blocked("away");
+    return {
+      status: "blocked",
+      blockedBy: "presence",
+      cause: "away",
+      presence,
+    };
   }
   return null;
 }
 
 function mapChallengeGate(
   gate: ActionGate<ChallengeBlockCause>,
-): ActionGate<PassportWriteBlockCause> {
+): PassportWriteGate {
   if (gate.status === "available") return AVAILABLE;
-  return blocked(gate.cause);
+  return blockedWrite(gate.cause);
+}
+
+function blockedWrite(
+  cause: PassportWriteNonPresenceBlockCause,
+): PassportWriteBlockedGate {
+  return {
+    status: "blocked",
+    blockedBy: "write",
+    cause,
+  };
 }
 
 /**
@@ -211,8 +258,8 @@ export function resolvePassportEditAccess(
   if (presenceBlock != null && presenceBlock.status === "blocked") {
     return {
       status: "refuse",
-      cause: presenceBlock.cause as PassportPresenceBlockCause,
-      presence,
+      cause: presenceBlock.cause,
+      presence: presenceBlock.presence,
     };
   }
   if (input.status === "DISPUTED") {
@@ -258,53 +305,53 @@ export function derivePassportActionSurface(
   }
 
   const editMetadata = (() => {
-    if (!input.wallet) return blocked("no_wallet");
-    if (!input.isOwner) return blocked("not_owner");
-    if (input.status === "DISPUTED") return blocked("disputed");
-    if (input.listingActive) return blocked("listing_active");
+    if (!input.wallet) return blockedWrite("no_wallet");
+    if (!input.isOwner) return blockedWrite("not_owner");
+    if (input.status === "DISPUTED") return blockedWrite("disputed");
+    if (input.listingActive) return blockedWrite("listing_active");
     return AVAILABLE;
   })();
 
   const verify = (() => {
-    if (!input.wallet) return blocked("no_wallet");
+    if (!input.wallet) return blockedWrite("no_wallet");
     if (input.isActiveVerifier === undefined) {
-      return blocked("verifier_unresolved");
+      return blockedWrite("verifier_unresolved");
     }
-    if (input.isActiveVerifier !== true) return blocked("not_verifier");
-    if (input.isOwner) return blocked("is_owner");
-    if (input.status !== "UNVERIFIED") return blocked("wrong_status");
+    if (input.isActiveVerifier !== true) return blockedWrite("not_verifier");
+    if (input.isOwner) return blockedWrite("is_owner");
+    if (input.status !== "UNVERIFIED") return blockedWrite("wrong_status");
     return AVAILABLE;
   })();
 
   const appendRecord = (() => {
-    if (!input.wallet) return blocked("no_wallet");
-    if (!input.isOwner) return blocked("not_owner");
-    if (input.status === "DISPUTED") return blocked("disputed");
-    if (input.listingActive) return blocked("listing_active");
+    if (!input.wallet) return blockedWrite("no_wallet");
+    if (!input.isOwner) return blockedWrite("not_owner");
+    if (input.status === "DISPUTED") return blockedWrite("disputed");
+    if (input.listingActive) return blockedWrite("listing_active");
     return AVAILABLE;
   })();
 
   const ownerClarification = (() => {
-    if (!input.wallet) return blocked("no_wallet");
-    if (!input.isOwner) return blocked("not_owner");
-    if (input.status !== "DISPUTED") return blocked("wrong_status");
-    if (input.listingActive) return blocked("listing_active");
+    if (!input.wallet) return blockedWrite("no_wallet");
+    if (!input.isOwner) return blockedWrite("not_owner");
+    if (input.status !== "DISPUTED") return blockedWrite("wrong_status");
+    if (input.listingActive) return blockedWrite("listing_active");
     return AVAILABLE;
   })();
 
   const reportDiscrepancy = (() => {
-    if (!input.wallet) return blocked("no_wallet");
-    if (input.holder) return blocked("is_holder");
+    if (!input.wallet) return blockedWrite("no_wallet");
+    if (input.holder) return blockedWrite("is_holder");
     return AVAILABLE;
   })();
 
   const appendAttestation = (() => {
-    if (!input.wallet) return blocked("no_wallet");
+    if (!input.wallet) return blockedWrite("no_wallet");
     if (input.isActiveVerifier === undefined) {
-      return blocked("verifier_unresolved");
+      return blockedWrite("verifier_unresolved");
     }
-    if (input.isActiveVerifier !== true) return blocked("not_verifier");
-    if (input.isOwner) return blocked("is_owner");
+    if (input.isActiveVerifier !== true) return blockedWrite("not_verifier");
+    if (input.isOwner) return blockedWrite("is_owner");
     return AVAILABLE;
   })();
 

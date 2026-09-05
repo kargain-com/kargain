@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 import {
   VERIFICATION_INSTANCE,
@@ -18,12 +20,16 @@ import {
 } from "../lib/passport/action-surface.ts";
 import {
   locationUnresolvedCauseCopy,
+  passportAwayActionCopy,
   type DerivePassportPresenceInput,
 } from "../lib/passport/presence.ts";
 
 const OWNER = "0x1111111111111111111111111111111111111111";
 const VERIFIER = "0x2222222222222222222222222222222222222222";
 const WALLET = "0x3333333333333333333333333333333333333333";
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const TSCONFIG = join(ROOT, "tsconfig.test.json");
+const VIRTUAL_FIXTURE = join(ROOT, "test/__virtual__/passport-action-surface.fixture.ts");
 
 function challengeHere(wallet: string = WALLET) {
   return deriveChallengeSurface(VERIFICATION_INSTANCE, {
@@ -74,6 +80,38 @@ const WRITE_KEYS = [
   "conclude",
 ] as const;
 
+function compileFixture(source: string): string[] {
+  const config = ts.readConfigFile(TSCONFIG, ts.sys.readFile);
+  if (config.error) {
+    throw new Error(ts.flattenDiagnosticMessageText(config.error.messageText, "\n"));
+  }
+  const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, ROOT);
+  const host = ts.createCompilerHost(parsed.options, true);
+  const readFile = host.readFile.bind(host);
+  const fileExists = host.fileExists.bind(host);
+
+  host.readFile = (fileName) =>
+    resolve(fileName) === VIRTUAL_FIXTURE ? source : readFile(fileName);
+  host.fileExists = (fileName) =>
+    resolve(fileName) === VIRTUAL_FIXTURE ? true : fileExists(fileName);
+  host.getSourceFile = (fileName, languageVersion) => {
+    const text = host.readFile(fileName);
+    if (text == null) return undefined;
+    return ts.createSourceFile(fileName, text, languageVersion, true);
+  };
+
+  const program = ts.createProgram({
+    rootNames: [...parsed.fileNames, VIRTUAL_FIXTURE],
+    options: { ...parsed.options, noEmit: true },
+    host,
+  });
+
+  return ts
+    .getPreEmitDiagnostics(program)
+    .filter((d) => resolve(d.file?.fileName ?? "") === VIRTUAL_FIXTURE)
+    .map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"));
+}
+
 describe("derivePassportActionSurface — presence", () => {
   it("blocks every contract-gated write with away when locked", () => {
     const surface = derivePassportActionSurface(
@@ -91,6 +129,9 @@ describe("derivePassportActionSurface — presence", () => {
       const gate = surface[key];
       assert.equal(isAvailable(gate), false, key);
       assert.equal(gate.status === "blocked" && gate.cause, "away", key);
+      if (gate.status === "blocked" && gate.cause === "away") {
+        assert.equal(gate.presence.status, "away", key);
+      }
     }
   });
 
@@ -111,6 +152,13 @@ describe("derivePassportActionSurface — presence", () => {
         "reads_unresolved",
         key,
       );
+      if (
+        gate.status === "blocked" &&
+        gate.blockedBy === "presence" &&
+        gate.cause === "reads_unresolved"
+      ) {
+        assert.equal(gate.presence.status, "location_unread", key);
+      }
     }
   });
 
@@ -134,6 +182,9 @@ describe("derivePassportActionSurface — presence", () => {
         "custody_unresolved",
         key,
       );
+      if (gate.status === "blocked" && gate.cause === "custody_unresolved") {
+        assert.equal(gate.presence.status, "location_unresolved", key);
+      }
     }
   });
 
@@ -187,6 +238,78 @@ describe("derivePassportActionSurface — presence", () => {
     assert.equal(isAvailable(stranger.reportDiscrepancy), true);
     assert.equal(isAvailable(stranger.verify), true);
     assert.equal(isAvailable(stranger.appendAttestation), true);
+  });
+
+  it("producer cannot emit away without presence", () => {
+    const diagnostics = compileFixture(`
+import type { PassportWriteGate } from "@/lib/passport/action-surface";
+const badGate: PassportWriteGate = { status: "blocked", blockedBy: "presence", cause: "away" };
+void badGate;
+`);
+    assert.ok(
+      diagnostics.some((d) => d.includes("presence") && d.includes("missing")),
+      diagnostics.join("\n"),
+    );
+  });
+
+  it("consumer branching on cause without the tag stays red for overlapping reads_unresolved", () => {
+    const diagnostics = compileFixture(`
+import type { PassportWriteGate } from "@/lib/passport/action-surface";
+function render(gate: PassportWriteGate) {
+  if (gate.status === "blocked" && gate.cause === "reads_unresolved") {
+    return gate.presence.status;
+  }
+  return "ok";
+}
+void render;
+`);
+    assert.ok(
+      diagnostics.some((d) => d.includes("Property 'presence' does not exist on type")),
+      diagnostics.join("\n"),
+    );
+  });
+
+  it("the same reads_unresolved cause stays distinct under presence vs write tags", () => {
+    const presenceSurface = derivePassportActionSurface(
+      baseInput({
+        presenceFacts: {
+          viewChainId: 84532,
+          custodyLocked: undefined,
+        },
+      }),
+    );
+    assert.equal(presenceSurface.editMetadata.status, "blocked");
+    if (
+      presenceSurface.editMetadata.status === "blocked" &&
+      presenceSurface.editMetadata.blockedBy === "presence"
+    ) {
+      assert.equal(presenceSurface.editMetadata.cause, "reads_unresolved");
+      assert.equal(presenceSurface.editMetadata.presence.status, "location_unread");
+      assert.equal(
+        presenceSurface.presenceCopy,
+        passportAwayActionCopy(presenceSurface.editMetadata.presence),
+      );
+    }
+
+    const challengeReads = {
+      ...challengeHere(WALLET),
+      open: { status: "blocked", cause: "reads_unresolved" } as const,
+    };
+    const writeSurface = derivePassportActionSurface(
+      baseInput({
+        presenceFacts: HERE_FACTS,
+        isOwner: false,
+        holder: false,
+        challenge: challengeReads,
+      }),
+    );
+    assert.equal(writeSurface.presence.status, "here");
+    assert.equal(writeSurface.presenceCopy, "");
+    assert.equal(writeSurface.open.status, "blocked");
+    if (writeSurface.open.status === "blocked") {
+      assert.equal(writeSurface.open.blockedBy, "write");
+      assert.equal(writeSurface.open.cause, "reads_unresolved");
+    }
   });
 });
 
