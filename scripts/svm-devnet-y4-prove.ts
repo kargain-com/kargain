@@ -31,7 +31,7 @@ import {
   svmDevnetEvidencePath,
 } from "./lib/load-deployment.ts";
 import { materializeSolanaDeployer } from "./lib/svm-materialize-deployer.ts";
-import { writeSvmDevnetEvidence } from "./lib/write-deployment.ts";
+import { writeSvmY4ProveEvidence } from "./lib/svm-devnet-evidence-write.js";
 
 const require = createRequire(import.meta.url);
 try {
@@ -462,8 +462,9 @@ async function main(): Promise<void> {
       throw new Error("STOP: hub peer 40168 changed during Y4");
     }
 
-    writeSvmDevnetEvidence(svmDevnetEvidencePath(SVM_EID), {
-      ...evidence,
+    writeSvmY4ProveEvidence({
+      path: svmDevnetEvidencePath(SVM_EID),
+      prior: evidence,
       y4: {
         at: new Date().toISOString(),
         registeredOApp: true,

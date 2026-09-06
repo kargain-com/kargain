@@ -16,20 +16,20 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import {
-  COMMERCIAL_ACTIVE,
   requireSvmCommercialActive,
   type SvmCommercialActiveStack,
-} from "../lib/web3/commercial-active.ts";
-import { SVM_COMMERCIAL_PROGRAM_CENSUS } from "../lib/svm/ingest-config.ts";
-import { namespaceFromLayerZeroEid } from "../lib/web3/kargain-namespace.ts";
-import { assertSolanaUpgradeAuthorityMatchesDeployer } from "./lib/svm-deploy-plan.ts";
-import { loadSvmDevnetEvidence } from "./lib/load-deployment.ts";
+} from "../lib/web3/commercial-active.js";
+import { SVM_COMMERCIAL_PROGRAM_CENSUS } from "../lib/svm/ingest-config.js";
+import { namespaceFromLayerZeroEid } from "../lib/web3/kargain-namespace.js";
+import { assertSolanaUpgradeAuthorityMatchesDeployer } from "./lib/svm-deploy-plan.js";
+import { loadSvmDevnetEvidence } from "./lib/load-deployment.js";
 import {
   artifactDigestFromSo,
+  currentSourceGitHead,
   mergeAndWriteSvmDevnetEvidence,
   type SvmProgramEvidencePatch,
-} from "./lib/svm-devnet-evidence-write.ts";
-import { assertProgramShowAllowsUpgrade } from "./lib/svm-upgrade-in-place-assert.ts";
+} from "./lib/svm-devnet-evidence-write.js";
+import { assertProgramShowAllowsUpgrade } from "./lib/svm-upgrade-in-place-assert.js";
 
 const CALLER = "svm-upgrade-in-place.ts";
 
@@ -112,7 +112,6 @@ function main(): void {
     }
   }
 
-  void COMMERCIAL_ACTIVE;
   const namespace = namespaceFromLayerZeroEid(eid);
   const stack = requireSvmCommercialActive(namespace);
 
@@ -123,6 +122,7 @@ function main(): void {
   const deployerPub = showDeployer.stdout.trim();
   assertSolanaUpgradeAuthorityMatchesDeployer(deployerPub);
 
+  const sourceGitHead = currentSourceGitHead();
   const patches: Record<string, SvmProgramEvidencePatch> = {};
 
   for (const evidenceKey of keys) {
@@ -172,6 +172,7 @@ function main(): void {
       programId,
       soSha256: digest.soSha256,
       soBytes: digest.soBytes,
+      sourceGitHead,
       upgradeAuthority: deployerPub,
     };
   }

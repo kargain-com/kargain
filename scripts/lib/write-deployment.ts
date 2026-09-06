@@ -4,7 +4,6 @@ import { dirname } from "node:path";
 import type {
   DeploymentManifest,
   SpokeDeploymentManifest,
-  SvmDevnetEvidence,
 } from "./load-deployment.js";
 
 const INDEX_BUFFER = 10;
@@ -33,15 +32,3 @@ export function writeSpokeDeploymentManifest(
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
 }
-
-/**
- * Blank overwrite of SVM Devnet evidence is removed.
- * Use {@link mergeAndWriteSvmDevnetEvidence} from `svm-devnet-evidence-write.ts`.
- */
-export function writeSvmDevnetEvidence(_path: string, _evidence: SvmDevnetEvidence): never {
-  throw new Error(
-    "writeSvmDevnetEvidence blank overwrite removed — use mergeAndWriteSvmDevnetEvidence " +
-      "(scripts/lib/svm-devnet-evidence-write.ts)",
-  );
-}
-

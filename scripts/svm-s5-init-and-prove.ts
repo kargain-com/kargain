@@ -30,8 +30,9 @@ import {
 } from "./lib/svm-verifier-lifecycle-asserts.ts";
 import {
   artifactDigestFromSo,
+  currentSourceGitHead,
   mergeAndWriteSvmDevnetEvidence,
-} from "./lib/svm-devnet-evidence-write.ts";
+} from "./lib/svm-devnet-evidence-write.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../svm/lab/package.json"));
@@ -453,11 +454,12 @@ async function main() {
   const deployDir = path.resolve(__dirname, "../svm/target/deploy");
   const stakingDigest = artifactDigestFromSo(path.join(deployDir, "kar_pro_staking.so"));
   const passDigest = artifactDigestFromSo(path.join(deployDir, "kar_pro_pass.so"));
+  const sourceGitHead = currentSourceGitHead();
 
   mergeAndWriteSvmDevnetEvidence(evidencePath, {
     caller: "svm-s5-init-and-prove.ts",
     prior,
-    topLevel: {
+    annotations: {
       minStakePin: pin,
     },
     programs: {
@@ -467,6 +469,7 @@ async function main() {
         upgradeAuthority: deployerPub,
         soSha256: stakingDigest.soSha256,
         soBytes: stakingDigest.soBytes,
+        sourceGitHead,
       },
       kar_pro_pass: {
         programId: passId.toBase58(),
@@ -474,6 +477,7 @@ async function main() {
         upgradeAuthority: deployerPub,
         soSha256: passDigest.soSha256,
         soBytes: passDigest.soBytes,
+        sourceGitHead,
       },
     },
   });

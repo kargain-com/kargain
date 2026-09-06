@@ -4,15 +4,16 @@
  * Outside the application runtime graph (scripts/ only; lib must not import this).
  */
 
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import type {
   SvmDevnetEvidence,
+  SvmDevnetPathwayPeers,
   SvmDevnetProgramEvidence,
 } from "../../lib/svm/devnet-evidence.js";
-import { COMMERCIAL_PROGRAM_EVIDENCE_KEY_LIST } from "../../lib/svm/ingest-config.js";
 
 export class SvmDevnetEvidenceWriteError extends Error {
   readonly causeCode: string;
@@ -24,11 +25,60 @@ export class SvmDevnetEvidenceWriteError extends Error {
   }
 }
 
+/**
+ * Document identity — immutable once set (restate identically or refuse).
+ * Source identity of a BPF artifact lives on the program row (`sourceGitHead`), not here.
+ */
+export const SVM_EVIDENCE_IDENTITY_FIELDS = [
+  "cluster",
+  "eid",
+  "namespace",
+  "deployerPubkey",
+  "upgradeAuthority",
+  "gatewayConfigAuthority",
+  "forfeitRecipient",
+  "layerZeroEndpoint",
+] as const;
+
+/**
+ * Snapshot / pathway / proof annotations — replace only via explicit `annotations`.
+ */
+export const SVM_EVIDENCE_ANNOTATION_FIELDS = [
+  "rpcUrl",
+  "slotAtEvidence",
+  "indexFromSlot",
+  "solanaCli",
+  "cargoBuildSbf",
+  "commercialActive",
+  "wired",
+  "minStakePin",
+  "peers",
+  "pathwayConfigHash",
+  "note",
+  "oapp",
+  "y4",
+  "s5Prove",
+  "abandonedPriorPrograms",
+] as const;
+
+export type SvmEvidenceIdentityField =
+  (typeof SVM_EVIDENCE_IDENTITY_FIELDS)[number];
+export type SvmEvidenceAnnotationField =
+  (typeof SVM_EVIDENCE_ANNOTATION_FIELDS)[number];
+
+const IDENTITY_SET = new Set<string>(SVM_EVIDENCE_IDENTITY_FIELDS);
+const ANNOTATION_SET = new Set<string>(SVM_EVIDENCE_ANNOTATION_FIELDS);
+
+/** Retired document-level source identity — must not be written. */
+const RETIRED_DOCUMENT_SOURCE_FIELDS = new Set(["deployGitHead"]);
+
 export type SvmProgramEvidencePatch = {
   programId: string;
   /** Required on every program row write that records a built artifact. */
   soSha256: string;
   soBytes: number;
+  /** Git commit the .so was built from — required with every digest write. */
+  sourceGitHead: string;
   upgradeAuthority?: string;
   /**
    * Set only when the programId first becomes followable.
@@ -42,19 +92,21 @@ export type MergeSvmDevnetEvidenceArgs = {
   caller: string;
   prior: SvmDevnetEvidence | null;
   /**
-   * Top-level fields to set. Existing values may only be restated identically;
-   * a different value refuses by name with both sides.
+   * Identity fields: may only restate an existing value identically.
+   * A differing value refuses by name with both sides.
    */
-  topLevel?: Readonly<Record<string, unknown>>;
+  identity?: Readonly<Partial<Record<SvmEvidenceIdentityField, unknown>>>;
+  /**
+   * Annotation fields: replaced only when this argument is present.
+   * Passing a differing annotation via `identity` (or inventing a third channel) refuses.
+   */
+  annotations?: Readonly<Partial<Record<SvmEvidenceAnnotationField, unknown>>>;
   /** Per-program patches — additive only; never deletes a prior key. */
   programs?: Readonly<Record<string, SvmProgramEvidencePatch>>;
 };
 
 const SHA256_HEX = /^[a-f0-9]{64}$/;
-
-export function sha256FileHex(filePath: string): string {
-  return createHash("sha256").update(readFileSync(filePath)).digest("hex");
-}
+const GIT_HEAD_HEX = /^[a-f0-9]{7,40}$/;
 
 export function artifactDigestFromSo(soPath: string): {
   soSha256: string;
@@ -67,11 +119,30 @@ export function artifactDigestFromSo(soPath: string): {
   };
 }
 
+/** Git HEAD at the moment a BPF digest is recorded (program-row source identity). */
+export function currentSourceGitHead(cwd = process.cwd()): string {
+  const head = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd,
+    encoding: "utf8",
+  }).trim();
+  if (!GIT_HEAD_HEX.test(head)) {
+    throw new SvmDevnetEvidenceWriteError(
+      "invalid_source_git_head",
+      `svm evidence write refused: git rev-parse HEAD produced invalid value`,
+    );
+  }
+  return head;
+}
+
 function jsonEqual(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-function assertDigest(patch: SvmProgramEvidencePatch, key: string, caller: string): void {
+function assertDigestAndSource(
+  patch: SvmProgramEvidencePatch,
+  key: string,
+  caller: string,
+): void {
   if (typeof patch.soSha256 !== "string" || !SHA256_HEX.test(patch.soSha256)) {
     throw new SvmDevnetEvidenceWriteError(
       "missing_so_sha256",
@@ -90,6 +161,16 @@ function assertDigest(patch: SvmProgramEvidencePatch, key: string, caller: strin
         `(got ${JSON.stringify(patch.soBytes)})`,
     );
   }
+  if (
+    typeof patch.sourceGitHead !== "string" ||
+    !GIT_HEAD_HEX.test(patch.sourceGitHead)
+  ) {
+    throw new SvmDevnetEvidenceWriteError(
+      "missing_source_git_head",
+      `svm evidence write refused (${caller}): program "${key}" has digest but no sourceGitHead ` +
+        `(got ${JSON.stringify(patch.sourceGitHead)})`,
+    );
+  }
   if (typeof patch.programId !== "string" || patch.programId.trim() === "") {
     throw new SvmDevnetEvidenceWriteError(
       "missing_program_id",
@@ -104,7 +185,16 @@ function mergeProgramRow(
   prior: SvmDevnetProgramEvidence | undefined,
   patch: SvmProgramEvidencePatch,
 ): SvmDevnetProgramEvidence {
-  assertDigest(patch, key, caller);
+  assertDigestAndSource(patch, key, caller);
+
+  const nextId = patch.programId.trim();
+  if (prior?.programId && prior.programId.trim() !== nextId) {
+    throw new SvmDevnetEvidenceWriteError(
+      "program_id_immutable",
+      `svm evidence write refused (${caller}): program "${key}" programId is immutable ` +
+        `(prior=${prior.programId}, attempted=${nextId})`,
+    );
+  }
 
   if (
     prior &&
@@ -125,9 +215,10 @@ function mergeProgramRow(
       : patch.deploySlot;
 
   const next: SvmDevnetProgramEvidence = {
-    programId: patch.programId.trim(),
+    programId: nextId,
     soSha256: patch.soSha256,
     soBytes: patch.soBytes,
+    sourceGitHead: patch.sourceGitHead,
   };
   if (typeof deploySlot === "number") {
     next.deploySlot = deploySlot;
@@ -140,13 +231,93 @@ function mergeProgramRow(
   return next;
 }
 
+function applyIdentity(
+  caller: string,
+  prior: SvmDevnetEvidence | null,
+  next: SvmDevnetEvidence,
+  identity: MergeSvmDevnetEvidenceArgs["identity"],
+): void {
+  if (!identity) return;
+  for (const [field, value] of Object.entries(identity)) {
+    if (value === undefined) continue;
+    if (RETIRED_DOCUMENT_SOURCE_FIELDS.has(field)) {
+      throw new SvmDevnetEvidenceWriteError(
+        "retired_document_source_field",
+        `svm evidence write refused (${caller}): "${field}" is retired — ` +
+          `source identity lives on each program row as sourceGitHead`,
+      );
+    }
+    if (ANNOTATION_SET.has(field)) {
+      throw new SvmDevnetEvidenceWriteError(
+        "annotation_requires_explicit_argument",
+        `svm evidence write refused (${caller}): annotation "${field}" requires explicit ` +
+          `annotations argument (prior=${JSON.stringify(prior?.[field])}, ` +
+          `attempted=${JSON.stringify(value)})`,
+      );
+    }
+    if (!IDENTITY_SET.has(field)) {
+      throw new SvmDevnetEvidenceWriteError(
+        "unknown_identity_field",
+        `svm evidence write refused (${caller}): "${field}" is not an identity field`,
+      );
+    }
+    if (prior && field in prior && prior[field] !== undefined) {
+      if (!jsonEqual(prior[field], value)) {
+        throw new SvmDevnetEvidenceWriteError(
+          "identity_conflict",
+          `svm evidence write refused (${caller}): identity "${field}" conflict ` +
+            `(prior=${JSON.stringify(prior[field])}, attempted=${JSON.stringify(value)})`,
+        );
+      }
+    }
+    next[field] = value;
+  }
+}
+
+function applyAnnotations(
+  caller: string,
+  prior: SvmDevnetEvidence | null,
+  next: SvmDevnetEvidence,
+  annotations: MergeSvmDevnetEvidenceArgs["annotations"],
+): void {
+  if (!annotations) return;
+  for (const [field, value] of Object.entries(annotations)) {
+    if (value === undefined) continue;
+    if (RETIRED_DOCUMENT_SOURCE_FIELDS.has(field)) {
+      throw new SvmDevnetEvidenceWriteError(
+        "retired_document_source_field",
+        `svm evidence write refused (${caller}): "${field}" is retired — ` +
+          `source identity lives on each program row as sourceGitHead`,
+      );
+    }
+    if (IDENTITY_SET.has(field)) {
+      throw new SvmDevnetEvidenceWriteError(
+        "annotation_channel_misuse",
+        `svm evidence write refused (${caller}): identity "${field}" must use the identity channel ` +
+          `(prior=${JSON.stringify(prior?.[field])}, attempted=${JSON.stringify(value)})`,
+      );
+    }
+    if (!ANNOTATION_SET.has(field)) {
+      throw new SvmDevnetEvidenceWriteError(
+        "unknown_annotation_field",
+        `svm evidence write refused (${caller}): "${field}" is not an annotation field ` +
+          `(pass explicit annotations only for known snapshot/pathway/proof keys)`,
+      );
+    }
+    // Explicit annotations argument = intentional replace (no silent path).
+    next[field] = value;
+  }
+}
+
 /**
  * Pure merge: prior ∪ patch. Never drops a prior program key.
+ * Strips retired document-level `deployGitHead` (source identity is per-program).
  */
 export function mergeSvmDevnetEvidence(
   args: MergeSvmDevnetEvidenceArgs,
 ): SvmDevnetEvidence {
-  const { caller, prior, topLevel, programs: programPatches } = args;
+  const { caller, prior, identity, annotations, programs: programPatches } =
+    args;
   if (!caller.trim()) {
     throw new SvmDevnetEvidenceWriteError(
       "missing_caller",
@@ -179,9 +350,9 @@ export function mergeSvmDevnetEvidence(
     );
   }
 
-  const eid = (topLevel?.eid as number | undefined) ?? prior?.eid;
+  const eid = (identity?.eid as number | undefined) ?? prior?.eid;
   const cluster =
-    (topLevel?.cluster as string | undefined) ?? prior?.cluster;
+    (identity?.cluster as string | undefined) ?? prior?.cluster;
   if (typeof eid !== "number" || !Number.isInteger(eid)) {
     throw new SvmDevnetEvidenceWriteError(
       "missing_eid",
@@ -201,33 +372,16 @@ export function mergeSvmDevnetEvidence(
     eid,
     programs: basePrograms as SvmDevnetEvidence["programs"],
   };
+  // Source identity is per-program; document-level deployGitHead is retired.
+  delete next.deployGitHead;
 
-  if (topLevel) {
-    for (const [field, value] of Object.entries(topLevel)) {
-      if (value === undefined) continue;
-      if (field === "programs") {
-        throw new SvmDevnetEvidenceWriteError(
-          "programs_via_toplevel",
-          `svm evidence write refused (${caller}): programs must use the programs patch, not topLevel`,
-        );
-      }
-      if (prior && field in prior && prior[field] !== undefined) {
-        if (!jsonEqual(prior[field], value)) {
-          throw new SvmDevnetEvidenceWriteError(
-            "toplevel_conflict",
-            `svm evidence write refused (${caller}): top-level "${field}" conflict ` +
-              `(prior=${JSON.stringify(prior[field])}, attempted=${JSON.stringify(value)})`,
-          );
-        }
-      }
-      next[field] = value;
-    }
-  }
+  applyIdentity(caller, prior, next, identity);
+  applyAnnotations(caller, prior, next, annotations);
 
   return next;
 }
 
-/** Exported for constructed-violation tests and any future full-document validators. */
+/** Exported for constructed-violation tests and validators. */
 export function assertRetainsPriorProgramKeys(
   caller: string,
   priorKeys: readonly string[],
@@ -259,7 +413,38 @@ export function mergeAndWriteSvmDevnetEvidence(
   return merged;
 }
 
-/** Commercial census keys — for gates; reuses ingest-config list. */
-export function commercialEvidenceKeys(): readonly string[] {
-  return COMMERCIAL_PROGRAM_EVIDENCE_KEY_LIST;
+/** Bridge-wire pathway peers write — exercised by policy tests. */
+export function writeSvmBridgePathwayEvidence(args: {
+  path: string;
+  prior: SvmDevnetEvidence;
+  peers: SvmDevnetPathwayPeers;
+  pathwayConfigHash: `0x${string}`;
+  oapp: string;
+  note: string;
+}): SvmDevnetEvidence {
+  return mergeAndWriteSvmDevnetEvidence(args.path, {
+    caller: "bridge-wire.ts",
+    prior: args.prior,
+    annotations: {
+      peers: args.peers,
+      pathwayConfigHash: args.pathwayConfigHash,
+      oapp: args.oapp,
+      note: args.note,
+    },
+  });
+}
+
+/** Y4 prove annotation write — exercised by policy tests. */
+export function writeSvmY4ProveEvidence(args: {
+  path: string;
+  prior: SvmDevnetEvidence;
+  y4: Record<string, unknown>;
+}): SvmDevnetEvidence {
+  return mergeAndWriteSvmDevnetEvidence(args.path, {
+    caller: "svm-devnet-y4-prove.ts",
+    prior: args.prior,
+    annotations: {
+      y4: args.y4,
+    },
+  });
 }

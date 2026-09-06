@@ -14,6 +14,8 @@ export type SvmDevnetProgramEvidence = {
   deploySlot?: number;
   soSha256?: string;
   soBytes?: number;
+  /** Git commit the deployed .so was built from — required whenever soSha256 is written. */
+  sourceGitHead?: string;
   upgradeAuthority?: string;
 };
 

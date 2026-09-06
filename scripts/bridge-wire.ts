@@ -86,8 +86,8 @@ import { svmGatewayOAppPeer } from "./lib/svm-oapp-peer.js";
 import {
   writeDeploymentManifest,
   writeSpokeDeploymentManifest,
-  writeSvmDevnetEvidence,
 } from "./lib/write-deployment.js";
+import { writeSvmBridgePathwayEvidence } from "./lib/svm-devnet-evidence-write.js";
 
 loadEnv({ path: ".env.local" });
 loadEnv();
@@ -860,11 +860,12 @@ async function main(): Promise<void> {
       spokeOApp,
     };
     const evidence = requireSvmDevnetEvidence(EID_SOLANA_DEVNET);
-    writeSvmDevnetEvidence(svmDevnetEvidencePath(EID_SOLANA_DEVNET), {
-      ...evidence,
-      oapp: spokeOApp,
+    writeSvmBridgePathwayEvidence({
+      path: svmDevnetEvidencePath(EID_SOLANA_DEVNET),
+      prior: evidence,
       peers: peersBook,
       pathwayConfigHash,
+      oapp: spokeOApp,
       note:
         "S4b Y5 — hub peer = gateway_config PDA (OApp); ULN wired; no COMMERCIAL_ACTIVE Solana row",
     });
