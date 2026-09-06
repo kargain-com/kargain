@@ -89,10 +89,18 @@ async function main(): Promise<void> {
   });
 
   const pollMs = Number(process.env.SVM_INGEST_POLL_MS?.trim() ?? "2000");
+  let followInFlight = false;
   const timer = setInterval(() => {
-    void loop.followOnce().catch((err) => {
-      console.error("svm-ingest follow error:", err);
-    });
+    if (followInFlight) return;
+    followInFlight = true;
+    void loop
+      .followOnce()
+      .catch((err) => {
+        console.error("svm-ingest follow error:", err);
+      })
+      .finally(() => {
+        followInFlight = false;
+      });
   }, pollMs);
 
   const shutdown = async () => {

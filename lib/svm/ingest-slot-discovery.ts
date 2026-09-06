@@ -55,6 +55,8 @@ const DEFAULT_PAGE_LIMIT = 1_000;
 
 /**
  * Page each commercial program newest→oldest until below that program's deploySlot.
+ * With `afterSlot` (live follow): stop as soon as the page reaches slots ≤ watermark —
+ * do not re-walk history to the deploy floor on every poll.
  * Incomplete mid-page RPC failure → ok:false (must not claim complete).
  */
 export async function discoverIngestSlots(
@@ -63,6 +65,7 @@ export async function discoverIngestSlots(
   const pageLimit = args.pageLimit ?? DEFAULT_PAGE_LIMIT;
   const afterSlot =
     typeof args.afterSlot === "number" ? args.afterSlot : Number.NEGATIVE_INFINITY;
+  const liveFollow = Number.isFinite(afterSlot);
   const slotSet = new Set<number>();
   let signaturePages = 0;
   let signatureRows = 0;
@@ -115,6 +118,10 @@ export async function discoverIngestSlots(
 
       const oldestOnPage = page[page.length - 1]!;
       if (oldestOnPage.slot < program.deploySlot) {
+        reachedFloor = true;
+      }
+      // Live: once we have walked into already-processed slots, stop this program.
+      if (liveFollow && oldestOnPage.slot <= afterSlot) {
         reachedFloor = true;
       }
       if (page.length < pageLimit) {

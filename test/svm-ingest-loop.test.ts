@@ -556,4 +556,46 @@ describe("discoverIngestSlots owner", () => {
     if (!result.ok) return;
     assert.deepEqual(result.slots, [150, 250]);
   });
+
+  it("live afterSlot stops at watermark — does not re-page to deploy floor", async () => {
+    const programs = [
+      {
+        slug: "kar-passport",
+        programId: "ProgA",
+        evidenceKey: "kar_passport",
+        deploySlot: 100,
+      },
+    ] as const;
+    let pages = 0;
+    const rpc = {
+      async getSignaturesForAddress(
+        _programId: string,
+        opts?: { before?: string; limit?: number },
+      ) {
+        pages += 1;
+        if (!opts?.before) {
+          // Newest page: one new slot above watermark, then already-seen.
+          return [
+            { signature: "new", slot: 260 },
+            { signature: "seen", slot: 250 },
+          ];
+        }
+        // Would be history toward deploy floor — must not be requested.
+        return [
+          { signature: "old2", slot: 180 },
+          { signature: "old1", slot: 90 },
+        ];
+      },
+    };
+    const result = await discoverIngestSlots({
+      programs,
+      rpc,
+      afterSlot: 250,
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(result.slots, [260]);
+    assert.equal(pages, 1);
+    assert.equal(result.signaturePages, 1);
+  });
 });
