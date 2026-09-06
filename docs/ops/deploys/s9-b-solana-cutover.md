@@ -78,9 +78,18 @@ Accepted design (do not reopen):
   - **Before cutover (recorded):** public custody read returned `custodyUnresolved: "unknown_namespace"` because EID `40168` had no commercial namespace.
   - **After cutover:** same token must **not** fold to `unknown_namespace`. Expected served-network outcome is a custody answer or a different named gap (e.g. `departure_without_arrival` if only the send side is observed). Capture:
     - HTTP passport/custody JSON for the token
-    - VPS SQL on `kargain.bridge_crossing` for the token (`peer_layer_zero_eid`, `peer_namespace` / refusal columns)
+    - VPS SQL on `kargain.bridge_crossing` for the token (`peer_layer_zero_eid`, `peer_namespace` / refusal columns) — these raw rows must explain the old `unknown_namespace`
     - VPS SQL on `kargain.custody_determining_event` for stream-B shape only (not a second fold owner)
 - **Undo:** n/a (observational).
+
+### 7. Three-network walk + Solana explorer click-check
+
+- **Changes:** none — product walk after ingest is ready.
+- **Verify:**
+  - Passport minted / present on Solana Devnet, visible through browse and detail with the other two commercial networks still answering.
+  - Custody / bridge chrome for a cross-network passport does not invent a fourth network and does not leave Solana as `unknown_namespace`.
+  - **Explorer finger-check (do not skip):** registry `explorerBaseUrl` is `https://explorer.solana.com`. Solana Explorer scopes Devnet via `?cluster=devnet`. From a Solana passport or tx chrome, open “View on explorer” for an address and for a signature. Pass only if the opened page is the Devnet view of that account/tx — not a mainnet “not found”. Fail closed on a screenshot of mainnet emptiness; do not argue from URL construction alone.
+- **Undo:** n/a (observational). Product reachability undoes with commit revert (rollback below).
 
 ## Rollback (returns platform to pre-cutover product state)
 
