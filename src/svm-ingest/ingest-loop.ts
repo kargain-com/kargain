@@ -9,6 +9,7 @@ import type { MetadataFetcher } from "../../lib/svm/capture-metadata-at-ingest.j
 import type { FollowedProgram } from "../../lib/svm/ingest-config.js";
 import {
   ingestRefusalRowId,
+  isRetriableCatchupIncident,
   type BootstrapCatchupState,
   type CatchupIncident,
 } from "../../lib/svm/ingest-refusal.js";
@@ -68,6 +69,13 @@ export function createIngestLoop(opts: IngestLoopOptions) {
       state.lastContiguousSlot = existing.lastContiguousSlot;
       state.bootstrapState = existing.bootstrapState;
       state.catchupIncident = existing.catchupIncident;
+      // Permanent incidents stay halted across restart; retriable recover on next tick.
+      if (
+        existing.catchupIncident &&
+        !isRetriableCatchupIncident(existing.catchupIncident)
+      ) {
+        halted = true;
+      }
       return;
     }
     await persistCursor();
@@ -80,7 +88,9 @@ export function createIngestLoop(opts: IngestLoopOptions) {
     slot: number | null,
   ): Promise<void> {
     state.catchupIncident = incident;
-    halted = true;
+    if (!isRetriableCatchupIncident(incident)) {
+      halted = true;
+    }
     const detailKey = `${incident}:${JSON.stringify(detail)}`.slice(0, 200);
     await opts.writer.insertIngestRefusal({
       id: ingestRefusalRowId({
@@ -101,6 +111,12 @@ export function createIngestLoop(opts: IngestLoopOptions) {
       discriminator: null,
       detail: { incident, ...detail },
     });
+    await persistCursor();
+  }
+
+  async function clearRetriableIncident(): Promise<void> {
+    if (!isRetriableCatchupIncident(state.catchupIncident)) return;
+    state.catchupIncident = null;
     await persistCursor();
   }
 
@@ -298,8 +314,10 @@ export function createIngestLoop(opts: IngestLoopOptions) {
    */
   async function catchUpToHead(): Promise<void> {
     halted = false;
-    if (state.catchupIncident === "startup_retention_unavailable") {
-      /* allow retry after ops fix */
+    if (
+      state.catchupIncident === "startup_retention_unavailable" ||
+      isRetriableCatchupIncident(state.catchupIncident)
+    ) {
       state.catchupIncident = null;
     }
 
@@ -360,10 +378,9 @@ export function createIngestLoop(opts: IngestLoopOptions) {
         state.lastContiguousSlot = Math.max(state.lastContiguousSlot, head);
       }
       state.bootstrapState = null;
-      state.catchupIncident = null;
-      await persistCursor();
     }
-
+    state.catchupIncident = null;
+    await persistCursor();
     state.lagSlots = 0;
   }
 
@@ -382,6 +399,8 @@ export function createIngestLoop(opts: IngestLoopOptions) {
       state.lagSlots = head - state.lastContiguousSlot;
       return;
     }
+
+    await clearRetriableIncident();
 
     const pending = slots.filter((s) => s > state.lastContiguousSlot);
     state.lagSlots =

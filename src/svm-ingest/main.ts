@@ -92,7 +92,14 @@ async function main(): Promise<void> {
   const pollMs = Number(process.env.SVM_INGEST_POLL_MS?.trim() ?? "2000");
   const followAbort = new AbortController();
   const followDone = runFollowLoop({
-    followOnce: () => loop.followOnce(),
+    followOnce: async () => {
+      // Bootstrap incomplete → retry catch-up; live → watermark discovery.
+      if (loop.getState().bootstrapState) {
+        await loop.catchUpToHead();
+      } else {
+        await loop.followOnce();
+      }
+    },
     pollMs,
     signal: followAbort.signal,
     onError: (err) => {

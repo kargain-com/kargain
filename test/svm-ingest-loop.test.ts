@@ -4,7 +4,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { structuredPayloadRowId } from "../lib/svm/ingest-refusal.js";
+import {
+  isRetriableCatchupIncident,
+  RETRIABLE_CATCHUP_INCIDENTS,
+  structuredPayloadRowId,
+} from "../lib/svm/ingest-refusal.js";
 import { discoverIngestSlots } from "../lib/svm/ingest-slot-discovery.js";
 import { createIngestLoop } from "../src/svm-ingest/ingest-loop.js";
 import {
@@ -294,6 +298,7 @@ describe("svm ingest loop — signature discovery", () => {
     await loop.catchUpToHead();
     assert.equal(loop.getState().bootstrapState, "historical_backfill");
     assert.equal(loop.getState().catchupIncident, "discovery_incomplete");
+    assert.equal(loop.getState().halted, false);
     assert.equal(loop.isReady(), false);
   });
 
@@ -417,11 +422,17 @@ describe("svm ingest loop — signature discovery", () => {
     phase = "follow";
     await loop.followOnce();
     assert.equal(loop.getState().catchupIncident, "catchup_window_exceeded");
+    assert.equal(loop.getState().halted, true);
     assert.equal(loop.isReady(), false);
     assert.equal(
       writer.refusals.at(-1)?.detail.incident,
       "catchup_window_exceeded",
     );
+    // Permanent: further follow ticks are no-ops until ops clears the cursor.
+    const before = writer.payloads.length;
+    await loop.followOnce();
+    assert.equal(writer.payloads.length, before);
+    assert.equal(loop.getState().catchupIncident, "catchup_window_exceeded");
   });
 
   it("fixture 429 backoff is bounded and never exits the process", async () => {
@@ -439,10 +450,10 @@ describe("svm ingest loop — signature discovery", () => {
     assert.equal(attempts, 4);
   });
 
-  it("rpc_budget_exhausted incident does not throw out of follow discovery", async () => {
+  it("rpc_budget_exhausted is retriable — next successful follow clears incident", async () => {
     const startSlot = FIXTURE_FOLLOWED_PROGRAMS[0]!.deploySlot;
     const slot = FIXTURE_BLOCK.slot;
-    const rpc = makeRpc({
+    const okRpc = makeRpc({
       head: slot + 5,
       signaturesByProgram: {
         [FIXTURE_PASSPORT_PROGRAM]: [
@@ -461,19 +472,24 @@ describe("svm ingest loop — signature discovery", () => {
       maxLagSlots: 216_000,
       followedPrograms: FIXTURE_FOLLOWED_PROGRAMS,
       writer,
-      rpc,
+      rpc: okRpc,
     });
     await loop.initCursor();
     await loop.catchUpToHead();
     assert.equal(loop.isReady(), true);
 
-    const exhausted: SvmRpcClient = {
-      ...rpc,
-      async getSignaturesForAddress() {
-        rpc.callCounts.getSignaturesForAddress += 1;
-        throw new SvmIngestRpcBudgetExhaustedError(
-          "Solana RPC rate limit exhausted after 6 attempts: planted",
-        );
+    let failOnce = true;
+    const flaky: SvmRpcClient = {
+      ...okRpc,
+      async getSignaturesForAddress(programId, opts) {
+        if (failOnce) {
+          failOnce = false;
+          okRpc.callCounts.getSignaturesForAddress += 1;
+          throw new SvmIngestRpcBudgetExhaustedError(
+            "Solana RPC rate limit exhausted after 6 attempts: planted",
+          );
+        }
+        return okRpc.getSignaturesForAddress(programId, opts);
       },
     };
     const followLoop = createIngestLoop({
@@ -482,14 +498,19 @@ describe("svm ingest loop — signature discovery", () => {
       maxLagSlots: 216_000,
       followedPrograms: FIXTURE_FOLLOWED_PROGRAMS,
       writer,
-      rpc: exhausted,
+      rpc: flaky,
     });
     await followLoop.initCursor();
-    // Cursor already past bootstrap from shared writer.
     assert.equal(followLoop.getState().bootstrapState, null);
+
     await followLoop.followOnce();
     assert.equal(followLoop.getState().catchupIncident, "rpc_budget_exhausted");
+    assert.equal(followLoop.getState().halted, false);
     assert.equal(followLoop.isReady(), false);
+
+    await followLoop.followOnce();
+    assert.equal(followLoop.getState().catchupIncident, null);
+    assert.equal(followLoop.isReady(), true);
   });
 
   it("startup retention assertion refuses by name when rpc cannot serve the required slot", async () => {
@@ -517,7 +538,163 @@ describe("svm ingest loop — signature discovery", () => {
       loop.getState().catchupIncident,
       "startup_retention_unavailable",
     );
+    assert.equal(loop.getState().halted, true);
     assert.equal(loop.getState().bootstrapState, "historical_backfill");
+  });
+
+  it("initCursor restores halt for permanent incidents but not retriable", async () => {
+    const startSlot = FIXTURE_FOLLOWED_PROGRAMS[0]!.deploySlot;
+    const writer = createMemorySvmRawWriter();
+    await writer.upsertCursor({
+      namespace: FIXTURE_NAMESPACE,
+      lastContiguousSlot: FIXTURE_BLOCK.slot,
+      bootstrapState: null,
+      catchupIncident: "catchup_window_exceeded",
+    });
+    const loopPermanent = createIngestLoop({
+      namespace: FIXTURE_NAMESPACE,
+      startSlot,
+      maxLagSlots: 2,
+      followedPrograms: FIXTURE_FOLLOWED_PROGRAMS,
+      writer,
+      rpc: makeRpc({ head: FIXTURE_BLOCK.slot + 10 }),
+    });
+    await loopPermanent.initCursor();
+    assert.equal(loopPermanent.getState().halted, true);
+    assert.equal(loopPermanent.isReady(), false);
+
+    const writer2 = createMemorySvmRawWriter();
+    await writer2.upsertCursor({
+      namespace: FIXTURE_NAMESPACE,
+      lastContiguousSlot: FIXTURE_BLOCK.slot,
+      bootstrapState: null,
+      catchupIncident: "rpc_budget_exhausted",
+    });
+    const loopRetriable = createIngestLoop({
+      namespace: FIXTURE_NAMESPACE,
+      startSlot,
+      maxLagSlots: 2,
+      followedPrograms: FIXTURE_FOLLOWED_PROGRAMS,
+      writer: writer2,
+      rpc: makeRpc({
+        head: FIXTURE_BLOCK.slot + 10,
+        signaturesByProgram: {
+          [FIXTURE_PASSPORT_PROGRAM]: [
+            {
+              signature: FIXTURE_BLOCK.transactions[0]!.signature,
+              slot: FIXTURE_BLOCK.slot,
+            },
+          ],
+        },
+        blocks: { [FIXTURE_BLOCK.slot]: FIXTURE_BLOCK },
+      }),
+    });
+    await loopRetriable.initCursor();
+    assert.equal(loopRetriable.getState().halted, false);
+    assert.equal(
+      loopRetriable.getState().catchupIncident,
+      "rpc_budget_exhausted",
+    );
+    await loopRetriable.followOnce();
+    assert.equal(loopRetriable.getState().catchupIncident, null);
+    assert.equal(loopRetriable.isReady(), true);
+  });
+
+  it("bootstrap discovery_incomplete retries to ready on later catchUpToHead", async () => {
+    const startSlot = FIXTURE_FOLLOWED_PROGRAMS[0]!.deploySlot;
+    let fail = true;
+    const callCounts = {
+      getBlock: 0,
+      getSignaturesForAddress: 0,
+      getSlot: 0,
+      getFirstAvailableBlock: 0,
+    };
+    const rpc: SvmRpcClient = {
+      callCounts,
+      async getSlot() {
+        callCounts.getSlot += 1;
+        return FIXTURE_BLOCK.slot + 5;
+      },
+      async getFirstAvailableBlock() {
+        callCounts.getFirstAvailableBlock += 1;
+        return startSlot;
+      },
+      async getSignaturesForAddress(programId) {
+        callCounts.getSignaturesForAddress += 1;
+        if (fail) throw new Error("planted pagination failure");
+        if (programId !== FIXTURE_PASSPORT_PROGRAM) return [];
+        return [
+          {
+            signature: FIXTURE_BLOCK.transactions[0]!.signature,
+            slot: FIXTURE_BLOCK.slot,
+          },
+        ];
+      },
+      async getBlock(slot) {
+        callCounts.getBlock += 1;
+        if (slot === FIXTURE_BLOCK.slot) return okBlock(FIXTURE_BLOCK);
+        return missingBlock(slot);
+      },
+    };
+    const writer = createMemorySvmRawWriter();
+    const loop = createIngestLoop({
+      namespace: FIXTURE_NAMESPACE,
+      startSlot,
+      maxLagSlots: 216_000,
+      followedPrograms: FIXTURE_FOLLOWED_PROGRAMS,
+      writer,
+      rpc,
+    });
+    await loop.initCursor();
+    await loop.catchUpToHead();
+    assert.equal(loop.getState().bootstrapState, "historical_backfill");
+    assert.equal(loop.getState().catchupIncident, "discovery_incomplete");
+    assert.equal(loop.isReady(), false);
+
+    fail = false;
+    await loop.catchUpToHead();
+    assert.equal(loop.getState().bootstrapState, null);
+    assert.equal(loop.getState().catchupIncident, null);
+    assert.equal(loop.isReady(), true);
+  });
+
+  it("getBlock rpc_budget_exhausted mid-list is retriable; watermark keeps processed slots", async () => {
+    const startSlot = FIXTURE_FOLLOWED_PROGRAMS[0]!.deploySlot;
+    const slotA = FIXTURE_BLOCK.slot;
+    const slotB = slotA + 1;
+    let blockCalls = 0;
+    const rpc = makeRpc({
+      head: slotB + 5,
+      signaturesByProgram: {
+        [FIXTURE_PASSPORT_PROGRAM]: [
+          { signature: "sigA111111111111111111111111111111111111111111111111111", slot: slotA },
+          { signature: "sigB222222222222222222222222222222222222222222222222222", slot: slotB },
+        ],
+      },
+      getBlockImpl: async (slot) => {
+        blockCalls += 1;
+        if (slot === slotA) return okBlock(FIXTURE_BLOCK);
+        throw new SvmIngestRpcBudgetExhaustedError(
+          "Solana RPC rate limit exhausted after 6 attempts: planted getBlock",
+        );
+      },
+    });
+    const writer = createMemorySvmRawWriter();
+    const loop = createIngestLoop({
+      namespace: FIXTURE_NAMESPACE,
+      startSlot,
+      maxLagSlots: 216_000,
+      followedPrograms: FIXTURE_FOLLOWED_PROGRAMS,
+      writer,
+      rpc,
+    });
+    await loop.initCursor();
+    await loop.catchUpToHead();
+    assert.equal(loop.getState().lastContiguousSlot, slotA);
+    assert.equal(loop.getState().catchupIncident, "rpc_budget_exhausted");
+    assert.equal(loop.getState().halted, false);
+    assert.equal(loop.getState().bootstrapState, "historical_backfill");
+    assert.ok(blockCalls >= 2);
   });
 });
 
@@ -597,5 +774,63 @@ describe("discoverIngestSlots owner", () => {
     assert.deepEqual(result.slots, [260]);
     assert.equal(pages, 1);
     assert.equal(result.signaturePages, 1);
+  });
+
+  it("live afterSlot pages through multiple new pages until watermark reached", async () => {
+    const programs = [
+      {
+        slug: "kar-passport",
+        programId: "ProgA",
+        evidenceKey: "kar_passport",
+        deploySlot: 100,
+      },
+    ] as const;
+    let pages = 0;
+    const rpc = {
+      async getSignaturesForAddress(
+        _programId: string,
+        opts?: { before?: string; limit?: number },
+      ) {
+        pages += 1;
+        if (!opts?.before) {
+          return [
+            { signature: "n3", slot: 280 },
+            { signature: "n2", slot: 270 },
+          ];
+        }
+        if (opts.before === "n2") {
+          return [
+            { signature: "n1", slot: 260 },
+            { signature: "seen", slot: 250 },
+          ];
+        }
+        return [{ signature: "old", slot: 90 }];
+      },
+    };
+    const result = await discoverIngestSlots({
+      programs,
+      rpc,
+      afterSlot: 250,
+      pageLimit: 2,
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(result.slots, [260, 270, 280]);
+    assert.equal(pages, 2);
+  });
+});
+
+describe("catchup incident vocabulary", () => {
+  it("retriable vs permanent is bidirectional with the enumerator", () => {
+    for (const id of RETRIABLE_CATCHUP_INCIDENTS) {
+      assert.equal(isRetriableCatchupIncident(id), true);
+    }
+    assert.equal(isRetriableCatchupIncident("catchup_window_exceeded"), false);
+    assert.equal(
+      isRetriableCatchupIncident("startup_retention_unavailable"),
+      false,
+    );
+    assert.equal(isRetriableCatchupIncident("sequence_gap"), false);
+    assert.equal(isRetriableCatchupIncident(null), false);
   });
 });

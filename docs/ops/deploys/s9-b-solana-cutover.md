@@ -63,7 +63,7 @@ Accepted design (do not reopen):
   During backfill: `status: "not_ready"`, `bootstrapState: "historical_backfill"`, `incident: null`.
   After catch-up: `status: "ready"`, `bootstrapState: null`, `incident: null`.
   If retention fails at boot, refuse with both numbers in logs / refusal detail (`requiredSlot`, `firstAvailableBlock`) and `/ready` 503 with `incident: "startup_retention_unavailable"`.
-  Watch for `discovery_incomplete` / `rpc_budget_exhausted` (429 exhaustion) — both keep `/ready` 503 without restart-loop exit.
+  Watch for `discovery_incomplete` / `rpc_budget_exhausted` — `/ready` 503 while the condition holds; both are retriable (next successful discovery clears them). Permanent halt: retention / catch-up window / hard sequence gap.
 - **Undo:** stop the service; do **not** drop `kargain_svm_raw` to “fix” bootstrap.
 
 ### 5. Confirm read path and product surfaces

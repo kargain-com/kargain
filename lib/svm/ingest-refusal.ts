@@ -21,6 +21,26 @@ export type CatchupIncident =
   | "discovery_incomplete"
   | "rpc_budget_exhausted";
 
+/**
+ * Transient RPC/pagination failures — surface on /ready until the next successful
+ * discovery tick, but must not permanently halt the follow loop.
+ * Permanent: catchup_window_exceeded, sequence_gap, startup_retention_unavailable.
+ */
+export const RETRIABLE_CATCHUP_INCIDENTS = [
+  "discovery_incomplete",
+  "rpc_budget_exhausted",
+] as const satisfies readonly CatchupIncident[];
+
+export type RetriableCatchupIncident =
+  (typeof RETRIABLE_CATCHUP_INCIDENTS)[number];
+
+export function isRetriableCatchupIncident(
+  incident: CatchupIncident | null | undefined,
+): incident is RetriableCatchupIncident {
+  if (incident == null) return false;
+  return (RETRIABLE_CATCHUP_INCIDENTS as readonly string[]).includes(incident);
+}
+
 export function structuredPayloadRowId(args: {
   namespace: number;
   slot: number;
