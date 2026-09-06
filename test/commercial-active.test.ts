@@ -10,6 +10,7 @@ import {
   requireCommercialActive,
   requireEvmCommercialActive,
 } from "../lib/web3/commercial-active.ts";
+import { namespaceFromLayerZeroEid } from "../lib/web3/kargain-namespace.ts";
 import { kargainContractDenylist } from "../lib/web3/deployment-addresses.ts";
 import { ETHEREUM_SEPOLIA_SPOKE, SEPOLIA_ACTIVE, SEPOLIA_HISTORICAL_DENYLIST, ETHEREUM_SEPOLIA_HISTORICAL_DENYLIST } from "../lib/web3/sepolia-addresses.ts";
 import {
@@ -19,6 +20,7 @@ import {
 
 const HUB = 84532;
 const ETH = 11155111;
+const SOLANA = namespaceFromLayerZeroEid(40168);
 
 /** Point the deployment loader at an empty temp dir so repo manifests are invisible. */
 function withEmptyDeploymentsDir<T>(fn: () => T): T {
@@ -45,8 +47,11 @@ describe("COMMERCIAL_ACTIVE registry", () => {
     assert.equal(eth.chainId, ETH);
   });
 
-  it("includes Nuclear #7 hub and Eth stacks with modes", () => {
-    assert.equal(Object.keys(COMMERCIAL_ACTIVE).sort().join(","), `${ETH},${HUB}`);
+  it("includes Nuclear #7 hub and Eth stacks plus the live Solana row", () => {
+    assert.equal(
+      Object.keys(COMMERCIAL_ACTIVE).sort().join(","),
+      `${ETH},${SOLANA},${HUB}`,
+    );
     assert.equal(requireCommercialActive(HUB).karPassport, SEPOLIA_ACTIVE.karPassport);
     assert.equal(
       requireCommercialActive(ETH).karPassport,
@@ -60,6 +65,9 @@ describe("COMMERCIAL_ACTIVE registry", () => {
       requireCommercialActive(ETH).ascendingConsignment,
       "0x233B0e6780d52275caE1f1d08035F6a3C932B99E",
     );
+    const solana = requireCommercialActive(SOLANA);
+    assert.equal(solana.vm, "svm");
+    assert.equal(solana.usdc, "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
   });
 
   it("SEPOLIA_ACTIVE aliases COMMERCIAL_ACTIVE[84532]", () => {
@@ -141,8 +149,8 @@ describe("COMMERCIAL_ACTIVE registry", () => {
   });
 
   it("forfeitRecipient is distinct from platformRecipient on both stacks", () => {
-    const hub = requireCommercialActive(HUB);
-    const eth = requireCommercialActive(ETH);
+    const hub = requireEvmCommercialActive(HUB);
+    const eth = requireEvmCommercialActive(ETH);
     assert.notEqual(hub.forfeitRecipient.toLowerCase(), hub.platformRecipient.toLowerCase());
     assert.notEqual(eth.forfeitRecipient.toLowerCase(), eth.platformRecipient.toLowerCase());
   });

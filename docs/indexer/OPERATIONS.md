@@ -45,11 +45,9 @@ Historical: … Nuclear #4 hub **44957457** / Eth **11404204** — superseded by
 6. **`svm-ingest` stays down.** No Solana `COMMERCIAL_ACTIVE` row.
 7. `pnpm bridge:wire` N7 hub↔eth peers; `bridge:wire:read-only` PASS.
 
-### S9-B — Solana commercial activation (after S9-0 Devnet modes)
+### S9-B — Solana commercial activation
 
-Enable `svm-ingest` when Solana joins `COMMERCIAL_ACTIVE` — see [§SVM ingest](#svm-ingest-s7c-1). Apply **`kargain_svm_raw`** (incl. **`metadata_snapshot`**: `content_sha256` NULL iff `status=unavailable`, CHECK-bound, partial unique on captured) + **`kargain_svm_projection`**, smoke `/live` + `/ready`, run **`pnpm svm-projection:replay-digest`** after first raw backfill. **No** second `ponder-reindex.sql` for EVM unless schema changed again. First catch-up may backfill metadata snapshots; projection rebuild reads snapshots from raw only.
-
-**Before svm-ingest is live:** any process that serves passport UNION HTTP must still have **empty** `kargain_svm_projection` tables. Do **not** drop the SVM `UNION ALL` arm or key it on `COMMERCIAL_ACTIVE`.
+Solana Devnet namespace **2000040168** now lives in `COMMERCIAL_ACTIVE`; `svm-ingest` is the separate append-only writer for that network. Apply **`kargain_svm_raw`** (incl. **`metadata_snapshot`**: `content_sha256` NULL iff `status=unavailable`, CHECK-bound, partial unique on captured) + **`kargain_svm_projection`**, smoke `/live` + `/ready`, run **`pnpm svm-projection:replay-digest`** after first raw backfill. **No** second `ponder-reindex.sql` for EVM unless schema changed again. Projection rebuild still reads snapshots from raw only.
 
 **Physical column casing (Ponder 0.16):** `DATABASE_SCHEMA=kargain` tables use **snake_case** (`chain_id`, not `"chainId"`). Confirm on any instance with:
 
@@ -65,23 +63,33 @@ Drizzle browse on production maps JS `chainId` → physical `chain_id` automatic
 
 ## SVM ingest (S7c-1)
 
-**September 2026:** standalone **`svm-ingest`** Docker service append-only writes structured Solana `Program data:` payloads into Postgres schema **`kargain_svm_raw`**. **No VPS action until S9 cutover** — same gate as bridge crossing backfill; local/dev via `docker compose up svm-ingest`.
+**September 2026:** standalone **`svm-ingest`** Docker service append-only writes structured Solana `Program data:` payloads into Postgres schema **`kargain_svm_raw`**. Run it via `docker compose up -d --force-recreate svm-ingest`.
 
 ### Health (port 42100)
 
 | Route | Meaning |
 |-------|---------|
 | `GET /live` | Process up |
-| `GET /ready` | Caught up and cursor contiguous; **503** when lag exceeds catch-up window or sequence gap |
+| `GET /ready` | Caught up and cursor contiguous; **503** during first bootstrap backfill, when startup retention fails, or when post-bootstrap lag exceeds the catch-up window / a sequence gap appears |
 
 Smoke (local): `curl -sf http://127.0.0.1:42100/live` · `curl -sf http://127.0.0.1:42100/ready`
 
-### Catch-up window exceeded (incident)
+### Bootstrap vs incident
 
-Default `SVM_INGEST_CATCHUP_MAX_LAG_SLOTS=216000` (~24h at ~400ms/slot). On startup, if `chain_head - last_contiguous_slot > window`:
+Start cursor owner is `resolveIngestStartSlot()` in `lib/svm/ingest-config.ts`: **`min(programs.*.deploySlot)`** over the six commercial programs in `deployments/svm-40168.json`. The live Solana `COMMERCIAL_ACTIVE` row does **not** carry a second start-slot source.
+
+On a fresh cursor, `svm-ingest` writes `bootstrap_state = historical_backfill` and stays not-ready until the cursor reaches the observed head and the service transitions into normal follow mode. This bootstrap phase is expected and does **not** raise `catchup_window_exceeded`.
+
+### Startup retention refusal
+
+Before catch-up, `svm-ingest` probes `getFirstAvailableBlock`. If the configured `SOLANA_RPC_URL` cannot serve the required slot (`last_contiguous_slot + 1`), startup refuses by name, records a `sequence_gap` row with `incident = startup_retention_unavailable`, and keeps `/ready` at **503**.
+
+### Catch-up window exceeded (post-bootstrap incident)
+
+Default `SVM_INGEST_CATCHUP_MAX_LAG_SLOTS=216000` (~24h at ~400ms/slot). After bootstrap completes, if `chain_head - last_contiguous_slot > window`:
 
 1. Service **stops advancing** the cursor.
-2. `/ready` returns **503** with JSON `{"incident":"catchup_window_exceeded","lagSlots":…,"maxLagSlots":…}`.
+2. `/ready` returns **503** with JSON carrying `bootstrapState`, `incident`, `lagSlots`, and `lastContiguousSlot`.
 3. Append `sequence_gap` refusal row(s) as applicable.
 
 **Operator recovery (do not silent deep-fetch):**
@@ -97,9 +105,25 @@ Default `SVM_INGEST_CATCHUP_MAX_LAG_SLOTS=216000` (~24h at ~400ms/slot). On star
 
 On start, `svm-ingest` runs [`src/svm-ingest/db/schema.sql`](../../src/svm-ingest/db/schema.sql) and [`src/svm-ingest/db/projection-schema.sql`](../../src/svm-ingest/db/projection-schema.sql), then **asserts** the live `metadata_snapshot` form: CHECK `metadata_snapshot_digest_status_ck` and partial unique index `metadata_snapshot_captured_uri_digest_uidx` must exist. `CREATE TABLE IF NOT EXISTS` does not reshape a table created before that form — bootstrap refuses by name and tells you to drop `kargain_svm_raw.metadata_snapshot` (or schema `kargain_svm_raw`) on that database, then restart. Same Postgres instance as Ponder; separate schema names.
 
-### S9-B obligation
+### S9-B enable / rollback
 
-When Solana joins `COMMERCIAL_ACTIVE` (**after** S9-A EVM reindex and S9-0 Devnet six-program evidence): enable `svm-ingest` in VPS compose, set `SOLANA_RPC_URL` + evidence paths, smoke `/live` + `/ready`, bootstrap **`kargain_svm_projection`** (inline on ingest or `rebuildProjectionFromRaw`). Do **not** re-run `ponder-reindex.sql` solely to enable SVM.
+Enable:
+
+1. `git pull origin master`
+2. Confirm `deployments/svm-40168.json` exists on the host and `SOLANA_RPC_URL` matches the endpoint you intend `svm-ingest` to use.
+3. `docker compose build svm-ingest`
+4. `docker compose up -d --force-recreate svm-ingest`
+5. `curl -s http://127.0.0.1:42100/live`
+6. `curl -s http://127.0.0.1:42100/ready | python3 -m json.tool`
+7. Wait for `/ready` to flip from `{"bootstrapState":"historical_backfill", ...}` to `{"status":"ready", "bootstrapState":null, ...}`.
+8. Run `pnpm svm-projection:replay-digest`.
+
+Rollback (canonical detail: [ops/deploys/s9-b-solana-cutover.md](../ops/deploys/s9-b-solana-cutover.md)):
+
+1. `docker compose stop svm-ingest`
+2. Revert the cutover commit if product-side Solana reachability must close immediately.
+3. **`kargain_svm_raw` is never dropped as part of rollback** (same for `kargain_svm_projection`). Ponder reindex does not own those schemas.
+4. A later intentional rebuild (drop both SVM schemas, restart from evidence `min(deploySlot)`) is a new enable — not rollback.
 
 
 ### Recommended VPS `.env` (Nuclear steady state)

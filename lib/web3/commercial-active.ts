@@ -21,6 +21,7 @@
 import {
   isReservedNonEvmNamespace,
   mintKargainNamespace,
+  namespaceFromLayerZeroEid,
   type KargainNamespace,
 } from "@/lib/web3/kargain-namespace";
 import {
@@ -132,15 +133,13 @@ export type SvmCommercialActiveStack = {
   ascendingConsignmentImpl?: string;
   /** LayerZero EndpointV2 program id (base58). */
   layerZeroEndpoint: string;
-  platformRecipient: string;
+  platformRecipient?: string;
   deployer: string;
   upgradeAuthority: string;
-  /** Start cursor: EVM = block; SVM = slot (`indexFromSlot` in evidence). */
-  indexFromBlock: number;
   blocks: CommercialActiveBlocks;
 };
 
-/** Discriminated commercial stack — live registry is EVM-only until S9-B. */
+/** Discriminated commercial stack — EVM and SVM rows share one registry. */
 export type CommercialActiveStack = EvmCommercialActiveStack | SvmCommercialActiveStack;
 
 /**
@@ -152,6 +151,8 @@ export type CommercialRegistry = Readonly<
 >;
 
 const ETH_NATIVE_UNIT = mintCommercialNativeUnit("ETH", 18);
+const SOL_NATIVE_UNIT = mintCommercialNativeUnit("SOL", 9);
+const SOLANA_DEVNET_NAMESPACE = namespaceFromLayerZeroEid(40168);
 
 /** Base Sepolia — Nuclear #7 August 29, 2026 (SPEC I.9.1); S9-A cutover. */
 const BASE_SEPOLIA_84532 = {
@@ -227,6 +228,28 @@ const ETHEREUM_SEPOLIA_11155111 = {
   },
 } as const satisfies EvmCommercialActiveStack;
 
+/** Solana Devnet — S9-B live commercial row, derived from deployments/svm-40168.json. */
+const SOLANA_DEVNET_40168 = {
+  vm: "svm",
+  namespace: mintKargainNamespace(SOLANA_DEVNET_NAMESPACE),
+  nativeUnit: SOL_NATIVE_UNIT,
+  explorerBaseUrl: mintExplorerOrigin("https://explorer.solana.com"),
+  karPassport: "ArvcryxBL1mP44Vo4MoK1FE3YCnNG8JdVa3iTKxgWnTQ",
+  karProPass: "4TE2kf7N4F43ab1436KA71ZwKKokdGt7ANRDbreWbnHr",
+  karProStaking: "8tts6h74Uos5FuUJMEQ8uQd5oPXfKZ41Xfid9D6iZvXY",
+  usdc: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+  nativeFeed: "",
+  timelock: "65Qmw9zhpkjxJApmFngx3dxmGo2KiZ4kyJycLsWh4gU9",
+  forfeitRecipient: "HPP7frMzYC87FsznTF48969TRsnzDMAe9RUuvzgSGprE",
+  bridgeGateway: "9ugwozoJteH4D5XQmwvprevsZ6uWLoHEcWZWeVbDn693",
+  fixedPriceConsignment: "HmKV5QEVQLdpCiyQAvP4dpqPDBUedi35RSCcWL5XTxyu",
+  ascendingConsignment: "HMGnyNMFNi9Rjakrch3iAfmoNWRFK7DEBzsEyLiQNt74",
+  layerZeroEndpoint: "76y77prsiCMvXMjuoZ5VRrhG5qYBrUMYTE5WgHqgjEn6",
+  deployer: "65Qmw9zhpkjxJApmFngx3dxmGo2KiZ4kyJycLsWh4gU9",
+  upgradeAuthority: "65Qmw9zhpkjxJApmFngx3dxmGo2KiZ4kyJycLsWh4gU9",
+  blocks: {},
+} as const satisfies SvmCommercialActiveStack;
+
 /** EIP-155 ids of committed commercial EVM stacks — sole allowlist for tooling. */
 export type CommercialChainId =
   | typeof BASE_SEPOLIA_84532.chainId
@@ -234,12 +257,13 @@ export type CommercialChainId =
 
 /**
  * Active commercial protocol stacks. Key = namespace (EIP-155 for EVM rows).
- * Type admits SVM rows; live map is EVM-only until S9-B.
+ * Live map includes the committed EVM stacks plus the Solana Devnet commercial row.
  * Do not reuse addresses across namespaces (SPEC §I.12.12).
  */
 export const COMMERCIAL_ACTIVE: CommercialRegistry = {
   [BASE_SEPOLIA_84532.chainId]: BASE_SEPOLIA_84532,
   [ETHEREUM_SEPOLIA_11155111.chainId]: ETHEREUM_SEPOLIA_11155111,
+  [SOLANA_DEVNET_NAMESPACE]: SOLANA_DEVNET_40168,
 };
 
 /**

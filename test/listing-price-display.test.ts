@@ -164,9 +164,9 @@ describe("toAskingDisplaySource", () => {
 describe("askingUsdcFacts", () => {
   it("covers every COMMERCIAL_ACTIVE USDC address with USDC identity decimals", () => {
     const facts = askingUsdcFacts();
-    const committed = Object.values(COMMERCIAL_ACTIVE).map((s) =>
-      s.usdc.toLowerCase(),
-    );
+    const committed = Object.values(COMMERCIAL_ACTIVE)
+      .filter((s) => s.vm === "evm")
+      .map((s) => s.usdc.toLowerCase());
     assert.deepEqual(
       facts.map((f) => f.address.toLowerCase()).sort(),
       [...committed].sort(),

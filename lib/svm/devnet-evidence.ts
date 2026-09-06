@@ -26,8 +26,14 @@ export type SvmDevnetPathwayPeers = {
 export type SvmDevnetEvidence = {
   cluster: string;
   eid: number;
+  rpcUrl?: string;
   /** Commercial / ingest namespace — confirmable by SVM_INGEST_NAMESPACE. */
   namespace?: number;
+  layerZeroEndpoint?: string;
+  deployerPubkey?: string;
+  gatewayConfigAuthority?: string;
+  forfeitRecipient?: string;
+  upgradeAuthority?: string;
   /**
    * Optional annotation only — ingest ignores this.
    * Follow cursor = min(programs[k].deploySlot) over the six commercial keys.

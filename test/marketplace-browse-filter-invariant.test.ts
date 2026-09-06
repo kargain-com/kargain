@@ -182,9 +182,9 @@ describe("marketplace browse filter invariant", () => {
     );
 
     const facts = askingUsdcFacts();
-    const committed = Object.values(COMMERCIAL_ACTIVE).map((s) =>
-      s.usdc.toLowerCase(),
-    );
+    const committed = Object.values(COMMERCIAL_ACTIVE)
+      .filter((s) => s.vm === "evm")
+      .map((s) => s.usdc.toLowerCase());
     assert.deepEqual(
       facts.map((f) => f.address.toLowerCase()).sort(),
       [...committed].sort(),

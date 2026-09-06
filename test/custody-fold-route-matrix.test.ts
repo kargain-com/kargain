@@ -111,6 +111,14 @@ const REGISTRY: MatrixCase[] = [
     namespaces: [HUB, SPOKE, FIXTURE_NAMESPACE],
     expected: { status: "unresolved", cause: "unknown_namespace" },
   },
+  {
+    name: "case 5 — live Solana namespace removes unknown_namespace for the same departure",
+    tokenId: hubToken,
+    streamB: [ev(hubToken, HUB, "native_mint", 100, 0)],
+    crossings: [x(hubToken, "sent", HUB, guidB, 200, 0, FIXTURE_NAMESPACE)],
+    namespaces: [HUB, SPOKE, FIXTURE_NAMESPACE],
+    expected: { status: "unresolved", cause: "departure_without_arrival" },
+  },
 ];
 
 describe("custody fold route matrix", () => {

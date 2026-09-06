@@ -6,6 +6,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 
 export type HealthSnapshot = {
   ready: boolean;
+  bootstrapState: string | null;
   incident: string | null;
   lagSlots: number;
   lastContiguousSlot: number;
@@ -29,6 +30,7 @@ export function createSvmIngestHealthServer(args: {
       res.end(
         JSON.stringify({
           status: snap.ready ? "ready" : "not_ready",
+          bootstrapState: snap.bootstrapState,
           incident: snap.incident,
           lagSlots: snap.lagSlots,
           lastContiguousSlot: snap.lastContiguousSlot,

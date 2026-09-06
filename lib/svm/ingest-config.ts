@@ -138,8 +138,8 @@ export function resolveIngestStartSlot(evidence: SvmDevnetEvidence): number {
 /**
  * One namespace truth: evidence.namespace, optionally confirmed by SVM_INGEST_NAMESPACE.
  * Env may fill when evidence has no namespace; disagreeing values refuse by name.
- * After a Solana COMMERCIAL_ACTIVE row exists, equality must also hold with the
- * registry (S9-B) — not implemented here.
+ * COMMERCIAL_ACTIVE may mirror the same namespace, but it must not become a second
+ * runtime source for the ingest cursor or namespace.
  */
 export function resolveIngestNamespace(evidence: SvmDevnetEvidence): number {
   const envRaw = process.env.SVM_INGEST_NAMESPACE?.trim();

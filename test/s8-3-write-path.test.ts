@@ -67,7 +67,7 @@ describe("txWriteAvailability", () => {
     }
   });
 
-  it("allows SVM session only through an injected mixed registry fixture", () => {
+  it("allows SVM session through both injected and live commercial registries", () => {
     const r = txWriteAvailability(
       {
         status: "connected",
@@ -91,7 +91,11 @@ describe("txWriteAvailability", () => {
       },
       FIXTURE_SVM_NAMESPACE,
     );
-    assert.deepEqual(live, { available: false, cause: "unresolved_namespace" });
+    assert.deepEqual(live, {
+      available: true,
+      vm: "svm",
+      namespace: FIXTURE_SVM_NAMESPACE,
+    });
   });
 
   it("does not invent a commercial stack for an unknown chainId", () => {

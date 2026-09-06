@@ -39,6 +39,5 @@ export const FIXTURE_SVM_STACK = {
   forfeitRecipient: "11111111111111111111111111111115",
   deployer: "11111111111111111111111111111113",
   upgradeAuthority: "11111111111111111111111111111114",
-  indexFromBlock: 0,
   blocks: {},
 } as const satisfies SvmCommercialActiveStack;

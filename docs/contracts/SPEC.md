@@ -599,12 +599,13 @@ Default **0.01 ETH** exact bond on `open` (non-zero; Timelock-gated after Nuclea
 |---------|---------|---------------|------------------------------|--------|
 | Base Sepolia | 84532 | `84532 << 128` | USD | Deployed (Nuclear #7) — [I.9.1](#i91-active-deployment-base-sepolia-84532) |
 | Ethereum Sepolia | 11155111 | `11155111 << 128` | USD | Deployed (Nuclear #7) — [I.9.2](#i92-active-deployment-ethereum-sepolia-11155111) |
+| Solana Devnet | `2_000_040_168` | reserved namespace from EID 40168 | USDC asset, SOL native | Deployed (S9-B) — [I.9.3](#i93-active-deployment-solana-devnet-2000040168) |
 | Polygon Amoy | 80002 | `80002 << 128` | USD | Planned |
 | Base | 8453 | `8453 << 128` | USD, EUR, GBP, CAD, AUD | Planned mainnet |
 | Ethereum | 1 | `1 << 128` | TBD feeds | Planned |
 | Polygon | 137 | `137 << 128` | TBD feeds | Planned |
 
-Historical v1.x / pre-Nuclear addresses: [Part II.4](#ii4-historical-deployment-base-sepolia-84532). **Nuclear #7 / S9-A** September 2026 — committed `COMMERCIAL_ACTIVE` cutover on branch; production Ponder reindex from hub `indexFromBlock` **46119704** and Eth **11591966** at Merge. Nuclear #4 (**44957457** / **11404204**) denylisted.
+Historical v1.x / pre-Nuclear addresses: [Part II.4](#ii4-historical-deployment-base-sepolia-84532). **Nuclear #7 / S9-B** September 2026 — committed `COMMERCIAL_ACTIVE` cutover on branch; Ponder start blocks hub **46119704** and Eth **11591966**. Solana Devnet enters the same registry as namespace **2000040168**; its ingest start slot remains deploy evidence `min(programs.*.deploySlot)`, not a second registry cursor field. Nuclear #4 (**44957457** / **11404204**) denylisted.
 
 ### I.9.1 Active deployment (Base Sepolia 84532)
 
@@ -684,6 +685,14 @@ Nuclear #7 / S9-A cutover September 2026 · KarPassport **`1.11.0-rc.1`** · Fix
 `pathwayConfigHash` is an off-chain digest of the applied-config object. **Founder ops (S9-A):** `pnpm bridge:wire` for N7 hub↔eth peers **before** Merge, then `pnpm bridge:wire:read-only` PASS · `pnpm smoke:bridge`.
 
 **Ops:** `pnpm bridge:wire:read-only` (recurring §7.6 audit) · `pnpm smoke:bridge` · `pnpm verify:sepolia:eth` · Nuclear #7 runbook: [ops/deploys/nuclear-7.md](../ops/deploys/nuclear-7.md) · security policy: [§7.6](#76-layerzero-security-configuration).
+
+### I.9.3 Active deployment (Solana Devnet 2000040168)
+
+> **Single source of truth** for the live Solana commercial row in `COMMERCIAL_ACTIVE`. Program ids and deploy-slot evidence live in `deployments/svm-40168.json`; ingest start slot is `min(programs.*.deploySlot)` via `resolveIngestStartSlot()`, not a registry field.
+
+S9-B cutover September 2026 · KarPassport `Arvcryx…WnTQ` · KarProPass `4TE2kf…bnHr` · KarProStaking `8tts6h…ZvXY` · FixedPrice `HmKV5Q…XTxyu` · Ascending `HMGnyN…QNt74` · Gateway `9ugwoz…n693` · namespace **2000040168** · EID **40168** · USDC **Circle Devnet** `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU` · native unit **SOL/9** · native USD feed absent by design · deployer/upgrade authority/timelock all `65Qmw9zhpkjxJApmFngx3dxmGo2KiZ4kyJycLsWh4gU9` through S9 · forfeit recipient `HPP7frMzYC87FsznTF48969TRsnzDMAe9RUuvzgSGprE`.
+
+**Operational note:** `svm-ingest` must prove startup retention on the configured `SOLANA_RPC_URL` before first catch-up. `/ready` stays **503** during bootstrap backfill and during named incidents; `catchup_window_exceeded` applies only after bootstrap has completed.
 
 ---
 
@@ -922,7 +931,7 @@ Extends §12.5 / §12.8. Three classes:
 
 Extends §12.1 routing; amends §7.6 allowlist wording.
 
-- Hub: EID **40245** (Base Sepolia). Spokes: **40161** (Ethereum Sepolia), **40168** (Solana Devnet — S4b COMPLETE; no commercial registry row until S9).
+- Hub: EID **40245** (Base Sepolia). Spokes: **40161** (Ethereum Sepolia), **40168** (Solana Devnet — S4b pathway live; commercial namespace active at S9-B).
 - Spoke↔spoke peers **forbidden**.
 - Spoke↔spoke transfer = **two user transactions**: spoke A → hub, then hub → spoke B. UI MUST present two hops. §12.2 holds at every step: after hop 1 usable instance is on the hub; after hop 2 on spoke B; never two usable instances.
 - Required-DVN sets and confirmations are **per pathway** (minimum 2 independent operators on testnet; 3–5 on mainnet per §7.6). A new pathway’s operator set is chosen from the pinned snapshot for **both** ends — never copied from an existing pathway. A pathway whose snapshot does not expose two independent DVNs present at both ends is refused; the 1-of-1 prohibition admits **no** non-EVM exception (§7.6 + §13.13).

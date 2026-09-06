@@ -71,6 +71,10 @@ describe("svm raw replay digest", () => {
         rpcCalls += 1;
         throw new Error("chain access removed");
       },
+      async getFirstAvailableBlock() {
+        rpcCalls += 1;
+        throw new Error("chain access removed");
+      },
       async getBlock() {
         rpcCalls += 1;
         throw new Error("chain access removed");

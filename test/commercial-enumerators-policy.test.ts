@@ -65,17 +65,17 @@ describe("commercial enumerators (S9 Unit1)", () => {
     }
   });
 
-  it("commercialSvmNamespaceIds empty while registry is EVM-only", () => {
-    assert.deepEqual([...commercialSvmNamespaceIds()], []);
+  it("commercialSvmNamespaceIds lists the live Solana namespace row", () => {
+    assert.deepEqual([...commercialSvmNamespaceIds()], [SOLANA_NS]);
   });
 
-  it("registeredCommercialNamespaceIds equals EVM namespaces today", () => {
-    assert.deepEqual([...registeredCommercialNamespaceIds()], [84532, 11155111]);
+  it("registeredCommercialNamespaceIds includes EVM plus the live Solana namespace", () => {
+    assert.deepEqual([...registeredCommercialNamespaceIds()], [84532, 11155111, SOLANA_NS]);
   });
 
-  it("isCommercialEip155Id is false for reserved SVM namespace; isCommercialNamespace needs a row", () => {
+  it("isCommercialEip155Id stays false for reserved SVM namespace; isCommercialNamespace is now live", () => {
     assert.equal(isCommercialEip155Id(SOLANA_NS), false);
-    assert.equal(isCommercialNamespace(SOLANA_NS), false);
+    assert.equal(isCommercialNamespace(SOLANA_NS), true);
   });
 
   it("planted (a)(b): product commercialEip155Ids filters SVM; predicates diverge", () => {

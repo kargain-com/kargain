@@ -71,7 +71,7 @@
     "test:e2e": "KARGAIN_E2E_LOCAL=1 node --import tsx --test --test-concurrency=1 test/e2e-local.test.ts",
     "test:svm": "cargo test --manifest-path svm/Cargo.toml",
     "test:svm-stand": "NODE_PATH=svm/lab/node_modules node --import tsx --test --test-concurrency=1 test/svm-stand.test.ts",
-    "test:svm-ingest": "node --import tsx --test test/svm-log-invoke-stack.test.ts test/svm-raw-ingest-refusal.test.ts test/svm-raw-ordering.test.ts test/svm-raw-replay.test.ts test/svm-event-payload-decode.test.ts test/svm-projection-replay.test.ts test/svm-metadata-snapshot-policy.test.ts test/svm-metadata-snapshot-raw.test.ts test/svm-metadata-snapshot-sentinel-pg.test.ts",
+    "test:svm-ingest": "node --import tsx --test test/svm-log-invoke-stack.test.ts test/svm-raw-ingest-refusal.test.ts test/svm-raw-ordering.test.ts test/svm-raw-replay.test.ts test/svm-ingest-loop.test.ts test/svm-event-payload-decode.test.ts test/svm-projection-replay.test.ts test/svm-metadata-snapshot-policy.test.ts test/svm-metadata-snapshot-raw.test.ts test/svm-metadata-snapshot-sentinel-pg.test.ts",
     "deploy:svm:dry-run": "node --import tsx scripts/svm-deploy.ts --dry-run",
     "deploy:svm": "node --import tsx scripts/svm-deploy.ts --live",
     "verify:bytecode-identity": "node --import tsx scripts/assert-on-chain-bytecode.ts",

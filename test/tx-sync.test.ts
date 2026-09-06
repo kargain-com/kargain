@@ -1084,20 +1084,26 @@ describe("runWriteLifecycle dispatcher", () => {
     });
   });
 
-  it("live product registry cannot dispatch the dark SVM arm", async () => {
-    await assert.rejects(
-      () =>
-        runWriteLifecycle({
-          account: fixtureSvmAccount(),
-          chainId: FIXTURE_SVM_NAMESPACE,
-          config: { wagmiConfig: undefined as never },
-          switchChain: async () => undefined,
-          writeFn: async () => "svm-signature-1",
-          fetchIndexerStatus: async () => ({ ok: true, blockNumber: 1 }),
-          wait: async () => undefined,
-        }),
-      /This network is not available for commercial writes\./,
-    );
+  it("live product registry now dispatches the SVM arm without fixture-only injection", async () => {
+    const result = await runWriteLifecycle({
+      account: fixtureSvmAccount(),
+      chainId: FIXTURE_SVM_NAMESPACE,
+      config: { wagmiConfig: undefined as never },
+      switchChain: async () => undefined,
+      writeFn: async () => "svm-signature-1",
+      fetchIndexerStatus: async () => ({ ok: true, blockNumber: 1 }),
+      wait: async () => undefined,
+      createConfirmPort: () => ({
+        confirmSignature: async (signature) => ({ signature, slot: 1n }),
+      }),
+      fetchStructuredPayloads: async () => [],
+    });
+
+    assert.equal(result.writeReference, "svm-signature-1");
+    assert.deepEqual(result.indexerBarrier, {
+      status: "unavailable",
+      cause: "svm_ingest_unavailable",
+    });
   });
 
   it("keeps EVM lagging distinct from SVM barrier unavailable", async () => {

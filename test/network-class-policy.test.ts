@@ -255,8 +255,14 @@ describe("namespace ∩ EIP-155 non-collision (SPEC §13.1)", () => {
       assert.ok(eip155Set.has(stack.chainId));
     }
     for (const key of Object.keys(COMMERCIAL_ACTIVE).map(Number)) {
-      assert.ok(eip155Set.has(key), `registry key ${key} is not a commercial EIP-155`);
-      assert.equal(eip155Of(key), key);
+      const stack = COMMERCIAL_ACTIVE[key]!;
+      if (stack.vm === "evm") {
+        assert.ok(eip155Set.has(key), `registry key ${key} is not a commercial EIP-155`);
+        assert.equal(eip155Of(key), key);
+        continue;
+      }
+      assert.equal(key, Number(stack.namespace));
+      assert.equal(eip155Set.has(key), false);
     }
   });
 });

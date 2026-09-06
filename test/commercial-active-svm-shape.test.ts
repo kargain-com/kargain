@@ -1,6 +1,5 @@
 /**
- * S4a T3 — SVM commercial stack shape + fail-closed reserved namespace.
- * No live Solana row in COMMERCIAL_ACTIVE.
+ * S4a T3 / S9-B final — SVM commercial stack shape + live reserved namespace row.
  * S8-1: shape probe lives in test/fixtures/commercial-svm-stack.ts.
  */
 import assert from "node:assert/strict";
@@ -39,21 +38,20 @@ describe("commercial-active SVM shape (S4a T3)", () => {
     );
   });
 
-  it("live registry stays EVM-only — no Solana row", () => {
-    assert.equal(commercialActive(SOLANA_DEVNET_NAMESPACE), undefined);
+  it("live registry now includes the Solana reserved namespace row", () => {
+    const stack = commercialActive(SOLANA_DEVNET_NAMESPACE);
+    assert.ok(stack);
+    assert.equal(stack?.vm, "svm");
     assert.equal(isCommercialEip155Id(SOLANA_DEVNET_NAMESPACE), false);
-    assert.equal(isCommercialNamespace(SOLANA_DEVNET_NAMESPACE), false);
-    assert.ok(!(SOLANA_DEVNET_NAMESPACE in COMMERCIAL_ACTIVE));
-    for (const stack of Object.values(COMMERCIAL_ACTIVE)) {
-      assert.equal(stack.vm, "evm");
-    }
+    assert.equal(isCommercialNamespace(SOLANA_DEVNET_NAMESPACE), true);
+    assert.ok(SOLANA_DEVNET_NAMESPACE in COMMERCIAL_ACTIVE);
   });
 
-  it("reserved namespace without a row fails closed by name", () => {
-    assert.throws(
-      () => requireCommercialActive(SOLANA_DEVNET_NAMESPACE),
-      /no SVM row for reserved namespace 2000040168/,
-    );
+  it("reserved namespace resolves to the live SVM stack", () => {
+    const stack = requireCommercialActive(SOLANA_DEVNET_NAMESPACE);
+    assert.equal(stack.vm, "svm");
+    assert.equal(Number(stack.namespace), SOLANA_DEVNET_NAMESPACE);
+    assert.equal("indexFromBlock" in stack, false);
   });
 
   it("unknown non-reserved chain keeps the generic missing message", () => {

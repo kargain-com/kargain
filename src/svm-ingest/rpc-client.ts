@@ -17,6 +17,7 @@ export type FetchedBlockTransaction = {
 
 export type SvmRpcClient = {
   getSlot: () => Promise<number>;
+  getFirstAvailableBlock: () => Promise<number>;
   getBlock: (slot: number) => Promise<FetchedBlock | null>;
 };
 
@@ -25,6 +26,9 @@ export function createSolanaRpcClient(rpcUrl: string): SvmRpcClient {
   return {
     async getSlot() {
       return connection.getSlot("confirmed");
+    },
+    async getFirstAvailableBlock() {
+      return connection.getFirstAvailableBlock();
     },
     async getBlock(slot) {
       const block = await connection.getBlock(slot, {

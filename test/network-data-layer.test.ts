@@ -1,6 +1,6 @@
 /**
- * S8-1 network-class data owners — explorer, icon, native unit, FX/storage.
- * Proved against live EVM stacks + tests-only SVM fixture.
+ * S8-1 / S9-B network-class data owners — explorer, icon, native unit, FX/storage.
+ * Proved against live EVM stacks + live Solana row + tests-only SVM fixture.
  */
 
 import assert from "node:assert/strict";
@@ -90,9 +90,10 @@ describe("network data layer (S8-1)", () => {
     );
   });
 
-  it("live registry still has no Solana row", () => {
+  it("live registry now includes both EVM and SVM rows", () => {
+    const vms = new Set(Object.values(COMMERCIAL_ACTIVE).map((stack) => stack.vm));
+    assert.deepEqual(vms, new Set(["evm", "svm"]));
     for (const stack of Object.values(COMMERCIAL_ACTIVE)) {
-      assert.equal(stack.vm, "evm");
       assert.ok(stack.explorerBaseUrl.length > 0);
     }
   });

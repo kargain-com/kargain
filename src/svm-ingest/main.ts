@@ -81,6 +81,7 @@ async function main(): Promise<void> {
       const s = loop.getState();
       return {
         ready: loop.isReady(),
+        bootstrapState: s.bootstrapState,
         incident: s.catchupIncident,
         lagSlots: s.lagSlots,
         lastContiguousSlot: s.lastContiguousSlot,

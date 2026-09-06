@@ -11,7 +11,13 @@ export const INGEST_REFUSAL_KINDS = [
 
 export type IngestRefusalKind = (typeof INGEST_REFUSAL_KINDS)[number];
 
-export type CatchupIncident = "catchup_window_exceeded";
+export const BOOTSTRAP_CATCHUP_STATES = ["historical_backfill"] as const;
+export type BootstrapCatchupState = (typeof BOOTSTRAP_CATCHUP_STATES)[number];
+
+export type CatchupIncident =
+  | "catchup_window_exceeded"
+  | "sequence_gap"
+  | "startup_retention_unavailable";
 
 export function structuredPayloadRowId(args: {
   namespace: number;

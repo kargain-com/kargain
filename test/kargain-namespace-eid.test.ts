@@ -19,9 +19,10 @@ describe("commercialNamespaceFromLayerZeroEid", () => {
     if (result.ok) assert.equal(Number(result.namespace), 11155111);
   });
 
-  it("40168 (SVM Devnet EID) refuses without COMMERCIAL_ACTIVE row", () => {
+  it("40168 (SVM Devnet EID) resolves to the live commercial namespace", () => {
     const result = commercialNamespaceFromLayerZeroEid(40168);
-    assert.deepEqual(result, { ok: false, reason: "unknown_endpoint_id" });
+    assert.equal(result.ok, true);
+    if (result.ok) assert.equal(Number(result.namespace), 2_000_040_168);
   });
 
   it("unknown EID refuses with named reason", () => {

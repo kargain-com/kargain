@@ -5,7 +5,11 @@
 import { metadataSnapshotsForPayloads } from "../../lib/svm/ingest-metadata-capture.js";
 import type { MetadataFetcher } from "../../lib/svm/capture-metadata-at-ingest.js";
 import type { FollowedProgram } from "../../lib/svm/ingest-config.js";
-import { ingestRefusalRowId } from "../../lib/svm/ingest-refusal.js";
+import {
+  ingestRefusalRowId,
+  type BootstrapCatchupState,
+  type CatchupIncident,
+} from "../../lib/svm/ingest-refusal.js";
 import { parseTransactionForIngest } from "../../lib/svm/parse-transaction-ingest.js";
 import type { SvmRawWriter } from "../lib/svm-raw-writer.js";
 import type { ProjectionProjector } from "./projection-projector.js";
@@ -14,7 +18,8 @@ import type { SvmRpcClient } from "./rpc-client.js";
 export type IngestLoopState = {
   namespace: number;
   lastContiguousSlot: number;
-  catchupIncident: string | null;
+  bootstrapState: BootstrapCatchupState | null;
+  catchupIncident: CatchupIncident | null;
   lagSlots: number;
 };
 
@@ -35,26 +40,41 @@ export function createIngestLoop(opts: IngestLoopOptions) {
   let state: IngestLoopState = {
     namespace: opts.namespace,
     lastContiguousSlot: opts.startSlot - 1,
+    bootstrapState: "historical_backfill",
     catchupIncident: null,
     lagSlots: 0,
   };
+
+  function nextRequiredSlot(): number {
+    return state.lastContiguousSlot + 1;
+  }
+
+  async function persistCursor(): Promise<void> {
+    await opts.writer.upsertCursor({
+      namespace: opts.namespace,
+      lastContiguousSlot: state.lastContiguousSlot,
+      bootstrapState: state.bootstrapState,
+      catchupIncident: state.catchupIncident,
+    });
+  }
 
   async function initCursor(): Promise<void> {
     const existing = await opts.writer.getCursor(opts.namespace);
     if (existing) {
       state.lastContiguousSlot = existing.lastContiguousSlot;
+      state.bootstrapState = existing.bootstrapState;
       state.catchupIncident = existing.catchupIncident;
       return;
     }
-    await opts.writer.upsertCursor({
-      namespace: opts.namespace,
-      lastContiguousSlot: opts.startSlot - 1,
-      catchupIncident: null,
-    });
+    await persistCursor();
     state.lastContiguousSlot = opts.startSlot - 1;
   }
 
   async function checkCatchupWindow(headSlot: number): Promise<boolean> {
+    if (state.bootstrapState) {
+      state.lagSlots = headSlot - state.lastContiguousSlot;
+      return true;
+    }
     const lag = headSlot - state.lastContiguousSlot;
     state.lagSlots = lag;
     if (lag <= opts.maxLagSlots) return true;
@@ -86,12 +106,48 @@ export function createIngestLoop(opts: IngestLoopOptions) {
         lastContiguousSlot: state.lastContiguousSlot,
       },
     });
-    await opts.writer.upsertCursor({
-      namespace: opts.namespace,
-      lastContiguousSlot: state.lastContiguousSlot,
-      catchupIncident: state.catchupIncident,
-    });
+    await persistCursor();
     return false;
+  }
+
+  async function assertStartupRetention(headSlot: number): Promise<void> {
+    const requiredSlot = nextRequiredSlot();
+    if (requiredSlot > headSlot) return;
+    const firstAvailableBlock = await opts.rpc.getFirstAvailableBlock();
+    if (requiredSlot >= firstAvailableBlock) return;
+
+    state.catchupIncident = "startup_retention_unavailable";
+    halted = true;
+    const detailKey = `required:${requiredSlot}:first:${firstAvailableBlock}`;
+    await opts.writer.insertIngestRefusal({
+      id: ingestRefusalRowId({
+        namespace: opts.namespace,
+        refusalKind: "sequence_gap",
+        slot: requiredSlot,
+        txSignature: null,
+        logIndex: null,
+        detailKey,
+      }),
+      namespace: opts.namespace,
+      refusalKind: "sequence_gap",
+      slot: requiredSlot,
+      txIndexInBlock: null,
+      logIndex: null,
+      txSignature: null,
+      emittingProgram: null,
+      discriminator: null,
+      detail: {
+        incident: "startup_retention_unavailable",
+        reason: "required_slot_before_first_available_block",
+        requiredSlot,
+        firstAvailableBlock,
+        headSlot,
+      },
+    });
+    await persistCursor();
+    throw new Error(
+      `svm-ingest RPC retention unavailable: required slot ${requiredSlot} is before first available block ${firstAvailableBlock}`,
+    );
   }
 
   async function ingestSlot(slot: number): Promise<void> {
@@ -119,11 +175,7 @@ export function createIngestLoop(opts: IngestLoopOptions) {
       });
       state.catchupIncident = "sequence_gap";
       halted = true;
-      await opts.writer.upsertCursor({
-        namespace: opts.namespace,
-        lastContiguousSlot: state.lastContiguousSlot,
-        catchupIncident: state.catchupIncident,
-      });
+      await persistCursor();
       return;
     }
 
@@ -152,21 +204,22 @@ export function createIngestLoop(opts: IngestLoopOptions) {
 
     state.lastContiguousSlot = slot;
     state.catchupIncident = null;
-    await opts.writer.upsertCursor({
-      namespace: opts.namespace,
-      lastContiguousSlot: slot,
-      catchupIncident: null,
-    });
+    await persistCursor();
   }
 
   async function catchUpToHead(): Promise<void> {
     const head = await opts.rpc.getSlot();
+    await assertStartupRetention(head);
     if (!(await checkCatchupWindow(head))) return;
 
-    let next = state.lastContiguousSlot + 1;
+    let next = nextRequiredSlot();
     while (next <= head && !halted) {
       await ingestSlot(next);
-      next = state.lastContiguousSlot + 1;
+      next = nextRequiredSlot();
+    }
+    if (!halted && state.bootstrapState && state.lastContiguousSlot >= head) {
+      state.bootstrapState = null;
+      await persistCursor();
     }
     state.lagSlots = head - state.lastContiguousSlot;
   }
@@ -175,7 +228,7 @@ export function createIngestLoop(opts: IngestLoopOptions) {
     if (halted) return;
     const head = await opts.rpc.getSlot();
     if (!(await checkCatchupWindow(head))) return;
-    const next = state.lastContiguousSlot + 1;
+    const next = nextRequiredSlot();
     if (next <= head) {
       await ingestSlot(next);
     }
@@ -184,10 +237,12 @@ export function createIngestLoop(opts: IngestLoopOptions) {
 
   return {
     initCursor,
+    assertStartupRetention,
     catchUpToHead,
     followOnce,
     getState: () => ({ ...state, halted }),
-    isReady: () => !halted && state.catchupIncident == null,
+    isReady: () =>
+      !halted && state.bootstrapState == null && state.catchupIncident == null,
   };
 }
 
@@ -231,6 +286,7 @@ export async function ingestBlockFromFixture(args: {
   await writer.upsertCursor({
     namespace,
     lastContiguousSlot: block.slot,
+    bootstrapState: null,
     catchupIncident: null,
   });
   return block.slot;

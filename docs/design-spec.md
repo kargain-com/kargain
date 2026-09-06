@@ -235,7 +235,7 @@ Implementation: [`components/shell/app-top-nav.tsx`](../components/shell/app-top
 | Role | Source | Use |
 |------|--------|-----|
 | **custody** | Ponder `custodyChain` | list / buy / auction / edit / bridge |
-| **wallet commercial** | connected wallet when in `COMMERCIAL_ACTIVE` | KarPro stake/fee, mint, verification pay |
+| **wallet commercial** | connected wallet when in `COMMERCIAL_ACTIVE` (EVM or SVM) | KarPro stake/fee, mint, verification pay |
 | **commercial union** | Account-kind OR over `COMMERCIAL_ACTIVE` (protocol / contract wallet probes) | Messaging **reachability** (`readAccountKindOnCommercialChains`), not KarPro stake. KarPro badge / Commons attester gate = membership **anyActive** via [`useKarProMembershipActive`](../hooks/use-kar-pro-membership-active.ts) / roster `karProAnyActive`. Commerce context passes explicit `chainId` membership. Showroom = URL `?chain=`. |
 | **urlExpected** | URL `?chain=` only when present + write-union | wrong-network prompt |
 | **origin** | `chainIdOf(tokenId)` / Ponder `chainId` | titles, id labels |
@@ -1058,7 +1058,7 @@ Cross-surface contract for the question "where does this passport live". Consume
 | `empty_history` | No custody events are recorded for this passport yet. |
 | `departure_without_arrival` | This passport left its last network and its arrival has not been recorded yet. |
 | `incomplete_crossing_link` | A crossing for this passport is recorded on one side only. |
-| `unknown_namespace` | The last network recorded for this passport is not one Kargain serves. |
+| `unknown_namespace` | The last network recorded for this passport is not one Kargain serves. Historical Solana Devnet crossings could show this before the S9-B registry row; after that cutover, the same path must resolve to a served-network custody state or a different named gap. |
 | `conflicting_determination` | Two networks claim this passport at the same time. |
 
 Each line is followed by the same consequence sentence: **Actions that depend on custody stay unavailable until the location resolves.** `unknown_namespace` instead reads: **This passport cannot be acted on from Kargain while its location is outside the served networks.**

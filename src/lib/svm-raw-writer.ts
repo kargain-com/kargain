@@ -4,6 +4,10 @@
 
 import type pg from "pg";
 
+import type {
+  BootstrapCatchupState,
+  CatchupIncident,
+} from "../../lib/svm/ingest-refusal.js";
 import type { MetadataSnapshotDraft } from "../../lib/svm/metadata-snapshot.js";
 import type {
   IngestRefusalDraft,
@@ -19,12 +23,14 @@ export type SvmRawWriter = {
   insertIngestRefusals: (rows: IngestRefusalDraft[]) => Promise<number>;
   getCursor: (namespace: number) => Promise<{
     lastContiguousSlot: number;
-    catchupIncident: string | null;
+    bootstrapState: BootstrapCatchupState | null;
+    catchupIncident: CatchupIncident | null;
   } | null>;
   upsertCursor: (args: {
     namespace: number;
     lastContiguousSlot: number;
-    catchupIncident: string | null;
+    bootstrapState: BootstrapCatchupState | null;
+    catchupIncident: CatchupIncident | null;
   }) => Promise<void>;
 };
 
@@ -124,9 +130,10 @@ export function createSvmRawWriter(pool: pg.Pool): SvmRawWriter {
     async getCursor(namespace) {
       const res = await pool.query<{
         last_contiguous_slot: string;
-        catchup_incident: string | null;
+        bootstrap_state: BootstrapCatchupState | null;
+        catchup_incident: CatchupIncident | null;
       }>(
-        `SELECT last_contiguous_slot, catchup_incident
+        `SELECT last_contiguous_slot, bootstrap_state, catchup_incident
          FROM kargain_svm_raw.ingest_cursor
          WHERE id = $1 AND namespace = $2`,
         ["default", namespace],
@@ -135,6 +142,7 @@ export function createSvmRawWriter(pool: pg.Pool): SvmRawWriter {
       if (!row) return null;
       return {
         lastContiguousSlot: Number(row.last_contiguous_slot),
+        bootstrapState: row.bootstrap_state,
         catchupIncident: row.catchup_incident,
       };
     },
@@ -142,16 +150,18 @@ export function createSvmRawWriter(pool: pg.Pool): SvmRawWriter {
     async upsertCursor(args) {
       await pool.query(
         `INSERT INTO kargain_svm_raw.ingest_cursor (
-          id, namespace, last_contiguous_slot, catchup_incident, updated_at
-        ) VALUES ($1,$2,$3,$4,now())
+          id, namespace, last_contiguous_slot, bootstrap_state, catchup_incident, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,now())
         ON CONFLICT (id) DO UPDATE SET
           last_contiguous_slot = EXCLUDED.last_contiguous_slot,
+          bootstrap_state = EXCLUDED.bootstrap_state,
           catchup_incident = EXCLUDED.catchup_incident,
           updated_at = now()`,
         [
           "default",
           args.namespace,
           args.lastContiguousSlot,
+          args.bootstrapState,
           args.catchupIncident,
         ],
       );
@@ -177,6 +187,7 @@ export class SvmRawSchemaFormError extends Error {
 const METADATA_SNAPSHOT_DIGEST_STATUS_CK = "metadata_snapshot_digest_status_ck";
 const METADATA_SNAPSHOT_CAPTURED_URI_DIGEST_UIDX =
   "metadata_snapshot_captured_uri_digest_uidx";
+const INGEST_CURSOR_BOOTSTRAP_STATE_COLUMN = "bootstrap_state";
 
 /**
  * Fail-closed: after DDL apply, the live catalog must carry the raw-sentinel
@@ -220,6 +231,20 @@ export async function assertSvmRawMetadataSnapshotForm(
   );
   if (!uidx.rows[0]?.ok) {
     missing.push(METADATA_SNAPSHOT_CAPTURED_URI_DIGEST_UIDX);
+  }
+
+  const bootstrapState = await pool.query<{ ok: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+       FROM information_schema.columns
+       WHERE table_schema = 'kargain_svm_raw'
+         AND table_name = 'ingest_cursor'
+         AND column_name = $1
+     ) AS ok`,
+    [INGEST_CURSOR_BOOTSTRAP_STATE_COLUMN],
+  );
+  if (!bootstrapState.rows[0]?.ok) {
+    missing.push(`ingest_cursor.${INGEST_CURSOR_BOOTSTRAP_STATE_COLUMN}`);
   }
 
   if (missing.length > 0) {

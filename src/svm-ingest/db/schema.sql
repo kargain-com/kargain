@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS kargain_svm_raw.ingest_cursor (
   id TEXT PRIMARY KEY,
   namespace INTEGER NOT NULL,
   last_contiguous_slot BIGINT NOT NULL,
+  bootstrap_state TEXT,
   catchup_incident TEXT,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

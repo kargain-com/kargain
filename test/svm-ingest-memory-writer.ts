@@ -6,6 +6,10 @@ import type {
   StructuredPayloadDraft,
 } from "../lib/svm/parse-transaction-ingest.js";
 import type { MetadataSnapshotDraft } from "../lib/svm/metadata-snapshot.js";
+import type {
+  BootstrapCatchupState,
+  CatchupIncident,
+} from "../lib/svm/ingest-refusal.js";
 import type { SvmRawWriter } from "../src/lib/svm-raw-writer.js";
 
 export function createMemorySvmRawWriter(): SvmRawWriter & {
@@ -16,8 +20,11 @@ export function createMemorySvmRawWriter(): SvmRawWriter & {
   const payloads: StructuredPayloadDraft[] = [];
   const metadataSnapshots: MetadataSnapshotDraft[] = [];
   const refusals: IngestRefusalDraft[] = [];
-  let cursor: { lastContiguousSlot: number; catchupIncident: string | null } | null =
-    null;
+  let cursor: {
+    lastContiguousSlot: number;
+    bootstrapState: BootstrapCatchupState | null;
+    catchupIncident: CatchupIncident | null;
+  } | null = null;
 
   return {
     payloads,
@@ -68,6 +75,7 @@ export function createMemorySvmRawWriter(): SvmRawWriter & {
       void args.namespace;
       cursor = {
         lastContiguousSlot: args.lastContiguousSlot,
+        bootstrapState: args.bootstrapState,
         catchupIncident: args.catchupIncident,
       };
     },

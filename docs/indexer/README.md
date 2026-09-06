@@ -8,7 +8,7 @@
 | [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md) | **Historical** | Nuclear #4 dual-chain (superseded by N7) |
 | [ops/deploys/archive/84532-v2.md](../ops/deploys/archive/84532-v2.md) | **Historical** | June 2026 v2 deploy + VPS cutover record |
 
-**Branch (Nuclear #7 / S9-A):** committed start blocks hub **46119704** / Eth **11591966**. **Live VPS until Merge:** Nuclear #4 **44957457** / **11404204**. **Browse Phase 1 live** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)): Vercel on `master` push; VPS reindex ASAP after schema. Smoke: `/read-path-ready`, `/consignments` (+ B1), payment-tokens, obligations, notifications. **S7b–c:** `bridge_crossing` + **`custody_determining_event`**; HTTP custody fold — **`custodyChain` | `custodyUnresolved`**. **S7c-1/2:** **`kargain_svm_raw`** + **`kargain_svm_projection`** — provenance UNION always includes SVM arm; apply empty [`projection-schema.sql`](../../src/svm-ingest/db/projection-schema.sql) before svm-ingest (S9-A). Physical EVM columns **snake_case**. **S9-A:** Ponder reindex only (`svm-ingest` off). **S9-B:** enable ingest after S9-0 ([OPERATIONS.md §S9](./OPERATIONS.md)).
+**Branch (Nuclear #7 / S9-B):** committed start blocks hub **46119704** / Eth **11591966** plus live Solana commercial namespace **2000040168**. **Browse Phase 1 live** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)): Vercel on `master` push; VPS reindex ASAP after schema. Smoke: `/read-path-ready`, `/consignments` (+ B1), payment-tokens, obligations, notifications. **S7b–c:** `bridge_crossing` + **`custody_determining_event`**; HTTP custody fold — **`custodyChain` | `custodyUnresolved`**. **S7c-1/2:** **`kargain_svm_raw`** + **`kargain_svm_projection`** — provenance UNION always includes SVM arm. Physical EVM columns **snake_case**. **S9-B:** `svm-ingest` startup now asserts RPC retention at the required cursor slot and reports first bootstrap separately from post-bootstrap lag incidents.
 
 ## SVM raw ingest (S7c-1)
 
@@ -16,7 +16,7 @@ Separate Node service — **not** inside the Ponder image. Append-only Postgres 
 
 | Item | Value |
 |------|--------|
-| Health | `GET /live` (liveness) · `GET /ready` (readiness; 503 on catch-up incident) on **:42100** |
+| Health | `GET /live` (liveness) · `GET /ready` (readiness; 503 during bootstrap catch-up, startup retention refusal, or post-bootstrap catch-up incident) on **:42100** |
 | Programs | Six production BPF slugs from S7a manifest (`kar-passport`, `kar-pro-staking`, `kar-pro-pass`, `kar-fixed-price`, `kar-ascending`, `kar-gateway`) — IDs from `deployments/svm-{eid}.json` |
 | Start slot | `min(programs.*.deploySlot)` over the six commercial programs in deploy evidence |
 | Ordering key | `(slot, tx_index_in_block, log_index)` — writer-local total order |
@@ -32,7 +32,7 @@ Materialized schema **`kargain_svm_projection`** — tables `passport_record`, `
 |------|--------|
 | Read owner | [`src/lib/ponder-passport-provenance.ts`](../../src/lib/ponder-passport-provenance.ts) — one `UNION ALL` SQL per call |
 | Union routes | `GET /passports/:tokenId` (`records[]`, `uriHistory[]`); `GET /verifiers/:address/attestations`; notifications owned-passport record loop |
-| Namespace filter | [`src/lib/ponder-read-namespaces.ts`](../../src/lib/ponder-read-namespaces.ts) `indexerReadNamespaceIds()` — commercial stacks plus localhost when `PONDER_ENABLE_LOCAL=1`. Unregistered SVM rows never surface. Query shape does **not** depend on a Solana `COMMERCIAL_ACTIVE` row. |
+| Namespace filter | [`src/lib/ponder-read-namespaces.ts`](../../src/lib/ponder-read-namespaces.ts) `indexerReadNamespaceIds()` — commercial stacks plus localhost when `PONDER_ENABLE_LOCAL=1`. Query shape does **not** depend on adding or removing a Solana `COMMERCIAL_ACTIVE` row. |
 | Replay proof | `pnpm svm-projection:replay-digest` (requires `SVM_INGEST_RPC_URL` unset) |
 
 **S7c-2 non-goals:** no `passport` entity UNION; no custody fold; no production VPS action until **S9**.

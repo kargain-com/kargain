@@ -12,12 +12,14 @@ import { after, before, describe, it } from "node:test";
 
 import {
   assertAllCommercialActiveMatchManifests,
+  assertCommercialActiveSvmMatchesEvidence,
   assertCommercialActiveMatchesManifest,
 } from "../scripts/lib/assert-commercial-active-manifest.ts";
 import { deploymentPathForChain } from "../scripts/lib/load-deployment.ts";
 
 const HUB = 84532;
 const ETH = 11155111;
+const SVM_EVIDENCE = "svm-40168.json";
 
 function withDeploymentsDir<T>(dir: string, fn: () => T): T {
   const prev = process.env.KARGAIN_DEPLOYMENTS_DIR;
@@ -46,6 +48,7 @@ describe("assertCommercialActiveMatchesManifest", () => {
   it("passes when local N7 manifests match COMMERCIAL_ACTIVE", () => {
     assert.doesNotThrow(() => assertCommercialActiveMatchesManifest(HUB));
     assert.doesNotThrow(() => assertCommercialActiveMatchesManifest(ETH));
+    assert.doesNotThrow(() => assertCommercialActiveSvmMatchesEvidence());
     assert.doesNotThrow(() => assertAllCommercialActiveMatchManifests());
   });
 
@@ -121,6 +124,45 @@ describe("assertCommercialActiveMatchesManifest", () => {
     try {
       withDeploymentsDir(temp, () => {
         assert.equal(deploymentPathForChain(HUB), join(temp, `${HUB}.json`));
+      });
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses by name when the SVM evidence file is absent", () => {
+    const empty = mkdtempSync(join(tmpdir(), "kargain-svm-evidence-absent-"));
+    try {
+      withDeploymentsDir(empty, () => {
+        assert.throws(
+          () => assertCommercialActiveSvmMatchesEvidence(),
+          /evidence absent or unreadable/,
+        );
+      });
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses naming the SVM field when one program id mismatches", () => {
+    const temp = mkdtempSync(join(tmpdir(), "kargain-svm-evidence-mismatch-"));
+    try {
+      copyFileSync(join(process.cwd(), "deployments", SVM_EVIDENCE), join(temp, SVM_EVIDENCE));
+      const dest = join(temp, SVM_EVIDENCE);
+      const raw = JSON.parse(readFileSync(dest, "utf8")) as Record<string, unknown>;
+      const programs = raw.programs as Record<string, Record<string, unknown>>;
+      programs.kar_passport = {
+        ...programs.kar_passport,
+        programId: "11111111111111111111111111111111",
+      };
+      raw.programs = programs;
+      writeFileSync(dest, JSON.stringify(raw));
+
+      withDeploymentsDir(temp, () => {
+        assert.throws(
+          () => assertCommercialActiveSvmMatchesEvidence(),
+          /karPassport/,
+        );
       });
     } finally {
       rmSync(temp, { recursive: true, force: true });

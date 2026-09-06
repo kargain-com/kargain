@@ -89,12 +89,12 @@ describe("ponder-bridge-crossings pure helpers", () => {
 
   it("namespace refusal is distinct from counterpart absent", () => {
     const ns = commercialNamespaceFromLayerZeroEid(40168);
-    assert.equal(ns.ok, false);
+    assert.equal(ns.ok, true);
     const counterpart = correlatePassportCounterpart({ tokenId: "1", candidates: [] });
     assert.equal(counterpart.status, "absent");
-    assert.notEqual(
-      ns.ok === false ? ns.reason : "",
-      counterpart.status,
-    );
+    if (ns.ok) {
+      assert.equal(Number(ns.namespace), 2_000_040_168);
+      assert.notEqual(String(ns.namespace), counterpart.status);
+    }
   });
 });
