@@ -17,7 +17,9 @@ export type BootstrapCatchupState = (typeof BOOTSTRAP_CATCHUP_STATES)[number];
 export type CatchupIncident =
   | "catchup_window_exceeded"
   | "sequence_gap"
-  | "startup_retention_unavailable";
+  | "startup_retention_unavailable"
+  | "discovery_incomplete"
+  | "rpc_budget_exhausted";
 
 export function structuredPayloadRowId(args: {
   namespace: number;

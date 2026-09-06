@@ -7,8 +7,10 @@ Final S9-B unit: Solana Devnet namespace `2000040168` enters `COMMERCIAL_ACTIVE`
 Accepted design (do not reopen):
 
 - Start cursor owner is `resolveIngestStartSlot()` = `min(blocks.*)` over the six commercial program start slots on the Solana `COMMERCIAL_ACTIVE` row. The SVM registry row carries **no** single precomputed `indexFromBlock` mirror. Gitignored `deployments/svm-40168.json` is deploy-machine equality assert only — not a VPS runtime input.
-- First-run catch-up is `bootstrap_state = historical_backfill`, distinct from post-bootstrap `catchup_window_exceeded`.
-- Bootstrap completes only when the cursor reaches observed head and the service enters normal follow mode (`bootstrap_state` cleared to null).
+- Work discovery is `getSignaturesForAddress` per followed program (floor = that program’s `blocks.*`); `getBlock` runs only for discovered slots. Near-tip follow uses the same discovery path. SQL `last_contiguous_slot` = high-water processed discovered slot.
+- First-run catch-up is `bootstrap_state = historical_backfill`, distinct from post-bootstrap `catchup_window_exceeded` (lag = oldest unprocessed discovered slot outside the window — empty tip gaps are not lag).
+- Bootstrap completes when all six programs are paged to their floors, discovered slots are processed (or named-missing), and a verification re-poll finds no extras. Empty discovery parks the watermark at observed head.
+- Missing / `-32009` on a discovered slot is a named refusal; watermark advances; process does not exit. `SVM_INGEST_MAX_RPS` (default 3) budgets RPC; 429 exhaustion → `rpc_budget_exhausted`, not process exit.
 - Retention refusal text: `svm-ingest RPC retention unavailable: required slot ${requiredSlot} is before first available block ${firstAvailableBlock}`.
 
 ## Registry and evidence
@@ -34,6 +36,7 @@ Accepted design (do not reopen):
 - **Changes:** none yet — read-only gate.
 - **Verify:**
   - `.env` has `SOLANA_RPC_URL` (the endpoint `svm-ingest` will actually use), `SVM_INGEST_EID=40168`, and the Postgres URL shared with Ponder
+  - Optional: `SVM_INGEST_MAX_RPS` (default 3) if the endpoint needs a stricter shared budget
   - Optional confirm: `SVM_INGEST_NAMESPACE` unset or equal to `2000040168`
   - No requirement to copy `deployments/svm-40168.json` onto the host
 - **Undo:** n/a (no mutation).
@@ -52,7 +55,7 @@ Accepted design (do not reopen):
 
 ### 4. Watch bootstrap clear
 
-- **Changes:** cursor advances from `min(blocks) - 1` through historical backfill; `bootstrap_state` stays `historical_backfill` until head is reached, then clears.
+- **Changes:** discovery pages six programs to their `blocks` floors, then `getBlock` only discovered slots; `bootstrap_state` stays `historical_backfill` until completeness (incl. verification re-poll), then clears. Watermark is high-water processed discovered slot — not every empty tip slot.
 - **Verify:**
   ```bash
   curl -s http://127.0.0.1:42100/ready | python3 -m json.tool
@@ -60,6 +63,7 @@ Accepted design (do not reopen):
   During backfill: `status: "not_ready"`, `bootstrapState: "historical_backfill"`, `incident: null`.
   After catch-up: `status: "ready"`, `bootstrapState: null`, `incident: null`.
   If retention fails at boot, refuse with both numbers in logs / refusal detail (`requiredSlot`, `firstAvailableBlock`) and `/ready` 503 with `incident: "startup_retention_unavailable"`.
+  Watch for `discovery_incomplete` / `rpc_budget_exhausted` (429 exhaustion) — both keep `/ready` 503 without restart-loop exit.
 - **Undo:** stop the service; do **not** drop `kargain_svm_raw` to “fix” bootstrap.
 
 ### 5. Confirm read path and product surfaces

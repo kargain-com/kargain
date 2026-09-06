@@ -398,6 +398,24 @@ export function requireEvmCommercialActive(
 }
 
 /**
+ * Committed SVM commercial stack for a namespace key.
+ * Fails by name when the registry row is missing or not SVM.
+ */
+export function requireSvmCommercialActive(
+  namespace: number,
+): SvmCommercialActiveStack {
+  const stack = commercialActive(namespace);
+  if (!stack || stack.vm !== "svm") {
+    throw new Error(
+      stack == null
+        ? commercialActiveMissingMessage(namespace)
+        : `requireSvmCommercialActive: namespace ${namespace} is not an SVM commercial stack (vm=${stack.vm})`,
+    );
+  }
+  return stack;
+}
+
+/**
  * EIP-155 id for a commercial namespace. Fails by name when the stack is not EVM.
  * For current stacks, namespace number equals EIP-155.
  */

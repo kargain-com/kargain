@@ -9,6 +9,7 @@ import {
   commercialActive,
   requireCommercialActive,
   requireEvmCommercialActive,
+  requireSvmCommercialActive,
 } from "../lib/web3/commercial-active.ts";
 import { namespaceFromLayerZeroEid } from "../lib/web3/kargain-namespace.ts";
 import { kargainContractDenylist } from "../lib/web3/deployment-addresses.ts";
@@ -45,6 +46,17 @@ describe("COMMERCIAL_ACTIVE registry", () => {
     const eth = requireEvmCommercialActive(ETH);
     assert.equal(eth.vm, "evm");
     assert.equal(eth.chainId, ETH);
+  });
+
+  it("requireSvmCommercialActive narrows to SVM stack by namespace", () => {
+    const solana = requireSvmCommercialActive(SOLANA);
+    assert.equal(solana.vm, "svm");
+    assert.equal(Number(solana.namespace), SOLANA);
+    assert.equal(solana.blocks.karProStaking, 490_463_509);
+    assert.throws(
+      () => requireSvmCommercialActive(HUB),
+      /not an SVM commercial stack/,
+    );
   });
 
   it("includes Nuclear #7 hub and Eth stacks plus the live Solana row", () => {

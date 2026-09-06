@@ -9,7 +9,7 @@ import type {
   SvmDevnetProgramEvidence,
 } from "./devnet-evidence";
 import {
-  requireCommercialActive,
+  requireSvmCommercialActive,
   type CommercialActiveBlocks,
   type SvmCommercialActiveStack,
 } from "@/lib/web3/commercial-active";
@@ -91,6 +91,8 @@ export type FollowedProgram = {
   slug: string;
   programId: string;
   evidenceKey: string;
+  /** Per-program discovery floor from COMMERCIAL_ACTIVE.blocks. */
+  deploySlot: number;
 };
 
 export class MissingCommercialProgramError extends Error {
@@ -209,6 +211,7 @@ export function followedProgramsFromStack(
     slug: row.slug,
     programId: stackProgramId(stack, row.stackField)!,
     evidenceKey: row.evidenceKey,
+    deploySlot: stack.blocks[row.blocksField]!,
   }));
 }
 
@@ -245,12 +248,7 @@ export function resolveIngestCommercialStack(opts?: {
     throw new Error(`SVM_INGEST_EID must be a positive integer (got ${eid})`);
   }
   const namespace = namespaceFromLayerZeroEid(eid);
-  const stack = requireCommercialActive(namespace);
-  if (stack.vm !== "svm") {
-    throw new Error(
-      `COMMERCIAL_ACTIVE[${namespace}] is not an SVM commercial stack`,
-    );
-  }
+  const stack = requireSvmCommercialActive(namespace);
 
   const envRaw =
     opts?.namespaceEnv !== undefined
@@ -276,12 +274,27 @@ export function resolveIngestNamespace(stack: SvmCommercialActiveStack): number 
 
 export const DEFAULT_CATCHUP_MAX_LAG_SLOTS = 216_000;
 
+/** Shared RPC budget for signature pages + getBlock (public Devnet ~40/10s/method). */
+export const DEFAULT_INGEST_MAX_RPS = 3;
+
 export function resolveCatchupMaxLagSlots(): number {
   const raw = process.env.SVM_INGEST_CATCHUP_MAX_LAG_SLOTS?.trim();
   if (!raw) return DEFAULT_CATCHUP_MAX_LAG_SLOTS;
   const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error("SVM_INGEST_CATCHUP_MAX_LAG_SLOTS must be a positive integer");
+  }
+  return parsed;
+}
+
+export function resolveIngestMaxRps(
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const raw = env.SVM_INGEST_MAX_RPS?.trim();
+  if (!raw) return DEFAULT_INGEST_MAX_RPS;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error("SVM_INGEST_MAX_RPS must be a positive number");
   }
   return parsed;
 }

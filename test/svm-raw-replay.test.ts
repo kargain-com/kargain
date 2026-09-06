@@ -67,6 +67,12 @@ describe("svm raw replay digest", () => {
   it("catch-up loop refuses RPC when stub throws", async () => {
     let rpcCalls = 0;
     const rpc: SvmRpcClient = {
+      callCounts: {
+        getBlock: 0,
+        getSignaturesForAddress: 0,
+        getSlot: 0,
+        getFirstAvailableBlock: 0,
+      },
       async getSlot() {
         rpcCalls += 1;
         throw new Error("chain access removed");
@@ -76,6 +82,10 @@ describe("svm raw replay digest", () => {
         throw new Error("chain access removed");
       },
       async getBlock() {
+        rpcCalls += 1;
+        throw new Error("chain access removed");
+      },
+      async getSignaturesForAddress() {
         rpcCalls += 1;
         throw new Error("chain access removed");
       },

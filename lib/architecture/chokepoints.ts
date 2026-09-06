@@ -409,8 +409,8 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   },
   {
     id: "svm-raw-ingest",
-    owner: "src/lib/svm-raw-writer.ts · src/svm-ingest/",
-    rule: "Append-only kargain_svm_raw writes only via svm-raw-writer; projection via svm-projection-writer; provenance reads via ponder-passport-provenance",
+    owner: "src/lib/svm-raw-writer.ts · src/svm-ingest/ · lib/svm/ingest-slot-discovery.ts",
+    rule: "Append-only kargain_svm_raw writes only via svm-raw-writer; projection via svm-projection-writer; provenance reads via ponder-passport-provenance; slot discovery sole owner ingest-slot-discovery (signatures→slots; getBlock only those)",
     guardTests: [
       "svm-raw-ingest-writer-policy.test.ts",
       "svm-raw-ingest-surface-policy.test.ts",
@@ -419,6 +419,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "svm-projection-passport-index-policy.test.ts",
       "ponder-reindex-svm-isolation-policy.test.ts",
       "ponder-passport-provenance-policy.test.ts",
+      "svm-ingest-loop.test.ts",
     ],
   },
   {

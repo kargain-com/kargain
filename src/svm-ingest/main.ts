@@ -12,6 +12,7 @@ import {
   followedProgramsFromStack,
   resolveCatchupMaxLagSlots,
   resolveIngestCommercialStack,
+  resolveIngestMaxRps,
   resolveIngestNamespace,
   resolveIngestStartSlot,
 } from "../../lib/svm/ingest-config.js";
@@ -56,7 +57,9 @@ async function main(): Promise<void> {
   const writer = createSvmRawWriter(pool);
   const projectionWriter = createSvmProjectionWriter(pool);
   const projector = createProjectionProjector(pool, projectionWriter);
-  const rpc = createSolanaRpcClient(rpcUrl);
+  const rpc = createSolanaRpcClient(rpcUrl, {
+    maxRps: resolveIngestMaxRps(),
+  });
   const loop = createIngestLoop({
     namespace,
     startSlot,
@@ -101,7 +104,7 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => void shutdown().then(() => process.exit(0)));
 
   console.log(
-    `svm-ingest listening health=:${port} namespace=${namespace} startSlot=${startSlot} programs=${followedPrograms.length}`,
+    `svm-ingest listening health=:${port} namespace=${namespace} startSlot=${startSlot} programs=${followedPrograms.length} maxRps=${resolveIngestMaxRps()} discovery=signatures`,
   );
 }
 

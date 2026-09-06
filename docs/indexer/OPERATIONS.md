@@ -70,7 +70,7 @@ Drizzle browse on production maps JS `chainId` → physical `chain_id` automatic
 | Route | Meaning |
 |-------|---------|
 | `GET /live` | Process up |
-| `GET /ready` | Caught up and cursor contiguous; **503** during first bootstrap backfill, when startup retention fails, or when post-bootstrap lag exceeds the catch-up window / a sequence gap appears |
+| `GET /ready` | Caught up with no incident; **503** during first signature-discovery bootstrap, when startup retention fails, when discovery/RPC budget incidents fire, or when post-bootstrap discovered backlog exceeds the catch-up window |
 
 Smoke (local): `curl -sf http://127.0.0.1:42100/live` · `curl -sf http://127.0.0.1:42100/ready`
 
@@ -78,15 +78,21 @@ Smoke (local): `curl -sf http://127.0.0.1:42100/live` · `curl -sf http://127.0.
 
 Start cursor owner is `resolveIngestStartSlot()` in `lib/svm/ingest-config.ts`: **`min(blocks.*)`** over the six commercial program start slots on the live Solana `COMMERCIAL_ACTIVE` row. There is **no** second start-slot field and **no** runtime dependency on `deployments/svm-40168.json` (evidence is deploy-machine assert only).
 
-On a fresh cursor, `svm-ingest` writes `bootstrap_state = historical_backfill` and stays not-ready until the cursor reaches the observed head and the service transitions into normal follow mode. This bootstrap phase is expected and does **not** raise `catchup_window_exceeded`.
+`svm-ingest` discovers work with `getSignaturesForAddress` per followed program (floor = that program’s `blocks.*`), then calls `getBlock` **only** for discovered slots. It does **not** scan every slot from the cursor to tip. SQL column `last_contiguous_slot` is the high-water **processed discovered** slot (name kept; meaning is not “every slot scanned”).
+
+On a fresh cursor, `svm-ingest` writes `bootstrap_state = historical_backfill` and stays not-ready until all six programs have been paged to their floors, every discovered slot has been processed (or named-missing), and a verification re-poll finds no extra signatures in range. Empty discovery completes bootstrap and parks the watermark at the observed head. This phase is expected and does **not** raise `catchup_window_exceeded`. Live follow uses the **same** discovery path for slots above the watermark (no tip every-slot `getBlock` mode).
+
+Request budget: `SVM_INGEST_MAX_RPS` (default **3**) shared across signature pages and `getBlock`. HTTP **429** uses bounded backoff; exhausting retries records `rpc_budget_exhausted` and keeps `/ready` at **503** — the process does **not** exit. Incomplete signature pagination records `discovery_incomplete`.
+
+A discovered slot that returns missing / JSON-RPC **-32009** is a named refusal (`discovered_slot_missing_block`); the watermark advances; the process does **not** exit. Ordinary empty slots are simply never visited.
 
 ### Startup retention refusal
 
-Before catch-up, `svm-ingest` probes `getFirstAvailableBlock`. If the configured `SOLANA_RPC_URL` cannot serve the required slot (`last_contiguous_slot + 1`), startup refuses by name, records a `sequence_gap` row with `incident = startup_retention_unavailable`, and keeps `/ready` at **503**.
+Before catch-up, `svm-ingest` probes `getFirstAvailableBlock`. If the configured `SOLANA_RPC_URL` cannot serve the required start slot (`resolveIngestStartSlot`), or discovery later names a slot below first-available, startup refuses by name, records a `sequence_gap` row with `incident = startup_retention_unavailable`, and keeps `/ready` at **503**.
 
 ### Catch-up window exceeded (post-bootstrap incident)
 
-Default `SVM_INGEST_CATCHUP_MAX_LAG_SLOTS=216000` (~24h at ~400ms/slot). After bootstrap completes, if `chain_head - last_contiguous_slot > window`:
+Default `SVM_INGEST_CATCHUP_MAX_LAG_SLOTS=216000` (~24h at ~400ms/slot). After bootstrap completes, lag is measured on **discovered** work only: if the oldest unprocessed discovered slot is older than `head - window`, the service raises `catchup_window_exceeded`. An idle tip gap with no discovered backlog is **not** lag.
 
 1. Service **stops advancing** the cursor.
 2. `/ready` returns **503** with JSON carrying `bootstrapState`, `incident`, `lagSlots`, and `lastContiguousSlot`.
@@ -95,7 +101,7 @@ Default `SVM_INGEST_CATCHUP_MAX_LAG_SLOTS=216000` (~24h at ~400ms/slot). After b
 **Operator recovery (do not silent deep-fetch):**
 
 1. Confirm intentional re-anchor vs RPC outage — check Solana RPC health and `COMMERCIAL_ACTIVE` Solana `blocks.*` (follow start = `min` over the six commercial keys).
-2. If re-anchor is correct: stop `svm-ingest`, set cursor via SQL on `kargain_svm_raw.ingest_cursor` to the chosen contiguous slot (or truncate raw tables + reset cursor if rebuilding from registry `min(blocks)`), restart service. Raising the registry minimum permanently skips earlier slots without a raw rebuild.
+2. If re-anchor is correct: stop `svm-ingest`, set cursor via SQL on `kargain_svm_raw.ingest_cursor` to the chosen high-water discovered slot (or truncate raw tables + reset cursor if rebuilding from registry `min(blocks)`), restart service. Raising the registry minimum permanently skips earlier slots without a raw rebuild.
 3. If RPC was transient: restore RPC, restart; service catches up within window.
 4. Verify `/ready` 200 and run `pnpm svm-raw:replay-digest` on a snapshot if validating rebuild integrity.
 

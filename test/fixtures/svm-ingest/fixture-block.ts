@@ -19,6 +19,7 @@ export const FIXTURE_FOLLOWED_PROGRAMS = [
     slug: "kar-passport",
     programId: FIXTURE_PASSPORT_PROGRAM,
     evidenceKey: "kar_passport",
+    deploySlot: 500_000,
   },
 ] as const;
 
