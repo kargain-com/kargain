@@ -6,7 +6,7 @@
  * are not asserted (they live under `abandonedPriorPrograms` only).
  * Commercial census completeness is NOT this owner's job — ingest entry only.
  */
-import { commercialProgramCensusGaps } from "../../lib/svm/ingest-config.js";
+import { commercialProgramCensusGapsFromEvidence } from "../../lib/svm/ingest-config.js";
 import type { SvmDevnetEvidence } from "./load-deployment.js";
 
 export type SvmAuthorityOk = {
@@ -132,15 +132,15 @@ export function formatSvmAuthorityFailure(result: SvmAuthorityFail): string {
 
 /**
  * Census summary for verify stdout — never refuses.
- * Completeness = same predicate as commercialProgramCensusGaps / the ingest
- * commercial assert (programId + deploySlot). Incomplete names causes
- * separately: missing programId (deploy) vs missing deploySlot (fill from
- * `solana program show`).
+ * Completeness = same predicate as commercialProgramCensusGapsFromEvidence
+ * (programId + deploySlot on evidence). Incomplete names causes separately:
+ * missing programId (deploy) vs missing deploySlot (fill from
+ * `solana program show`). Runtime ingest uses the registry-stack predicate.
  */
 export function formatSvmCommercialCensusSummary(
   evidence: SvmDevnetEvidence,
 ): string {
-  const gaps = commercialProgramCensusGaps(evidence);
+  const gaps = commercialProgramCensusGapsFromEvidence(evidence);
   const k = 6 - gaps.length;
   if (gaps.length === 0) {
     return `census: checked 6 of 6; complete`;

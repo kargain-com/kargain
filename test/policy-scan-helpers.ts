@@ -163,12 +163,15 @@ function resolveRepoModuleSpecifier(
     return null;
   }
 
+  // TypeScript ESM often imports with a .js suffix that maps to a .ts source file.
+  const withoutJs = candidateBase.replace(/\.(js|mjs|cjs)$/, "");
   const candidates = [
     candidateBase,
-    `${candidateBase}.ts`,
-    `${candidateBase}.tsx`,
-    `${candidateBase}/index.ts`,
-    `${candidateBase}/index.tsx`,
+    withoutJs,
+    `${withoutJs}.ts`,
+    `${withoutJs}.tsx`,
+    `${withoutJs}/index.ts`,
+    `${withoutJs}/index.tsx`,
   ];
   for (const rel of candidates) {
     if (existsSync(join(rootDir, rel))) return rel;
@@ -325,6 +328,78 @@ export function traceStaticReachabilityToPackages(
       hits.push({
         path: startRel,
         reason: `static import reachability to banned Solana SDK (${foundPath.join(" -> ")})`,
+      });
+    }
+  }
+  return hits.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/**
+ * BFS local-module reachability from start roots to banned repo-relative paths.
+ * Used to keep service runtime (e.g. svm-ingest) off scripts/lib/load-deployment.
+ */
+export function traceStaticReachabilityToModules(
+  bannedModules: readonly string[],
+  options?: ReachabilityOptions,
+): ProductSourceHit[] {
+  const rootDir = options?.rootDir ?? POLICY_SCAN_ROOT;
+  const owners = new Set((options?.owners ?? []).map((p) => p.replace(/\\/g, "/")));
+  const banned = new Set(
+    bannedModules.map((p) => p.replace(/\\/g, "/").replace(/\.ts$/, "")),
+  );
+  const graph = buildStaticImportGraph(
+    options?.graphRoots ?? ["src", "lib", "scripts"],
+    rootDir,
+  );
+  const hits: ProductSourceHit[] = [];
+
+  function isBanned(rel: string): boolean {
+    const normalized = rel.replace(/\\/g, "/").replace(/\.ts$/, "");
+    if (banned.has(normalized)) return true;
+    for (const b of banned) {
+      if (normalized === b || normalized.endsWith(`/${b}`)) return true;
+    }
+    return false;
+  }
+
+  for (const file of walkTsFilesFromRoots(
+    options?.startRoots ?? ["src/svm-ingest"],
+    rootDir,
+  )) {
+    const startRel = relative(rootDir, file).replace(/\\/g, "/");
+    if (owners.has(startRel)) continue;
+    if (isBanned(startRel)) {
+      hits.push({
+        path: startRel,
+        reason: `start file is banned module ${startRel}`,
+      });
+      continue;
+    }
+    const queue: Array<{ name: string; path: string[] }> = [
+      { name: startRel, path: [startRel] },
+    ];
+    const seen = new Set<string>([startRel]);
+    let foundPath: string[] | null = null;
+
+    while (queue.length > 0 && !foundPath) {
+      const current = queue.shift()!;
+      const node = graph.get(current.name);
+      if (!node) continue;
+      for (const dep of node.localDeps) {
+        if (isBanned(dep)) {
+          foundPath = [...current.path, dep];
+          break;
+        }
+        if (seen.has(dep)) continue;
+        seen.add(dep);
+        queue.push({ name: dep, path: [...current.path, dep] });
+      }
+    }
+
+    if (foundPath) {
+      hits.push({
+        path: startRel,
+        reason: `static import reachability to banned module (${foundPath.join(" -> ")})`,
       });
     }
   }

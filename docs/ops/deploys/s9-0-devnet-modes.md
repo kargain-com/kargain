@@ -8,7 +8,7 @@ Standing UA: [svm-devnet.md](./svm-devnet.md) — S4–S9 deployer retains upgra
 
 ## Why
 
-S9 readiness requires lots, portfolios, and claims on three networks. Passport+gateway+staking alone cannot satisfy that criterion. Ingest follows **six** commercial programs and refuses when any `programId` or `deploySlot` is missing (`lib/svm/ingest-config.ts` → `assertSvmCommercialEvidence` at the **ingest entry** only).
+S9 readiness requires lots, portfolios, and claims on three networks. Passport+gateway+staking alone cannot satisfy that criterion. Ingest follows **six** commercial programs and refuses when any program id or `blocks` start slot is missing (`lib/svm/ingest-config.ts` → `assertSvmCommercialStack` at the **ingest entry** only).
 
 ## Founder order
 

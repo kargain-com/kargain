@@ -76,7 +76,7 @@ Smoke (local): `curl -sf http://127.0.0.1:42100/live` · `curl -sf http://127.0.
 
 ### Bootstrap vs incident
 
-Start cursor owner is `resolveIngestStartSlot()` in `lib/svm/ingest-config.ts`: **`min(programs.*.deploySlot)`** over the six commercial programs in `deployments/svm-40168.json`. The live Solana `COMMERCIAL_ACTIVE` row does **not** carry a second start-slot source.
+Start cursor owner is `resolveIngestStartSlot()` in `lib/svm/ingest-config.ts`: **`min(blocks.*)`** over the six commercial program start slots on the live Solana `COMMERCIAL_ACTIVE` row. There is **no** second start-slot field and **no** runtime dependency on `deployments/svm-40168.json` (evidence is deploy-machine assert only).
 
 On a fresh cursor, `svm-ingest` writes `bootstrap_state = historical_backfill` and stays not-ready until the cursor reaches the observed head and the service transitions into normal follow mode. This bootstrap phase is expected and does **not** raise `catchup_window_exceeded`.
 
@@ -94,8 +94,8 @@ Default `SVM_INGEST_CATCHUP_MAX_LAG_SLOTS=216000` (~24h at ~400ms/slot). After b
 
 **Operator recovery (do not silent deep-fetch):**
 
-1. Confirm intentional re-anchor vs RPC outage — check Solana RPC health and evidence `programs.*.deploySlot` (follow start = `min` over the six commercial keys).
-2. If re-anchor is correct: stop `svm-ingest`, set cursor via SQL on `kargain_svm_raw.ingest_cursor` to the chosen contiguous slot (or truncate raw tables + reset cursor if rebuilding from evidence `min(deploySlot)`), restart service. Raising the evidence minimum permanently skips earlier slots without a raw rebuild.
+1. Confirm intentional re-anchor vs RPC outage — check Solana RPC health and `COMMERCIAL_ACTIVE` Solana `blocks.*` (follow start = `min` over the six commercial keys).
+2. If re-anchor is correct: stop `svm-ingest`, set cursor via SQL on `kargain_svm_raw.ingest_cursor` to the chosen contiguous slot (or truncate raw tables + reset cursor if rebuilding from registry `min(blocks)`), restart service. Raising the registry minimum permanently skips earlier slots without a raw rebuild.
 3. If RPC was transient: restore RPC, restart; service catches up within window.
 4. Verify `/ready` 200 and run `pnpm svm-raw:replay-digest` on a snapshot if validating rebuild integrity.
 
@@ -110,7 +110,7 @@ On start, `svm-ingest` runs [`src/svm-ingest/db/schema.sql`](../../src/svm-inges
 Enable:
 
 1. `git pull origin master`
-2. Confirm `deployments/svm-40168.json` exists on the host and `SOLANA_RPC_URL` matches the endpoint you intend `svm-ingest` to use.
+2. Confirm `SOLANA_RPC_URL` matches the endpoint you intend `svm-ingest` to use (no `deployments/` copy required on VPS).
 3. `docker compose build svm-ingest`
 4. `docker compose up -d --force-recreate svm-ingest`
 5. `curl -s http://127.0.0.1:42100/live`

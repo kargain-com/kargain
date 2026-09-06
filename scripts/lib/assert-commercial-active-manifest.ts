@@ -194,11 +194,28 @@ export function assertSvmStackMatchesEvidence(
     );
   }
   for (const [programKey, stackField] of SVM_PROGRAM_FIELDS) {
-    const programId = evidence.programs[programKey]?.programId?.trim();
+    const program = evidence.programs[programKey];
+    const programId = program?.programId?.trim();
     const stackValue = stack[stackField];
     if (!eqLiteral(stackValue, programId)) {
       throw new Error(
         `COMMERCIAL_ACTIVE[${namespace}] ${stackField} ≠ deployments/svm-${evidence.eid}.json programs.${programKey}.programId`,
+      );
+    }
+    const evidenceSlot = program?.deploySlot;
+    const stackSlot = stack.blocks[stackField];
+    if (
+      typeof evidenceSlot !== "number" ||
+      !Number.isInteger(evidenceSlot) ||
+      evidenceSlot < 0
+    ) {
+      throw new Error(
+        `COMMERCIAL_ACTIVE[${namespace}] evidence programs.${programKey}.deploySlot missing or invalid`,
+      );
+    }
+    if (stackSlot !== evidenceSlot) {
+      throw new Error(
+        `COMMERCIAL_ACTIVE[${namespace}] blocks.${stackField} ≠ deployments/svm-${evidence.eid}.json programs.${programKey}.deploySlot`,
       );
     }
   }

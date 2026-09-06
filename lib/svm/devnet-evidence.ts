@@ -3,8 +3,9 @@
  * Loaders live in scripts/lib/load-deployment.ts — lib must not import scripts.
  *
  * Progressive fill: passport + gateway are the baseline Devnet shape; staking / pass /
- * modes become present as S5 / S9-0 land. Commercial completeness is
- * `assertSvmCommercialEvidence` — not the shared loader.
+ * modes become present as S5 / S9-0 land. Commercial ingest completeness is
+ * `assertSvmCommercialStack` on the registry row; evidence gaps remain for
+ * deploy-machine tooling only — not the shared loader.
  */
 
 export type SvmDevnetProgramEvidence = {

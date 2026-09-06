@@ -10,8 +10,10 @@
  * from here — do not redefine the allowlist.
  *
  * Registry key = namespace (SPEC §13.1). EVM rows use EIP-155 as namespace;
- * SVM rows (when live) use the reserved-band namespace — never invent a fake EIP-155.
- * No Solana row until S9-0 Devnet modes + S9-B cutover.
+ * SVM rows use the reserved-band namespace — never invent a fake EIP-155.
+ * Solana Devnet is a live commercial row (S9-B). Per-program start slots live
+ * in `blocks` (EVM-parallel); ingest derives `min(slots)` and never reads
+ * gitignored deploy evidence at runtime.
  *
  * Enumerators: `commercialEip155Ids` is EVM-only (`vm === "evm"`). Never treat
  * reserved-band namespace keys as EIP-155 (S9 research §1.1.23 class).
@@ -103,7 +105,7 @@ export type EvmCommercialActiveStack = EvmCommercialActiveStackShared & {
  * SVM commercial stack shape (SPEC §13.1 reserved-band namespace).
  * Addresses are canonical base58 program / account ids (normalize via
  * `protocol-address`). No EIP-155 `chainId` — registry key is `namespace` alone.
- * Not present in {@link COMMERCIAL_ACTIVE} until S9-0 modes + S9-B cutover.
+ * Live commercial row carries program ids plus per-program start slots in `blocks`.
  */
 export type SvmCommercialActiveStack = {
   vm: "svm";
@@ -247,7 +249,14 @@ const SOLANA_DEVNET_40168 = {
   layerZeroEndpoint: "76y77prsiCMvXMjuoZ5VRrhG5qYBrUMYTE5WgHqgjEn6",
   deployer: "65Qmw9zhpkjxJApmFngx3dxmGo2KiZ4kyJycLsWh4gU9",
   upgradeAuthority: "65Qmw9zhpkjxJApmFngx3dxmGo2KiZ4kyJycLsWh4gU9",
-  blocks: {},
+  blocks: {
+    karProStaking: 490_463_509,
+    karProPass: 490_463_617,
+    karPassport: 490_505_668,
+    bridgeGateway: 490_505_773,
+    fixedPriceConsignment: 493_100_976,
+    ascendingConsignment: 493_101_099,
+  },
 } as const satisfies SvmCommercialActiveStack;
 
 /** EIP-155 ids of committed commercial EVM stacks — sole allowlist for tooling. */

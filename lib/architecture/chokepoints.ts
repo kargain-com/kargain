@@ -424,7 +424,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-commercial-program-census",
     owner: "lib/svm/ingest-config.ts",
-    rule: "Six commercial evidence keys; assertSvmCommercialEvidence + follow set + min(deploySlot) cursor; mock_staking never followed",
+    rule: "Six commercial program ids + blocks slots on COMMERCIAL_ACTIVE; assertSvmCommercialStack + follow set + min(blocks) cursor; mock_staking never followed; runtime never reaches scripts/lib/load-deployment",
     guardTests: ["svm-commercial-program-census-policy.test.ts"],
   },
   {

@@ -1,6 +1,6 @@
 import type { StructuredPayloadDraft } from "@/lib/svm/parse-transaction-ingest";
 import { parseTransactionForIngest } from "@/lib/svm/parse-transaction-ingest";
-import type { FollowedProgram } from "@/lib/svm/ingest-config";
+import { followedProgramsFromStack } from "@/lib/svm/ingest-config";
 import type { SvmCommercialActiveStack } from "@/lib/web3/commercial-active";
 import {
   createSvmTxConfirmPort,
@@ -27,48 +27,6 @@ type GetTransactionResult = {
     logMessages?: string[] | null;
   } | null;
 } | null;
-
-function followedProgramsFromStack(
-  stack: SvmCommercialActiveStack,
-): FollowedProgram[] {
-  const out: FollowedProgram[] = [
-    {
-      slug: "kar-passport",
-      programId: stack.karPassport,
-      evidenceKey: "kar_passport",
-    },
-    {
-      slug: "kar-pro-staking",
-      programId: stack.karProStaking,
-      evidenceKey: "kar_pro_staking",
-    },
-    {
-      slug: "kar-pro-pass",
-      programId: stack.karProPass,
-      evidenceKey: "kar_pro_pass",
-    },
-    {
-      slug: "kar-gateway",
-      programId: stack.bridgeGateway,
-      evidenceKey: "kar_gateway",
-    },
-  ];
-  if (stack.fixedPriceConsignment) {
-    out.push({
-      slug: "kar-fixed-price",
-      programId: stack.fixedPriceConsignment,
-      evidenceKey: "kar_fixed_price",
-    });
-  }
-  if (stack.ascendingConsignment) {
-    out.push({
-      slug: "kar-ascending",
-      programId: stack.ascendingConsignment,
-      evidenceKey: "kar_ascending",
-    });
-  }
-  return out;
-}
 
 async function postJsonRpc<T>(
   rpcUrl: string,

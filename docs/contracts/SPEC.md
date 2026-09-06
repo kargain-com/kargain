@@ -605,7 +605,7 @@ Default **0.01 ETH** exact bond on `open` (non-zero; Timelock-gated after Nuclea
 | Ethereum | 1 | `1 << 128` | TBD feeds | Planned |
 | Polygon | 137 | `137 << 128` | TBD feeds | Planned |
 
-Historical v1.x / pre-Nuclear addresses: [Part II.4](#ii4-historical-deployment-base-sepolia-84532). **Nuclear #7 / S9-B** September 2026 — committed `COMMERCIAL_ACTIVE` cutover on branch; Ponder start blocks hub **46119704** and Eth **11591966**. Solana Devnet enters the same registry as namespace **2000040168**; its ingest start slot remains deploy evidence `min(programs.*.deploySlot)`, not a second registry cursor field. Nuclear #4 (**44957457** / **11404204**) denylisted.
+Historical v1.x / pre-Nuclear addresses: [Part II.4](#ii4-historical-deployment-base-sepolia-84532). **Nuclear #7 / S9-B** September 2026 — committed `COMMERCIAL_ACTIVE` cutover on branch; Ponder start blocks hub **46119704** and Eth **11591966**. Solana Devnet enters the same registry as namespace **2000040168**; its ingest start slot is `min(COMMERCIAL_ACTIVE.blocks.*)` for the six commercial programs, not a second registry cursor field and not a runtime evidence-file read. Nuclear #4 (**44957457** / **11404204**) denylisted.
 
 ### I.9.1 Active deployment (Base Sepolia 84532)
 
@@ -688,7 +688,7 @@ Nuclear #7 / S9-A cutover September 2026 · KarPassport **`1.11.0-rc.1`** · Fix
 
 ### I.9.3 Active deployment (Solana Devnet 2000040168)
 
-> **Single source of truth** for the live Solana commercial row in `COMMERCIAL_ACTIVE`. Program ids and deploy-slot evidence live in `deployments/svm-40168.json`; ingest start slot is `min(programs.*.deploySlot)` via `resolveIngestStartSlot()`, not a registry field.
+> **Single source of truth** for the live Solana commercial row in `COMMERCIAL_ACTIVE`. Program ids and per-program start slots live in that registry row (`blocks`, same keys as EVM start blocks). Ingest start slot is `min(blocks.*)` via `resolveIngestStartSlot()` — not a second precomputed cursor field and not a runtime read of gitignored `deployments/svm-40168.json` (that file remains deploy-machine equality assert only).
 
 S9-B cutover September 2026 · KarPassport `Arvcryx…WnTQ` · KarProPass `4TE2kf…bnHr` · KarProStaking `8tts6h…ZvXY` · FixedPrice `HmKV5Q…XTxyu` · Ascending `HMGnyN…QNt74` · Gateway `9ugwoz…n693` · namespace **2000040168** · EID **40168** · USDC **Circle Devnet** `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU` · native unit **SOL/9** · native USD feed absent by design · deployer/upgrade authority/timelock all `65Qmw9zhpkjxJApmFngx3dxmGo2KiZ4kyJycLsWh4gU9` through S9 · forfeit recipient `HPP7frMzYC87FsznTF48969TRsnzDMAe9RUuvzgSGprE`.
 

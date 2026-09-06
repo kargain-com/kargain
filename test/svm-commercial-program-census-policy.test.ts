@@ -1,9 +1,10 @@
 /**
- * S9-0 / S9-0-close — six commercial program census + loader layering.
- * Three-way census, (a)–(d), loader≠census, namespace truth, START_SLOT ban.
+ * S9-0 / registry-runtime — six commercial program census from COMMERCIAL_ACTIVE.
+ * Three-way census, stack gaps, namespace confirm, reachability off evidence loader,
+ * no-deployments cursor proof.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { describe, it } from "node:test";
@@ -14,11 +15,19 @@ import {
   COMMERCIAL_PROGRAM_EVIDENCE_KEYS,
   MissingCommercialProgramError,
   assertSvmCommercialEvidence,
+  assertSvmCommercialStack,
   commercialProgramCensusGaps,
-  followedProgramsFromEvidence,
+  commercialProgramCensusGapsFromEvidence,
+  followedProgramsFromStack,
+  resolveIngestCommercialStack,
   resolveIngestNamespace,
   resolveIngestStartSlot,
 } from "../lib/svm/ingest-config.ts";
+import {
+  requireCommercialActive,
+  type SvmCommercialActiveStack,
+} from "../lib/web3/commercial-active.ts";
+import { namespaceFromLayerZeroEid } from "../lib/web3/kargain-namespace.ts";
 import { formatSvmCommercialCensusSummary } from "../scripts/lib/assert-svm-upgrade-authority.ts";
 import {
   loadSvmDevnetEvidence,
@@ -26,6 +35,11 @@ import {
   requireSvmPassportProgramId,
 } from "../scripts/lib/load-deployment.ts";
 import { SVM_COMMERCIAL_PROGRAMS } from "../scripts/lib/svm-deploy-plan.ts";
+import { FIXTURE_SVM_STACK } from "./fixtures/commercial-svm-stack.ts";
+import {
+  scanProductSources,
+  traceStaticReachabilityToModules,
+} from "./policy-scan-helpers.ts";
 
 const EVIDENCE_KEYS = [...COMMERCIAL_PROGRAM_EVIDENCE_KEY_LIST].sort();
 const DEPLOY_NAMES = SVM_COMMERCIAL_PROGRAMS.map((p) => p.name).sort();
@@ -33,6 +47,8 @@ const ASSERT_KEYS = [...COMMERCIAL_PROGRAM_EVIDENCE_KEY_LIST].sort();
 
 const SLOT = 100;
 const ROOT = join(import.meta.dirname, "..");
+const SOLANA_NS = namespaceFromLayerZeroEid(40168);
+const EXPECTED_START_SLOT = 490_463_509;
 
 function withSlots(
   programs: Record<string, { programId: string; deploySlot?: number }>,
@@ -79,7 +95,21 @@ const FOUR_PROGRAMS = withSlots({
   kar_pro_pass: { programId: "ProP1111111111111111111111111111111111111" },
 });
 
-describe("svm commercial program census (S9-0 / S9-0-close)", () => {
+function stackFromFixture(
+  overrides: Partial<SvmCommercialActiveStack> = {},
+): SvmCommercialActiveStack {
+  return {
+    ...FIXTURE_SVM_STACK,
+    blocks: { ...FIXTURE_SVM_STACK.blocks },
+    ...overrides,
+    blocks:
+      overrides.blocks !== undefined
+        ? overrides.blocks
+        : { ...FIXTURE_SVM_STACK.blocks },
+  };
+}
+
+describe("svm commercial program census (registry runtime)", () => {
   it("three-way: deploy plan ≡ ingest keys ≡ assert keys; mock excluded", () => {
     assert.deepEqual(DEPLOY_NAMES, EVIDENCE_KEYS);
     assert.deepEqual(EVIDENCE_KEYS, ASSERT_KEYS);
@@ -94,49 +124,47 @@ describe("svm commercial program census (S9-0 / S9-0-close)", () => {
     );
   });
 
-  it("(a) full six → six follows; missing kar_fixed_price refuses by name", () => {
-    const followed = followedProgramsFromEvidence(evidenceWith(FULL_PROGRAMS));
+  it("(a) full six → six follows; missing fixedPrice refuses by name", () => {
+    const followed = followedProgramsFromStack(stackFromFixture());
     assert.equal(followed.length, 6);
     assert.deepEqual(
       followed.map((p) => p.evidenceKey).sort(),
       EVIDENCE_KEYS,
     );
 
-    const withoutFixed = {
-      ...FULL_PROGRAMS,
-      kar_fixed_price: { programId: "", deploySlot: SLOT },
-    };
     assert.throws(
-      () => followedProgramsFromEvidence(evidenceWith(withoutFixed)),
+      () =>
+        followedProgramsFromStack(
+          stackFromFixture({ fixedPriceConsignment: "" }),
+        ),
       (err: unknown) => {
         assert.ok(err instanceof MissingCommercialProgramError);
         assert.ok(err.missingEvidenceKeys.includes("kar_fixed_price"));
         assert.match(err.message, /kar_fixed_price/);
-        assert.match(err.message, /S9-0/);
         return true;
       },
     );
 
     assert.throws(
-      () => assertSvmCommercialEvidence(evidenceWith(FOUR_PROGRAMS)),
+      () =>
+        assertSvmCommercialStack(
+          stackFromFixture({
+            fixedPriceConsignment: undefined,
+            ascendingConsignment: undefined,
+          }),
+        ),
       /kar_fixed_price.*kar_ascending|kar_ascending.*kar_fixed_price/,
     );
   });
 
-  it("(b) mock_staking present → follow set stays six; mock id absent", () => {
-    const mockId = "Mock1111111111111111111111111111111111111";
-    const withMock = evidenceWith({
-      ...FULL_PROGRAMS,
-      mock_staking: { programId: mockId, deploySlot: 50 },
-    });
-    const followed = followedProgramsFromEvidence(withMock);
+  it("(b) fixture follow set stays six; start slot is min(blocks)", () => {
+    const followed = followedProgramsFromStack(stackFromFixture());
     assert.equal(followed.length, 6);
-    assert.ok(!followed.some((p) => p.programId === mockId));
     assert.ok(!followed.some((p) => p.evidenceKey === "mock_staking"));
-    assert.equal(resolveIngestStartSlot(withMock), SLOT);
+    assert.equal(resolveIngestStartSlot(stackFromFixture()), 100);
   });
 
-  it("(c) shape loader green on incomplete JSON; commercial assert red; cast-only green", () => {
+  it("(c) shape loader green on incomplete JSON; evidence census red; cast-only green", () => {
     const incomplete = {
       cluster: "solana-devnet",
       eid: 40168,
@@ -186,15 +214,15 @@ describe("svm commercial program census (S9-0 / S9-0-close)", () => {
     }
   });
 
-  it("(d) missing deploySlot refuses by name; later program does not raise cursor", () => {
-    const missingSlot = {
-      ...FULL_PROGRAMS,
-      kar_ascending: {
-        programId: FULL_PROGRAMS.kar_ascending!.programId,
+  it("(d) missing blocks slot refuses by name; later program does not raise cursor", () => {
+    const missingSlot = stackFromFixture({
+      blocks: {
+        ...FIXTURE_SVM_STACK.blocks,
+        ascendingConsignment: undefined,
       },
-    } as unknown as SvmDevnetEvidence["programs"];
+    });
     assert.throws(
-      () => resolveIngestStartSlot(evidenceWith(missingSlot)),
+      () => resolveIngestStartSlot(missingSlot),
       (err: unknown) => {
         assert.ok(err instanceof MissingCommercialProgramError);
         assert.ok(err.missingEvidenceKeys.includes("kar_ascending"));
@@ -202,46 +230,45 @@ describe("svm commercial program census (S9-0 / S9-0-close)", () => {
       },
     );
 
-    // S9-0-close-2 fix: summary ↔ gaps ↔ assert share one predicate
-    const ev = evidenceWith(missingSlot);
-    const gaps = commercialProgramCensusGaps(ev);
+    const gaps = commercialProgramCensusGaps(missingSlot);
     assert.deepEqual(gaps, [
+      { key: "kar_ascending", cause: "missing_deploy_slot" },
+    ]);
+    assert.throws(
+      () => assertSvmCommercialStack(missingSlot),
+      MissingCommercialProgramError,
+    );
+
+    // Evidence-file summary still shares the evidence predicate for UA tooling.
+    const missingEvidenceSlot = {
+      ...FULL_PROGRAMS,
+      kar_ascending: {
+        programId: FULL_PROGRAMS.kar_ascending!.programId,
+      },
+    } as unknown as SvmDevnetEvidence["programs"];
+    const ev = evidenceWith(missingEvidenceSlot);
+    assert.deepEqual(commercialProgramCensusGapsFromEvidence(ev), [
       { key: "kar_ascending", cause: "missing_deploy_slot" },
     ]);
     assert.equal(
       formatSvmCommercialCensusSummary(ev),
       "census: checked 5 of 6; incomplete: missing deploySlot: kar_ascending",
     );
-    assert.throws(
-      () => assertSvmCommercialEvidence(ev),
-      MissingCommercialProgramError,
-    );
 
-    const staggered = withSlots(
-      {
-        kar_passport: { programId: FULL_PROGRAMS.kar_passport.programId },
-        kar_gateway: { programId: FULL_PROGRAMS.kar_gateway.programId },
-        kar_pro_staking: { programId: FULL_PROGRAMS.kar_pro_staking!.programId },
-        kar_pro_pass: { programId: FULL_PROGRAMS.kar_pro_pass!.programId },
-        kar_fixed_price: { programId: FULL_PROGRAMS.kar_fixed_price!.programId },
-        kar_ascending: { programId: FULL_PROGRAMS.kar_ascending!.programId },
+    const staggered = stackFromFixture({
+      blocks: {
+        karProStaking: 100,
+        karProPass: 100,
+        karPassport: 100,
+        bridgeGateway: 100,
+        fixedPriceConsignment: 100,
+        ascendingConsignment: 500,
       },
-      {
-        kar_passport: 100,
-        kar_gateway: 100,
-        kar_pro_staking: 100,
-        kar_pro_pass: 100,
-        kar_fixed_price: 100,
-        kar_ascending: 500,
-      },
-    );
-    const evidence = evidenceWith(staggered);
-    assert.equal(resolveIngestStartSlot(evidence), 100);
-    assert.notEqual(resolveIngestStartSlot(evidence), evidence.indexFromSlot);
-    assert.notEqual(resolveIngestStartSlot(evidence), evidence.slotAtEvidence);
+    });
+    assert.equal(resolveIngestStartSlot(staggered), 100);
   });
 
-  it("S9-0-close: four programs load + gateway ok; census assert refuses modes", () => {
+  it("S9-0-close: four programs load + gateway ok; evidence census assert refuses modes", () => {
     const four = evidenceWith(FOUR_PROGRAMS);
     assert.equal(
       requireSvmGatewayProgramId(four),
@@ -262,8 +289,7 @@ describe("svm commercial program census (S9-0 / S9-0-close)", () => {
     );
   });
 
-  it("S9-0-close-2: assertSvmCommercialEvidence only at ingest entry (and owner)", () => {
-    const needle = "assertSvmCommercialEvidence(";
+  it("assertSvmCommercialStack only at ingest entry (and owner)", () => {
     const allowed = new Set([
       "lib/svm/ingest-config.ts",
       "src/svm-ingest/main.ts",
@@ -289,7 +315,7 @@ describe("svm commercial program census (S9-0 / S9-0-close)", () => {
         if (!/\.(ts|tsx)$/.test(name)) continue;
         const rel = relative(ROOT, p);
         const text = readFileSync(p, "utf8");
-        if (!/\bassertSvmCommercialEvidence\s*\(/.test(text)) continue;
+        if (!/\bassertSvmCommercialStack\s*\(/.test(text)) continue;
         if (!allowed.has(rel)) hits.push(rel);
       }
     }
@@ -301,21 +327,19 @@ describe("svm commercial program census (S9-0 / S9-0-close)", () => {
     assert.deepEqual(
       hits,
       [],
-      `assertSvmCommercialEvidence must not be called outside ingest entry + owner:\n${hits.join("\n")}`,
+      `assertSvmCommercialStack must not be called outside ingest entry + owner:\n${hits.join("\n")}`,
     );
 
     const ingestMain = readFileSync(join(ROOT, "src/svm-ingest/main.ts"), "utf8");
     assert.match(
       ingestMain,
-      /\bassertSvmCommercialEvidence\s*\(/,
-      "ingest entry must call assertSvmCommercialEvidence (sole hard census gate)",
+      /\bassertSvmCommercialStack\s*\(/,
+      "ingest entry must call assertSvmCommercialStack (sole hard census gate)",
     );
-
-    assert.ok(
-      !readFileSync(
-        join(ROOT, "scripts/assert-svm-upgrade-authority.ts"),
-        "utf8",
-      ).includes(needle),
+    assert.doesNotMatch(
+      ingestMain,
+      /loadSvmDevnetEvidence/,
+      "ingest entry must not load deploy evidence at runtime",
     );
   });
 
@@ -330,45 +354,125 @@ describe("svm commercial program census (S9-0 / S9-0-close)", () => {
     );
   });
 
-  it("S9-0-close: namespace confirm / fill / mismatch", () => {
-    const prev = process.env.SVM_INGEST_NAMESPACE;
+  it("namespace confirm via resolveIngestCommercialStack", () => {
+    const prevNs = process.env.SVM_INGEST_NAMESPACE;
+    const prevEid = process.env.SVM_INGEST_EID;
     try {
+      delete process.env.SVM_INGEST_NAMESPACE;
+      delete process.env.SVM_INGEST_EID;
+      const stack = resolveIngestCommercialStack();
+      assert.equal(Number(stack.namespace), SOLANA_NS);
+      assert.equal(resolveIngestNamespace(stack), SOLANA_NS);
+
       process.env.SVM_INGEST_NAMESPACE = "2000040168";
       assert.equal(
-        resolveIngestNamespace(evidenceWith(FULL_PROGRAMS)),
-        2_000_040_168,
+        Number(resolveIngestCommercialStack().namespace),
+        SOLANA_NS,
       );
 
       process.env.SVM_INGEST_NAMESPACE = "999";
       assert.throws(
-        () => resolveIngestNamespace(evidenceWith(FULL_PROGRAMS)),
+        () => resolveIngestCommercialStack(),
         (err: unknown) => {
           assert.ok(err instanceof Error);
           assert.match(err.message, /SVM_INGEST_NAMESPACE=999/);
-          assert.match(err.message, /evidence\.namespace=2000040168/);
+          assert.match(err.message, /COMMERCIAL_ACTIVE\.namespace=2000040168/);
           return true;
         },
       );
+    } finally {
+      if (prevNs === undefined) delete process.env.SVM_INGEST_NAMESPACE;
+      else process.env.SVM_INGEST_NAMESPACE = prevNs;
+      if (prevEid === undefined) delete process.env.SVM_INGEST_EID;
+      else process.env.SVM_INGEST_EID = prevEid;
+    }
+  });
 
-      delete process.env.SVM_INGEST_NAMESPACE;
-      assert.equal(
-        resolveIngestNamespace(evidenceWith(FULL_PROGRAMS)),
-        2_000_040_168,
+  it("no-deployments-dir: live registry cursor = min(blocks) = 490463509", () => {
+    const empty = mkdtempSync(join(tmpdir(), "kargain-no-deployments-"));
+    const prev = process.env.KARGAIN_DEPLOYMENTS_DIR;
+    const prevNs = process.env.SVM_INGEST_NAMESPACE;
+    const prevEid = process.env.SVM_INGEST_EID;
+    process.env.KARGAIN_DEPLOYMENTS_DIR = empty;
+    delete process.env.SVM_INGEST_NAMESPACE;
+    delete process.env.SVM_INGEST_EID;
+    try {
+      assert.equal(loadSvmDevnetEvidence(40168), null);
+      const stack = resolveIngestCommercialStack();
+      assert.equal(stack, requireCommercialActive(SOLANA_NS));
+      assert.equal(resolveIngestStartSlot(stack), EXPECTED_START_SLOT);
+      assert.equal(followedProgramsFromStack(stack).length, 6);
+    } finally {
+      if (prev === undefined) delete process.env.KARGAIN_DEPLOYMENTS_DIR;
+      else process.env.KARGAIN_DEPLOYMENTS_DIR = prev;
+      if (prevNs === undefined) delete process.env.SVM_INGEST_NAMESPACE;
+      else process.env.SVM_INGEST_NAMESPACE = prevNs;
+      if (prevEid === undefined) delete process.env.SVM_INGEST_EID;
+      else process.env.SVM_INGEST_EID = prevEid;
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
+  it("svm-ingest graph must not reach scripts/lib/load-deployment", () => {
+    const banned = ["scripts/lib/load-deployment.ts"];
+    const violations = traceStaticReachabilityToModules(banned, {
+      startRoots: ["src/svm-ingest"],
+      graphRoots: ["src", "lib", "scripts"],
+    });
+    assert.deepEqual(
+      violations,
+      [],
+      violations.map((v) => `${v.path}: ${v.reason}`).join("\n"),
+    );
+
+    // scripts may still import the loader (deploy-machine).
+    const scriptHits = traceStaticReachabilityToModules(banned, {
+      startRoots: ["scripts/lib"],
+      graphRoots: ["src", "lib", "scripts"],
+      owners: banned,
+    });
+    // Owner is the banned module itself — skipped. Other scripts that import it are ok for this gate.
+    assert.ok(Array.isArray(scriptHits));
+
+    // Planted control: text scan green, graph red.
+    const plantedRoot = mkdtempSync(join(tmpdir(), "kargain-ingest-reach-"));
+    try {
+      const ingestDir = join(plantedRoot, "src/svm-ingest");
+      const scriptsDir = join(plantedRoot, "scripts/lib");
+      mkdirSync(ingestDir, { recursive: true });
+      mkdirSync(scriptsDir, { recursive: true });
+      writeFileSync(
+        join(ingestDir, "main.ts"),
+        'import { loadSvmDevnetEvidence } from "../../scripts/lib/load-deployment.js";\nexport const x = loadSvmDevnetEvidence;\n',
+      );
+      writeFileSync(
+        join(scriptsDir, "load-deployment.ts"),
+        "export function loadSvmDevnetEvidence() { return null; }\n",
       );
 
-      process.env.SVM_INGEST_NAMESPACE = "42";
-      const evidenceNoNs = {
-        cluster: "solana-devnet",
-        eid: 40168,
-        programs: FULL_PROGRAMS,
-      } as SvmDevnetEvidence;
-      assert.equal(resolveIngestNamespace(evidenceNoNs), 42);
+      const textScan = scanProductSources(
+        (rel, source) =>
+          rel.startsWith("src/svm-ingest/") &&
+          source.includes("@solana/web3.js")
+            ? "sdk"
+            : false,
+        { rootDir: plantedRoot },
+      );
+      assert.deepEqual(textScan, []);
 
-      delete process.env.SVM_INGEST_NAMESPACE;
-      assert.throws(() => resolveIngestNamespace(evidenceNoNs), /unset/);
+      const reachability = traceStaticReachabilityToModules(
+        ["scripts/lib/load-deployment.ts"],
+        {
+          rootDir: plantedRoot,
+          startRoots: ["src/svm-ingest"],
+          graphRoots: ["src", "lib", "scripts"],
+        },
+      );
+      assert.equal(reachability.length, 1);
+      assert.equal(reachability[0]?.path, "src/svm-ingest/main.ts");
+      assert.match(reachability[0]?.reason ?? "", /load-deployment/);
     } finally {
-      if (prev === undefined) delete process.env.SVM_INGEST_NAMESPACE;
-      else process.env.SVM_INGEST_NAMESPACE = prev;
+      rmSync(plantedRoot, { recursive: true, force: true });
     }
   });
 
@@ -421,7 +525,6 @@ describe("svm commercial program census (S9-0 / S9-0-close)", () => {
       `Retired ${banned} must not appear:\n${hits.join("\n")}`,
     );
 
-    // Planted control: reconstructing the retired name is detectable.
     const planted = `export const X = "${banned}"`;
     assert.ok(planted.includes(banned));
   });

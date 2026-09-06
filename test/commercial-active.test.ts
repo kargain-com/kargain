@@ -68,6 +68,8 @@ describe("COMMERCIAL_ACTIVE registry", () => {
     const solana = requireCommercialActive(SOLANA);
     assert.equal(solana.vm, "svm");
     assert.equal(solana.usdc, "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
+    assert.equal(solana.blocks.karProStaking, 490_463_509);
+    assert.equal(solana.blocks.ascendingConsignment, 493_101_099);
   });
 
   it("SEPOLIA_ACTIVE aliases COMMERCIAL_ACTIVE[84532]", () => {

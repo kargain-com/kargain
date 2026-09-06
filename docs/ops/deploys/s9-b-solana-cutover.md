@@ -6,14 +6,15 @@ Final S9-B unit: Solana Devnet namespace `2000040168` enters `COMMERCIAL_ACTIVE`
 
 Accepted design (do not reopen):
 
-- Start cursor owner is `resolveIngestStartSlot()` = `min(programs.*.deploySlot)` over the six commercial programs in `deployments/svm-40168.json`. The SVM registry row carries **no** `indexFromBlock` mirror.
+- Start cursor owner is `resolveIngestStartSlot()` = `min(blocks.*)` over the six commercial program start slots on the Solana `COMMERCIAL_ACTIVE` row. The SVM registry row carries **no** single precomputed `indexFromBlock` mirror. Gitignored `deployments/svm-40168.json` is deploy-machine equality assert only — not a VPS runtime input.
 - First-run catch-up is `bootstrap_state = historical_backfill`, distinct from post-bootstrap `catchup_window_exceeded`.
 - Bootstrap completes only when the cursor reaches observed head and the service enters normal follow mode (`bootstrap_state` cleared to null).
 - Retention refusal text: `svm-ingest RPC retention unavailable: required slot ${requiredSlot} is before first available block ${firstAvailableBlock}`.
 
 ## Registry and evidence
 
-- Deploy evidence: `deployments/svm-40168.json`
+- Runtime source: `COMMERCIAL_ACTIVE` Solana row (program ids + `blocks` slots)
+- Deploy-machine evidence (assert only): `deployments/svm-40168.json`
 - Namespace / EID: `2000040168` / `40168`
 - RPC measured at implementation: `SOLANA_RPC_URL=https://api.devnet.solana.com`
   - `getFirstAvailableBlock = 116113408`
@@ -32,9 +33,9 @@ Accepted design (do not reopen):
 
 - **Changes:** none yet — read-only gate.
 - **Verify:**
-  - `deployments/svm-40168.json` present on the host
   - `.env` has `SOLANA_RPC_URL` (the endpoint `svm-ingest` will actually use), `SVM_INGEST_EID=40168`, and the Postgres URL shared with Ponder
   - Optional confirm: `SVM_INGEST_NAMESPACE` unset or equal to `2000040168`
+  - No requirement to copy `deployments/svm-40168.json` onto the host
 - **Undo:** n/a (no mutation).
 
 ### 3. Build and start `svm-ingest`
@@ -51,7 +52,7 @@ Accepted design (do not reopen):
 
 ### 4. Watch bootstrap clear
 
-- **Changes:** cursor advances from `min(deploySlot) - 1` through historical backfill; `bootstrap_state` stays `historical_backfill` until head is reached, then clears.
+- **Changes:** cursor advances from `min(blocks) - 1` through historical backfill; `bootstrap_state` stays `historical_backfill` until head is reached, then clears.
 - **Verify:**
   ```bash
   curl -s http://127.0.0.1:42100/ready | python3 -m json.tool

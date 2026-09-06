@@ -168,4 +168,29 @@ describe("assertCommercialActiveMatchesManifest", () => {
       rmSync(temp, { recursive: true, force: true });
     }
   });
+
+  it("refuses naming the SVM field when one deploySlot mismatches", () => {
+    const temp = mkdtempSync(join(tmpdir(), "kargain-svm-slot-mismatch-"));
+    try {
+      copyFileSync(join(process.cwd(), "deployments", SVM_EVIDENCE), join(temp, SVM_EVIDENCE));
+      const dest = join(temp, SVM_EVIDENCE);
+      const raw = JSON.parse(readFileSync(dest, "utf8")) as Record<string, unknown>;
+      const programs = raw.programs as Record<string, Record<string, unknown>>;
+      programs.kar_pro_staking = {
+        ...programs.kar_pro_staking,
+        deploySlot: 1,
+      };
+      raw.programs = programs;
+      writeFileSync(dest, JSON.stringify(raw));
+
+      withDeploymentsDir(temp, () => {
+        assert.throws(
+          () => assertCommercialActiveSvmMatchesEvidence(),
+          /blocks\.karProStaking|deploySlot/,
+        );
+      });
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
 });

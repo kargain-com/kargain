@@ -1,5 +1,6 @@
 /**
  * svm-ingest service entry — sole runtime writer to kargain_svm_raw.
+ * Boot from COMMERCIAL_ACTIVE only — no deployments/ evidence at runtime.
  */
 
 import { createRequire } from "node:module";
@@ -7,13 +8,13 @@ import { createRequire } from "node:module";
 import pg from "pg";
 
 import {
-  assertSvmCommercialEvidence,
-  followedProgramsFromEvidence,
+  assertSvmCommercialStack,
+  followedProgramsFromStack,
   resolveCatchupMaxLagSlots,
+  resolveIngestCommercialStack,
   resolveIngestNamespace,
   resolveIngestStartSlot,
 } from "../../lib/svm/ingest-config.js";
-import { loadSvmDevnetEvidence } from "../../scripts/lib/load-deployment.js";
 import { applySvmRawSchema, createSvmRawWriter } from "../lib/svm-raw-writer.js";
 import {
   applySvmProjectionSchema,
@@ -43,16 +44,11 @@ async function main(): Promise<void> {
     throw new Error("SVM_INGEST_DATABASE_URL or DATABASE_URL required");
   }
 
-  const eid = Number(process.env.SVM_INGEST_EID?.trim() ?? "40168");
-  const evidence = loadSvmDevnetEvidence(eid);
-  if (!evidence) {
-    throw new Error(`Missing deploy evidence deployments/svm-${eid}.json`);
-  }
-
-  assertSvmCommercialEvidence(evidence);
-  const namespace = resolveIngestNamespace(evidence);
-  const startSlot = resolveIngestStartSlot(evidence);
-  const followedPrograms = followedProgramsFromEvidence(evidence);
+  const stack = resolveIngestCommercialStack();
+  assertSvmCommercialStack(stack);
+  const namespace = resolveIngestNamespace(stack);
+  const startSlot = resolveIngestStartSlot(stack);
+  const followedPrograms = followedProgramsFromStack(stack);
 
   const pool = new pg.Pool({ connectionString: databaseUrl });
   await applySvmRawSchema(pool);
