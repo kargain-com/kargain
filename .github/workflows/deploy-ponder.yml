@@ -3,15 +3,25 @@ name: Deploy Ponder to VPS
 on:
   push:
     branches: [master]
+    # Do not use a bare `src/**` — that rebuilds Ponder on every svm-ingest push.
+    # paths + paths-ignore cannot both be set on the same event; exclude by omission.
     paths:
       - "ponder.config.ts"
       - "ponder.schema.ts"
-      - "src/**"
+      - "src/api/**"
+      - "src/index.ts"
+      - "src/bridge-handlers.ts"
+      - "src/commerce-handlers.ts"
+      - "src/lib/**"
       - "lib/contracts/abis.generated.ts"
+      - "lib/web3/commercial-active.ts"
+      - "lib/web3/sepolia-addresses.ts"
+      - "lib/web3/deployment-addresses.ts"
       - "Dockerfile.ponder"
       - "docker-compose.yml"
       - "package.json"
       - "pnpm-lock.yaml"
+      - ".github/workflows/deploy-ponder.yml"
 
 jobs:
   deploy:

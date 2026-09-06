@@ -194,6 +194,7 @@ After backfill reaches chain head, **leave the same numeric start blocks**. Pond
 
 Examples that **do not** require reindex:
 
+- **`src/svm-ingest/**` only** — separate compose service; deploy with `docker compose build svm-ingest && docker compose up -d --force-recreate svm-ingest`. CI (`.github/workflows/deploy-ponder.yml`) must **not** rebuild Ponder for those paths (omit `src/svm-ingest/**` from the workflow `paths` list). A needless Ponder rebuild can still exit with `MigrationError` if the baked image’s contract `build_id` (addresses / start blocks from `COMMERCIAL_ACTIVE`) no longer matches the DB — that is not an SVM-ingest signal to wipe.
 - Phase 5 polish UI (PR5a–d): typed record labels, attestation form, browse chain-status sample (`getPassportStatus` via wagmi on the client)
 - Irys upload hardening (June 2026): client-side only — no Ponder schema change
 - Basescan verify (`pnpm verify:sepolia`, `--auction-only` after auction deploy) — ops-only, no indexer impact; HHE80009 bytecode mismatch exits 0 by default
