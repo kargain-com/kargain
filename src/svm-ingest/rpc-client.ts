@@ -143,7 +143,11 @@ export function createSolanaRpcClient(
   rpcUrl: string,
   options?: CreateSolanaRpcClientOptions,
 ): SvmRpcClient {
-  const connection = new Connection(rpcUrl, "confirmed");
+  const connection = new Connection(rpcUrl, {
+    commitment: "confirmed",
+    // Sole 429 owner is with429Backoff below — never dual-retry with web3.js.
+    disableRetryOnRateLimit: true,
+  });
   const maxRps = options?.maxRps ?? resolveIngestMaxRps();
   const limiter = createRateLimiter(maxRps);
   const missingBlockRetries =

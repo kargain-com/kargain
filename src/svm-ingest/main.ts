@@ -21,6 +21,7 @@ import {
   applySvmProjectionSchema,
   createSvmProjectionWriter,
 } from "../lib/svm-projection-writer.js";
+import { runFollowLoop } from "./follow-loop.js";
 import { createIngestLoop } from "./ingest-loop.js";
 import { createProjectionProjector } from "./projection-projector.js";
 import { createSvmIngestHealthServer } from "./http-health.js";
@@ -89,22 +90,19 @@ async function main(): Promise<void> {
   });
 
   const pollMs = Number(process.env.SVM_INGEST_POLL_MS?.trim() ?? "2000");
-  let followInFlight = false;
-  const timer = setInterval(() => {
-    if (followInFlight) return;
-    followInFlight = true;
-    void loop
-      .followOnce()
-      .catch((err) => {
-        console.error("svm-ingest follow error:", err);
-      })
-      .finally(() => {
-        followInFlight = false;
-      });
-  }, pollMs);
+  const followAbort = new AbortController();
+  const followDone = runFollowLoop({
+    followOnce: () => loop.followOnce(),
+    pollMs,
+    signal: followAbort.signal,
+    onError: (err) => {
+      console.error("svm-ingest follow error:", err);
+    },
+  });
 
   const shutdown = async () => {
-    clearInterval(timer);
+    followAbort.abort();
+    await followDone;
     await health.close();
     await pool.end();
   };

@@ -10,7 +10,7 @@ Accepted design (do not reopen):
 - Work discovery is `getSignaturesForAddress` per followed program (floor = that program’s `blocks.*`); `getBlock` runs only for discovered slots. Near-tip follow uses the same discovery path. SQL `last_contiguous_slot` = high-water processed discovered slot.
 - First-run catch-up is `bootstrap_state = historical_backfill`, distinct from post-bootstrap `catchup_window_exceeded` (lag = oldest unprocessed discovered slot outside the window — empty tip gaps are not lag).
 - Bootstrap completes when all six programs are paged to their floors, discovered slots are processed (or named-missing), and a verification re-poll finds no extras. Empty discovery parks the watermark at observed head.
-- Missing / `-32009` on a discovered slot is a named refusal; watermark advances; process does not exit. `SVM_INGEST_MAX_RPS` (default 3) budgets RPC; 429 exhaustion → `rpc_budget_exhausted`, not process exit.
+- Missing / `-32009` on a discovered slot is a named refusal; watermark advances; process does not exit. `SVM_INGEST_MAX_RPS` (default 3) is the sole RPC budget (`disableRetryOnRateLimit` on the Solana client; ingest owns 429 backoff). Live follow is serial (`runFollowLoop`) and stops signature paging at the watermark.
 - Retention refusal text: `svm-ingest RPC retention unavailable: required slot ${requiredSlot} is before first available block ${firstAvailableBlock}`.
 
 ## Registry and evidence

@@ -82,7 +82,7 @@ Start cursor owner is `resolveIngestStartSlot()` in `lib/svm/ingest-config.ts`: 
 
 On a fresh cursor, `svm-ingest` writes `bootstrap_state = historical_backfill` and stays not-ready until all six programs have been paged to their floors, every discovered slot has been processed (or named-missing), and a verification re-poll finds no extra signatures in range. Empty discovery completes bootstrap and parks the watermark at the observed head. This phase is expected and does **not** raise `catchup_window_exceeded`. Live follow uses the **same** discovery path for slots above the watermark (no tip every-slot `getBlock` mode).
 
-Request budget: `SVM_INGEST_MAX_RPS` (default **3**) shared across signature pages and `getBlock`. HTTP **429** uses bounded backoff; exhausting retries records `rpc_budget_exhausted` and keeps `/ready` at **503** — the process does **not** exit. Incomplete signature pagination records `discovery_incomplete`.
+Request budget: `SVM_INGEST_MAX_RPS` (default **3**) is the sole shared throttle for signature pages and `getBlock`. The Solana web3.js client is constructed with `disableRetryOnRateLimit: true` so HTTP 429 is handled only by the ingest RPC owner (bounded backoff → `rpc_budget_exhausted` on `/ready` **503** — process does not exit). Incomplete signature pagination records `discovery_incomplete`. Live follow is a serial loop (`runFollowLoop`): one tick finishes before the next starts after `SVM_INGEST_POLL_MS` — no overlapping discovery.
 
 A discovered slot that returns missing / JSON-RPC **-32009** is a named refusal (`discovered_slot_missing_block`); the watermark advances; the process does **not** exit. Ordinary empty slots are simply never visited.
 

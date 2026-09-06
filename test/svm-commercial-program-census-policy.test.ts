@@ -100,7 +100,6 @@ function stackFromFixture(
 ): SvmCommercialActiveStack {
   return {
     ...FIXTURE_SVM_STACK,
-    blocks: { ...FIXTURE_SVM_STACK.blocks },
     ...overrides,
     blocks:
       overrides.blocks !== undefined
