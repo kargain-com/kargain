@@ -487,6 +487,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["ponder-read-path-ready.test.ts", "ponder-http-freshness-policy.test.ts"],
   },
   {
+    id: "svm-devnet-evidence-write",
+    owner: "scripts/lib/svm-devnet-evidence-write.ts",
+    rule: "Sole additive writer for deployments/svm-{eid}.json; refuse drop / digest absence / deploySlot move",
+    guardTests: ["svm-devnet-evidence-write-policy.test.ts"],
+  },
+  {
     id: "lib-scripts-boundary",
     owner: "lib/svm/devnet-evidence.ts · lib/** import graph",
     rule: "lib/ must not import scripts/; SVM deploy evidence types live in lib, loaders in scripts",

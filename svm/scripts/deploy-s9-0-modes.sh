@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# S9-0 — Deploy kar_fixed_price + kar_ascending to Solana Devnet.
-# Retain deployer upgrade authority (S4–S9). Does not redeploy passport/gateway/staking/pass.
+# S9-0 — Deploy/upgrade kar_fixed_price + kar_ascending on Solana Devnet.
+# Uses persistent svm/target/deploy/<name>-keypair.json for first deploy;
+# subsequent runs upgrade in place. Evidence via sole write owner.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -48,33 +49,45 @@ echo "==> build kar_fixed_price + kar_ascending (--arch v3)"
 (cd svm/programs/kar-fixed-price && cargo-build-sbf --arch v3)
 (cd svm/programs/kar-ascending && cargo-build-sbf --arch v3)
 
-deploy_one() {
-  local name="$1"
-  local so="svm/target/deploy/${name}.so"
-  if [[ ! -f "$so" ]]; then
-    echo "missing artifact: $so" >&2
-    exit 1
-  fi
-  echo "==> deploy $name"
-  solana program deploy "$so" \
-    --program-id "svm/target/deploy/${name}-keypair.json" \
-    --upgrade-authority "$DEPLOYER_KP" \
-    --keypair "$DEPLOYER_KP" \
-    -u "$RPC" 2>&1 | filter_cli
-  local pid
-  pid="$(solana address -k "svm/target/deploy/${name}-keypair.json")"
-  echo "    programId: $pid"
-  solana program show "$pid" -u "$RPC" 2>&1 | filter_cli
-}
+DEPLOY_DIR="$ROOT/svm/target/deploy"
+EVIDENCE="$ROOT/deployments/svm-40168.json"
+mkdir -p "$ROOT/deployments"
 
-for name in kar_fixed_price kar_ascending; do
-  deploy_one "$name"
-done
+# Prefer registry upgrade when commercial ids already committed (S9-B+).
+if pnpm exec tsx -e 'import { requireSvmCommercialActive } from "./lib/web3/commercial-active.ts"; import { namespaceFromLayerZeroEid } from "./lib/web3/kargain-namespace.ts"; const s=requireSvmCommercialActive(namespaceFromLayerZeroEid(40168)); if(!s.fixedPriceConsignment||!s.ascendingConsignment) process.exit(2);' 2>/dev/null; then
+  echo "==> upgrade modes from COMMERCIAL_ACTIVE program ids"
+  pnpm exec tsx scripts/svm-upgrade-in-place.ts \
+    --programs kar_fixed_price,kar_ascending \
+    --so-dir "$DEPLOY_DIR" \
+    --rpc "$RPC" \
+    --deployer-keypair "$DEPLOYER_KP" \
+    --evidence "$EVIDENCE"
+else
+  echo "==> first-time modes deploy via persistent keypairs"
+  for name in kar_fixed_price kar_ascending; do
+    so="$DEPLOY_DIR/${name}.so"
+    kp="$DEPLOY_DIR/${name}-keypair.json"
+    if [[ ! -f "$kp" ]]; then
+      echo "missing persistent keypair: $kp" >&2
+      exit 1
+    fi
+    echo "==> deploy $name"
+    solana program deploy "$so" \
+      --program-id "$kp" \
+      --upgrade-authority "$DEPLOYER_KP" \
+      --keypair "$DEPLOYER_KP" \
+      -u "$RPC" 2>&1 | filter_cli
+    pid="$(solana address -k "$kp")"
+    echo "    programId: $pid"
+    SLOT="$(solana slot -u "$RPC")"
+    pnpm exec tsx scripts/svm-merge-devnet-evidence.ts \
+      --caller deploy-s9-0-modes.sh \
+      --evidence "$EVIDENCE" \
+      --programs-json "{\"${name}\":{\"programId\":\"${pid}\",\"upgradeAuthority\":\"${DEPLOYER_PUB}\",\"deploySlot\":${SLOT}}}" \
+      --attach-so-json "{\"${name}\":\"${so}\"}"
+  done
+fi
 
-echo "==> S9-0 deploy done."
-echo "    Update deployments/svm-40168.json:"
-echo "      programs.kar_fixed_price / kar_ascending → programId + deploySlot"
-echo "      leave passport/gateway/staking/pass programIds; set deploySlot to true deploy slots if missing"
-echo "    Then: pnpm verify:svm-authority && pnpm deploy:svm:dry-run"
-echo "    Do NOT enable svm-ingest / VPS (S9-B). Cursor = min(deploySlot) over six."
+echo "==> S9-0 done. Evidence: $EVIDENCE"
+echo "    Then: pnpm verify:svm-authority"
 echo "    Runbook: docs/ops/deploys/s9-0-devnet-modes.md"

@@ -34,7 +34,14 @@ export function writeSpokeDeploymentManifest(
   writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
-export function writeSvmDevnetEvidence(path: string, evidence: SvmDevnetEvidence): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(evidence, null, 2)}\n`);
+/**
+ * Blank overwrite of SVM Devnet evidence is removed.
+ * Use {@link mergeAndWriteSvmDevnetEvidence} from `svm-devnet-evidence-write.ts`.
+ */
+export function writeSvmDevnetEvidence(_path: string, _evidence: SvmDevnetEvidence): never {
+  throw new Error(
+    "writeSvmDevnetEvidence blank overwrite removed — use mergeAndWriteSvmDevnetEvidence " +
+      "(scripts/lib/svm-devnet-evidence-write.ts)",
+  );
 }
+

@@ -1,17 +1,11 @@
 #!/usr/bin/env bash
-# S5 — Deploy kar_pro_staking + kar_pro_pass to Solana Devnet.
-# Retain deployer upgrade authority (S4–S8). Does not redeploy passport/gateway.
+# S5 — Upgrade kar_pro_staking + kar_pro_pass in place (ids from COMMERCIAL_ACTIVE).
+# Retain deployer upgrade authority (S4–S9). Does not redeploy passport/gateway.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 export PATH="${HOME}/.local/share/solana/install/active_release/bin:${PATH}"
-
-filter_cli() {
-  grep -E -v -i \
-    'seed phrase|Recover the intermediate|12-word|ephemeral keypair|To resume a deploy|solana-keygen recover|solana program close|=====|^[a-z]+( [a-z]+){11}$' \
-    || true
-}
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -20,16 +14,14 @@ need_cmd() {
   }
 }
 need_cmd solana
-need_cmd solana-keygen
 need_cmd cargo-build-sbf
 need_cmd pnpm
 
 : "${SOLANA_RPC_URL:?SOLANA_RPC_URL required}"
 : "${SOLANA_DEPLOYER_PRIVATE_KEY:?SOLANA_DEPLOYER_PRIVATE_KEY required}"
-# SOLANA_UPGRADE_AUTHORITY: sole check via assert-solana-ua-matches-deployer.ts (do not read here)
 
 RPC="$SOLANA_RPC_URL"
-echo "==> S5 Devnet staking + pass deploy (retain deployer UA until proven)"
+echo "==> S5 Devnet staking + pass upgrade in place (retain deployer UA)"
 MAT="$(pnpm exec tsx scripts/svm-materialize-deployer.ts)"
 DEPLOYER_PUB="$(echo "$MAT" | cut -f1)"
 DEPLOYER_KP="$(echo "$MAT" | cut -f2)"
@@ -43,62 +35,35 @@ trap cleanup EXIT
 
 echo "    deployer: $DEPLOYER_PUB"
 pnpm exec tsx scripts/assert-solana-ua-matches-deployer.ts >/dev/null
-echo "    upgradeAuthority: $DEPLOYER_PUB (retained S4–S8)"
+echo "    upgradeAuthority: $DEPLOYER_PUB (retained S4–S9)"
 
-echo "==> build kar_pro_staking + kar_pro_pass (--arch v3)"
+echo "==> build kar_pro_staking + kar_pro_pass (+ passport for prove) (--arch v3)"
 (cd svm/programs/kar-pro-staking && cargo-build-sbf --arch v3)
 (cd svm/programs/kar-pro-pass && cargo-build-sbf --arch v3)
-# Passport must include VerifyPassport + SetStakingProgram for proof
 (cd svm/programs/kar-passport && cargo-build-sbf --arch v3)
 
 DEPLOY_DIR="$ROOT/svm/target/deploy"
 EVIDENCE="$ROOT/deployments/svm-40168.json"
-mkdir -p "$ROOT/deployments" "$WORK/program-keys"
+mkdir -p "$ROOT/deployments"
 
-deploy_one() {
-  local name="$1"
-  local so="$DEPLOY_DIR/${name}.so"
-  if [[ ! -f "$so" ]]; then
-    echo "missing $so" >&2
-    exit 1
-  fi
-  solana-keygen new --no-bip39-passphrase -o "$WORK/program-keys/${name}.json" --force >/dev/null
-  local pid
-  pid="$(solana-keygen pubkey "$WORK/program-keys/${name}.json")"
-  echo "  deploy $name → $pid"
-  set +e
-  OUT="$(solana program deploy "$so" \
-    --program-id "$WORK/program-keys/${name}.json" \
-    --upgrade-authority "$DEPLOYER_KP" \
-    --keypair "$DEPLOYER_KP" \
-    -u "$RPC" 2>&1)"
-  RC=$?
-  set -e
-  echo "$OUT" | filter_cli
-  if [[ "$RC" -ne 0 ]]; then
-    echo "FAIL: deploy $name exit $RC" >&2
-    exit 1
-  fi
-  echo "$pid" >"$WORK/${name}.program_id"
-}
+echo "==> upgrade kar_pro_staking + kar_pro_pass (no new program keypairs)"
+pnpm exec tsx scripts/svm-upgrade-in-place.ts \
+  --programs kar_pro_staking,kar_pro_pass \
+  --so-dir "$DEPLOY_DIR" \
+  --rpc "$RPC" \
+  --deployer-keypair "$DEPLOYER_KP" \
+  --evidence "$EVIDENCE"
 
-for name in kar_pro_staking kar_pro_pass; do
-  deploy_one "$name"
-done
+# Also refresh passport BPF when prove needs VerifyPassport / SetStakingProgram
+pnpm exec tsx scripts/svm-upgrade-in-place.ts \
+  --programs kar_passport \
+  --so-dir "$DEPLOY_DIR" \
+  --rpc "$RPC" \
+  --deployer-keypair "$DEPLOYER_KP" \
+  --evidence "$EVIDENCE"
 
-STAKING_ID="$(cat "$WORK/kar_pro_staking.program_id")"
-PASS_ID="$(cat "$WORK/kar_pro_pass.program_id")"
-
-echo "==> assert upgrade authority = deployer"
-for name in kar_pro_staking kar_pro_pass; do
-  pid="$(cat "$WORK/${name}.program_id")"
-  SHOW="$(solana program show "$pid" -u "$RPC")"
-  if ! echo "$SHOW" | grep -q "Authority: $DEPLOYER_PUB"; then
-    echo "FAIL: $name UA != deployer" >&2
-    echo "$SHOW" >&2
-    exit 1
-  fi
-done
+STAKING_ID="$(pnpm exec tsx -e 'import { requireSvmCommercialActive } from "./lib/web3/commercial-active.ts"; import { namespaceFromLayerZeroEid } from "./lib/web3/kargain-namespace.ts"; process.stdout.write(requireSvmCommercialActive(namespaceFromLayerZeroEid(40168)).karProStaking);')"
+PASS_ID="$(pnpm exec tsx -e 'import { requireSvmCommercialActive } from "./lib/web3/commercial-active.ts"; import { namespaceFromLayerZeroEid } from "./lib/web3/kargain-namespace.ts"; process.stdout.write(requireSvmCommercialActive(namespaceFromLayerZeroEid(40168)).karProPass);')"
 
 echo "==> pair init + pin min stake (stated testnet constant recorded in evidence)"
 pnpm exec tsx scripts/svm-s5-init-and-prove.ts \
@@ -109,7 +74,7 @@ pnpm exec tsx scripts/svm-s5-init-and-prove.ts \
   --evidence "$EVIDENCE" \
   --work "$WORK"
 
-echo "==> S5 deploy + prove via svm-s5-init-and-prove.ts (no UA handoff)"
+echo "==> S5 upgrade + prove via svm-s5-init-and-prove.ts (no UA handoff)"
 echo "    staking=$STAKING_ID"
 echo "    pass=$PASS_ID"
 echo "DONE (deployer retains UA)"

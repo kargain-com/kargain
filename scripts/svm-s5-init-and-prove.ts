@@ -17,7 +17,7 @@ import {
   testnetMinStakeLamports,
   testnetMinStakePinRecord,
 } from "../lib/web3/min-stake-sol.ts";
-import { loadSvmDevnetEvidence, requireSvmGatewayProgramId, requireSvmPassportProgramId, type SvmDevnetEvidence } from "./lib/load-deployment.ts";
+import { loadSvmDevnetEvidence, requireSvmGatewayProgramId, requireSvmPassportProgramId } from "./lib/load-deployment.ts";
 import { assertSolanaUpgradeAuthorityMatchesDeployer } from "./lib/svm-deploy-plan.ts";
 import {
   STAKE_ACCOUNT_SPACE,
@@ -28,7 +28,10 @@ import {
   assertStakeClearedAfterClaim,
   assertUnbondNotReady,
 } from "./lib/svm-verifier-lifecycle-asserts.ts";
-import { writeSvmDevnetEvidence } from "./lib/write-deployment.ts";
+import {
+  artifactDigestFromSo,
+  mergeAndWriteSvmDevnetEvidence,
+} from "./lib/svm-devnet-evidence-write.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../svm/lab/package.json"));
@@ -447,34 +450,33 @@ async function main() {
 
   const pin = testnetMinStakePinRecord();
   const slotAtWrite = await connection.getSlot("confirmed");
-  const evidence: SvmDevnetEvidence = {
-    ...prior,
+  const deployDir = path.resolve(__dirname, "../svm/target/deploy");
+  const stakingDigest = artifactDigestFromSo(path.join(deployDir, "kar_pro_staking.so"));
+  const passDigest = artifactDigestFromSo(path.join(deployDir, "kar_pro_pass.so"));
+
+  mergeAndWriteSvmDevnetEvidence(evidencePath, {
+    caller: "svm-s5-init-and-prove.ts",
+    prior,
+    topLevel: {
+      minStakePin: pin,
+    },
     programs: {
-      ...prior.programs,
-      kar_passport: {
-        ...prior.programs.kar_passport,
-        upgradeAuthority: deployerPub,
-      },
       kar_pro_staking: {
         programId: stakingId.toBase58(),
         deploySlot: prior.programs.kar_pro_staking?.deploySlot ?? slotAtWrite,
         upgradeAuthority: deployerPub,
+        soSha256: stakingDigest.soSha256,
+        soBytes: stakingDigest.soBytes,
       },
       kar_pro_pass: {
         programId: passId.toBase58(),
         deploySlot: prior.programs.kar_pro_pass?.deploySlot ?? slotAtWrite,
         upgradeAuthority: deployerPub,
+        soSha256: passDigest.soSha256,
+        soBytes: passDigest.soBytes,
       },
     },
-    minStakePin: pin,
-    s5Prove: {
-      at: new Date().toISOString(),
-      prove:
-        "join(active)→verify(status)→leave(inactive)→close(tombstone)→claim-early(UnbondNotReady)→claim(amount+rent)",
-      upgradeAuthority: "deployer retained (S4–S9)",
-    },
-  };
-  writeSvmDevnetEvidence(evidencePath, evidence);
+  });
   console.log(`==> evidence written ${evidencePath}`);
   console.log("S5 Devnet prove PASS");
 }
