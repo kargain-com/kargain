@@ -1,12 +1,19 @@
 /**
  * Solana RPC fetch surface for svm-ingest (injectable for tests).
  * Budgeted requests; missing blocks are named results, never process-killing throws.
+ * getBlock uses JSON-RPC + lib/svm wire mapper — never Connection.getBlock (web3.js rejects v1).
  */
 
 import { Connection, PublicKey } from "@solana/web3.js";
 
 import { resolveIngestMaxRps } from "../../lib/svm/ingest-config.js";
+import { mapGetBlockResultToFetchedTransactions } from "../../lib/svm/rpc-block-transactions.js";
+import type { GetBlockWireResult } from "../../lib/svm/rpc-block-transactions.js";
 import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../../lib/svm/rpc-max-supported-transaction-version.js";
+import {
+  postSolanaJsonRpc,
+  type SolanaJsonRpcPost,
+} from "../../lib/svm/solana-json-rpc.js";
 
 export type FetchedBlock = {
   slot: number;
@@ -140,17 +147,23 @@ export type CreateSolanaRpcClientOptions = {
   rateLimitMaxAttempts?: number;
   /** Test-only Connection inject — production omits this. */
   connection?: Connection;
+  /** Test-only JSON-RPC inject for getBlock — production uses postSolanaJsonRpc. */
+  jsonRpcPost?: SolanaJsonRpcPost;
 };
 
 export function solanaGetBlockRequestConfig(): {
-  maxSupportedTransactionVersion: typeof RPC_MAX_SUPPORTED_TRANSACTION_VERSION;
+  encoding: "json";
   transactionDetails: "full";
   rewards: false;
+  commitment: "confirmed";
+  maxSupportedTransactionVersion: typeof RPC_MAX_SUPPORTED_TRANSACTION_VERSION;
 } {
   return {
-    maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
+    encoding: "json",
     transactionDetails: "full",
     rewards: false,
+    commitment: "confirmed",
+    maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
   };
 }
 
@@ -165,6 +178,7 @@ export function createSolanaRpcClient(
       // Sole 429 owner is with429Backoff below — never dual-retry with web3.js.
       disableRetryOnRateLimit: true,
     });
+  const jsonRpcPost = options?.jsonRpcPost ?? postSolanaJsonRpc;
   const maxRps = options?.maxRps ?? resolveIngestMaxRps();
   const limiter = createRateLimiter(maxRps);
   const missingBlockRetries =
@@ -210,26 +224,17 @@ export function createSolanaRpcClient(
       for (let attempt = 0; attempt <= missingBlockRetries; attempt++) {
         callCounts.getBlock += 1;
         try {
-          const block = await budgeted(() =>
-            connection.getBlock(slot, solanaGetBlockRequestConfig()),
+          const result = await budgeted(() =>
+            jsonRpcPost<GetBlockWireResult>(rpcUrl, "getBlock", [
+              slot,
+              solanaGetBlockRequestConfig(),
+            ]),
           );
-          if (!block) {
+          if (result == null) {
             if (attempt < missingBlockRetries) continue;
             return { status: "missing_block", slot };
           }
-          const txs: FetchedBlockTransaction[] = [];
-          for (const tx of block.transactions) {
-            const signature =
-              tx.transaction.signatures[0] ??
-              (() => {
-                throw new Error(`block ${slot} tx missing signature`);
-              })();
-            txs.push({
-              signature,
-              metaErr: tx.meta?.err ?? null,
-              logMessages: tx.meta?.logMessages ?? null,
-            });
-          }
+          const txs = mapGetBlockResultToFetchedTransactions(result, slot);
           return { status: "ok", block: { slot, transactions: txs } };
         } catch (err) {
           if (isMissingBlockError(err)) {

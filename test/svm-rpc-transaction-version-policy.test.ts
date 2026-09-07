@@ -1,11 +1,11 @@
 /**
  * Sole maxSupportedTransactionVersion = 1 — ban bare 0 ceilings that fail getBlock on v1 txs.
+ * Ingest getBlock is JSON-RPC + wire mapper — ban Connection.getBlock (web3.js rejects version 1).
  */
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { join, relative } from "node:path";
 import { describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
 
 import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../lib/svm/rpc-max-supported-transaction-version.ts";
 import {
@@ -15,6 +15,10 @@ import {
 
 const ROOT = POLICY_SCAN_ROOT;
 const OWNER_REL = "lib/svm/rpc-max-supported-transaction-version.ts";
+const MAPPER_REL = "lib/svm/rpc-block-transactions.ts";
+const JSON_RPC_REL = "lib/svm/solana-json-rpc.ts";
+const RPC_CLIENT_REL = "src/svm-ingest/rpc-client.ts";
+const SVM_RPC_REL = "lib/web3/svm-rpc.ts";
 
 const LITERAL_CEILING_RE =
   /maxSupportedTransactionVersion\s*:\s*0\b/;
@@ -70,14 +74,49 @@ describe("svm-rpc-transaction-version-policy", () => {
     assert.deepEqual(collectViolations(ROOT), []);
   });
 
-  it("rpc-client and svm-rpc consume the owner symbol", () => {
-    const rpcClient = readFileSync(
-      join(ROOT, "src/svm-ingest/rpc-client.ts"),
-      "utf8",
-    );
+  it("rpc-client uses JSON-RPC getBlock + wire mapper; never Connection.getBlock", () => {
+    const rpcClient = readFileSync(join(ROOT, RPC_CLIENT_REL), "utf8");
     assert.match(rpcClient, /RPC_MAX_SUPPORTED_TRANSACTION_VERSION/);
     assert.match(rpcClient, /solanaGetBlockRequestConfig/);
-    const svmRpc = readFileSync(join(ROOT, "lib/web3/svm-rpc.ts"), "utf8");
+    assert.match(rpcClient, /mapGetBlockResultToFetchedTransactions/);
+    assert.match(rpcClient, /postSolanaJsonRpc/);
+    assert.doesNotMatch(rpcClient, /connection\.getBlock\s*\(/);
+    assert.match(
+      readFileSync(join(ROOT, MAPPER_REL), "utf8"),
+      /mapGetBlockResultToFetchedTransactions/,
+    );
+    assert.match(
+      readFileSync(join(ROOT, JSON_RPC_REL), "utf8"),
+      /postSolanaJsonRpc/,
+    );
+  });
+
+  it("product svm-rpc consumes shared postSolanaJsonRpc (no private postJsonRpc copy)", () => {
+    const svmRpc = readFileSync(join(ROOT, SVM_RPC_REL), "utf8");
     assert.match(svmRpc, /RPC_MAX_SUPPORTED_TRANSACTION_VERSION/);
+    assert.match(svmRpc, /postSolanaJsonRpc/);
+    assert.match(svmRpc, /from ["']@\/lib\/svm\/solana-json-rpc["']/);
+    assert.doesNotMatch(svmRpc, /async function postJsonRpc/);
+  });
+
+  it("planted Connection.getBlock in rpc-client source is red then green", () => {
+    const abs = join(ROOT, RPC_CLIENT_REL);
+    const original = readFileSync(abs, "utf8");
+    assert.doesNotMatch(original, /connection\.getBlock\s*\(/);
+    try {
+      writeFileSync(
+        abs,
+        `${original}\nvoid (null as unknown as { getBlock: () => void }).getBlock;\nconnection.getBlock(0 as never);\n`,
+        "utf8",
+      );
+      const dirty = readFileSync(abs, "utf8");
+      assert.match(dirty, /connection\.getBlock\s*\(/);
+    } finally {
+      writeFileSync(abs, original, "utf8");
+    }
+    assert.doesNotMatch(
+      readFileSync(abs, "utf8"),
+      /connection\.getBlock\s*\(/,
+    );
   });
 });

@@ -2,18 +2,12 @@ import type { StructuredPayloadDraft } from "@/lib/svm/parse-transaction-ingest"
 import { parseTransactionForIngest } from "@/lib/svm/parse-transaction-ingest";
 import { followedProgramsFromStack } from "@/lib/svm/ingest-config";
 import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "@/lib/svm/rpc-max-supported-transaction-version";
+import { postSolanaJsonRpc } from "@/lib/svm/solana-json-rpc";
 import type { SvmCommercialActiveStack } from "@/lib/web3/commercial-active";
 import {
   createSvmTxConfirmPort,
   type SvmTxConfirmPort,
 } from "@/lib/web3/svm-tx-confirm";
-
-type JsonRpcSuccess<T> = { jsonrpc: "2.0"; id: number; result: T };
-type JsonRpcFailure = {
-  jsonrpc: "2.0";
-  id: number;
-  error: { code: number; message: string };
-};
 
 type SignatureStatusRow = {
   confirmationStatus?: string | null;
@@ -28,31 +22,6 @@ type GetTransactionResult = {
     logMessages?: string[] | null;
   } | null;
 } | null;
-
-async function postJsonRpc<T>(
-  rpcUrl: string,
-  method: string,
-  params: unknown[],
-): Promise<T> {
-  const response = await fetch(rpcUrl, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method,
-      params,
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(`Solana RPC request failed: ${response.status}`);
-  }
-  const body = (await response.json()) as JsonRpcSuccess<T> | JsonRpcFailure;
-  if ("error" in body) {
-    throw new Error(`Solana RPC ${method} failed: ${body.error.message}`);
-  }
-  return body.result;
-}
 
 /**
  * Browser/public Solana RPC for product writes and confirms.
@@ -78,7 +47,7 @@ export function createProductSvmTxConfirmPort(): SvmTxConfirmPort {
   }
   return createSvmTxConfirmPort({
     getSignatureStatuses: async (signatures: string[]) => {
-      const result = await postJsonRpc<{ value: SignatureStatusRow[] }>(
+      const result = await postSolanaJsonRpc<{ value: SignatureStatusRow[] }>(
         rpcUrl,
         "getSignatureStatuses",
         [signatures],
@@ -101,7 +70,7 @@ export async function fetchSvmTransactionStructuredPayloads(args: {
   if (!rpcUrl) {
     throw new Error(productSvmRpcUrlRefusalCopy());
   }
-  const tx = await postJsonRpc<GetTransactionResult>(rpcUrl, "getTransaction", [
+  const tx = await postSolanaJsonRpc<GetTransactionResult>(rpcUrl, "getTransaction", [
     args.signature,
     {
       commitment: "confirmed",
