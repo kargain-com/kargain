@@ -52,14 +52,19 @@ Asserted at each step (shared owner `scripts/lib/svm-verifier-lifecycle-asserts.
 
 ```bash
 # .env.local: SOLANA_UPGRADE_AUTHORITY = deployer pubkey
+# PASSPORT_OWNER_PUBKEY = durable base58 pubkey that will own the minted passport
+# (required — never an ephemeral key the shell shreds; needed for §7.2 walk)
 pnpm exec tsx scripts/svm-s5-init-and-prove.ts \
   --staking 8tts6h74Uos5FuUJMEQ8uQd5oPXfKZ41Xfid9D6iZvXY \
   --pass 4TE2kf7N4F43ab1436KA71ZwKKokdGt7ANRDbreWbnHr \
   --deployer-keypair <deployer.json> --rpc "$SOLANA_RPC_URL" \
-  --evidence deployments/svm-40168.json --work <tmpdir>
+  --evidence deployments/svm-40168.json \
+  --passport-owner "$PASSPORT_OWNER_PUBKEY"
 ```
 
-**Last live Devnet prove (R6, 2026-08-30):** `SetStakingProgram` → mint (distinct owner) → join (ephemeral verifier) → verify → leave → close_pass → claim. Asserted Join/Verify/Leave only; ClosePass/ClaimStake were tx-success only. **No** UA handoff.
+Bash wrapper `svm/scripts/deploy-s5-staking.sh` requires the same `PASSPORT_OWNER_PUBKEY` env and passes `--passport-owner`. The prove script refuses to mint without it. The join verifier remains ephemeral; only the passport owner must survive the run.
+
+**Last live Devnet prove (R6, 2026-08-30):** `SetStakingProgram` → mint (distinct owner) → join (ephemeral verifier) → verify → leave → close_pass → claim. Asserted Join/Verify/Leave only; ClosePass/ClaimStake were tx-success only. **No** UA handoff. (Post-2026-09: mint owner is `--passport-owner`, not `Keypair.generate()`.)
 
 **W4 (same day):** the predicate table above is wired into this script and the local stand. Local stand proved the full table against live validator programs. **Devnet was not re-run with W4 predicates** — re-run the command above as an ops step before treating Devnet evidence as predicate-green. Env UA ≡ deployer via sole owner `assertSolanaUpgradeAuthorityMatchesDeployer` (CLI for bash deploys).
 

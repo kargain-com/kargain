@@ -19,6 +19,7 @@ need_cmd pnpm
 
 : "${SOLANA_RPC_URL:?SOLANA_RPC_URL required}"
 : "${SOLANA_DEPLOYER_PRIVATE_KEY:?SOLANA_DEPLOYER_PRIVATE_KEY required}"
+: "${PASSPORT_OWNER_PUBKEY:?PASSPORT_OWNER_PUBKEY required (durable mint owner base58 pubkey)}"
 
 RPC="$SOLANA_RPC_URL"
 echo "==> S5 Devnet staking + pass upgrade in place (retain deployer UA)"
@@ -72,7 +73,7 @@ pnpm exec tsx scripts/svm-s5-init-and-prove.ts \
   --deployer-keypair "$DEPLOYER_KP" \
   --rpc "$RPC" \
   --evidence "$EVIDENCE" \
-  --work "$WORK"
+  --passport-owner "$PASSPORT_OWNER_PUBKEY"
 
 echo "==> S5 upgrade + prove via svm-s5-init-and-prove.ts (no UA handoff)"
 echo "    staking=$STAKING_ID"

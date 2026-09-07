@@ -235,6 +235,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     ],
   },
   {
+    id: "svm-s5-passport-owner",
+    owner: "scripts/svm-s5-init-and-prove.ts",
+    rule: "S5 Devnet prove mints only to required --passport-owner durable pubkey; never Keypair.generate for mint owner (verifier may stay ephemeral)",
+    guardTests: ["svm-s5-passport-owner-policy.test.ts"],
+  },
+  {
     id: "svm-binary-identity",
     owner: "scripts/lib/assert-svm-binary-identity.ts",
     rule: "Sole evidence soSha256 ↔ ProgramData leading ELF + empty padding; verify:svm-binary-identity; modes/source absence refuses by name; sibling of svm-upgrade-authority-evidence",

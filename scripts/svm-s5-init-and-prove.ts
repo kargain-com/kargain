@@ -2,10 +2,14 @@
  * S5 Devnet: pair-init staking+pass, SetStakingProgram on live passport,
  * prove join→verify→leave→claim, write evidence. Retains deployer UA (no handoff).
  *
+ * Mint owner is a required durable pubkey (`--passport-owner`) — never an
+ * ephemeral Keypair.generate() that the shell shreds. Verifier stays ephemeral.
+ *
  * Usage (from deploy-s5-staking.sh):
  *   pnpm exec tsx scripts/svm-s5-init-and-prove.ts \
  *     --staking <id> --pass <id> --deployer-keypair <path> --rpc <url> \
- *     --evidence deployments/svm-40168.json --work <tmpdir>
+ *     --evidence deployments/svm-40168.json \
+ *     --passport-owner <base58-pubkey>
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -77,14 +81,23 @@ function encodeString(s: string): Buffer {
   return out;
 }
 
+function maskPubkey(base58: string): string {
+  return base58.length > 8
+    ? `${base58.slice(0, 4)}…${base58.slice(-4)}`
+    : base58;
+}
+
 async function main() {
   const stakingId = new PublicKey(arg("--staking"));
   const passId = new PublicKey(arg("--pass"));
   const deployer = loadKp(arg("--deployer-keypair"));
   const rpc = arg("--rpc");
   const evidencePath = arg("--evidence");
+  /** Durable mint owner — pubkey only; MintPassport does not require owner signature. */
+  const owner = new PublicKey(arg("--passport-owner"));
   const deployerPub = deployer.publicKey.toBase58();
   assertSolanaUpgradeAuthorityMatchesDeployer(deployerPub);
+  console.log(`  passport owner ${maskPubkey(owner.toBase58())}`);
 
   const connection = new Connection(rpc, "confirmed");
   const CORE_ID = new PublicKey("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
@@ -181,8 +194,7 @@ async function main() {
     "passport.SetStakingProgram",
   );
 
-  // Mint passport to a distinct owner; deployer joins as verifier (CannotSelfVerify).
-  const owner = Keypair.generate();
+  // Mint to the durable --passport-owner pubkey (CannotSelfVerify: verifier is ephemeral below).
   const gatewayId = new PublicKey(requireSvmGatewayProgramId(prior));
   const [gatewayFreeze] = pda([FREEZE], gatewayId);
 
@@ -202,7 +214,7 @@ async function main() {
           { pubkey: asset, isSigner: false, isWritable: true },
           { pubkey: state, isSigner: false, isWritable: true },
           { pubkey: deployer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: owner.publicKey, isSigner: false, isWritable: false },
+          { pubkey: owner, isSigner: false, isWritable: false },
           { pubkey: gatewayFreeze, isSigner: false, isWritable: false },
           { pubkey: CORE_ID, isSigner: false, isWritable: false },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
