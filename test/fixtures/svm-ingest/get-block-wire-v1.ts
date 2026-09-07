@@ -3,7 +3,7 @@
  * Includes legacy (absent version), version 0, and version 1 — the wire that
  * @solana/web3.js Connection.getBlock rejects on `version: 1`.
  */
-import type { GetBlockWireResult } from "../../lib/svm/rpc-block-transactions.ts";
+import type { GetBlockWireResult } from "../../../lib/svm/rpc-block-transactions.ts";
 
 export const GET_BLOCK_WIRE_WITH_VERSION_1: GetBlockWireResult = {
   transactions: [

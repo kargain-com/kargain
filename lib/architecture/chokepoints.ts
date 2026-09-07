@@ -235,6 +235,15 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     ],
   },
   {
+    id: "svm-binary-identity",
+    owner: "scripts/lib/assert-svm-binary-identity.ts",
+    rule: "Sole evidence soSha256 ↔ ProgramData leading ELF + empty padding; verify:svm-binary-identity; modes/source absence refuses by name; sibling of svm-upgrade-authority-evidence",
+    guardTests: [
+      "assert-svm-binary-identity.test.ts",
+      "svm-binary-identity-policy.test.ts",
+    ],
+  },
+  {
     id: "declared-weights",
     owner: "lib/web3/declared-weights.ts",
     rule: "SPEC §13.10 wei literals (stake/bonds) live only in declared-weights",

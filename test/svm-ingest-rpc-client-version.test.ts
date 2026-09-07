@@ -11,6 +11,7 @@ import {
   createSolanaRpcClient,
   solanaGetBlockRequestConfig,
 } from "../src/svm-ingest/rpc-client.ts";
+import type { SolanaJsonRpcPost } from "../lib/svm/solana-json-rpc.ts";
 import {
   GET_BLOCK_WIRE_WITH_VERSION_1,
   WEB3JS_VERSION_1_SCHEMA_REFUSAL,
@@ -77,7 +78,7 @@ describe("svm-ingest-rpc-client-version", () => {
         getFirstAvailableBlock: async () => 1,
         getSignaturesForAddress: async () => [],
       } as unknown as Connection,
-      jsonRpcPost: async (_url, method, params) => {
+      jsonRpcPost: (async (_url, method, params) => {
         assert.equal(method, "getBlock");
         assert.equal(params[0], 494500000);
         const cfg = params[1] as {
@@ -90,7 +91,7 @@ describe("svm-ingest-rpc-client-version", () => {
           throw new Error(VERSION_1_RPC_REFUSAL);
         }
         return GET_BLOCK_WIRE_WITH_VERSION_1;
-      },
+      }) as SolanaJsonRpcPost,
       maxRps: 100,
       missingBlockRetries: 0,
       rateLimitMaxAttempts: 1,
@@ -117,7 +118,7 @@ describe("svm-ingest-rpc-client-version", () => {
         getFirstAvailableBlock: async () => 1,
         getSignaturesForAddress: async () => [],
       } as unknown as Connection,
-      jsonRpcPost: async () => null,
+      jsonRpcPost: (async () => null) as SolanaJsonRpcPost,
       maxRps: 100,
       missingBlockRetries: 0,
       rateLimitMaxAttempts: 1,
