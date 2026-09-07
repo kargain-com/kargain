@@ -22,6 +22,7 @@ import type { SvmDevnetEvidence } from "../lib/svm/devnet-evidence.ts";
 import { commercialProgramCensusGapsFromEvidence } from "../lib/svm/ingest-config.ts";
 import {
   assertRetainsPriorProgramKeys,
+  currentSourceGitHead,
   mergeAndWriteSvmDevnetEvidence,
   mergeSvmDevnetEvidence,
   SvmDevnetEvidenceWriteError,
@@ -268,6 +269,39 @@ describe("svm-devnet-evidence-write owner", () => {
     assert.equal(ok.programs.kar_passport.sourceGitHead, "b".repeat(40));
     assert.equal(ok.programs.kar_passport.soBytes, 99);
     assert.equal(ok.deployGitHead, undefined);
+  });
+
+  it("RED then green: currentSourceGitHead refuses unclean tree; clean records HEAD", () => {
+    assert.throws(
+      () =>
+        currentSourceGitHead(ROOT, {
+          porcelain: " M scripts/svm-upgrade-in-place.ts\n",
+          head: "c".repeat(40),
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof SvmDevnetEvidenceWriteError);
+        assert.equal(err.causeCode, "unclean_working_tree_for_source_identity");
+        assert.match(err.message, /cannot be attributed to a commit/);
+        return true;
+      },
+    );
+
+    const head = currentSourceGitHead(ROOT, {
+      porcelain: "",
+      head: "d".repeat(40),
+    });
+    assert.equal(head, "d".repeat(40));
+
+    const upgradeSrc = readFileSync(
+      join(ROOT, "scripts/svm-upgrade-in-place.ts"),
+      "utf8",
+    );
+    assert.match(upgradeSrc, /currentSourceGitHead/);
+    assert.doesNotMatch(
+      upgradeSrc,
+      /git rev-parse HEAD/,
+      "upgrade must not bypass the source identity owner",
+    );
   });
 
   it("RED then green: identity-field change", () => {

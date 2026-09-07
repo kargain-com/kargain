@@ -15,6 +15,10 @@ import {
 } from "../../lib/svm/ingest-refusal.js";
 import { discoverIngestSlots } from "../../lib/svm/ingest-slot-discovery.js";
 import { parseTransactionForIngest } from "../../lib/svm/parse-transaction-ingest.js";
+import {
+  evaluateStartupRetention,
+  startupRetentionUnavailableMessage,
+} from "../../lib/svm/startup-retention.js";
 import type { SvmRawWriter } from "../lib/svm-raw-writer.js";
 import type { ProjectionProjector } from "./projection-projector.js";
 import {
@@ -121,24 +125,20 @@ export function createIngestLoop(opts: IngestLoopOptions) {
   }
 
   async function assertStartupRetention(headSlot: number): Promise<void> {
-    const requiredSlot = opts.startSlot;
-    if (requiredSlot > headSlot) return;
     const firstAvailableBlock = await opts.rpc.getFirstAvailableBlock();
-    if (requiredSlot >= firstAvailableBlock) return;
+    const result = evaluateStartupRetention({
+      requiredSlot: opts.startSlot,
+      firstAvailableBlock,
+      headSlot,
+    });
+    if (result.ok) return;
 
     await recordIncident(
-      "startup_retention_unavailable",
-      {
-        reason: "required_slot_before_first_available_block",
-        requiredSlot,
-        firstAvailableBlock,
-        headSlot,
-      },
-      requiredSlot,
+      result.incident,
+      result.detail,
+      result.detail.requiredSlot,
     );
-    throw new Error(
-      `svm-ingest RPC retention unavailable: required slot ${requiredSlot} is before first available block ${firstAvailableBlock}`,
-    );
+    throw new Error(startupRetentionUnavailableMessage(result.detail));
   }
 
   async function ingestFetchedBlock(block: FetchedBlock): Promise<void> {

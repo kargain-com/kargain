@@ -119,12 +119,44 @@ export function artifactDigestFromSo(soPath: string): {
   };
 }
 
-/** Git HEAD at the moment a BPF digest is recorded (program-row source identity). */
-export function currentSourceGitHead(cwd = process.cwd()): string {
-  const head = execFileSync("git", ["rev-parse", "HEAD"], {
-    cwd,
-    encoding: "utf8",
-  }).trim();
+/** Options for tests — inject porcelain / HEAD without touching the real tree. */
+export type CurrentSourceGitHeadOpts = {
+  /** When set, used instead of `git status --porcelain`. */
+  porcelain?: string;
+  /** When set, used instead of `git rev-parse HEAD` (after clean check). */
+  head?: string;
+};
+
+/**
+ * Git HEAD at the moment a BPF digest is recorded (program-row source identity).
+ * Refuses by name when the working tree is unclean — the artifact cannot be
+ * attributed to a commit. Never records a dirty placeholder.
+ */
+export function currentSourceGitHead(
+  cwd = process.cwd(),
+  opts?: CurrentSourceGitHeadOpts,
+): string {
+  const porcelain =
+    opts?.porcelain !== undefined
+      ? opts.porcelain
+      : execFileSync("git", ["status", "--porcelain"], {
+          cwd,
+          encoding: "utf8",
+        });
+  if (porcelain.trim().length > 0) {
+    throw new SvmDevnetEvidenceWriteError(
+      "unclean_working_tree_for_source_identity",
+      "svm evidence write refused: working tree is unclean — " +
+        "the BPF artifact cannot be attributed to a commit",
+    );
+  }
+  const head =
+    opts?.head !== undefined
+      ? opts.head.trim()
+      : execFileSync("git", ["rev-parse", "HEAD"], {
+          cwd,
+          encoding: "utf8",
+        }).trim();
   if (!GIT_HEAD_HEX.test(head)) {
     throw new SvmDevnetEvidenceWriteError(
       "invalid_source_git_head",

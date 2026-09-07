@@ -8,7 +8,10 @@
  *     --so-dir svm/target/deploy \
  *     --rpc <url> \
  *     --deployer-keypair <path> \
- *     --evidence deployments/svm-40168.json
+ *     --evidence deployments/svm-40168.json \
+ *     [--dry-run]
+ *
+ * --dry-run: program show + UA + digests + retention; no deploy, no evidence write.
  */
 
 import { spawnSync } from "node:child_process";
@@ -19,7 +22,14 @@ import {
   requireSvmCommercialActive,
   type SvmCommercialActiveStack,
 } from "../lib/web3/commercial-active.js";
-import { SVM_COMMERCIAL_PROGRAM_CENSUS } from "../lib/svm/ingest-config.js";
+import {
+  resolveIngestStartSlot,
+  SVM_COMMERCIAL_PROGRAM_CENSUS,
+} from "../lib/svm/ingest-config.js";
+import {
+  evaluateStartupRetention,
+  startupRetentionUnavailableMessage,
+} from "../lib/svm/startup-retention.js";
 import { namespaceFromLayerZeroEid } from "../lib/web3/kargain-namespace.js";
 import { assertSolanaUpgradeAuthorityMatchesDeployer } from "./lib/svm-deploy-plan.js";
 import { loadSvmDevnetEvidence } from "./lib/load-deployment.js";
@@ -30,6 +40,15 @@ import {
   type SvmProgramEvidencePatch,
 } from "./lib/svm-devnet-evidence-write.js";
 import { assertProgramShowAllowsUpgrade } from "./lib/svm-upgrade-in-place-assert.js";
+import {
+  formatUpgradePlannedChangeTable,
+  isAbsentProgramShowFailure,
+  isTransportCliFailure,
+  maskBase58Id,
+  parseProgramShowAuthority,
+  sanitizeCliDetail,
+  type UpgradePlannedChangeRow,
+} from "./lib/svm-upgrade-in-place-preflight.js";
 
 const CALLER = "svm-upgrade-in-place.ts";
 
@@ -49,6 +68,10 @@ function optionalArg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
   if (i < 0 || i + 1 >= process.argv.length) return undefined;
   return process.argv[i + 1];
+}
+
+function hasFlag(name: string): boolean {
+  return process.argv.includes(name);
 }
 
 function registryProgramId(
@@ -88,7 +111,104 @@ function runSolana(args: string[]): { status: number; stdout: string; stderr: st
   };
 }
 
-function main(): void {
+async function rpcJsonResult(rpcUrl: string, method: string): Promise<unknown> {
+  const res = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: [] }),
+  });
+  if (!res.ok) {
+    throw new Error(`${CALLER}: RPC ${method} HTTP ${res.status}`);
+  }
+  const body = (await res.json()) as {
+    result?: unknown;
+    error?: { message?: string };
+  };
+  if (body.error) {
+    throw new Error(
+      `${CALLER}: RPC ${method} error: ${body.error.message ?? "unknown"}`,
+    );
+  }
+  return body.result;
+}
+
+async function assertConfiguredRpcRetention(
+  rpcUrl: string,
+  stack: SvmCommercialActiveStack,
+): Promise<{
+  requiredSlot: number;
+  firstAvailableBlock: number;
+  headSlot: number;
+}> {
+  const requiredSlot = resolveIngestStartSlot(stack);
+  const firstAvailableBlock = Number(
+    await rpcJsonResult(rpcUrl, "getFirstAvailableBlock"),
+  );
+  const headSlot = Number(await rpcJsonResult(rpcUrl, "getSlot"));
+  if (!Number.isInteger(firstAvailableBlock) || !Number.isInteger(headSlot)) {
+    throw new Error(`${CALLER}: RPC retention read returned non-integer slots`);
+  }
+  const result = evaluateStartupRetention({
+    requiredSlot,
+    firstAvailableBlock,
+    headSlot,
+  });
+  if (!result.ok) {
+    throw new Error(startupRetentionUnavailableMessage(result.detail));
+  }
+  return { requiredSlot, firstAvailableBlock, headSlot };
+}
+
+function sleepMs(ms: number): void {
+  spawnSync("sleep", [String(ms / 1000)], { encoding: "utf8" });
+}
+
+function programShow(args: {
+  programId: string;
+  rpc: string;
+  deployerKp: string;
+  evidenceKey: string;
+  attempts?: number;
+}): { stdout: string; stderr: string } {
+  const attempts = args.attempts ?? 4;
+  let lastDetail = "";
+  for (let i = 0; i < attempts; i++) {
+    const show = runSolana([
+      "program",
+      "show",
+      args.programId,
+      "-u",
+      args.rpc,
+      "--keypair",
+      args.deployerKp,
+    ]);
+    if (show.status === 0) {
+      return { stdout: show.stdout, stderr: show.stderr };
+    }
+    lastDetail = sanitizeCliDetail(`${show.stdout}\n${show.stderr}`);
+    if (isAbsentProgramShowFailure(lastDetail)) {
+      throw new Error(
+        `${CALLER}: ${args.evidenceKey} programId from registry is absent on-chain ` +
+          `(program show exit ${show.status})`,
+      );
+    }
+    if (i + 1 < attempts && isTransportCliFailure(lastDetail)) {
+      sleepMs(1_000 * (i + 1));
+      continue;
+    }
+    throw new Error(
+      `${CALLER}: ${args.evidenceKey} program show failed (exit ${show.status}): ` +
+        (lastDetail.slice(0, 400) || "no output"),
+    );
+  }
+  throw new Error(
+    `${CALLER}: ${args.evidenceKey} program show failed after retries: ` +
+      (lastDetail.slice(0, 400) || "no output"),
+  );
+}
+
+async function main(): Promise<void> {
+  const dryRun = hasFlag("--dry-run");
   const programsCsv = arg("--programs");
   const soDir = arg("--so-dir");
   const rpc = arg("--rpc");
@@ -122,33 +242,60 @@ function main(): void {
   const deployerPub = showDeployer.stdout.trim();
   assertSolanaUpgradeAuthorityMatchesDeployer(deployerPub);
 
+  const retention = await assertConfiguredRpcRetention(rpc, stack);
+  console.log(
+    `==> retention ok requiredSlot=${retention.requiredSlot} ` +
+      `firstAvailableBlock=${retention.firstAvailableBlock} headSlot=${retention.headSlot}`,
+  );
+
   const sourceGitHead = currentSourceGitHead();
+  const prior = loadSvmDevnetEvidence(eid);
   const patches: Record<string, SvmProgramEvidencePatch> = {};
+  const planned: UpgradePlannedChangeRow[] = [];
 
   for (const evidenceKey of keys) {
     const programId = registryProgramId(stack, evidenceKey);
-    const show = runSolana(["program", "show", programId, "-u", rpc]);
-    if (show.status !== 0) {
-      throw new Error(
-        `${CALLER}: ${evidenceKey} programId from registry is absent on-chain ` +
-          `(program show exit ${show.status})`,
-      );
-    }
+    const show = programShow({
+      programId,
+      rpc,
+      deployerKp,
+      evidenceKey,
+    });
+    const showText = `${show.stdout}\n${show.stderr}`;
     assertProgramShowAllowsUpgrade({
-      showText: `${show.stdout}\n${show.stderr}`,
+      showText,
       programId,
       deployerPubkey: deployerPub,
       evidenceKey,
       caller: CALLER,
     });
+    const parsedShow = parseProgramShowAuthority(showText);
+    console.log(
+      `==> on-chain ${evidenceKey} id=${maskBase58Id(programId)} ` +
+        `owner=${parsedShow.ownerLine ?? "absent"} ` +
+        `authority=${parsedShow.authority ? maskBase58Id(parsedShow.authority) : "absent"}`,
+    );
 
     const soPath = soPathForEvidenceKey(soDir, evidenceKey);
     const digest = artifactDigestFromSo(soPath);
+    const priorProg = prior?.programs?.[evidenceKey as keyof typeof prior.programs];
+    planned.push({
+      evidenceKey,
+      maskedProgramId: maskBase58Id(programId),
+      priorDigest: priorProg?.soSha256 ?? "absent",
+      newDigest: digest.soSha256,
+      priorDeploySlot:
+        priorProg?.deploySlot != null ? String(priorProg.deploySlot) : "absent",
+      soBytes: digest.soBytes,
+    });
+
+    if (dryRun) {
+      continue;
+    }
 
     console.log(
-      `==> upgrade ${evidenceKey} → ${programId.slice(0, 4)}…${programId.slice(-4)}`,
+      `==> upgrade ${evidenceKey} → ${maskBase58Id(programId)}`,
     );
-    // --program-id accepts a base58 address for upgrades (solana program deploy --help).
     const deploy = runSolana([
       "program",
       "deploy",
@@ -163,8 +310,8 @@ function main(): void {
       rpc,
     ]);
     if (deploy.status !== 0) {
-      console.error(deploy.stdout);
-      console.error(deploy.stderr);
+      console.error(sanitizeCliDetail(deploy.stdout));
+      console.error(sanitizeCliDetail(deploy.stderr));
       throw new Error(`${CALLER}: solana program deploy failed for ${evidenceKey}`);
     }
 
@@ -177,7 +324,16 @@ function main(): void {
     };
   }
 
-  const prior = loadSvmDevnetEvidence(eid);
+  console.log(`==> sourceGitHead=${sourceGitHead}`);
+  console.log(formatUpgradePlannedChangeTable(planned));
+
+  if (dryRun) {
+    console.log(
+      "==> DRY-RUN complete — no transactions, no evidence write; deploySlot unchanged",
+    );
+    return;
+  }
+
   mergeAndWriteSvmDevnetEvidence(evidencePath, {
     caller: CALLER,
     prior,
@@ -193,5 +349,8 @@ function isExecutedAsCli(): boolean {
 }
 
 if (isExecutedAsCli()) {
-  main();
+  main().catch((err) => {
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
 }

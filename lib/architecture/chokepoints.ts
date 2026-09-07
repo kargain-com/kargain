@@ -493,6 +493,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-devnet-evidence-write-policy.test.ts"],
   },
   {
+    id: "svm-startup-retention",
+    owner: "lib/svm/startup-retention.ts",
+    rule: "RPC retention of required ingest start slot is one predicate; ingest loop and upgrade dry-run consume it",
+    guardTests: ["svm-startup-retention-policy.test.ts"],
+  },
+  {
     id: "lib-scripts-boundary",
     owner: "lib/svm/devnet-evidence.ts · lib/** import graph",
     rule: "lib/ must not import scripts/; SVM deploy evidence types live in lib, loaders in scripts",
