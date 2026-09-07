@@ -1,0 +1,30 @@
+name: Deploy svm-ingest to VPS
+
+on:
+  push:
+    branches: [master]
+    # Never rebuild Ponder from this workflow. Ponder stays on deploy-ponder.yml.
+    paths:
+      - "src/svm-ingest/**"
+      - "lib/svm/**"
+      - "Dockerfile.svm-ingest"
+      - ".github/workflows/deploy-svm-ingest.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy svm-ingest to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_SSH_HOST }}
+          username: ${{ secrets.VPS_SSH_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT }}
+          script: |
+            cd /opt/kargain
+            git pull https://github.com/kargain-com/kargain.git master
+            docker compose build svm-ingest
+            docker compose up -d --force-recreate svm-ingest
+            docker image prune -f
+            docker compose ps

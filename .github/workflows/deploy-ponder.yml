@@ -5,6 +5,7 @@ on:
     branches: [master]
     # Do not use a bare `src/**` — that rebuilds Ponder on every svm-ingest push.
     # paths + paths-ignore cannot both be set on the same event; exclude by omission.
+    # svm-ingest / Dockerfile.svm-ingest / lib/svm deploy via deploy-svm-ingest.yml only.
     paths:
       - "ponder.config.ts"
       - "ponder.schema.ts"

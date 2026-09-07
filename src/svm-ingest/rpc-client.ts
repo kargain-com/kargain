@@ -6,6 +6,7 @@
 import { Connection, PublicKey } from "@solana/web3.js";
 
 import { resolveIngestMaxRps } from "../../lib/svm/ingest-config.js";
+import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../../lib/svm/rpc-max-supported-transaction-version.js";
 
 export type FetchedBlock = {
   slot: number;
@@ -137,17 +138,33 @@ export type CreateSolanaRpcClientOptions = {
   maxRps?: number;
   missingBlockRetries?: number;
   rateLimitMaxAttempts?: number;
+  /** Test-only Connection inject — production omits this. */
+  connection?: Connection;
 };
+
+export function solanaGetBlockRequestConfig(): {
+  maxSupportedTransactionVersion: typeof RPC_MAX_SUPPORTED_TRANSACTION_VERSION;
+  transactionDetails: "full";
+  rewards: false;
+} {
+  return {
+    maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
+    transactionDetails: "full",
+    rewards: false,
+  };
+}
 
 export function createSolanaRpcClient(
   rpcUrl: string,
   options?: CreateSolanaRpcClientOptions,
 ): SvmRpcClient {
-  const connection = new Connection(rpcUrl, {
-    commitment: "confirmed",
-    // Sole 429 owner is with429Backoff below — never dual-retry with web3.js.
-    disableRetryOnRateLimit: true,
-  });
+  const connection =
+    options?.connection ??
+    new Connection(rpcUrl, {
+      commitment: "confirmed",
+      // Sole 429 owner is with429Backoff below — never dual-retry with web3.js.
+      disableRetryOnRateLimit: true,
+    });
   const maxRps = options?.maxRps ?? resolveIngestMaxRps();
   const limiter = createRateLimiter(maxRps);
   const missingBlockRetries =
@@ -194,11 +211,7 @@ export function createSolanaRpcClient(
         callCounts.getBlock += 1;
         try {
           const block = await budgeted(() =>
-            connection.getBlock(slot, {
-              maxSupportedTransactionVersion: 0,
-              transactionDetails: "full",
-              rewards: false,
-            }),
+            connection.getBlock(slot, solanaGetBlockRequestConfig()),
           );
           if (!block) {
             if (attempt < missingBlockRetries) continue;

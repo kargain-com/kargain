@@ -511,6 +511,22 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-program-extend-plan-policy.test.ts"],
   },
   {
+    id: "svm-rpc-max-supported-transaction-version",
+    owner: "lib/svm/rpc-max-supported-transaction-version.ts",
+    rule: "Sole maxSupportedTransactionVersion ceiling (1) for getBlock/getTransaction; bare 0 literals banned in product+ingest+Devnet tooling",
+    guardTests: [
+      "svm-rpc-transaction-version-policy.test.ts",
+      "svm-ingest-rpc-client-version.test.ts",
+    ],
+  },
+  {
+    id: "deploy-ponder-svm-ingest-ci",
+    owner:
+      ".github/workflows/deploy-ponder.yml · .github/workflows/deploy-svm-ingest.yml",
+    rule: "Ponder VPS deploy never lists svm-ingest paths; svm-ingest workflow never builds or restarts ponder",
+    guardTests: ["deploy-ponder-svm-ingest-ci-policy.test.ts"],
+  },
+  {
     id: "lib-scripts-boundary",
     owner: "lib/svm/devnet-evidence.ts · lib/** import graph",
     rule: "lib/ must not import scripts/; SVM deploy evidence types live in lib, loaders in scripts",

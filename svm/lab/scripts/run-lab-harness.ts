@@ -16,6 +16,7 @@ import {
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../../../lib/svm/rpc-max-supported-transaction-version.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RPC = process.env.SVM_LAB_RPC ?? "http://127.0.0.1:8899";
@@ -170,7 +171,7 @@ async function main() {
         { commitment: "confirmed" },
       );
       const tx = await connection.getTransaction(sig, {
-        maxSupportedTransactionVersion: 0,
+        maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
         commitment: "confirmed",
       });
       const assetInfo = await connection.getAccountInfo(assetPda);
@@ -235,7 +236,7 @@ async function main() {
         { commitment: "confirmed" },
       );
       const tx = await connection.getTransaction(sig, {
-        maxSupportedTransactionVersion: 0,
+        maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
         commitment: "confirmed",
       });
       const assetInfo = await connection.getAccountInfo(assetPda);
@@ -312,7 +313,7 @@ async function main() {
         { commitment: "confirmed" },
       );
       const thawTx = await connection.getTransaction(thawSig, {
-        maxSupportedTransactionVersion: 0,
+        maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
         commitment: "confirmed",
       });
       const after = await connection.getAccountInfo(assetPda);

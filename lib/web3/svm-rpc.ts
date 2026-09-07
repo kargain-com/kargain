@@ -1,6 +1,7 @@
 import type { StructuredPayloadDraft } from "@/lib/svm/parse-transaction-ingest";
 import { parseTransactionForIngest } from "@/lib/svm/parse-transaction-ingest";
 import { followedProgramsFromStack } from "@/lib/svm/ingest-config";
+import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "@/lib/svm/rpc-max-supported-transaction-version";
 import type { SvmCommercialActiveStack } from "@/lib/web3/commercial-active";
 import {
   createSvmTxConfirmPort,
@@ -105,7 +106,7 @@ export async function fetchSvmTransactionStructuredPayloads(args: {
     {
       commitment: "confirmed",
       encoding: "json",
-      maxSupportedTransactionVersion: 0,
+      maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
     },
   ]);
   if (!tx) {

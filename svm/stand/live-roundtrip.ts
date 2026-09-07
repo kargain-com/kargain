@@ -36,6 +36,7 @@ import type {
   StandPublicKey,
   StandTransactionInstruction,
 } from "./solana-web3-types.ts";
+import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../../lib/svm/rpc-max-supported-transaction-version.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** Resolve @solana/web3.js from the lab package (not a root dependency). */
@@ -253,7 +254,7 @@ async function sendIx(
     commitment: "confirmed",
   });
   const parsed = await connection.getParsedTransaction(sig, {
-    maxSupportedTransactionVersion: 0,
+    maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
     commitment: "confirmed",
   });
   const cu =

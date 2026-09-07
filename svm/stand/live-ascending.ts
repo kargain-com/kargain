@@ -29,6 +29,7 @@ import {
   withStandArtifactBindings,
   type StandArtifactBindings,
 } from "./stand-artifact-bindings.ts";
+import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../../lib/svm/rpc-max-supported-transaction-version.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../lab/package.json"));
@@ -1299,7 +1300,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   );
   const settleParsed = await conn.getTransaction(settleSig, {
     commitment: "confirmed",
-    maxSupportedTransactionVersion: 0,
+    maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
   });
   const settleTxFee = BigInt(settleParsed?.meta?.fee ?? 0);
 

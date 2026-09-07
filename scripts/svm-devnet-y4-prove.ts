@@ -32,6 +32,7 @@ import {
 } from "./lib/load-deployment.ts";
 import { materializeSolanaDeployer } from "./lib/svm-materialize-deployer.ts";
 import { writeSvmY4ProveEvidence } from "./lib/svm-devnet-evidence-write.js";
+import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../lib/svm/rpc-max-supported-transaction-version.ts";
 
 const require = createRequire(import.meta.url);
 try {
@@ -304,7 +305,7 @@ async function main(): Promise<void> {
     );
     const typesTx = await connection.getTransaction(typesSig, {
       commitment: "confirmed",
-      maxSupportedTransactionVersion: 0,
+      maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
     });
     const logText = (typesTx?.meta?.logMessages ?? []).join("\n");
     if (!logText.includes("lz_receive_types production")) {

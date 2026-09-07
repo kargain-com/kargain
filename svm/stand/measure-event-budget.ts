@@ -26,6 +26,7 @@ import {
   type TxLogBudget,
 } from "./measure-tx-logs.ts";
 import type { StandConnection } from "./solana-web3-types.ts";
+import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../../lib/svm/rpc-max-supported-transaction-version.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../lab/package.json"));
@@ -60,7 +61,7 @@ async function budgetForSignature(
 ): Promise<TxLogBudget | null> {
   if (!signature) return null;
   const tx = await connection.getTransaction(signature, {
-    maxSupportedTransactionVersion: 0,
+    maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
     commitment: "confirmed",
   });
   const budget = measureTxLogBudgetFromMeta(tx?.meta);

@@ -36,6 +36,7 @@ import type {
   StandPublicKey,
   StandTransactionInstruction,
 } from "./solana-web3-types.ts";
+import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../../lib/svm/rpc-max-supported-transaction-version.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../lab/package.json"));
@@ -132,7 +133,7 @@ async function sendIx(
   });
   const parsed = await connection.getTransaction(sig, {
     commitment: "confirmed",
-    maxSupportedTransactionVersion: 0,
+    maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
   });
   const cu =
     parsed?.meta?.computeUnitsConsumed != null
@@ -598,7 +599,7 @@ export async function runLiveVerifierFlow(opts?: {
 
   const claimParsed = await connection.getTransaction(claimResult.signature, {
     commitment: "confirmed",
-    maxSupportedTransactionVersion: 0,
+    maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
   });
   const txFeeLamports = Number(claimParsed?.meta?.fee ?? 0);
 

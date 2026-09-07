@@ -9,6 +9,7 @@ import {
   LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
 import fs from "node:fs";
+import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../../../lib/svm/rpc-max-supported-transaction-version.ts";
 
 async function main() {
   const RPC = "http://127.0.0.1:8899";
@@ -103,7 +104,7 @@ async function main() {
     [payer],
   );
   const tx = await conn.getTransaction(sig, {
-    maxSupportedTransactionVersion: 0,
+    maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
     commitment: "confirmed",
   });
   console.log("logs:\n" + (tx?.meta?.logMessages ?? []).join("\n"));
