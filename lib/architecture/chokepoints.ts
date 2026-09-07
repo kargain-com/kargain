@@ -505,6 +505,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-upgrade-in-place-capacity-policy.test.ts"],
   },
   {
+    id: "svm-program-extend-plan",
+    owner: "scripts/lib/svm-program-extend-plan.ts",
+    rule: "Founder-approved program-data extend ADDITIONAL_BYTES = ceil(artifact×5/4) − deployed; upgrade path never calls extend",
+    guardTests: ["svm-program-extend-plan-policy.test.ts"],
+  },
+  {
     id: "lib-scripts-boundary",
     owner: "lib/svm/devnet-evidence.ts · lib/** import graph",
     rule: "lib/ must not import scripts/; SVM deploy evidence types live in lib, loaders in scripts",
