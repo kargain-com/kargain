@@ -5,10 +5,12 @@ import { rpcUrlForChain } from "@/lib/web3/supported-chains";
  * Pure Irys upload session plan — payment token + bundler class by commercial stack.
  * `irys-client` executes this plan; it must not re-declare allowlists or invent tokens.
  *
- * Commercial EVM testnets only. SVM is still staged behind named `wrong_vm`
- * until a commercial Solana registry row makes the planner produce `"solana"`.
- * The Solana payment adapter now exists; this module remains pure and keeps
- * all `@irys/*` imports out of the planning path.
+ * Port §3.7 / П-8: user pays; SVM uses the Solana payment adapter of the same
+ * uploader. A commercial Solana registry row already exists (S9-B). The hard
+ * `vm !== "evm" → wrong_vm` branch below is a **stale gate** — it misreports
+ * the system until the planner keys by stack/namespace and emits `"solana"`
+ * for that row (RPC via product SVM URL, not EIP-155 `rpcUrlForChain`).
+ * This module stays pure and keeps all `@irys/*` imports out of planning.
  */
 
 export type IrysPaymentToken = "base-eth" | "ethereum" | "solana";

@@ -61,7 +61,7 @@ Payer delta across the whole sequence was a **net credit** of 180 593 360 lampor
 
 - **Binary identity.** That the bytecode now executing is the artifact these digests describe is *not* proven here. The evidence is CLI exit codes and a moved deploy slot. The gate that closes this — evidence digest against the bytecode read back from chain, refusing by name — is the open unit that follows.
 - **`kar_fixed_price` / `kar_ascending`** carry neither `soSha256` nor `sourceGitHead` in evidence. Their digests have nothing to compare against, and that absence must refuse rather than pass silently.
-- **Emits.** The upgrade made structured emits *possible*. It produced none: these programs see no Devnet traffic on their own. The first structured payload will come from a real invocation, not from waiting.
+- **Emits.** The upgrade made structured emits *possible*. It produced none: these programs see no Devnet traffic on their own. The first structured payload will come from a real invocation (stand / prove / CLI / product mint), not from waiting. Product Irys on Solana (П-8) is required for the **app** mint path; it is **not** required to create the first measurable `Program data:` row.
 
 ## Owed after this operation
 
