@@ -11,7 +11,8 @@
  *     --evidence deployments/svm-40168.json \
  *     [--dry-run]
  *
- * --dry-run: program show + UA + digests + retention; no deploy, no evidence write.
+ * --dry-run: show + UA + capacity + digests + retention + payer cost; no deploy, no evidence write.
+ * Live upgrades pass --no-auto-extend (capacity must already fit; extend is founder-approved).
  */
 
 import { spawnSync } from "node:child_process";
@@ -39,15 +40,25 @@ import {
   mergeAndWriteSvmDevnetEvidence,
   type SvmProgramEvidencePatch,
 } from "./lib/svm-devnet-evidence-write.js";
-import { assertProgramShowAllowsUpgrade } from "./lib/svm-upgrade-in-place-assert.js";
+import {
+  assertArtifactFitsProgramCapacity,
+  assertPayerCoversUpgradeCost,
+  assertProgramShowAllowsUpgrade,
+  evaluateArtifactCapacityFit,
+  parseProgramDataCapacityBytes,
+} from "./lib/svm-upgrade-in-place-assert.js";
 import {
   formatUpgradePlannedChangeTable,
+  formatUpgradeProgramStatusTable,
   isAbsentProgramShowFailure,
   isTransportCliFailure,
   maskBase58Id,
+  parseBalanceLamports,
   parseProgramShowAuthority,
+  parseRentExemptLamports,
   sanitizeCliDetail,
   type UpgradePlannedChangeRow,
+  type UpgradeProgramStatusRow,
 } from "./lib/svm-upgrade-in-place-preflight.js";
 
 const CALLER = "svm-upgrade-in-place.ts";
@@ -207,6 +218,42 @@ function programShow(args: {
   );
 }
 
+/** Rent-exempt minimum for a temporary upgrade buffer of `dataLength` bytes. */
+function rentExemptLamportsForDataLength(dataLength: number, rpc: string): number {
+  const r = runSolana([
+    "rent",
+    String(dataLength),
+    "--lamports",
+    "-u",
+    rpc,
+  ]);
+  if (r.status !== 0) {
+    throw new Error(
+      `${CALLER}: solana rent failed for dataLength=${dataLength}: ` +
+        sanitizeCliDetail(`${r.stdout}\n${r.stderr}`).slice(0, 240),
+    );
+  }
+  return parseRentExemptLamports(`${r.stdout}\n${r.stderr}`);
+}
+
+function payerBalanceLamports(deployerKp: string, rpc: string): number {
+  const r = runSolana([
+    "balance",
+    "-k",
+    deployerKp,
+    "-u",
+    rpc,
+    "--lamports",
+  ]);
+  if (r.status !== 0) {
+    throw new Error(
+      `${CALLER}: solana balance failed: ` +
+        sanitizeCliDetail(`${r.stdout}\n${r.stderr}`).slice(0, 240),
+    );
+  }
+  return parseBalanceLamports(`${r.stdout}\n${r.stderr}`);
+}
+
 async function main(): Promise<void> {
   const dryRun = hasFlag("--dry-run");
   const programsCsv = arg("--programs");
@@ -252,6 +299,9 @@ async function main(): Promise<void> {
   const prior = loadSvmDevnetEvidence(eid);
   const patches: Record<string, SvmProgramEvidencePatch> = {};
   const planned: UpgradePlannedChangeRow[] = [];
+  const capacityFailures: string[] = [];
+  const bufferRents: number[] = [];
+  const statusRows: UpgradeProgramStatusRow[] = [];
 
   for (const evidenceKey of keys) {
     const programId = registryProgramId(stack, evidenceKey);
@@ -269,15 +319,24 @@ async function main(): Promise<void> {
       evidenceKey,
       caller: CALLER,
     });
+    const deployedCapacityBytes = parseProgramDataCapacityBytes(showText);
     const parsedShow = parseProgramShowAuthority(showText);
     console.log(
       `==> on-chain ${evidenceKey} id=${maskBase58Id(programId)} ` +
         `owner=${parsedShow.ownerLine ?? "absent"} ` +
-        `authority=${parsedShow.authority ? maskBase58Id(parsedShow.authority) : "absent"}`,
+        `authority=${parsedShow.authority ? maskBase58Id(parsedShow.authority) : "absent"} ` +
+        `dataLength=${deployedCapacityBytes}`,
     );
 
     const soPath = soPathForEvidenceKey(soDir, evidenceKey);
     const digest = artifactDigestFromSo(soPath);
+    const fit = evaluateArtifactCapacityFit({
+      evidenceKey,
+      programId,
+      deployedCapacityBytes,
+      artifactBytes: digest.soBytes,
+      caller: CALLER,
+    });
     const priorProg = prior?.programs?.[evidenceKey as keyof typeof prior.programs];
     planned.push({
       evidenceKey,
@@ -287,14 +346,81 @@ async function main(): Promise<void> {
       priorDeploySlot:
         priorProg?.deploySlot != null ? String(priorProg.deploySlot) : "absent",
       soBytes: digest.soBytes,
+      deployedCapacityBytes,
+      fits: fit.ok ? "yes" : "no",
+      deficitBytes: fit.ok ? 0 : fit.deficitBytes,
     });
+    if (!fit.ok) {
+      capacityFailures.push(fit.message);
+    } else {
+      bufferRents.push(rentExemptLamportsForDataLength(digest.soBytes, rpc));
+    }
 
     if (dryRun) {
+      statusRows.push({
+        evidenceKey,
+        maskedProgramId: maskBase58Id(programId),
+        outcome: "skipped",
+        detail: fit.ok ? "dry-run" : "capacity_insufficient",
+      });
       continue;
     }
 
+    if (!fit.ok) {
+      statusRows.push({
+        evidenceKey,
+        maskedProgramId: maskBase58Id(programId),
+        outcome: "skipped",
+        detail: "capacity_insufficient",
+      });
+      continue;
+    }
+  }
+
+  const payerLamports = payerBalanceLamports(deployerKp, rpc);
+  const estimatedCostLamports = bufferRents.reduce((a, b) => a + b, 0);
+  console.log(
+    `==> payerLamports=${payerLamports} estimatedCostLamports=${estimatedCostLamports} ` +
+      `(sum of solana rent <soBytes> --lamports for programs that fit)`,
+  );
+
+  console.log(`==> sourceGitHead=${sourceGitHead}`);
+  console.log(formatUpgradePlannedChangeTable(planned));
+
+  if (capacityFailures.length > 0) {
+    console.log(formatUpgradeProgramStatusTable(statusRows));
+    throw new Error(capacityFailures.join("\n"));
+  }
+  assertPayerCoversUpgradeCost({
+    payerLamports,
+    estimatedCostLamports,
+    caller: CALLER,
+  });
+
+  if (dryRun) {
+    console.log(formatUpgradeProgramStatusTable(statusRows));
     console.log(
-      `==> upgrade ${evidenceKey} → ${maskBase58Id(programId)}`,
+      "==> DRY-RUN complete — no transactions, no evidence write; deploySlot unchanged",
+    );
+    return;
+  }
+
+  for (const evidenceKey of keys) {
+    const programId = registryProgramId(stack, evidenceKey);
+    const soPath = soPathForEvidenceKey(soDir, evidenceKey);
+    const digest = artifactDigestFromSo(soPath);
+    // Capacity already proven in the preflight pass above.
+    assertArtifactFitsProgramCapacity({
+      evidenceKey,
+      programId,
+      deployedCapacityBytes: planned.find((r) => r.evidenceKey === evidenceKey)!
+        .deployedCapacityBytes,
+      artifactBytes: digest.soBytes,
+      caller: CALLER,
+    });
+
+    console.log(
+      `==> upgrade ${evidenceKey} → ${maskBase58Id(programId)} (--no-auto-extend)`,
     );
     const deploy = runSolana([
       "program",
@@ -306,12 +432,20 @@ async function main(): Promise<void> {
       deployerKp,
       "--keypair",
       deployerKp,
+      "--no-auto-extend",
       "-u",
       rpc,
     ]);
     if (deploy.status !== 0) {
       console.error(sanitizeCliDetail(deploy.stdout));
       console.error(sanitizeCliDetail(deploy.stderr));
+      statusRows.push({
+        evidenceKey,
+        maskedProgramId: maskBase58Id(programId),
+        outcome: "failed",
+        detail: `deploy_exit_${deploy.status}`,
+      });
+      console.log(formatUpgradeProgramStatusTable(statusRows));
       throw new Error(`${CALLER}: solana program deploy failed for ${evidenceKey}`);
     }
 
@@ -322,18 +456,15 @@ async function main(): Promise<void> {
       sourceGitHead,
       upgradeAuthority: deployerPub,
     };
+    statusRows.push({
+      evidenceKey,
+      maskedProgramId: maskBase58Id(programId),
+      outcome: "upgraded",
+      detail: "ok",
+    });
   }
 
-  console.log(`==> sourceGitHead=${sourceGitHead}`);
-  console.log(formatUpgradePlannedChangeTable(planned));
-
-  if (dryRun) {
-    console.log(
-      "==> DRY-RUN complete — no transactions, no evidence write; deploySlot unchanged",
-    );
-    return;
-  }
-
+  console.log(formatUpgradeProgramStatusTable(statusRows));
   mergeAndWriteSvmDevnetEvidence(evidencePath, {
     caller: CALLER,
     prior,

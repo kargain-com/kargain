@@ -160,12 +160,17 @@ describe("svm-startup-retention-policy", () => {
         newDigest: "abc",
         priorDeploySlot: "490505668",
         soBytes: 12,
+        deployedCapacityBytes: 100,
+        fits: "yes",
+        deficitBytes: 0,
       },
     ]);
     assert.match(table, /kar_passport/);
     assert.match(table, /Arvc…WnTQ/);
     assert.match(table, /absent/);
     assert.match(table, /490505668/);
+    assert.match(table, /deployedCapacity/);
+    assert.match(table, /fits/);
   });
 
   it("CLI detail sanitize + transport vs absent classification", () => {

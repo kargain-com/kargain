@@ -37,14 +37,26 @@ export type UpgradePlannedChangeRow = {
   newDigest: string;
   priorDeploySlot: string;
   soBytes: number;
+  deployedCapacityBytes: number;
+  fits: "yes" | "no";
+  deficitBytes: number;
+};
+
+export type UpgradeProgramOutcome = "upgraded" | "skipped" | "failed";
+
+export type UpgradeProgramStatusRow = {
+  evidenceKey: string;
+  maskedProgramId: string;
+  outcome: UpgradeProgramOutcome;
+  detail: string;
 };
 
 export function formatUpgradePlannedChangeTable(
   rows: readonly UpgradePlannedChangeRow[],
 ): string {
   const lines = [
-    "program | registry id | prior digest | new digest | prior deploySlot | soBytes",
-    "--------|-------------|--------------|------------|------------------|--------",
+    "program | registry id | prior digest | new digest | prior deploySlot | soBytes | deployedCapacity | fits | deficit",
+    "--------|-------------|--------------|------------|------------------|---------|------------------|------|---------",
   ];
   for (const row of rows) {
     lines.push(
@@ -55,10 +67,68 @@ export function formatUpgradePlannedChangeTable(
         row.newDigest,
         row.priorDeploySlot,
         String(row.soBytes),
+        String(row.deployedCapacityBytes),
+        row.fits,
+        String(row.deficitBytes),
       ].join(" | "),
     );
   }
   return lines.join("\n");
+}
+
+export function formatUpgradeProgramStatusTable(
+  rows: readonly UpgradeProgramStatusRow[],
+): string {
+  const lines = [
+    "program | registry id | outcome | detail",
+    "--------|-------------|---------|--------",
+  ];
+  for (const row of rows) {
+    lines.push(
+      [row.evidenceKey, row.maskedProgramId, row.outcome, row.detail].join(
+        " | ",
+      ),
+    );
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Parse `solana rent <n> --lamports` stdout → lamports integer.
+ * Example: `Rent-exempt minimum: 1331691520 lamports`
+ */
+export function parseRentExemptLamports(rentCliText: string): number {
+  const match = rentCliText.match(
+    /Rent-exempt minimum:\s*([\d_]+)\s*lamports/i,
+  );
+  if (!match) {
+    throw new Error(
+      `solana rent output missing rent-exempt lamports line (got ${JSON.stringify(rentCliText.trim().slice(0, 120))})`,
+    );
+  }
+  const n = Number(match[1]!.replace(/_/g, ""));
+  if (!Number.isInteger(n) || n < 0) {
+    throw new Error(`solana rent produced non-integer lamports: ${match[1]}`);
+  }
+  return n;
+}
+
+/**
+ * Parse `solana balance ... --lamports` stdout.
+ * Example: `19130523350 lamports`
+ */
+export function parseBalanceLamports(balanceCliText: string): number {
+  const match = balanceCliText.trim().match(/^([\d_]+)\s*lamports\b/i);
+  if (!match) {
+    throw new Error(
+      `solana balance --lamports output unparseable (got ${JSON.stringify(balanceCliText.trim().slice(0, 120))})`,
+    );
+  }
+  const n = Number(match[1]!.replace(/_/g, ""));
+  if (!Number.isInteger(n) || n < 0) {
+    throw new Error(`solana balance produced non-integer lamports: ${match[1]}`);
+  }
+  return n;
 }
 
 export function parseProgramShowAuthority(showText: string): {
