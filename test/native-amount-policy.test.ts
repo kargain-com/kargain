@@ -16,6 +16,7 @@ import {
   formatNativeAmountLabeled,
 } from "../lib/web3/native-amount.ts";
 import { planIrysUpload } from "../lib/storage/irys-upload-plan.ts";
+import { mintKargainNamespace } from "../lib/web3/kargain-namespace.ts";
 import { FIXTURE_SVM_STACK } from "./fixtures/commercial-svm-stack.ts";
 import { scanProductSources } from "./policy-scan-helpers.ts";
 
@@ -94,9 +95,13 @@ describe("native amount ownership policy", () => {
     assert.equal(mismatched, "Checkout settles in SOL.");
   });
 
-  it("planIrysUpload refuses SVM with wrong_vm without throwing", () => {
+  it("planIrysUpload refuses unregistered SVM with wrong_vm without throwing", () => {
     assert.doesNotThrow(() => {
-      const result = planIrysUpload(FIXTURE_SVM_STACK);
+      const unregistered = {
+        ...FIXTURE_SVM_STACK,
+        namespace: mintKargainNamespace(2_000_049_999),
+      };
+      const result = planIrysUpload(unregistered);
       assert.deepEqual(result, { ok: false, cause: "wrong_vm" });
     });
   });

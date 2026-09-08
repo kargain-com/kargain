@@ -5,7 +5,11 @@
 
 import type { Connector } from "wagmi";
 
-import type { KargainNamespace } from "@/lib/web3/kargain-namespace";
+import { commercialSvmNamespaceIds } from "@/lib/web3/commercial-active";
+import {
+  mintKargainNamespace,
+  type KargainNamespace,
+} from "@/lib/web3/kargain-namespace";
 
 export type ActiveAccountDisconnected = {
   status: "disconnected";
@@ -21,7 +25,8 @@ export type ActiveAccountEvm = {
 
 /**
  * Solana session: address + vm only.
- * No commercial namespace until a COMMERCIAL_ACTIVE row exists (S9).
+ * Commercial namespace is resolved by {@link commercialNamespaceOf} from the
+ * registry (sole commercial SVM row), not stored on the session snapshot.
  */
 export type ActiveAccountSvm = {
   status: "connected";
@@ -162,8 +167,8 @@ export function evmSessionRefusalTitle(
 
 /**
  * Commercial namespace of the active account.
- * SVM sessions have no registry row until S9 → `unresolved_namespace`
- * (never an invented endpoint-derived id).
+ * SVM: sole registered commercial SVM namespace, else `unresolved_namespace`
+ * (never invent when zero or multiple SVM rows).
  */
 export function commercialNamespaceOf(
   account: ActiveAccount,
@@ -172,7 +177,11 @@ export function commercialNamespaceOf(
     return { ok: false, cause: "disconnected" };
   }
   if (account.vm === "svm") {
-    return { ok: false, cause: "unresolved_namespace" };
+    const ids = commercialSvmNamespaceIds();
+    if (ids.length !== 1) {
+      return { ok: false, cause: "unresolved_namespace" };
+    }
+    return { ok: true, namespace: mintKargainNamespace(ids[0]!) };
   }
   return { ok: true, namespace: account.namespace };
 }

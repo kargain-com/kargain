@@ -15,7 +15,6 @@ import { KarProPassAbi } from "@/lib/contracts/abis.generated";
 import { parseKarProMetadataJson } from "@/lib/kar-pro/kar-pro-metadata";
 import { proShowroomHref } from "@/lib/kar-pro/pro-showroom-href";
 import { uploadKarProMetadata } from "@/lib/kar-pro/upload-kar-pro-metadata";
-import { getWalletUploadProvider } from "@/lib/passport/upload-passport-metadata";
 import { arUriToHttp } from "@/lib/storage/ar-gateway";
 import { karProPassAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
@@ -64,7 +63,7 @@ export function KarProProfileSection({
   address,
   onUpdated,
 }: KarProProfileSectionProps) {
-  const { signingBinding } = useActiveAccount();
+  const { account, signingBinding, svmWallet } = useActiveAccount();
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const { writeContractAsync } = useEvmWriteContract();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
@@ -113,7 +112,6 @@ export function KarProProfileSection({
     setLoading(true);
 
     try {
-      const provider = await getWalletUploadProvider(connector ?? undefined);
       const metadataUri = await uploadKarProMetadata(
         {
           categoryIndex: fields.categoryIndex,
@@ -123,7 +121,11 @@ export function KarProProfileSection({
           website: fields.website.trim() || undefined,
           location: fields.location,
         },
-        provider,
+        {
+          account,
+          evmConnector: connector,
+          svmWallet,
+        },
       );
 
       setLoading(false);

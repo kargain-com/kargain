@@ -58,15 +58,15 @@ describe("active-account owners (S8-2-fix)", () => {
     });
   });
 
-  it("commercialNamespaceOf refuses SVM with unresolved_namespace (no invented id)", () => {
+  it("commercialNamespaceOf resolves sole commercial SVM namespace", () => {
     assert.deepEqual(commercialNamespaceOf(EVM), {
       ok: true,
       namespace: EVM.namespace,
     });
-    assert.deepEqual(commercialNamespaceOf(SVM), {
-      ok: false,
-      cause: "unresolved_namespace",
-    });
+    const svmNs = commercialNamespaceOf(SVM);
+    assert.equal(svmNs.ok, true);
+    if (!svmNs.ok) return;
+    assert.equal(Number(svmNs.namespace), Number(FIXTURE_SVM_STACK.namespace));
     assert.deepEqual(commercialNamespaceOf({ status: "disconnected" }), {
       ok: false,
       cause: "disconnected",

@@ -46,9 +46,6 @@ import {
   type OwnerServiceRecordType,
 } from "@/lib/passport/record-types";
 import { revealPassportRecordsTab } from "@/lib/passport/passport-tab-url";
-import {
-  getWalletUploadProvider,
-} from "@/lib/passport/upload-passport-metadata";
 import { uploadEvidenceFile } from "@/lib/passport/upload-evidence";
 import type { PassportStatus, PonderUriHistoryEntry } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
@@ -117,7 +114,7 @@ export function PassportActionsPanel({
   embeddedInSheet = false,
 }: Props) {
   const pathname = usePathname();
-  const { account, signingBinding } = useActiveAccount();
+  const { account, signingBinding, svmWallet } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
@@ -312,20 +309,26 @@ export function PassportActionsPanel({
           chainId,
           signMessageAsync,
         });
-        const provider = await getWalletUploadProvider(connector ?? undefined);
-        return await uploadEvidenceFile(attestationEvidenceFile, provider);
+        const providerArgs = {
+          account,
+          evmConnector: connector ?? undefined,
+          svmWallet,
+        };
+        return await uploadEvidenceFile(attestationEvidenceFile, providerArgs);
       } finally {
         setIsUploadingEvidence(false);
       }
     }
     return attestationEvidencePaste.trim();
   }, [
+    account,
     address,
     attestationEvidenceFile,
     attestationEvidencePaste,
     chainId,
     connector,
     signMessageAsync,
+    svmWallet,
   ]);
 
   const uploadEvidenceFromInput = useCallback(
@@ -339,15 +342,18 @@ export function PassportActionsPanel({
             chainId,
             signMessageAsync,
           });
-          const provider = await getWalletUploadProvider(connector ?? undefined);
-          return await uploadEvidenceFile(file, provider);
+          return await uploadEvidenceFile(file, {
+            account,
+            evmConnector: connector ?? undefined,
+            svmWallet,
+          });
         } finally {
           setIsUploadingEvidence(false);
         }
       }
       return paste.trim();
     },
-    [address, chainId, connector, signMessageAsync],
+    [account, address, chainId, connector, signMessageAsync, svmWallet],
   );
 
   const resolveDiscrepancyEvidence = useCallback(

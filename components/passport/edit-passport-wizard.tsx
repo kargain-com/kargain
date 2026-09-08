@@ -60,7 +60,6 @@ import {
 import type { PassportStatus } from "@/lib/types/ponder";
 import {
   formatPassportUploadError,
-  getWalletUploadProvider,
   uploadPassportToIrys,
   type UploadProgress,
 } from "@/lib/passport/upload-passport-metadata";
@@ -96,7 +95,7 @@ export function EditPassportWizard({
   initialMetadata,
   existingPhotoUris,
 }: Props) {
-  const { account, switchChain, signingBinding } = useActiveAccount();
+  const { account, switchChain, signingBinding, svmWallet } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
   const walletChain = evm.ok ? evm.chainId : undefined;
@@ -277,7 +276,6 @@ export function EditPassportWizard({
         chainId,
         signMessageAsync,
       });
-      const provider = await getWalletUploadProvider(connector);
 
       const newFiles = photos
         .filter((item): item is Extract<EditPhotoItem, { kind: "new" }> => item.kind === "new")
@@ -300,7 +298,9 @@ export function EditPassportWizard({
           savedMetadataRef.current = parseMetadataJson(wire);
           return wire;
         },
-        provider,
+        account,
+        evmConnector: connector,
+        svmWallet,
         onProgress: setUploadProgress,
       });
 

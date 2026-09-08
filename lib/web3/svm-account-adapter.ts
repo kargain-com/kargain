@@ -14,9 +14,12 @@ import {
   subscribeSvmWalletDiscovery,
   type SvmDiscoveredWallet,
 } from "@/lib/web3/svm-wallet-discovery";
+import type { Wallet } from "@wallet-standard/base";
 
 export type SvmAccountAdapterSnapshot = {
   connected: ActiveAccountSvm | null;
+  /** Live Wallet Standard handle while connected — Irys provider door. */
+  wallet: Wallet | null;
   wallets: readonly SvmDiscoveredWallet[];
   isConnectPending: boolean;
   connectError: Error | null;
@@ -68,6 +71,7 @@ export function useSvmAccountAdapter(): SvmAccountAdapterSnapshot {
 
   return {
     connected,
+    wallet: session?.wallet ?? null,
     wallets,
     isConnectPending,
     connectError,

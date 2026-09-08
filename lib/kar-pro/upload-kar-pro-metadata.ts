@@ -3,7 +3,14 @@ import {
   parseKarProMetadataJson,
   type KarProProfileFields,
 } from "@/lib/kar-pro/kar-pro-metadata";
-import { uploadJson } from "@/lib/storage/irys-client";
+import {
+  resolveIrysUploadSession,
+  type WalletUploadProviderArgs,
+} from "@/lib/passport/upload-passport-metadata";
+import {
+  prepareUserPaidUploadForStack,
+  uploadJsonWithUploader,
+} from "@/lib/storage/irys-client";
 import { withRetry } from "@/lib/storage/upload-with-retry";
 
 const KAR_PRO_METADATA_TAGS = [
@@ -14,10 +21,19 @@ const KAR_PRO_METADATA_TAGS = [
 
 export async function uploadKarProMetadata(
   fields: KarProProfileFields,
-  provider: unknown,
+  args: WalletUploadProviderArgs,
 ): Promise<string> {
   const body = buildKarProMetadataJson(fields);
   const metadata = parseKarProMetadataJson(body);
   if (!metadata) throw new Error("Invalid metadata.");
-  return withRetry(() => uploadJson(metadata, KAR_PRO_METADATA_TAGS, provider));
+  const session = await resolveIrysUploadSession(args);
+  const encoded = new TextEncoder().encode(JSON.stringify(metadata));
+  const uploader = await prepareUserPaidUploadForStack(
+    session.stack,
+    session.provider,
+    encoded.length,
+  );
+  return withRetry(() =>
+    uploadJsonWithUploader(uploader, metadata, KAR_PRO_METADATA_TAGS),
+  );
 }

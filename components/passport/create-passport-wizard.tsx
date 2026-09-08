@@ -35,7 +35,6 @@ import {
 } from "@/lib/passport/metadata-schema";
 import {
   formatPassportUploadError,
-  getWalletUploadProvider,
   uploadPassportToIrys,
   type UploadProgress,
 } from "@/lib/passport/upload-passport-metadata";
@@ -64,7 +63,7 @@ const MINT_PARSE_ERROR_MESSAGE =
 
 export function CreatePassportWizard() {
   const router = useRouter();
-  const { account, signingBinding } = useActiveAccount();
+  const { account, signingBinding, svmWallet } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
@@ -257,12 +256,12 @@ export function CreatePassportWizard() {
     }
 
     try {
-      const provider = await getWalletUploadProvider(connector);
-
       const uri = await uploadPassportToIrys({
         newPhotoFiles: photos,
         buildMetadata: (photoUris) => buildMetadataWire(form, photoUris),
-        provider,
+        account,
+        evmConnector: connector,
+        svmWallet,
         onProgress: setUploadProgress,
       });
 

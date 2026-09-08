@@ -73,6 +73,32 @@ describe("irys solana adapter boundary", () => {
     );
   });
 
+  it("uploadFilesWithUploader under solana plan calls uploadFolder once for ≥2 files", async () => {
+    const { uploadFilesWithUploader } = await import("../lib/storage/irys-client.ts");
+    let folderCalls = 0;
+    const uploader = {
+      async uploadFile() {
+        throw new Error("uploadFile must not run for multi-file batch");
+      },
+      async uploadFolder(files: File[]) {
+        folderCalls += 1;
+        const paths: Record<string, { id: string }> = {};
+        for (const file of files) {
+          paths[file.name] = { id: `id-${file.name}` };
+        }
+        return { manifest: { paths } };
+      },
+    };
+    const files = [
+      new File([Uint8Array.of(1)], "a.jpg", { type: "image/jpeg" }),
+      new File([Uint8Array.of(2)], "b.jpg", { type: "image/jpeg" }),
+    ];
+    const uris = await uploadFilesWithUploader(uploader as never, files);
+    assert.equal(folderCalls, 1);
+    assert.equal(uris.length, 2);
+    assert.ok(uris.every((u) => u.startsWith("ar://")));
+  });
+
   it("loads the real adapter and builds an uploader with batch upload support", async () => {
     const mod = await import("../adapters/irys-solana/build-uploader.ts");
     const uploader = await mod.buildIrysSolanaUploader(

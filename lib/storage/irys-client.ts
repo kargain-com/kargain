@@ -311,6 +311,21 @@ export async function uploadJsonWithUploader(
 }
 
 /** Fund the user's Irys balance for a total byte size, then return the uploader. */
+export async function prepareUserPaidUploadForStack(
+  stack: CommercialActiveStack,
+  provider: unknown,
+  totalBytes: number,
+): Promise<IrysUploader> {
+  const uploader = await getIrysUploaderForStack(stack, provider);
+  await ensureFunded(uploader, totalBytes);
+  return uploader;
+}
+
+/**
+ * EVM EIP-1193 helper — reads chain id from the provider.
+ * Product upload paths should prefer {@link prepareUserPaidUploadForStack}
+ * via commercial namespace (SVM has no eth_chainId).
+ */
 export async function prepareUserPaidUpload(
   provider: unknown,
   totalBytes: number,

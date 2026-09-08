@@ -294,8 +294,9 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   },
   {
     id: "irys-solana-adapter",
-    owner: "adapters/irys-solana/build-uploader.ts · lib/storage/irys-client.ts",
-    rule: "Solana Irys SDK lives outside product roots and is reached only by one dynamic import from irys-client; EVM path does not fetch it",
+    owner:
+      "adapters/irys-solana/build-uploader.ts · adapters/irys-solana/to-irys-provider.ts · lib/storage/irys-client.ts",
+    rule: "Solana Irys SDK lives outside product roots and is reached only by one dynamic import from irys-client; Wallet Standard→Irys wrap stays in the adapter; EVM path does not fetch it",
     guardTests: ["irys-solana-adapter-policy.test.ts", "solana-web3-app-graph-policy.test.ts"],
   },
   {

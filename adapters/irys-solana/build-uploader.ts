@@ -11,6 +11,8 @@ import { WebSolana } from "@irys/web-upload-solana";
 
 import type { IrysUploadPlan } from "@/lib/storage/irys-upload-plan";
 
+import { toIrysSolanaProvider } from "./to-irys-provider";
+
 export type IrysSolanaUploader = BaseWebIrys;
 
 export async function buildIrysSolanaUploader(
@@ -21,8 +23,9 @@ export async function buildIrysSolanaUploader(
   if (plan.paymentToken !== "solana") {
     throw new Error("buildIrysSolanaUploader: plan.paymentToken must be solana");
   }
+  const wallet = toIrysSolanaProvider(provider, plan);
   let builder = WebUploader(WebSolana)
-    .withProvider(provider)
+    .withProvider(wallet)
     .bundlerUrl(plan.bundlerUrl)
     .withRpc(plan.rpcUrl)
     .timeout(timeoutMs);

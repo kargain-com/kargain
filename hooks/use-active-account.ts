@@ -8,6 +8,7 @@
 
 import { useCallback, useMemo } from "react";
 import type { Connector } from "wagmi";
+import type { Wallet } from "@wallet-standard/base";
 
 import {
   connectedAddress,
@@ -44,6 +45,11 @@ export type UseActiveAccountResult = {
    * Personal-sign / wallet-client binding — always a Result (never undefined connector).
    */
   signingBinding: AccountSigningBinding;
+  /**
+   * Wallet Standard wallet while an SVM session is live — Irys Solana payment door.
+   * Null when disconnected or on an EVM session.
+   */
+  svmWallet: Wallet | null;
   isConnectPending: boolean;
   connectError: Error | null;
 };
@@ -128,6 +134,7 @@ export function useActiveAccount(): UseActiveAccountResult {
     switchChain,
     connectOptions,
     signingBinding,
+    svmWallet: svm.wallet,
     isConnectPending: evm.isConnectPending || svm.isConnectPending,
     connectError: svm.connectError ?? evm.connectError,
   };

@@ -20,7 +20,6 @@ import {
 } from "@/lib/kar-pro/membership-roster";
 import { SLUG_PATTERN } from "@/lib/kar-pro/kar-pro-slug-rules";
 import { uploadKarProMetadata } from "@/lib/kar-pro/upload-kar-pro-metadata";
-import { getWalletUploadProvider } from "@/lib/passport/upload-passport-metadata";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
@@ -61,7 +60,7 @@ export function KarProJoinForm({
   onSuccess: () => void;
   otherActiveChainIds?: readonly number[];
 }) {
-  const { account, signingBinding } = useActiveAccount();
+  const { account, signingBinding, svmWallet } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
@@ -122,7 +121,6 @@ export function KarProJoinForm({
 
     try {
       setLoadingPhase("uploading");
-      const provider = await getWalletUploadProvider(connector ?? undefined);
       const metadataUri = await uploadKarProMetadata(
         {
           categoryIndex: fields.categoryIndex,
@@ -132,7 +130,11 @@ export function KarProJoinForm({
           website: fields.website.trim() || undefined,
           location: fields.location,
         },
-        provider,
+        {
+          account,
+          evmConnector: connector,
+          svmWallet,
+        },
       );
 
       setLoadingPhase("idle");
