@@ -21,7 +21,7 @@ const BASE58_ALPHABET =
   "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
 /** Compact base58 for Ed25519 signatures — avoids a product-level bs58 dep. */
-function encodeBase58(bytes: Uint8Array): string {
+export function encodeIrysSolanaSignatureBase58(bytes: Uint8Array): string {
   if (bytes.length === 0) return "";
   let zeros = 0;
   while (zeros < bytes.length && bytes[zeros] === 0) zeros += 1;
@@ -156,7 +156,7 @@ function wrapWalletStandard(
       if (output == null) {
         throw new Error("Wallet returned no signature");
       }
-      return encodeBase58(output.signature);
+      return encodeIrysSolanaSignatureBase58(output.signature);
     },
     async signMessage(message) {
       const [output] = await signMessageFeature.signMessage({

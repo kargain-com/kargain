@@ -288,9 +288,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   },
   {
     id: "irys-upload-plan",
-    owner: "lib/storage/irys-upload-plan.ts",
-    rule: "Sole Irys payment/bundler plan; takes commercial stack; named Result refusal (wrong_vm/unsupported_network/no_rpc); no throw",
-    guardTests: ["irys-upload-plan.test.ts", "native-amount-policy.test.ts"],
+    owner: "lib/storage/irys-upload-plan.ts · lib/passport/upload-passport-metadata.ts",
+    rule: "Sole Irys payment/bundler plan keyed by commercial namespace; product upload resolves stack via commercialNamespaceOf then getIrysUploaderForStack; no EIP-1193 dual wrappers; no wizard VM fork",
+    guardTests: [
+      "irys-upload-plan.test.ts",
+      "irys-upload-session.test.ts",
+      "native-amount-policy.test.ts",
+    ],
   },
   {
     id: "irys-solana-adapter",

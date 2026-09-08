@@ -21,6 +21,10 @@ import {
   chainSelectorSwitchTargets,
   deriveChainSelectorState,
 } from "../lib/web3/chain-selector-state.ts";
+import {
+  COMMERCIAL_ACTIVE,
+  type CommercialRegistry,
+} from "../lib/web3/commercial-active.ts";
 import { mintKargainNamespace } from "../lib/web3/kargain-namespace.ts";
 import {
   FIXTURE_SVM_STACK,
@@ -70,6 +74,25 @@ describe("active-account owners (S8-2-fix)", () => {
     assert.deepEqual(commercialNamespaceOf({ status: "disconnected" }), {
       ok: false,
       cause: "disconnected",
+    });
+  });
+
+  it("commercialNamespaceOf refuses SVM when registry has zero or multiple SVM rows", () => {
+    assert.deepEqual(commercialNamespaceOf(SVM, {}), {
+      ok: false,
+      cause: "unresolved_namespace",
+    });
+    const multi: CommercialRegistry = {
+      84532: COMMERCIAL_ACTIVE[84532]!,
+      [Number(FIXTURE_SVM_STACK.namespace)]: FIXTURE_SVM_STACK,
+      2_000_049_998: {
+        ...FIXTURE_SVM_STACK,
+        namespace: mintKargainNamespace(2_000_049_998),
+      },
+    };
+    assert.deepEqual(commercialNamespaceOf(SVM, multi), {
+      ok: false,
+      cause: "unresolved_namespace",
     });
   });
 

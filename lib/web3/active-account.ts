@@ -5,7 +5,11 @@
 
 import type { Connector } from "wagmi";
 
-import { commercialSvmNamespaceIds } from "@/lib/web3/commercial-active";
+import {
+  COMMERCIAL_ACTIVE,
+  commercialSvmNamespaceIds,
+  type CommercialRegistry,
+} from "@/lib/web3/commercial-active";
 import {
   mintKargainNamespace,
   type KargainNamespace,
@@ -169,15 +173,17 @@ export function evmSessionRefusalTitle(
  * Commercial namespace of the active account.
  * SVM: sole registered commercial SVM namespace, else `unresolved_namespace`
  * (never invent when zero or multiple SVM rows).
+ * `registry` is injectable for constructed 0 / multi-row proofs.
  */
 export function commercialNamespaceOf(
   account: ActiveAccount,
+  registry: CommercialRegistry = COMMERCIAL_ACTIVE,
 ): CommercialNamespaceResult {
   if (account.status !== "connected") {
     return { ok: false, cause: "disconnected" };
   }
   if (account.vm === "svm") {
-    const ids = commercialSvmNamespaceIds();
+    const ids = commercialSvmNamespaceIds(registry);
     if (ids.length !== 1) {
       return { ok: false, cause: "unresolved_namespace" };
     }

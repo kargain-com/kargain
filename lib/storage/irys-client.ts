@@ -219,6 +219,11 @@ export async function getIrysUploaderForStack(
   return uploader;
 }
 
+/**
+ * EVM EIP-1193 helper — reads chain id from the provider.
+ * Product upload paths must use {@link getIrysUploaderForStack} via
+ * `resolveIrysUploadSession` (SVM has no eth_chainId).
+ */
 export async function getIrysUploader(provider: unknown): Promise<IrysUploader> {
   assertBrowser();
   const providerKey = provider ?? window.ethereum;
@@ -228,7 +233,7 @@ export async function getIrysUploader(provider: unknown): Promise<IrysUploader> 
     const chainId = await readChainId(eip1193);
     const stack = commercialActive(chainId);
     if (!stack) {
-      throw new Error(irysUploadPlanRefusalMessage("unsupported_network"));
+      throw new Error(irysUploadPlanRefusalMessage("wrong_vm"));
     }
     return getIrysUploaderForStack(stack, providerKey);
   } catch (err) {
@@ -240,16 +245,6 @@ export async function getIrysUploader(provider: unknown): Promise<IrysUploader> 
 /** Drop cached uploader after a failed upload so the next attempt reconnects cleanly. */
 export function resetIrysUploaderCache(): void {
   cachedUploader = null;
-}
-
-export async function uploadFile(
-  file: File,
-  tags?: IrysTag[],
-  provider?: unknown,
-): Promise<string> {
-  const uploader = await getIrysUploader(provider);
-  await ensureFunded(uploader, file.size);
-  return uploadFileWithUploader(uploader, file, tags);
 }
 
 export async function uploadFileWithUploader(
@@ -265,7 +260,7 @@ export async function uploadFileWithUploader(
 
 /**
  * Upload multiple files with one wallet signature via an Irys nested bundle.
- * A single file uses `uploadFile` directly.
+ * A single file uses {@link uploadFileWithUploader} directly.
  */
 export async function uploadFilesWithUploader(
   uploader: IrysUploader,
@@ -319,46 +314,4 @@ export async function prepareUserPaidUploadForStack(
   const uploader = await getIrysUploaderForStack(stack, provider);
   await ensureFunded(uploader, totalBytes);
   return uploader;
-}
-
-/**
- * EVM EIP-1193 helper — reads chain id from the provider.
- * Product upload paths should prefer {@link prepareUserPaidUploadForStack}
- * via commercial namespace (SVM has no eth_chainId).
- */
-export async function prepareUserPaidUpload(
-  provider: unknown,
-  totalBytes: number,
-): Promise<IrysUploader> {
-  const uploader = await getIrysUploader(provider);
-  await ensureFunded(uploader, totalBytes);
-  return uploader;
-}
-
-/** User funds Irys once, then signs one batch upload (or one file) from their wallet. */
-export async function uploadFiles(
-  files: File[],
-  tags?: IrysTag[],
-  provider?: unknown,
-): Promise<string[]> {
-  if (files.length === 0) return [];
-
-  const uploader = await getIrysUploader(provider);
-  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
-  await ensureFunded(uploader, totalBytes);
-  return uploadFilesWithUploader(uploader, files, tags);
-}
-
-export async function uploadJson(
-  data: object,
-  tags?: IrysTag[],
-  provider?: unknown,
-): Promise<string> {
-  const uploader = await getIrysUploader(provider);
-  const body = JSON.stringify(data);
-  await ensureFunded(uploader, new TextEncoder().encode(body).length);
-  const receipt = await uploader.upload(body, {
-    tags: mergeTags("application/json", tags),
-  });
-  return `ar://${receipt.id}`;
 }

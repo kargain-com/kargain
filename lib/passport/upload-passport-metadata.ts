@@ -105,11 +105,11 @@ export async function resolveIrysUploadSession(
 ): Promise<IrysUploadSession> {
   const ns = commercialNamespaceOf(args.account);
   if (!ns.ok) {
-    throw new Error(
-      ns.cause === "disconnected"
-        ? "Connect your wallet to continue"
-        : irysUploadPlanRefusalMessage("wrong_vm"),
-    );
+    if (ns.cause === "disconnected") {
+      throw new Error("Connect your wallet to continue");
+    }
+    // 0 or >1 commercial SVM rows — never invent a payment network.
+    throw new Error("Commercial network for this wallet is unresolved.");
   }
   const stack = commercialActive(Number(ns.namespace));
   if (stack == null) {

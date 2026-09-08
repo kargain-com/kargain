@@ -99,6 +99,51 @@ describe("irys solana adapter boundary", () => {
     assert.ok(uris.every((u) => u.startsWith("ar://")));
   });
 
+  it("toIrysSolanaProvider passes MessageSigner-shaped wallets through", async () => {
+    const { toIrysSolanaProvider, encodeIrysSolanaSignatureBase58 } = await import(
+      "../adapters/irys-solana/to-irys-provider.ts"
+    );
+    const shaped = fakeSolanaProvider();
+    const out = toIrysSolanaProvider(shaped, {
+      paymentToken: "solana",
+      bundlerUrl: IRYS_DEVNET_BUNDLER_URL,
+      rpcUrl: "https://api.devnet.solana.com",
+      devnet: true,
+    });
+    assert.equal(out, shaped);
+    assert.equal(encodeIrysSolanaSignatureBase58(Uint8Array.of(0)), "1");
+    assert.equal(encodeIrysSolanaSignatureBase58(Uint8Array.of()), "");
+  });
+
+  it("toIrysSolanaProvider refuses unknown provider shapes by name", async () => {
+    const { toIrysSolanaProvider } = await import(
+      "../adapters/irys-solana/to-irys-provider.ts"
+    );
+    assert.throws(
+      () =>
+        toIrysSolanaProvider(
+          { notAWallet: true },
+          {
+            paymentToken: "solana",
+            bundlerUrl: IRYS_DEVNET_BUNDLER_URL,
+            rpcUrl: "https://api.devnet.solana.com",
+            devnet: true,
+          },
+        ),
+      /Wallet Standard wallet or MessageSigner provider/,
+    );
+  });
+
+  it("product never imports deleted EIP-1193 dual upload wrappers", () => {
+    const client = fs.readFileSync(IRYS_CLIENT, "utf8");
+    assert.equal(/\bexport async function uploadFile\b/.test(client), false);
+    assert.equal(/\bexport async function uploadFiles\b/.test(client), false);
+    assert.equal(/\bexport async function uploadJson\b/.test(client), false);
+    assert.equal(/\bexport async function prepareUserPaidUpload\b/.test(client), false);
+    assert.match(client, /\bexport async function prepareUserPaidUploadForStack\b/);
+    assert.match(client, /\bexport async function getIrysUploader\b/);
+  });
+
   it("loads the real adapter and builds an uploader with batch upload support", async () => {
     const mod = await import("../adapters/irys-solana/build-uploader.ts");
     const uploader = await mod.buildIrysSolanaUploader(
