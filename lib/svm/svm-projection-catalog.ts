@@ -139,3 +139,68 @@ export function assertProjectionDigestCoversTables(
     }
   }
 }
+
+/** Split catalog `selectSql` into bare column names (no SELECT *). */
+export function parseSelectSqlColumns(selectSql: string): string[] {
+  return selectSql
+    .split(",")
+    .map((c) => c.trim())
+    .filter((c) => c.length > 0);
+}
+
+export function catalogCoveredColumnsForTable(
+  table: SvmProjectionDigestKind,
+): readonly string[] {
+  const entry = SVM_PROJECTION_CATALOG.find((e) => e.table === table);
+  if (!entry) {
+    throw new Error(`projection_digest_unknown_catalog_table: ${table}`);
+  }
+  return parseSelectSqlColumns(entry.selectSql);
+}
+
+export class ProjectionDigestUncoveredColumnError extends Error {
+  readonly table: string;
+  readonly uncoveredColumn: string;
+
+  constructor(table: string, uncoveredColumn: string) {
+    super(`projection_digest_uncovered_column: ${table}.${uncoveredColumn}`);
+    this.name = "ProjectionDigestUncoveredColumnError";
+    this.table = table;
+    this.uncoveredColumn = uncoveredColumn;
+  }
+}
+
+export class ProjectionDigestAbsentColumnError extends Error {
+  readonly table: string;
+  readonly absentColumn: string;
+
+  constructor(table: string, absentColumn: string) {
+    super(`projection_digest_absent_column: ${table}.${absentColumn}`);
+    this.name = "ProjectionDigestAbsentColumnError";
+    this.table = table;
+    this.absentColumn = absentColumn;
+  }
+}
+
+/**
+ * Bidirectional column coverage: every live column must be in selectSql, and
+ * every covered column must exist live. Injectable lists for constructed controls.
+ */
+export function assertProjectionDigestCoversColumns(args: {
+  table: string;
+  liveColumns: readonly string[];
+  coveredColumns: readonly string[];
+}): void {
+  const covered = new Set(args.coveredColumns);
+  const live = new Set(args.liveColumns);
+  for (const column of args.liveColumns) {
+    if (!covered.has(column)) {
+      throw new ProjectionDigestUncoveredColumnError(args.table, column);
+    }
+  }
+  for (const column of args.coveredColumns) {
+    if (!live.has(column)) {
+      throw new ProjectionDigestAbsentColumnError(args.table, column);
+    }
+  }
+}

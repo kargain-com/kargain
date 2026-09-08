@@ -1,5 +1,6 @@
 /**
- * Full projection digest: coverage refuse, mutate-projection, mutate-raw→replay.
+ * Full projection digest: table/column coverage refuse, mutate-projection,
+ * mutate-raw→replay, undefined value type.
  * Requires Postgres — RAW_SENTINEL_DATABASE_URL or docker postgres:16 on :55432.
  */
 import assert from "node:assert/strict";
@@ -8,11 +9,15 @@ import { after, before, describe, it } from "node:test";
 import pg from "pg";
 
 import {
+  ProjectionDigestAbsentColumnError,
+  ProjectionDigestUncoveredColumnError,
   ProjectionDigestUncoveredTableError,
   assertProjectionDigestCoversTables,
 } from "../lib/svm/svm-projection-catalog.ts";
 import {
+  ProjectionDigestUndefinedValueTypeError,
   assertProjectionDigestCoversLiveSchema,
+  normalizeCanonicalValue,
   projectionReplayDigestFromPool,
 } from "../lib/svm/projection-replay-digest.ts";
 import { rebuildProjectionFromRaw } from "../src/svm-ingest/projection-rebuild.ts";
@@ -50,6 +55,28 @@ async function canConnect(url: string): Promise<boolean> {
   }
 }
 
+async function seedMintPayload(pool: pg.Pool): Promise<void> {
+  const disc = Buffer.from(PASSPORT_MINTED_DISC, "hex");
+  const body = buildPassportMintedBody({
+    tokenId: FIXTURE_TOKEN_ID,
+    uri: "ar://digest-control-uri",
+  });
+  const writer = createSvmRawWriter(pool);
+  await writer.insertStructuredPayload({
+    id: `${FIXTURE_NAMESPACE}:500001:0:1`,
+    namespace: FIXTURE_NAMESPACE,
+    slot: 500_001,
+    txIndexInBlock: 0,
+    logIndex: 1,
+    txSignature: "digestCtrlMintSig111111111111111111111111111111111111111",
+    emittingProgram: FIXTURE_PASSPORT_PROGRAM,
+    discriminator: disc,
+    eventName: "PassportMinted",
+    contractName: "KarPassport",
+    payloadBytes: Buffer.concat([disc, body]),
+  });
+}
+
 describe("svm projection replay digest (real Postgres)", async () => {
   const reachable = await canConnect(DATABASE_URL);
   if (!reachable) {
@@ -68,27 +95,7 @@ describe("svm projection replay digest (real Postgres)", async () => {
     await pool.query(`DROP SCHEMA IF EXISTS kargain_svm_projection CASCADE`);
     await pool.query(`DROP SCHEMA IF EXISTS kargain_svm_raw CASCADE`);
     await applySvmRawSchema(pool);
-
-    const disc = Buffer.from(PASSPORT_MINTED_DISC, "hex");
-    const body = buildPassportMintedBody({
-      tokenId: FIXTURE_TOKEN_ID,
-      uri: "ar://digest-control-uri",
-    });
-    const payloadBytes = Buffer.concat([disc, body]);
-    const writer = createSvmRawWriter(pool);
-    await writer.insertStructuredPayload({
-      id: `${FIXTURE_NAMESPACE}:500001:0:1`,
-      namespace: FIXTURE_NAMESPACE,
-      slot: 500_001,
-      txIndexInBlock: 0,
-      logIndex: 1,
-      txSignature: "digestCtrlMintSig111111111111111111111111111111111111111",
-      emittingProgram: FIXTURE_PASSPORT_PROGRAM,
-      discriminator: disc,
-      eventName: "PassportMinted",
-      contractName: "KarPassport",
-      payloadBytes,
-    });
+    await seedMintPayload(pool);
   });
 
   after(async () => {
@@ -129,6 +136,72 @@ describe("svm projection replay digest (real Postgres)", async () => {
     assert.equal(ok.digest.length, 64);
     assert.ok(ok.countsByKind.passport >= 1);
     assert.ok(ok.countsByKind.custody_determining_event >= 1);
+  });
+
+  it("uncovered live column refuses by name (RED then green)", async () => {
+    await rebuildProjectionFromRaw(pool, FIXTURE_NAMESPACE);
+    await pool.query(
+      `ALTER TABLE kargain_svm_projection.passport ADD COLUMN orphan_digest_column TEXT`,
+    );
+    await assert.rejects(
+      () => projectionReplayDigestFromPool(pool, FIXTURE_NAMESPACE),
+      (err: unknown) => {
+        assert.ok(err instanceof ProjectionDigestUncoveredColumnError);
+        assert.equal(err.table, "passport");
+        assert.equal(err.uncoveredColumn, "orphan_digest_column");
+        assert.match(
+          err.message,
+          /projection_digest_uncovered_column: passport\.orphan_digest_column/,
+        );
+        return true;
+      },
+    );
+    await pool.query(
+      `ALTER TABLE kargain_svm_projection.passport DROP COLUMN orphan_digest_column`,
+    );
+    const ok = await projectionReplayDigestFromPool(pool, FIXTURE_NAMESPACE);
+    assert.equal(ok.digest.length, 64);
+  });
+
+  it("absent covered column refuses by name (RED then green)", async () => {
+    await rebuildProjectionFromRaw(pool, FIXTURE_NAMESPACE);
+    await pool.query(
+      `ALTER TABLE kargain_svm_projection.passport DROP COLUMN colour`,
+    );
+    await assert.rejects(
+      () => projectionReplayDigestFromPool(pool, FIXTURE_NAMESPACE),
+      (err: unknown) => {
+        assert.ok(err instanceof ProjectionDigestAbsentColumnError);
+        assert.equal(err.table, "passport");
+        assert.equal(err.absentColumn, "colour");
+        assert.match(
+          err.message,
+          /projection_digest_absent_column: passport\.colour/,
+        );
+        return true;
+      },
+    );
+    await rebuildProjectionFromRaw(pool, FIXTURE_NAMESPACE);
+    const ok = await projectionReplayDigestFromPool(pool, FIXTURE_NAMESPACE);
+    assert.equal(ok.digest.length, 64);
+  });
+
+  it("undefined value type refuses by name (RED then green)", () => {
+    assert.throws(
+      () => normalizeCanonicalValue("verified_at", new Date(1)),
+      (err: unknown) => {
+        assert.ok(err instanceof ProjectionDigestUndefinedValueTypeError);
+        assert.match(
+          err.message,
+          /projection_digest_undefined_value_type: verified_at:Date/,
+        );
+        return true;
+      },
+    );
+    assert.equal(normalizeCanonicalValue("verified_at", 0), 0);
+    assert.equal(normalizeCanonicalValue("owner", "x"), "x");
+    assert.equal(normalizeCanonicalValue("duplicate_vin", false), false);
+    assert.equal(normalizeCanonicalValue("dispute_deposit", null), null);
   });
 
   it("mutated projection row changes digest; rebuild restores", async () => {
