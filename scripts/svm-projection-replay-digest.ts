@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Chain-free rebuild digest for kargain_svm_projection.
+ * Chain-free rebuild digest for kargain_svm_projection (all catalog tables).
  */
 import pg from "pg";
 
@@ -26,12 +26,15 @@ async function main(): Promise<void> {
   const pool = new pg.Pool({ connectionString: databaseUrl });
   try {
     await rebuildProjectionFromRaw(pool, namespace);
-    const { digest, recordCount, uriCount } = await projectionReplayDigestFromPool(
-      pool,
-      namespace,
-    );
+    const { digest, countsByKind, coveredTables } =
+      await projectionReplayDigestFromPool(pool, namespace);
     console.log(
-      JSON.stringify({ digest, recordCount, uriCount, namespace: namespace ?? "all" }),
+      JSON.stringify({
+        digest,
+        countsByKind,
+        coveredTables,
+        namespace: namespace ?? "all",
+      }),
     );
   } finally {
     await pool.end();

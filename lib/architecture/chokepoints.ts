@@ -432,10 +432,21 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "svm-projection-writer-policy.test.ts",
       "svm-metadata-snapshot-policy.test.ts",
       "svm-projection-passport-index-policy.test.ts",
+      "svm-projection-digest-catalog-policy.test.ts",
+      "svm-projection-replay-digest-pg.test.ts",
       "ponder-reindex-svm-isolation-policy.test.ts",
       "ponder-passport-provenance-policy.test.ts",
       "svm-ingest-loop.test.ts",
       "svm-ingest-follow-loop.test.ts",
+    ],
+  },
+  {
+    id: "svm-projection-replay-digest",
+    owner: "lib/svm/projection-replay-digest.ts · lib/svm/svm-projection-catalog.ts",
+    rule: "Projection rebuild digest covers every kargain_svm_projection base table from the sole catalog; live uncovered table refuses by name; no subset-digest path",
+    guardTests: [
+      "svm-projection-digest-catalog-policy.test.ts",
+      "svm-projection-replay-digest-pg.test.ts",
     ],
   },
   {

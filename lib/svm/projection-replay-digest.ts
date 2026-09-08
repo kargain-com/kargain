@@ -1,99 +1,108 @@
 /**
- * Chain-free canonical digest of kargain_svm_projection rows (S7c-2 rebuild proof).
+ * Chain-free canonical digest of all kargain_svm_projection tables (S7c rebuild proof).
+ * Coverage is refused by name when a live projection table is missing from the catalog.
  */
 
 import { createHash } from "node:crypto";
 import type pg from "pg";
 
-export type PassportRecordProjectionRow = {
-  id: string;
-  token_id: string;
-  chain_id: number;
-  author: string;
-  record_type: string;
-  description: string;
-  evidence_cid: string;
-  timestamp: string;
+import {
+  SVM_PROJECTION_CATALOG,
+  SVM_PROJECTION_SCHEMA,
+  assertProjectionDigestCoversTables,
+  type SvmProjectionDigestKind,
+} from "./svm-projection-catalog.js";
+
+export type ProjectionDigestCounts = Record<SvmProjectionDigestKind, number>;
+
+export type ProjectionReplayDigestResult = {
+  digest: string;
+  countsByKind: ProjectionDigestCounts;
+  coveredTables: readonly string[];
 };
 
-export type PassportUriHistoryProjectionRow = {
-  id: string;
-  token_id: string;
-  chain_id: number;
-  previous_uri: string;
-  new_uri: string;
-  author: string;
-  verification_reset: boolean;
-  timestamp: string;
-};
-
-function canonicalRecordLine(row: PassportRecordProjectionRow): string {
-  return JSON.stringify({
-    kind: "passport_record",
-    id: row.id,
-    token_id: row.token_id,
-    chain_id: row.chain_id,
-    author: row.author,
-    record_type: row.record_type,
-    description: row.description,
-    evidence_cid: row.evidence_cid,
-    timestamp: row.timestamp,
-  });
+function emptyCounts(): ProjectionDigestCounts {
+  return {
+    passport_record: 0,
+    passport_uri_history: 0,
+    custody_determining_event: 0,
+    passport: 0,
+  };
 }
 
-function canonicalUriLine(row: PassportUriHistoryProjectionRow): string {
-  return JSON.stringify({
-    kind: "passport_uri_history",
-    id: row.id,
-    token_id: row.token_id,
-    chain_id: row.chain_id,
-    previous_uri: row.previous_uri,
-    new_uri: row.new_uri,
-    author: row.author,
-    verification_reset: row.verification_reset,
-    timestamp: row.timestamp,
-  });
+function canonicalLine(
+  kind: SvmProjectionDigestKind,
+  row: Record<string, unknown>,
+): string {
+  return JSON.stringify({ kind, ...normalizeRow(row) });
 }
 
-export async function fetchProjectionRowsOrdered(
-  pool: pg.Pool,
-  namespace?: number,
-): Promise<{ records: PassportRecordProjectionRow[]; uriHistory: PassportUriHistoryProjectionRow[] }> {
-  const where = namespace != null ? "WHERE chain_id = $1" : "";
-  const params = namespace != null ? [namespace] : [];
-
-  const [recordsRes, uriRes] = await Promise.all([
-    pool.query<PassportRecordProjectionRow>(
-      `SELECT id, token_id, chain_id, author, record_type, description, evidence_cid, timestamp
-       FROM kargain_svm_projection.passport_record
-       ${where}
-       ORDER BY chain_id, timestamp, id`,
-      params,
-    ),
-    pool.query<PassportUriHistoryProjectionRow>(
-      `SELECT id, token_id, chain_id, previous_uri, new_uri, author, verification_reset, timestamp
-       FROM kargain_svm_projection.passport_uri_history
-       ${where}
-       ORDER BY chain_id, timestamp, id`,
-      params,
-    ),
-  ]);
-
-  return { records: recordsRes.rows, uriHistory: uriRes.rows };
-}
-
-export function digestProjectionRows(args: {
-  records: readonly PassportRecordProjectionRow[];
-  uriHistory: readonly PassportUriHistoryProjectionRow[];
-}): string {
-  const hash = createHash("sha256");
-  for (const row of args.records) {
-    hash.update(canonicalRecordLine(row));
-    hash.update("\n");
+/** Stable JSON: bigint-ish strings stay strings; Buffer never appears from text/int cols. */
+function normalizeRow(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(row)) {
+    if (typeof v === "bigint") {
+      out[k] = v.toString();
+    } else if (v != null && typeof v === "object" && !Array.isArray(v)) {
+      // pg may return Date — should not for these columns; stringify unknowns
+      out[k] = v;
+    } else {
+      out[k] = v;
+    }
   }
-  for (const row of args.uriHistory) {
-    hash.update(canonicalUriLine(row));
-    hash.update("\n");
+  return out;
+}
+
+export async function listLiveProjectionBaseTables(
+  pool: pg.Pool,
+): Promise<string[]> {
+  const res = await pool.query<{ table_name: string }>(
+    `SELECT table_name
+     FROM information_schema.tables
+     WHERE table_schema = $1
+       AND table_type = 'BASE TABLE'
+     ORDER BY table_name`,
+    [SVM_PROJECTION_SCHEMA],
+  );
+  return res.rows.map((r) => r.table_name);
+}
+
+export async function assertProjectionDigestCoversLiveSchema(
+  pool: pg.Pool,
+): Promise<string[]> {
+  const live = await listLiveProjectionBaseTables(pool);
+  assertProjectionDigestCoversTables(live);
+  return live;
+}
+
+export async function fetchProjectionTableRowsOrdered(
+  pool: pg.Pool,
+  entry: (typeof SVM_PROJECTION_CATALOG)[number],
+  namespace?: number,
+): Promise<Record<string, unknown>[]> {
+  const where =
+    namespace != null ? `WHERE ${entry.chainColumn} = $1` : "";
+  const params = namespace != null ? [namespace] : [];
+  const sql = `SELECT ${entry.selectSql}
+    FROM ${SVM_PROJECTION_SCHEMA}.${entry.table}
+    ${where}
+    ORDER BY ${entry.orderBySql}`;
+  const res = await pool.query(sql, params);
+  return res.rows as Record<string, unknown>[];
+}
+
+export function digestProjectionCatalogRows(
+  streams: readonly {
+    kind: SvmProjectionDigestKind;
+    rows: readonly Record<string, unknown>[];
+  }[],
+): string {
+  const hash = createHash("sha256");
+  for (const stream of streams) {
+    for (const row of stream.rows) {
+      hash.update(canonicalLine(stream.kind, row));
+      hash.update("\n");
+    }
   }
   return hash.digest("hex");
 }
@@ -101,11 +110,23 @@ export function digestProjectionRows(args: {
 export async function projectionReplayDigestFromPool(
   pool: pg.Pool,
   namespace?: number,
-): Promise<{ digest: string; recordCount: number; uriCount: number }> {
-  const { records, uriHistory } = await fetchProjectionRowsOrdered(pool, namespace);
+): Promise<ProjectionReplayDigestResult> {
+  const live = await assertProjectionDigestCoversLiveSchema(pool);
+  const countsByKind = emptyCounts();
+  const streams: {
+    kind: SvmProjectionDigestKind;
+    rows: Record<string, unknown>[];
+  }[] = [];
+
+  for (const entry of SVM_PROJECTION_CATALOG) {
+    const rows = await fetchProjectionTableRowsOrdered(pool, entry, namespace);
+    countsByKind[entry.kind] = rows.length;
+    streams.push({ kind: entry.kind, rows });
+  }
+
   return {
-    digest: digestProjectionRows({ records, uriHistory }),
-    recordCount: records.length,
-    uriCount: uriHistory.length,
+    digest: digestProjectionCatalogRows(streams),
+    countsByKind,
+    coveredTables: live,
   };
 }
