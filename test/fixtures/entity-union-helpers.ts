@@ -45,12 +45,17 @@ export function naivePerSideEntityBrowse(
   state: { evmPassports: PassportEntityRow[]; svmPassports: PassportEntityRow[] },
   parsed: BrowseParsed,
 ): PassportEntityRow[] {
+  const minted = (r: PassportEntityRow) => r.entityOrigin === "minted";
   const evmPage = sortEntityRows(
-    state.evmPassports.filter((r) => matchesNamespace(r, parsed.namespaces)),
+    state.evmPassports.filter(
+      (r) => minted(r) && matchesNamespace(r, parsed.namespaces),
+    ),
     parsed.verifiedFirst,
   );
   const svmPage = sortEntityRows(
-    state.svmPassports.filter((r) => matchesNamespace(r, parsed.namespaces)),
+    state.svmPassports.filter(
+      (r) => minted(r) && matchesNamespace(r, parsed.namespaces),
+    ),
     parsed.verifiedFirst,
   );
   const limit = parsed.limit ?? evmPage.length + svmPage.length;
@@ -90,16 +95,12 @@ export function naivePerSideStatusCounts(
   state: { evmPassports: PassportEntityRow[]; svmPassports: PassportEntityRow[] },
   parsed: Pick<BrowseParsed, "namespaces">,
 ): StatusCounts {
-  const evmCounts = foldStatusCounts(
-    groupStatus(
-      state.evmPassports.filter((r) => parsed.namespaces.includes(r.chainId)),
-    ),
-  );
-  const svmCounts = foldStatusCounts(
-    groupStatus(
-      state.svmPassports.filter((r) => parsed.namespaces.includes(r.chainId)),
-    ),
-  );
+  const mintedInNs = (rows: PassportEntityRow[]) =>
+    rows.filter(
+      (r) => r.entityOrigin === "minted" && parsed.namespaces.includes(r.chainId),
+    );
+  const evmCounts = foldStatusCounts(groupStatus(mintedInNs(state.evmPassports)));
+  const svmCounts = foldStatusCounts(groupStatus(mintedInNs(state.svmPassports)));
   return {
     UNVERIFIED: evmCounts.UNVERIFIED + svmCounts.UNVERIFIED,
     VERIFIED: evmCounts.VERIFIED + svmCounts.VERIFIED,

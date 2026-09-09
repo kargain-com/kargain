@@ -47,6 +47,7 @@ CREATE INDEX IF NOT EXISTS custody_determining_event_token_idx
 CREATE TABLE IF NOT EXISTS kargain_svm_projection.passport (
   id TEXT PRIMARY KEY,
   chain_id INTEGER NOT NULL,
+  entity_origin TEXT NOT NULL CHECK (entity_origin IN ('minted', 'pre_mint')),
   owner TEXT NOT NULL,
   status TEXT NOT NULL,
   verifier TEXT NOT NULL DEFAULT '',

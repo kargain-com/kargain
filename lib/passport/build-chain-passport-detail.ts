@@ -26,6 +26,7 @@ export function buildChainPassportStub(
   return {
     id: tokenId,
     chainId,
+    entityOrigin: "minted",
     custodyChain: chainId,
     owner,
     status,

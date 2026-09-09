@@ -390,7 +390,7 @@ function buildBrowseFromClause(args: {
     args.includeSvmProjection,
   );
   return `kargain.consignment c
-    LEFT JOIN ${unionSubquery} p ON c.token_id = p.id`;
+    LEFT JOIN ${unionSubquery} p ON c.token_id = p.id AND p.entity_origin = 'minted'`;
 }
 
 export function buildConsignmentBaseConditionsRaw(args: {

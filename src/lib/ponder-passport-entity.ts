@@ -6,11 +6,17 @@
 import pg from "pg";
 import { getAddress } from "viem";
 
+import {
+  parsePassportEntityOrigin,
+  type PassportEntityOrigin,
+} from "../../lib/passport/passport-entity-origin.js";
+
 import { indexerReadNamespaceIds } from "./ponder-read-namespaces.js";
 
 export type PassportEntityRow = {
   id: string;
   chainId: number;
+  entityOrigin: PassportEntityOrigin;
   owner: string;
   status: string;
   verifier: string;
@@ -47,11 +53,21 @@ export type PassportEntityRow = {
   updatedAt: bigint;
 };
 
+export type PassportEntityLoadResult =
+  | { kind: "found"; row: PassportEntityRow }
+  | { kind: "not_found" }
+  | { kind: "not_indexed"; row: PassportEntityRow };
+
 export type PassportEntityQueryOptions = {
   /** Test-only override — production uses indexerReadNamespaceIds(). */
   namespaces?: readonly number[];
   /** Test-only: omit SVM arm for negative-control proofs. */
   includeSvmProjection?: boolean;
+  /**
+   * List/browse loaders default to minted-only. By-id resolution always loads
+   * any origin so pre_mint can be named `not_indexed`.
+   */
+  mintedOnly?: boolean;
 };
 
 export type PassportEntityBrowseFilters = {
@@ -72,6 +88,7 @@ export type VerifierVerificationCountRow = {
 const PASSPORT_ENTITY_EVM_SELECT = `SELECT
   id,
   chain_id,
+  entity_origin,
   owner,
   status,
   verifier,
@@ -111,6 +128,7 @@ FROM kargain.passport`;
 const PASSPORT_ENTITY_SVM_SELECT = `SELECT
   id,
   chain_id,
+  entity_origin,
   owner,
   status,
   verifier,
@@ -185,9 +203,16 @@ export function resolveIncludeSvmProjection(
   return true;
 }
 
+/** List loaders default minted-only; by-id never filters. */
+export function resolveMintedOnly(opts?: PassportEntityQueryOptions): boolean {
+  if (opts?.mintedOnly != null) return opts.mintedOnly;
+  return true;
+}
+
 type PassportEntityPgRow = {
   id: string;
   chain_id: number;
+  entity_origin: string;
   owner: string;
   status: string;
   verifier: string;
@@ -228,6 +253,7 @@ export function mapPassportEntityRow(row: PassportEntityPgRow): PassportEntityRo
   return {
     id: row.id,
     chainId: row.chain_id,
+    entityOrigin: parsePassportEntityOrigin(row.entity_origin),
     owner: row.owner,
     status: row.status,
     verifier: row.verifier,
@@ -264,6 +290,15 @@ export function mapPassportEntityRow(row: PassportEntityPgRow): PassportEntityRo
     createdAt: BigInt(row.created_at),
     updatedAt: BigInt(row.updated_at),
   };
+}
+
+export function classifyPassportEntityRow(
+  row: PassportEntityRow,
+): PassportEntityLoadResult {
+  if (row.entityOrigin === "pre_mint") {
+    return { kind: "not_indexed", row };
+  }
+  return { kind: "found", row };
 }
 
 export function buildPassportEntityUnionSubquery(
@@ -306,10 +341,16 @@ function buildEntityWhereClauses(
     verifierExact?: string;
     statusExact?: string;
     chainId?: number;
+    mintedOnly?: boolean;
   },
   params: unknown[],
 ): string[] {
   const where: string[] = [];
+
+  if (filters.mintedOnly !== false) {
+    params.push("minted");
+    where.push(`entity_origin = $${params.length}`);
+  }
 
   if (filters.chainId != null) {
     params.push(filters.chainId);
@@ -358,6 +399,16 @@ export async function loadPassportEntityById(
   opts?: PassportEntityQueryOptions,
   pool: pg.Pool = getEntityPool(),
 ): Promise<PassportEntityRow | null> {
+  const result = await resolvePassportEntityById(tokenId, opts, pool);
+  if (result.kind === "not_found") return null;
+  return result.row;
+}
+
+export async function resolvePassportEntityById(
+  tokenId: string,
+  opts?: PassportEntityQueryOptions,
+  pool: pg.Pool = getEntityPool(),
+): Promise<PassportEntityLoadResult> {
   const namespaces = resolveEntityNamespaces(opts);
   const params: unknown[] = [];
   const fromSql = buildEntityUnionFromClause({
@@ -371,8 +422,9 @@ export async function loadPassportEntityById(
     WHERE id = ${tokenParam}
     LIMIT 1`;
   const res = await pool.query<PassportEntityPgRow>(sql, params);
-  const row = res.rows[0];
-  return row ? mapPassportEntityRow(row) : null;
+  const raw = res.rows[0];
+  if (!raw) return { kind: "not_found" };
+  return classifyPassportEntityRow(mapPassportEntityRow(raw));
 }
 
 export async function loadPassportEntitiesBrowse(
@@ -387,7 +439,10 @@ export async function loadPassportEntitiesBrowse(
     includeSvmProjection: resolveIncludeSvmProjection(opts),
     params,
   });
-  const where = buildEntityWhereClauses(filters, params);
+  const where = buildEntityWhereClauses(
+    { ...filters, mintedOnly: resolveMintedOnly(opts) },
+    params,
+  );
   const whereClause =
     where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
   const orderBy = buildEntityOrderBy(filters.verifiedFirst);
@@ -432,7 +487,10 @@ export async function loadPassportEntitiesFiltered(
     includeSvmProjection: resolveIncludeSvmProjection(opts),
     params,
   });
-  const where = buildEntityWhereClauses(filters, params);
+  const where = buildEntityWhereClauses(
+    { ...filters, mintedOnly: resolveMintedOnly(opts) },
+    params,
+  );
   const whereClause =
     where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
   const sql = `SELECT * FROM ${fromSql} AS passport_union ${whereClause}
@@ -454,7 +512,10 @@ export async function loadPassportEntitiesByIds(
     includeSvmProjection: resolveIncludeSvmProjection(opts),
     params,
   });
-  const where = buildEntityWhereClauses({ ids: [...ids] }, params);
+  const where = buildEntityWhereClauses(
+    { ids: [...ids], mintedOnly: resolveMintedOnly(opts) },
+    params,
+  );
   const sql = `SELECT * FROM ${fromSql} AS passport_union
     WHERE ${where.join(" AND ")}`;
   const res = await pool.query<PassportEntityPgRow>(sql, params);
@@ -473,7 +534,10 @@ export async function loadPassportEntitiesByOwner(
     includeSvmProjection: resolveIncludeSvmProjection(opts),
     params,
   });
-  const where = buildEntityWhereClauses({ owner }, params);
+  const where = buildEntityWhereClauses(
+    { owner, mintedOnly: resolveMintedOnly(opts) },
+    params,
+  );
   const sql = `SELECT * FROM ${fromSql} AS passport_union
     WHERE ${where.join(" AND ")}
     ORDER BY created_at DESC, id DESC`;
@@ -492,11 +556,14 @@ export async function countVerifiedPassportsByVerifier(
     includeSvmProjection: resolveIncludeSvmProjection(opts),
     params,
   });
+  params.push("minted");
+  const originParam = `$${params.length}`;
   params.push("VERIFIED");
   const statusParam = `$${params.length}`;
   const sql = `SELECT verifier, COUNT(*)::int AS total
     FROM ${fromSql} AS passport_union
-    WHERE status = ${statusParam} AND verifier <> ''
+    WHERE entity_origin = ${originParam}
+      AND status = ${statusParam} AND verifier <> ''
     GROUP BY verifier`;
   const res = await pool.query<{ verifier: string; total: number }>(sql, params);
   return res.rows.map((row) => ({
@@ -522,6 +589,7 @@ export async function loadVerifiedPassportsByVerifier(
     {
       verifierExact: getAddress(verifier),
       statusExact: "VERIFIED",
+      mintedOnly: resolveMintedOnly(opts),
     },
     params,
   );
@@ -571,8 +639,11 @@ export async function loadPassportEntityStatusCounts(
     includeSvmProjection: resolveIncludeSvmProjection(opts),
     params,
   });
+  params.push("minted");
+  const originParam = `$${params.length}`;
   const sql = `SELECT status, COUNT(*)::int AS total
     FROM ${fromSql} AS passport_union
+    WHERE entity_origin = ${originParam}
     GROUP BY status`;
   const res = await pool.query<{ status: string | null; total: number }>(sql, params);
   return foldEntityStatusCounts(res.rows);

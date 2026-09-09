@@ -28,6 +28,7 @@ const sampleMetadata: PassportMetadata = {
 const ponderPassport: PonderPassportDetail = {
   id: "28764749040560770193485982315422230450798592",
   chainId: 84532,
+  entityOrigin: "minted",
   custodyChain: 84532,
   owner: "0x1111111111111111111111111111111111111111",
   status: "VERIFIED",

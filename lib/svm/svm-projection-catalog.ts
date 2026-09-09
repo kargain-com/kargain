@@ -58,6 +58,7 @@ export const SVM_PROJECTION_CATALOG: readonly SvmProjectionCatalogEntry[] = [
     selectSql: [
       "id",
       "chain_id",
+      "entity_origin",
       "owner",
       "status",
       "verifier",

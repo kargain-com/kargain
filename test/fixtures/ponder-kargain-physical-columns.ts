@@ -34,6 +34,7 @@ export function ponderPhysicalColumnName(jsField: string): string {
 export const PASSPORT_JS_FIELDS = [
   "id",
   "chainId",
+  "entityOrigin",
   "owner",
   "status",
   "verifier",

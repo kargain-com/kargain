@@ -385,15 +385,28 @@ docker compose up -d --force-recreate ponder
 
 docker compose exec ponder printenv PONDER_RPC_URL_84532 PONDER_START_BLOCK_84532 PONDER_RPC_URL_11155111 PONDER_START_BLOCK_11155111
 docker inspect kargain-ponder-1 --format '{{json .HostConfig.LogConfig}}'
-docker compose logs -f ponder
 ```
 
-Wait until logs show:
+**Progress facts live on readiness surfaces — not on container logs.**
 
-- `Completed backfill indexing` (or `Detected crash recovery` then a short catch-up)
-- `Started live indexing`
-- No repeated `403` / `MigrationError`
-- log config reports the `local` driver (or the host default you intentionally configured)
+| Surface | Question it answers | Green means | Does **not** claim |
+|---------|---------------------|-------------|-------------------|
+| Ponder reserved `GET /ready` | Sync / catch-up for the Ponder process | HTTP 200 when caught up (503 during backfill) | That the custom EVM+SVM UNION read path can execute |
+| Ponder reserved `GET /status` | Tip / lag vs RPC | Tip near public RPC | Read-path UNION executability |
+| `GET /read-path-ready` | Schema shape + UNION probes (`READ_PATH_REQUIRED_RELATIONS` / `READ_PATH_PROBE_NAMES`) | Relations present and empty-arm probes run | Tip catch-up; bootstrap progress |
+| svm-ingest `GET /ready` (:42100) | Bootstrap / incident / lag (`bootstrapState`, `incident`, `lagSlots`, `lastContiguousSlot`) | Caught up with no incident | That Ponder EVM indexing is live |
+| Deploy probe (CI) | Process answered reserved `/ready` | Any HTTP answer within timeout | Tip catch-up (200 **or** 503 counts as “up”) |
+
+```bash
+# Wait for Ponder catch-up (not logs):
+curl -si http://127.0.0.1:42069/ready | head -5    # expect 200 when caught up
+curl -si http://127.0.0.1:42069/status | head -20
+curl -s http://127.0.0.1:42069/read-path-ready | python3 -m json.tool
+# svm-ingest progress (bootstrap / bootstrap_range_not_enumerated / lag):
+curl -s http://127.0.0.1:42100/ready | python3 -m json.tool
+```
+
+`docker compose logs ponder` remains available for incident debug (MigrationError, RPC WARN). It is **not** the acceptance path for “are we caught up?”
 
 **Do not** change `PONDER_START_BLOCK_84532` to `latest` after sync (see above).
 

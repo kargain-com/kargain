@@ -449,6 +449,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "ponder-passport-provenance-policy.test.ts",
       "svm-ingest-loop.test.ts",
       "svm-ingest-follow-loop.test.ts",
+      "svm-ingest-ready-surface.test.ts",
     ],
   },
   {
@@ -480,6 +481,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "ponder-passport-entity-policy.test.ts",
       "ponder-passport-entity-union.test.ts",
       "ponder-kargain-physical-columns-policy.test.ts",
+      "passport-entity-absence-policy.test.ts",
     ],
   },
   {
@@ -520,8 +522,14 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "ponder-read-path-readiness",
     owner: "src/lib/ponder-read-path-ready.ts",
-    rule: "Read-path readiness owns projection relation checks and executes the same empty-arm UNION query forms as product reads",
+    rule: "Read-path readiness owns projection relation checks and executes the same empty-arm UNION query forms as product reads; declared↔served facts fail both directions",
     guardTests: ["ponder-read-path-ready.test.ts", "ponder-http-freshness-policy.test.ts"],
+  },
+  {
+    id: "svm-ingest-ready-surface",
+    owner: "src/svm-ingest/http-health.ts",
+    rule: "svm-ingest /ready serves declared progress facts only; bootstrap_range_not_enumerated readable from the surface",
+    guardTests: ["svm-ingest-ready-surface.test.ts"],
   },
   {
     id: "svm-devnet-evidence-write",

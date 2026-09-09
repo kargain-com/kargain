@@ -58,6 +58,7 @@ describe("ponder kargain physical columns", () => {
       [
         "id",
         "chain_id",
+        "entity_origin",
         "owner",
         "status",
         "verifier",

@@ -37,6 +37,43 @@ export const READ_PATH_PROBE_NAMES = [
 
 export type ReadPathProbeName = (typeof READ_PATH_PROBE_NAMES)[number];
 
+/** Facts served when ready — declared↔served fail instruments pin both directions. */
+export const READ_PATH_READY_SERVED_FACTS = [
+  "status",
+  "checkedRelations",
+  "probeQueries",
+] as const;
+
+/** Facts served when not ready. */
+export const READ_PATH_NOT_READY_SERVED_FACTS = [
+  "status",
+  "checkedRelations",
+  "missingRelations",
+] as const;
+
+export function assertReadPathServedFacts(
+  body: Record<string, unknown>,
+  ready: boolean,
+): void {
+  const declared = ready
+    ? READ_PATH_READY_SERVED_FACTS
+    : READ_PATH_NOT_READY_SERVED_FACTS;
+  const served = Object.keys(body).sort();
+  const expected: string[] = [...declared].sort();
+  const missing = expected.filter((k) => !served.includes(k));
+  const extra = served.filter((k) => !expected.includes(k));
+  if (missing.length > 0) {
+    throw new Error(
+      `read_path_ready_declared_fact_missing: ${missing.join(",")}`,
+    );
+  }
+  if (extra.length > 0) {
+    throw new Error(
+      `read_path_ready_undeclared_fact_served: ${extra.join(",")}`,
+    );
+  }
+}
+
 export type ReadPathReadyResult =
   | {
       ready: true;

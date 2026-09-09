@@ -3,6 +3,9 @@
  */
 
 import { originNamespaceOf } from "@/lib/custody/origin.js";
+import {
+  type PassportEntityOrigin,
+} from "@/lib/passport/passport-entity-origin.js";
 import { isDisputeWithdrawnRecord } from "@/lib/passport/index-passport-metadata";
 import { encodeSvmPubkeyBytes } from "@/lib/web3/protocol-address";
 
@@ -35,6 +38,7 @@ import { provenanceTimestampFromSlot, sortRawPayloadsOrdered } from "./projectio
 export type PassportEntityProjectionDraft = {
   id: string;
   chainId: number;
+  entityOrigin: PassportEntityOrigin;
   owner: string;
   status: string;
   verifier: string;
@@ -101,6 +105,7 @@ function emptyEntityDefaults(
   return {
     id: tokenId,
     chainId: originNamespaceOf(tokenId),
+    entityOrigin: "pre_mint",
     owner: "",
     status: "UNVERIFIED",
     verifier: "",
@@ -232,7 +237,9 @@ export function projectEntityFromPayload(
       const tokenId = tokenIdFromBytes32(fieldBytes32(decoded.fields, "tokenId"));
       const owner = encodeSvmPubkeyBytes(fieldPubkey32(decoded.fields, "to"));
       const uri = fieldString(decoded.fields, "uri");
-      const row = emptyEntityDefaults(tokenId, raw.namespace, ts);
+      const existing = state.entities.get(tokenId);
+      const row = existing ?? emptyEntityDefaults(tokenId, raw.namespace, ts);
+      row.entityOrigin = "minted";
       row.owner = owner;
       Object.assign(row, passportMintTrustFields(ts));
       applyUriToEntity(row, uri, raw.namespace, tokenId, ts, state);
@@ -245,8 +252,9 @@ export function projectEntityFromPayload(
       const uri = fieldString(decoded.fields, "uri");
       const existing = state.entities.get(tokenId);
       const row = existing ?? emptyEntityDefaults(tokenId, raw.namespace, ts);
+      row.entityOrigin = "minted";
       row.owner = owner;
-      if (existing) {
+      if (existing?.entityOrigin === "minted") {
         Object.assign(row, bridgeMintArrivalTrustFields(ts));
       } else {
         Object.assign(row, passportMintTrustFields(ts));

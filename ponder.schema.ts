@@ -6,6 +6,11 @@ export const passport = onchainTable(
     id: t.text().primaryKey(),
     /** Immutable origin — `chainIdOf(tokenId)` (= `tokenId >> 128`). */
     chainId: t.integer().notNull(),
+    /**
+     * Mint-observation discriminant (`minted` | `pre_mint`). Same name/values on
+     * SVM projection — UNION-homogeneous; never inferred from empty owner/uri.
+     */
+    entityOrigin: t.text().notNull(),
     owner: t.text().notNull(),
     status: t.text().notNull(),
     verifier: t.text().notNull().default(""),

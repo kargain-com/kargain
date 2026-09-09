@@ -184,7 +184,24 @@ export async function getPassportFromPonder(tokenId: string) {
   try {
     const res = await fetchPassportByToken(tokenId);
     if (!res.ok) return null;
-    return res.body;
+    const body = res.body;
+    if (
+      body != null &&
+      typeof body === "object" &&
+      !Array.isArray(body) &&
+      "absence" in body
+    ) {
+      return null;
+    }
+    if (
+      body != null &&
+      typeof body === "object" &&
+      !Array.isArray(body) &&
+      (body as { entityOrigin?: string }).entityOrigin !== "minted"
+    ) {
+      return null;
+    }
+    return body;
   } catch {
     return null;
   }

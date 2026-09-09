@@ -29,15 +29,18 @@ import {
   loadPassportEntitiesBrowse,
   loadPassportEntitiesByIds,
   loadPassportEntitiesByOwner,
-  loadPassportEntityById,
   loadVerifiedPassportsByVerifier,
+  resolvePassportEntityById,
 } from "../lib/ponder-passport-entity";
 import {
   attachPassportCustodyAnswer,
   resolvePassportCustodyAnswer,
   resolvePassportCustodyAnswersBatch,
 } from "../lib/ponder-passport-custody";
-import { resolveReadPathReadiness } from "../lib/ponder-read-path-ready";
+import {
+  assertReadPathServedFacts,
+  resolveReadPathReadiness,
+} from "../lib/ponder-read-path-ready";
 import { normalizeProtocolAddressForVm } from "../../lib/web3/protocol-address.js";
 import { ponderHttpCacheMiddleware } from "../lib/ponder-http-cache-middleware";
 
@@ -96,20 +99,19 @@ function parseProfileOwnerParam(raw: string): string | null {
 
 app.get("/read-path-ready", async (c) => {
   const readiness = await resolveReadPathReadiness();
-  return c.json(
-    readiness.ready
-      ? {
-          status: "ready",
-          checkedRelations: readiness.checkedRelations,
-          probeQueries: readiness.probeQueries,
-        }
-      : {
-          status: "not_ready",
-          checkedRelations: readiness.checkedRelations,
-          missingRelations: readiness.missingRelations,
-        },
-    readiness.ready ? 200 : 503,
-  );
+  const body = readiness.ready
+    ? {
+        status: "ready" as const,
+        checkedRelations: readiness.checkedRelations,
+        probeQueries: readiness.probeQueries,
+      }
+    : {
+        status: "not_ready" as const,
+        checkedRelations: readiness.checkedRelations,
+        missingRelations: readiness.missingRelations,
+      };
+  assertReadPathServedFacts(body, readiness.ready);
+  return c.json(body, readiness.ready ? 200 : 503);
 });
 
 app.get("/passports", async (c) => {
@@ -314,12 +316,20 @@ app.get("/accounts/:address/claims", async (c) => {
 
 app.get("/passports/:tokenId", async (c) => {
   const tokenId = c.req.param("tokenId");
-  const row = await loadPassportEntityById(tokenId);
-
-  if (!row) {
-    return c.json({ error: "Not found" }, 404);
+  const readiness = await resolveReadPathReadiness();
+  if (!readiness.ready) {
+    return c.json({ absence: "read_path_unavailable" }, 503);
   }
 
+  const resolved = await resolvePassportEntityById(tokenId);
+  if (resolved.kind === "not_found") {
+    return c.json({ absence: "not_found" }, 404);
+  }
+  if (resolved.kind === "not_indexed") {
+    return c.json({ absence: "not_indexed" }, 404);
+  }
+
+  const row = resolved.row;
   const [records, uriHistory, custody] = await Promise.all([
     loadPassportRecordsByTokenId(tokenId),
     loadPassportUriHistoryByTokenId(tokenId),

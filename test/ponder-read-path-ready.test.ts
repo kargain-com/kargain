@@ -14,6 +14,7 @@ import type pg from "pg";
 
 import {
   READ_PATH_REQUIRED_RELATIONS,
+  assertReadPathServedFacts,
   resolveReadPathReadiness,
 } from "../src/lib/ponder-read-path-ready.js";
 import { buildPassportEntityUnionSubquery } from "../src/lib/ponder-passport-entity.js";
@@ -25,6 +26,7 @@ CREATE SCHEMA IF NOT EXISTS kargain;
 CREATE TABLE IF NOT EXISTS kargain.passport (
   id TEXT PRIMARY KEY,
   chain_id INTEGER NOT NULL,
+  entity_origin TEXT NOT NULL DEFAULT 'minted',
   owner TEXT NOT NULL,
   status TEXT NOT NULL,
   verifier TEXT NOT NULL DEFAULT '',
@@ -196,20 +198,19 @@ function readinessApp(pool: pg.Pool): Hono {
   app.get("/ready", (c) => c.text(""));
   app.get("/read-path-ready", async (c) => {
     const readiness = await resolveReadPathReadiness(strictPool);
-    return c.json(
-      readiness.ready
-        ? {
-            status: "ready",
-            checkedRelations: readiness.checkedRelations,
-            probeQueries: readiness.probeQueries,
-          }
-        : {
-            status: "not_ready",
-            checkedRelations: readiness.checkedRelations,
-            missingRelations: readiness.missingRelations,
-          },
-      readiness.ready ? 200 : 503,
-    );
+    const body = readiness.ready
+      ? {
+          status: "ready" as const,
+          checkedRelations: readiness.checkedRelations,
+          probeQueries: readiness.probeQueries,
+        }
+      : {
+          status: "not_ready" as const,
+          checkedRelations: readiness.checkedRelations,
+          missingRelations: readiness.missingRelations,
+        };
+    assertReadPathServedFacts(body, readiness.ready);
+    return c.json(body, readiness.ready ? 200 : 503);
   });
   app.get("/consignments", async (c) => {
     await strictPool.query(`SELECT c.id
@@ -278,5 +279,32 @@ describe("ponder read-path readiness", () => {
     assert.match(live, /kargain_svm_projection\.passport/);
     assert.doesNotMatch(dirty, /UNION ALL/);
     assert.doesNotMatch(dirty, /kargain_svm_projection\.passport/);
+  });
+
+  it("declared fact missing from served payload turns red", () => {
+    assert.throws(
+      () =>
+        assertReadPathServedFacts(
+          { status: "ready", checkedRelations: [] },
+          true,
+        ),
+      /read_path_ready_declared_fact_missing: probeQueries/,
+    );
+  });
+
+  it("undeclared fact served turns red", () => {
+    assert.throws(
+      () =>
+        assertReadPathServedFacts(
+          {
+            status: "ready",
+            checkedRelations: [],
+            probeQueries: [],
+            extraFact: true,
+          },
+          true,
+        ),
+      /read_path_ready_undeclared_fact_served: extraFact/,
+    );
   });
 });

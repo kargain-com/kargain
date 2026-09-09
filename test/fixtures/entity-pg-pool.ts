@@ -19,6 +19,7 @@ CREATE SCHEMA IF NOT EXISTS kargain;
 CREATE TABLE IF NOT EXISTS kargain.passport (
   id TEXT PRIMARY KEY,
   chain_id INTEGER NOT NULL,
+  entity_origin TEXT NOT NULL CHECK (entity_origin IN ('minted', 'pre_mint')),
   owner TEXT NOT NULL,
   status TEXT NOT NULL,
   verifier TEXT NOT NULL DEFAULT '',
@@ -80,10 +81,11 @@ function registerPgMemFunctions(db: IMemoryDb): void {
   });
 }
 
-function evmInsertParams(row: PassportEntityRow): unknown[] {
+function insertParams(row: PassportEntityRow): unknown[] {
   return [
     row.id,
     row.chainId,
+    row.entityOrigin,
     row.owner,
     row.status,
     row.verifier,
@@ -121,30 +123,25 @@ function evmInsertParams(row: PassportEntityRow): unknown[] {
   ];
 }
 
-function svmInsertParams(row: PassportEntityRow): unknown[] {
-  return evmInsertParams(row);
-}
-
-const EVM_INSERT = `INSERT INTO kargain.passport (
-  id, chain_id, owner, status, verifier, verified_at, token_uri, cover_photo_uri,
+const ENTITY_INSERT_COLS = `id, chain_id, entity_origin, owner, status, verifier, verified_at, token_uri, cover_photo_uri,
   vin, make, model, year, mileage_km, last_disputer, dispute_reason,
   dispute_withdrawn_at, last_verification_reset_at, duplicate_vin, last_metadata_change_at,
   verification_reset_count, had_dispute, last_dispute_resolved_at, last_dispute_terminal,
   dispute_opened_at, fuel_type, body_type, transmission, condition, vehicle_type, colour,
-  location_label, location_place_id, location_country_code, dispute_deposit, created_at, updated_at
+  location_label, location_place_id, location_country_code, dispute_deposit, created_at, updated_at`;
+
+const ENTITY_INSERT_VALS = `$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37`;
+
+const EVM_INSERT = `INSERT INTO kargain.passport (
+  ${ENTITY_INSERT_COLS}
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36
+  ${ENTITY_INSERT_VALS}
 )`;
 
 const SVM_INSERT = `INSERT INTO kargain_svm_projection.passport (
-  id, chain_id, owner, status, verifier, verified_at, token_uri, cover_photo_uri,
-  vin, make, model, year, mileage_km, last_disputer, dispute_reason,
-  dispute_withdrawn_at, last_verification_reset_at, duplicate_vin, last_metadata_change_at,
-  verification_reset_count, had_dispute, last_dispute_resolved_at, last_dispute_terminal,
-  dispute_opened_at, fuel_type, body_type, transmission, condition, vehicle_type, colour,
-  location_label, location_place_id, location_country_code, dispute_deposit, created_at, updated_at
+  ${ENTITY_INSERT_COLS}
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36
+  ${ENTITY_INSERT_VALS}
 )`;
 
 export type EntityPgPoolFixture = {
@@ -165,10 +162,10 @@ export async function createEntityPgPoolForTests(state: {
   const pool = new adapter.Pool() as unknown as pg.Pool;
 
   for (const row of state.evmPassports) {
-    await pool.query(EVM_INSERT, evmInsertParams(row));
+    await pool.query(EVM_INSERT, insertParams(row));
   }
   for (const row of state.svmPassports) {
-    await pool.query(SVM_INSERT, svmInsertParams(row));
+    await pool.query(SVM_INSERT, insertParams(row));
   }
 
   return { pool, db };

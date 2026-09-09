@@ -32,6 +32,7 @@ const OWNER = "0xowner0000000000000000000000000000000001";
 
 function entityRow(args: Partial<PassportEntityRow> & Pick<PassportEntityRow, "id" | "chainId" | "status">): PassportEntityRow {
   return {
+    entityOrigin: "minted",
     owner: OWNER,
     verifier: "",
     verifiedAt: 0n,

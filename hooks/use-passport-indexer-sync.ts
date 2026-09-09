@@ -89,7 +89,16 @@ export function usePassportIndexerPoll(
         }
         return result;
       },
-      predicate: (result) => result.ok && !result.indexerPending,
+      predicate: (result) => {
+        if (!result.ok) {
+          return (
+            result.error === "NOT_FOUND" ||
+            result.error === "NOT_INDEXED" ||
+            result.error === "READ_PATH_UNAVAILABLE"
+          );
+        }
+        return !result.indexerPending;
+      },
       intervalMs: INDEXER_SYNC_INTERVAL_MS,
       maxAttempts: INDEXER_SYNC_MAX_ATTEMPTS,
       wait: (ms) =>
@@ -101,12 +110,17 @@ export function usePassportIndexerPoll(
       shouldContinue: () => active,
     }).then((result) => {
       if (!active) return;
+      const value = result.value;
+      const indexedMatch =
+        result.status === "matched" &&
+        value != null &&
+        value.ok === true &&
+        !value.indexerPending;
       setState((previous) =>
         previous.key === pollKey
           ? {
               ...previous,
-              status:
-                result.status === "matched" ? "matched" : "exhausted",
+              status: indexedMatch ? "matched" : "exhausted",
             }
           : previous,
       );

@@ -138,6 +138,8 @@ export type PonderPassportDetail = {
   id: string;
   /** Origin / mint home chain (SPEC §I.12.8). */
   chainId: number;
+  /** Declared mint-observation discriminant — never inferred from empty fields. */
+  entityOrigin: "minted" | "pre_mint";
   /** Where the token lives now — commerce RPCs use this when resolved. */
   custodyChain: number | null;
   /** Present when custody fold is incomplete — never invent a chain id. */

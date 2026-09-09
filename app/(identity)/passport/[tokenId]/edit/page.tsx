@@ -84,7 +84,31 @@ export default async function EditPassportPage({
     notFound();
   }
 
-  if (!result.ok && result.error === "PONDER_UNAVAILABLE") {
+  if (!result.ok && result.error === "NOT_INDEXED") {
+    return (
+      <div className="min-h-dvh bg-bg-primary px-6 py-24 text-text-primary md:px-8">
+        <div className="mx-auto max-w-lg">
+          <EmptyState
+            variant="infrastructure"
+            level="B"
+            title="Passport not indexed yet"
+            description="The indexer has not projected a mint for this passport yet."
+            role="status"
+            action={{
+              label: "← Back to marketplace",
+              href: "/",
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (
+    !result.ok &&
+    (result.error === "PONDER_UNAVAILABLE" ||
+      result.error === "READ_PATH_UNAVAILABLE")
+  ) {
     return (
       <div className="min-h-dvh bg-bg-primary px-6 py-24 text-text-primary md:px-8">
         <div className="mx-auto max-w-lg">

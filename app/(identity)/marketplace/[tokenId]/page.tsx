@@ -97,7 +97,11 @@ async function MarketplaceListingInner({
     fetchListingDetail(raw, hintChainId ?? undefined),
   ]);
 
-  if (!result.ok && result.error === "PONDER_UNAVAILABLE") {
+  if (
+    !result.ok &&
+    (result.error === "PONDER_UNAVAILABLE" ||
+      result.error === "READ_PATH_UNAVAILABLE")
+  ) {
     return (
       <div className="min-h-dvh bg-bg-primary px-6 py-24 text-text-primary md:px-8">
         <div
@@ -126,13 +130,22 @@ async function MarketplaceListingInner({
     );
   }
 
-  if (!result.ok && result.error === "NOT_FOUND") {
+  if (
+    !result.ok &&
+    (result.error === "NOT_FOUND" || result.error === "NOT_INDEXED")
+  ) {
     return (
       <div className="min-h-dvh bg-bg-primary px-6 py-24 text-text-primary md:px-8">
         <div className="mx-auto max-w-lg rounded-md border border-border-hover bg-bg-surface p-6">
-          <p className="font-sans text-sm font-medium text-text-primary">Passport not found</p>
+          <p className="font-sans text-sm font-medium text-text-primary">
+            {result.error === "NOT_INDEXED"
+              ? "Passport not indexed yet"
+              : "Passport not found"}
+          </p>
           <p className="mt-2 font-sans text-sm text-text-secondary">
-            This passport may not exist yet or the indexer has not caught up.
+            {result.error === "NOT_INDEXED"
+              ? "The indexer has not projected a mint for this passport yet."
+              : "This passport may not exist yet or the indexer has not caught up."}
           </p>
           <Link
             href={marketplaceHref}

@@ -15,6 +15,11 @@ import {
 } from "@/lib/passport/fetch-arweave-metadata";
 import { passportStatusFromChainIndex } from "@/lib/passport/passport-status-chain";
 import { parseCustodyUnresolvedCause } from "@/lib/custody/normalized-event";
+import {
+  isPassportEntityAbsence,
+  parsePassportEntityOrigin,
+  type PassportEntityAbsence,
+} from "@/lib/passport/passport-entity-origin";
 import type {
   CustodyUnresolvedCause,
   PassportStatus,
@@ -39,6 +44,8 @@ export type PassportDetailResult =
       indexerPending?: boolean;
     }
   | { ok: false; error: "NOT_FOUND" }
+  | { ok: false; error: "NOT_INDEXED" }
+  | { ok: false; error: "READ_PATH_UNAVAILABLE" }
   | { ok: false; error: "PONDER_UNAVAILABLE" };
 
 function isPassportStatus(value: string): value is PassportStatus {
@@ -86,6 +93,16 @@ function parseCustodyUnresolved(value: unknown): CustodyUnresolvedCause | null |
   return parseCustodyUnresolvedCause(value) ?? undefined;
 }
 
+function parsePassportAbsenceBody(body: unknown): PassportEntityAbsence | null {
+  if (body == null || typeof body !== "object" || Array.isArray(body)) return null;
+  const absence = (body as Record<string, unknown>).absence;
+  return isPassportEntityAbsence(absence) ? absence : null;
+}
+
+function withMintedOrigin(passport: PonderPassportDetail): PonderPassportDetail {
+  return { ...passport, entityOrigin: "minted" };
+}
+
 /** Exported for unit tests — fail-closed without custody answer. */
 export function parsePonderPassport(raw: unknown): PonderPassportDetail | null {
   if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return null;
@@ -94,6 +111,13 @@ export function parsePonderPassport(raw: unknown): PonderPassportDetail | null {
   const id = typeof obj.id === "string" ? obj.id : "";
   const owner = typeof obj.owner === "string" ? obj.owner : "";
   const statusRaw = typeof obj.status === "string" ? obj.status : "";
+  let entityOrigin;
+  try {
+    entityOrigin = parsePassportEntityOrigin(obj.entityOrigin);
+  } catch {
+    return null;
+  }
+  if (entityOrigin !== "minted") return null;
   const chainId = parseChainIdField(obj.chainId);
   const custodyChainRaw = obj.custodyChain;
   const custodyChain =
@@ -176,6 +200,7 @@ export function parsePonderPassport(raw: unknown): PonderPassportDetail | null {
   return {
     id,
     chainId,
+    entityOrigin,
     custodyChain: hasResolvedCustody ? custodyChain : null,
     custodyUnresolved: hasUnresolvedCustody ? custodyUnresolved : null,
     owner,
@@ -282,13 +307,35 @@ export async function fetchPassportDetail(
   let raw: unknown;
   try {
     const res = await fetchPassportByToken(tokenId, opts);
-    if (res.status === 404) {
+    const absence = parsePassportAbsenceBody(res.body);
+
+    if (absence === "read_path_unavailable" || res.status === 503) {
+      if (absence === "read_path_unavailable") {
+        return { ok: false, error: "READ_PATH_UNAVAILABLE" };
+      }
+      return { ok: false, error: "PONDER_UNAVAILABLE" };
+    }
+
+    if (absence === "not_indexed") {
+      if (chainId == null) return { ok: false, error: "NOT_INDEXED" };
+      const chainResult = await fetchChainPassportDetail(tokenId, chainId);
+      if (!chainResult.ok) return { ok: false, error: "NOT_INDEXED" };
+      return {
+        ok: true,
+        passport: withMintedOrigin(chainResult.passport),
+        metadata: chainResult.metadata,
+        metadataError: chainResult.metadataError,
+        indexerPending: true,
+      };
+    }
+
+    if (res.status === 404 || absence === "not_found") {
       if (chainId == null) return { ok: false, error: "NOT_FOUND" };
       const chainResult = await fetchChainPassportDetail(tokenId, chainId);
       if (!chainResult.ok) return { ok: false, error: "NOT_FOUND" };
       return {
         ok: true,
-        passport: chainResult.passport,
+        passport: withMintedOrigin(chainResult.passport),
         metadata: chainResult.metadata,
         metadataError: chainResult.metadataError,
         indexerPending: true,

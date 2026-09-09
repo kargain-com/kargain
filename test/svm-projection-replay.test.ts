@@ -88,6 +88,7 @@ function snapshotPassport(row: PassportEntityProjectionDraft) {
   return {
     id: row.id,
     chainId: row.chainId,
+    entityOrigin: row.entityOrigin,
     owner: row.owner,
     status: row.status,
     tokenUri: row.tokenUri,

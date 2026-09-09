@@ -6,6 +6,7 @@ import { parsePonderPassport } from "../lib/passport/fetch-passport-detail.ts";
 const BASE = {
   id: "1",
   chainId: 84532,
+  entityOrigin: "minted",
   custodyChain: 84532,
   owner: "0x1111111111111111111111111111111111111111",
   status: "VERIFIED",
@@ -38,6 +39,25 @@ const BASE = {
 };
 
 describe("parsePonderPassport custody", () => {
+  it("accepts minted entity with resolved custody", () => {
+    const parsed = parsePonderPassport(BASE);
+    assert.ok(parsed);
+    assert.equal(parsed!.entityOrigin, "minted");
+  });
+
+  it("refuses pre_mint discriminant — never found from emptiness", () => {
+    assert.equal(
+      parsePonderPassport({ ...BASE, entityOrigin: "pre_mint", owner: "" }),
+      null,
+    );
+    assert.equal(parsePonderPassport({ ...BASE, entityOrigin: "pre_mint" }), null);
+  });
+
+  it("refuses unlabeled entityOrigin", () => {
+    const { entityOrigin: _drop, ...rest } = BASE;
+    assert.equal(parsePonderPassport(rest), null);
+  });
+
   it("parses origin chainId and custodyChain", () => {
     const parsed = parsePonderPassport({
       ...BASE,

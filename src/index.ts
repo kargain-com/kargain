@@ -99,6 +99,7 @@ ponder.on("KarPassport:PassportMinted", async ({ event, context }) => {
   await context.db.insert(passport).values({
     id: tokenId,
     chainId: origin,
+    entityOrigin: "minted",
     owner: getAddress(event.args.to),
     status: "UNVERIFIED",
     verifier: "",
@@ -144,6 +145,7 @@ ponder.on("KarPassport:PassportBridgeMinted", async ({ event, context }) => {
 
   if (existing) {
     await context.db.update(passport, { id: tokenId }).set({
+      entityOrigin: "minted",
       owner: getAddress(event.args.to),
       tokenUri: uri,
       ...bridgeMintArrivalTrustFields(ts),
@@ -152,6 +154,7 @@ ponder.on("KarPassport:PassportBridgeMinted", async ({ event, context }) => {
     await context.db.insert(passport).values({
       id: tokenId,
       chainId: origin,
+      entityOrigin: "minted",
       owner: getAddress(event.args.to),
       status: "UNVERIFIED",
       verifier: "",

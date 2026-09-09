@@ -93,7 +93,7 @@ export function createSvmProjectionWriter(pool: pg.Pool): SvmProjectionWriter {
     async upsertPassportEntity(row) {
       const res = await pool.query(
         `INSERT INTO kargain_svm_projection.passport (
-          id, chain_id, owner, status, verifier, verified_at, token_uri, cover_photo_uri,
+          id, chain_id, entity_origin, owner, status, verifier, verified_at, token_uri, cover_photo_uri,
           vin, make, model, year, mileage_km, last_disputer, dispute_reason,
           dispute_withdrawn_at, last_verification_reset_at, duplicate_vin,
           last_metadata_change_at, verification_reset_count, had_dispute,
@@ -103,10 +103,11 @@ export function createSvmProjectionWriter(pool: pg.Pool): SvmProjectionWriter {
           created_at, updated_at
         ) VALUES (
           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,
-          $25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36
+          $25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37
         )
         ON CONFLICT (id) DO UPDATE SET
           chain_id = EXCLUDED.chain_id,
+          entity_origin = EXCLUDED.entity_origin,
           owner = EXCLUDED.owner,
           status = EXCLUDED.status,
           verifier = EXCLUDED.verifier,
@@ -144,6 +145,7 @@ export function createSvmProjectionWriter(pool: pg.Pool): SvmProjectionWriter {
         [
           row.id,
           row.chainId,
+          row.entityOrigin,
           row.owner,
           row.status,
           row.verifier,
