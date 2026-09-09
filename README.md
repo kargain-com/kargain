@@ -91,6 +91,7 @@ UI layout: **[docs/design-spec.md](docs/design-spec.md)**.
 git clone https://github.com/kargain-com/kargain.git
 cd kargain
 pnpm install
+pnpm install:svm-lab          # svm/stand + lab typecheck (paths into svm/lab/node_modules)
 cp .env.example .env.local
 pnpm dev                    # Next.js → http://localhost:3000
 pnpm ponder:dev             # Ponder → http://localhost:42069 (needs Postgres)

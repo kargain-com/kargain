@@ -152,6 +152,39 @@ deploy:
     assert.match(yaml, /cancel-in-progress:\s*false/);
   });
 
+  it("ci.yml Install installs svm/lab for typecheck paths", () => {
+    const yaml = readFileSync(CI_WF, "utf8");
+    assert.match(
+      yaml,
+      /pnpm --dir svm\/lab install --frozen-lockfile/,
+      "CI must install svm/lab so svm/tsconfig can resolve @solana/spl-token",
+    );
+    assert.match(yaml, /actions\/checkout@v5/);
+    assert.match(yaml, /actions\/setup-node@v5/);
+  });
+
+  it("constructed: CI Install without svm/lab is red", () => {
+    const planted = `
+jobs:
+  gates:
+    steps:
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+`;
+    assert.doesNotMatch(
+      planted,
+      /pnpm --dir svm\/lab install --frozen-lockfile/,
+    );
+    // Live policy: absence of the lab install line is the defect.
+    const live = readFileSync(CI_WF, "utf8");
+    assert.match(live, /pnpm --dir svm\/lab install --frozen-lockfile/);
+    assert.notEqual(
+      /pnpm --dir svm\/lab install --frozen-lockfile/.test(planted),
+      /pnpm --dir svm\/lab install --frozen-lockfile/.test(live),
+    );
+  });
+
   it("package.json defines test:ci as the derived runner", () => {
     assert.equal(
       PKG.scripts["test:ci"],

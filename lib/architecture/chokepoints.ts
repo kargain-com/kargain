@@ -555,8 +555,11 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "deploy-ponder-svm-ingest-ci",
     owner:
       ".github/workflows/ci.yml · .github/workflows/deploy-ponder.yml · .github/workflows/deploy-svm-ingest.yml · lib/architecture/ci-verify-partition.ts",
-    rule: "Trunk CI (ci.yml) runs compile/typecheck/lint/test:ci/build; deploy workflows needs: gates via workflow_call; test:ci = test:verify ∖ DEPLOY_MACHINE_VERIFY_SUITES (sole partition owner); Ponder never lists svm-ingest paths; svm-ingest never builds ponder; ponder deploy probes /ready and skips recreate on unchanged executable fingerprint",
-    guardTests: ["deploy-ponder-svm-ingest-ci-policy.test.ts"],
+    rule: "Trunk CI (ci.yml) runs compile/typecheck/lint/test:ci/build; Install includes svm/lab frozen-lockfile (svm/tsconfig paths); deploy workflows needs: gates via workflow_call; test:ci = test:verify ∖ DEPLOY_MACHINE_VERIFY_SUITES (sole partition owner); Ponder never lists svm-ingest paths; svm-ingest never builds ponder; ponder deploy probes /ready and skips recreate on unchanged executable fingerprint",
+    guardTests: [
+      "deploy-ponder-svm-ingest-ci-policy.test.ts",
+      "ensure-svm-lab-modules.test.ts",
+    ],
   },
   {
     id: "ponder-deploy-identity",
