@@ -1,12 +1,15 @@
 name: Deploy svm-ingest to VPS
 
 on:
+  workflow_dispatch:
   push:
     branches: [master]
     # Never rebuild Ponder from this workflow. Ponder stays on deploy-ponder.yml.
     paths:
       - "src/svm-ingest/**"
       - "lib/svm/**"
+      - "src/lib/svm-projection-writer.ts"
+      - "src/lib/svm-raw-writer.ts"
       - "Dockerfile.svm-ingest"
       - ".github/workflows/deploy-svm-ingest.yml"
 

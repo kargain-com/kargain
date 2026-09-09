@@ -109,7 +109,10 @@ deploy:
     const paths = pathsBlock(yaml);
     assert.match(paths, /src\/svm-ingest\/\*\*/);
     assert.match(paths, /lib\/svm\/\*\*/);
+    assert.match(paths, /src\/lib\/svm-projection-writer\.ts/);
+    assert.match(paths, /src\/lib\/svm-raw-writer\.ts/);
     assert.match(paths, /Dockerfile\.svm-ingest/);
+    assert.match(yaml, /workflow_dispatch:/);
     assert.match(yaml, /docker compose build svm-ingest/);
     assert.match(
       yaml,
@@ -149,7 +152,28 @@ deploy:
     assert.match(yaml, /pnpm build/);
     assert.doesNotMatch(yaml, /appleboy\/ssh-action/);
     assert.doesNotMatch(yaml, /secrets\./);
-    assert.match(yaml, /cancel-in-progress:\s*false/);
+    // Per-caller group — shared ci-${{ github.ref }} dropped Deploy svm-ingest runs.
+    assert.match(yaml, /group:\s*\$\{\{\s*github\.workflow\s*\}\}-\$\{\{\s*github\.ref\s*\}\}/);
+    assert.doesNotMatch(yaml, /group:\s*ci-\$\{\{/);
+    assert.match(
+      yaml,
+      /cancel-in-progress:\s*\$\{\{\s*github\.ref\s*!=\s*'refs\/heads\/master'\s*\}\}/,
+    );
+  });
+
+  it("constructed: shared ci-ref concurrency group is red", () => {
+    const planted = `
+concurrency:
+  group: ci-\${{ github.ref }}
+  cancel-in-progress: false
+`;
+    assert.match(planted, /group:\s*ci-\$\{\{/);
+    const live = readFileSync(CI_WF, "utf8");
+    assert.doesNotMatch(live, /group:\s*ci-\$\{\{/);
+    assert.match(
+      live,
+      /group:\s*\$\{\{\s*github\.workflow\s*\}\}-\$\{\{\s*github\.ref\s*\}\}/,
+    );
   });
 
   it("ci.yml Install installs svm/lab for typecheck paths", () => {

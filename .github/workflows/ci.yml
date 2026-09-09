@@ -8,9 +8,13 @@ on:
   workflow_call:
 
 concurrency:
-  group: ci-${{ github.ref }}
-  # Do not cancel an in-flight run on master (deploy may be waiting on gates).
-  cancel-in-progress: false
+  # Per-workflow group. A shared `ci-${{ github.ref }}` across the push-triggered
+  # CI workflow and every deploy `workflow_call` caused caller workflows to vanish
+  # (Deploy svm-ingest never appeared for path-matching pushes; run ids between CI
+  # and Deploy Ponder 404). github.workflow is the caller name under workflow_call.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Master deploys must not cancel an in-flight gates job they are waiting on.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 jobs:
   gates:
