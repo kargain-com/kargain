@@ -197,6 +197,7 @@ After backfill reaches chain head, **leave the same numeric start blocks**. Pond
 Examples that **do not** require reindex:
 
 - **`src/svm-ingest/**` / `lib/svm/**` / `Dockerfile.svm-ingest` only** — separate compose service; CI [`.github/workflows/deploy-svm-ingest.yml`](../../.github/workflows/deploy-svm-ingest.yml) runs `docker compose build svm-ingest && docker compose up -d --force-recreate svm-ingest` and **never** builds or restarts Ponder. Manual: same compose commands. [`.github/workflows/deploy-ponder.yml`](../../.github/workflows/deploy-ponder.yml) must **not** list those paths (omit by design). A needless Ponder rebuild can still exit with `MigrationError` if the baked image’s contract `build_id` (addresses / start blocks from `COMMERCIAL_ACTIVE`) no longer matches the DB — that is not an SVM-ingest signal to wipe.
+- **VPS deploys wait on trunk CI.** Both deploy workflows `needs: gates` ([`ci.yml`](../../.github/workflows/ci.yml): compile → typecheck → lint → `test:ci` → build). Full live-manifest match (`commercial-active-manifest-policy`) stays on the deploy machine via `pnpm test:verify`; CI runs the derived partition without that suite.
 - Phase 5 polish UI (PR5a–d): typed record labels, attestation form, browse chain-status sample (`getPassportStatus` via wagmi on the client)
 - Irys upload hardening (June 2026): client-side only — no Ponder schema change
 - Basescan verify (`pnpm verify:sepolia`, `--auction-only` after auction deploy) — ops-only, no indexer impact; HHE80009 bytecode mismatch exits 0 by default

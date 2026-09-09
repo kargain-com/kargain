@@ -11,7 +11,11 @@ on:
       - ".github/workflows/deploy-svm-ingest.yml"
 
 jobs:
+  gates:
+    uses: ./.github/workflows/ci.yml
+
   deploy:
+    needs: gates
     runs-on: ubuntu-latest
     steps:
       - name: Deploy svm-ingest to VPS
