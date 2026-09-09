@@ -25,11 +25,11 @@ const ACCOUNT_HOOK_IMPORT =
 
 /** Names unique to the removed entry / projection API (never local aliases elsewhere). */
 const BANNED_UNIQUE =
-  /\b(?:isEvmConnected|switchEvmChain|connectEvm|connectSvm|evmConnector|evmConnectors|svmWallets|evmConnectedAddress|evmConnectedChainId|isEvmAccountConnected|connectedNamespace|SVM_SESSION_NAMESPACE)\b/;
+  /\b(?:isEvmConnected|switchEvmChain|connectEvm|connectSvm|evmConnectors|svmWallets|evmConnectedAddress|evmConnectedChainId|isEvmAccountConnected|connectedNamespace|SVM_SESSION_NAMESPACE)\b/;
 
 /** Ambiguous identifiers — only illegal when taken from useActiveAccount. */
 const BANNED_FROM_ENTRY =
-  /\{\s*[^}]*\b(?:evmAddress|evmChainId)\b[^}]*\}\s*=\s*useActiveAccount/;
+  /\{\s*[^}]*\b(?:evmAddress|evmChainId|evmConnector)\b[^}]*\}\s*=\s*useActiveAccount/;
 
 function accountHookPredicate(rel: string, source: string): string | false {
   if (!ACCOUNT_HOOK_IMPORT.test(source)) return false;

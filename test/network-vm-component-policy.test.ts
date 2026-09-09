@@ -30,6 +30,8 @@ export const VM_BRANCH_ALLOWLIST = [
   "lib/web3/tx-write-availability.ts",
   "lib/web3/write-lifecycle.ts",
   "lib/storage/irys-upload-plan.ts",
+  // П-8 Irys session door — account.vm fork lives here, not in wizards.
+  "lib/passport/upload-passport-metadata.ts",
 ] as const;
 
 /** VM / stack.vm branching patterns that belong in allowlisted lib owners only. */

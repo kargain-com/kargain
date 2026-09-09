@@ -9,7 +9,10 @@ import {
   RETRIABLE_CATCHUP_INCIDENTS,
   structuredPayloadRowId,
 } from "../lib/svm/ingest-refusal.js";
-import { discoverIngestSlots } from "../lib/svm/ingest-slot-discovery.js";
+import {
+  discoverIngestSlots,
+  type DiscoverIngestSlotsOk,
+} from "../lib/svm/ingest-slot-discovery.js";
 import { createIngestLoop } from "../src/svm-ingest/ingest-loop.js";
 import {
   SvmIngestRpcBudgetExhaustedError,
@@ -219,7 +222,7 @@ describe("svm ingest loop — signature discovery", () => {
     assert.ok(rpc.callCounts.getBlock < 100);
   });
 
-  it("empty discovery completes bootstrap and parks watermark at head", async () => {
+  it("empty discovery with floors reached completes bootstrap and parks watermark at head", async () => {
     const startSlot = 100;
     const head = 500;
     const programs = [
@@ -246,7 +249,117 @@ describe("svm ingest loop — signature discovery", () => {
     await loop.catchUpToHead();
     assert.equal(loop.getState().bootstrapState, null);
     assert.equal(loop.getState().lastContiguousSlot, head);
+    assert.equal(loop.getState().catchupIncident, null);
     assert.equal(loop.isReady(), true);
+  });
+
+  it("empty discovery without floors reached: flag stays, watermark unchanged, condition named", async () => {
+    const startSlot = 100;
+    const head = 500;
+    const watermarkBefore = startSlot - 1;
+    const programs = [
+      {
+        ...FIXTURE_FOLLOWED_PROGRAMS[0]!,
+        deploySlot: startSlot,
+      },
+    ];
+    const planted: DiscoverIngestSlotsOk = {
+      ok: true,
+      slots: [],
+      signaturePages: 1,
+      signatureRows: 0,
+      reachedEveryProgramFloor: false,
+      programFloors: [
+        {
+          evidenceKey: programs[0]!.evidenceKey,
+          programId: programs[0]!.programId,
+          reachedFloor: false,
+        },
+      ],
+    };
+    const rpc = makeRpc({
+      head,
+      firstAvailable: startSlot,
+      signaturesByProgram: { [FIXTURE_PASSPORT_PROGRAM]: [] },
+    });
+    const writer = createMemorySvmRawWriter();
+    const loop = createIngestLoop({
+      namespace: FIXTURE_NAMESPACE,
+      startSlot,
+      maxLagSlots: 10,
+      followedPrograms: programs,
+      writer,
+      rpc,
+      discoverSlots: async () => planted,
+    });
+    await loop.initCursor();
+    assert.equal(loop.getState().lastContiguousSlot, watermarkBefore);
+    assert.equal(loop.getState().bootstrapState, "historical_backfill");
+    await loop.catchUpToHead();
+    const state = loop.getState();
+    // Both must hold — red if either the flag clears or the watermark moves.
+    assert.equal(state.bootstrapState, "historical_backfill");
+    assert.equal(state.lastContiguousSlot, watermarkBefore);
+    assert.equal(state.catchupIncident, "bootstrap_range_not_enumerated");
+    assert.equal(loop.isReady(), false);
+  });
+
+  it("partial floor enumeration behaves as incomplete — flag stays, watermark unchanged", async () => {
+    const startSlot = 100;
+    const head = 500;
+    const watermarkBefore = startSlot - 1;
+    const programs = [
+      {
+        ...FIXTURE_FOLLOWED_PROGRAMS[0]!,
+        deploySlot: startSlot,
+      },
+      {
+        slug: "kar-gateway",
+        programId: "GatewayProg11111111111111111111111111111111111",
+        evidenceKey: "kar_gateway",
+        deploySlot: startSlot,
+      },
+    ];
+    const planted: DiscoverIngestSlotsOk = {
+      ok: true,
+      slots: [],
+      signaturePages: 2,
+      signatureRows: 0,
+      reachedEveryProgramFloor: false,
+      programFloors: [
+        {
+          evidenceKey: programs[0]!.evidenceKey,
+          programId: programs[0]!.programId,
+          reachedFloor: true,
+        },
+        {
+          evidenceKey: programs[1]!.evidenceKey,
+          programId: programs[1]!.programId,
+          reachedFloor: false,
+        },
+      ],
+    };
+    const rpc = makeRpc({
+      head,
+      firstAvailable: startSlot,
+    });
+    const writer = createMemorySvmRawWriter();
+    const loop = createIngestLoop({
+      namespace: FIXTURE_NAMESPACE,
+      startSlot,
+      maxLagSlots: 10,
+      followedPrograms: programs,
+      writer,
+      rpc,
+      discoverSlots: async () => planted,
+    });
+    await loop.initCursor();
+    await loop.catchUpToHead();
+    const state = loop.getState();
+    assert.equal(state.bootstrapState, "historical_backfill");
+    assert.equal(state.lastContiguousSlot, watermarkBefore);
+    assert.equal(state.catchupIncident, "bootstrap_range_not_enumerated");
+    assert.equal(loop.isReady(), false);
   });
 
   it("discovered missing block advances watermark with named outcome — no throw", async () => {
@@ -732,6 +845,29 @@ describe("discoverIngestSlots owner", () => {
     assert.equal(result.ok, true);
     if (!result.ok) return;
     assert.deepEqual(result.slots, [150, 250]);
+    assert.equal(result.reachedEveryProgramFloor, true);
+    assert.equal(result.programFloors.length, 2);
+    assert.ok(result.programFloors.every((p) => p.reachedFloor));
+  });
+
+  it("bootstrap empty page reports reachedEveryProgramFloor", async () => {
+    const programs = [
+      {
+        slug: "kar-passport",
+        programId: "ProgA",
+        evidenceKey: "kar_passport",
+        deploySlot: 100,
+      },
+    ] as const;
+    const result = await discoverIngestSlots({
+      programs,
+      rpc: { async getSignaturesForAddress() { return []; } },
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(result.slots, []);
+    assert.equal(result.reachedEveryProgramFloor, true);
+    assert.equal(result.programFloors[0]!.reachedFloor, true);
   });
 
   it("live afterSlot stops at watermark — does not re-page to deploy floor", async () => {
@@ -768,12 +904,87 @@ describe("discoverIngestSlots owner", () => {
       programs,
       rpc,
       afterSlot: 250,
+      // Full page ending at watermark — must not claim deploy floor via short-page.
+      pageLimit: 2,
     });
     assert.equal(result.ok, true);
     if (!result.ok) return;
     assert.deepEqual(result.slots, [260]);
     assert.equal(pages, 1);
     assert.equal(result.signaturePages, 1);
+    // Watermark stop alone is not deploy-floor evidence.
+    assert.equal(result.reachedEveryProgramFloor, false);
+    assert.equal(result.programFloors[0]!.reachedFloor, false);
+  });
+
+  it("live afterSlot with no new slots: empty list and floors not reached", async () => {
+    const programs = [
+      {
+        slug: "kar-passport",
+        programId: "ProgA",
+        evidenceKey: "kar_passport",
+        deploySlot: 100,
+      },
+    ] as const;
+    const result = await discoverIngestSlots({
+      programs,
+      rpc: {
+        async getSignaturesForAddress() {
+          return [
+            { signature: "seen", slot: 250 },
+            { signature: "older", slot: 240 },
+          ];
+        },
+      },
+      afterSlot: 250,
+      pageLimit: 2,
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(result.slots, []);
+    assert.equal(result.reachedEveryProgramFloor, false);
+  });
+
+  it("partial floors: one program empty-floor, one watermark-stop → not every floor", async () => {
+    const programs = [
+      {
+        slug: "kar-passport",
+        programId: "ProgA",
+        evidenceKey: "kar_passport",
+        deploySlot: 100,
+      },
+      {
+        slug: "kar-gateway",
+        programId: "ProgB",
+        evidenceKey: "kar_gateway",
+        deploySlot: 100,
+      },
+    ] as const;
+    const result = await discoverIngestSlots({
+      programs,
+      rpc: {
+        async getSignaturesForAddress(programId: string) {
+          if (programId === "ProgA") return [];
+          return [
+            { signature: "b1", slot: 250 },
+            { signature: "b0", slot: 240 },
+          ];
+        },
+      },
+      afterSlot: 250,
+      pageLimit: 2,
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.reachedEveryProgramFloor, false);
+    assert.equal(
+      result.programFloors.find((p) => p.programId === "ProgA")!.reachedFloor,
+      true,
+    );
+    assert.equal(
+      result.programFloors.find((p) => p.programId === "ProgB")!.reachedFloor,
+      false,
+    );
   });
 
   it("live afterSlot pages through multiple new pages until watermark reached", async () => {
@@ -817,6 +1028,7 @@ describe("discoverIngestSlots owner", () => {
     if (!result.ok) return;
     assert.deepEqual(result.slots, [260, 270, 280]);
     assert.equal(pages, 2);
+    assert.equal(result.reachedEveryProgramFloor, false);
   });
 });
 
@@ -832,5 +1044,9 @@ describe("catchup incident vocabulary", () => {
     );
     assert.equal(isRetriableCatchupIncident("sequence_gap"), false);
     assert.equal(isRetriableCatchupIncident(null), false);
+    assert.equal(
+      isRetriableCatchupIncident("bootstrap_range_not_enumerated"),
+      true,
+    );
   });
 });

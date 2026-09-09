@@ -18,12 +18,25 @@ export type SlotDiscoveryRpc = {
   ) => Promise<SignaturePageRow[]>;
 };
 
+export type ProgramFloorReach = {
+  evidenceKey: string;
+  programId: string;
+  /** True iff paging reached this program's deploySlot floor (not merely live watermark). */
+  reachedFloor: boolean;
+};
+
 export type DiscoverIngestSlotsOk = {
   ok: true;
   /** Ascending unique slots to fetch. */
   slots: number[];
   signaturePages: number;
   signatureRows: number;
+  /**
+   * Positive fact: every program was enumerated to its deploy floor.
+   * Live watermark early-exit alone does not count — bootstrap completion turns on this.
+   */
+  reachedEveryProgramFloor: boolean;
+  programFloors: readonly ProgramFloorReach[];
 };
 
 export type DiscoverIngestSlotsFail = {
@@ -58,6 +71,10 @@ const DEFAULT_PAGE_LIMIT = 1_000;
  * With `afterSlot` (live follow): stop as soon as the page reaches slots ≤ watermark —
  * do not re-walk history to the deploy floor on every poll.
  * Incomplete mid-page RPC failure → ok:false (must not claim complete).
+ *
+ * Ok.reachedEveryProgramFloor is true only when every program exited with deploy-floor
+ * evidence (empty page, slot < deploySlot, or short page exhausting history) — not when
+ * live follow stopped solely at the watermark.
  */
 export async function discoverIngestSlots(
   args: DiscoverIngestSlotsArgs,
@@ -69,11 +86,13 @@ export async function discoverIngestSlots(
   const slotSet = new Set<number>();
   let signaturePages = 0;
   let signatureRows = 0;
+  const programFloors: ProgramFloorReach[] = [];
 
   for (const program of args.programs) {
     let before: string | undefined;
-    let reachedFloor = false;
-    while (!reachedFloor) {
+    let reachedDeployFloor = false;
+    let done = false;
+    while (!done) {
       let page: SignaturePageRow[];
       try {
         page = await args.rpc.getSignaturesForAddress(program.programId, {
@@ -102,13 +121,14 @@ export async function discoverIngestSlots(
       signatureRows += page.length;
 
       if (page.length === 0) {
-        reachedFloor = true;
+        reachedDeployFloor = true;
+        done = true;
         break;
       }
 
       for (const row of page) {
         if (row.slot < program.deploySlot) {
-          reachedFloor = true;
+          reachedDeployFloor = true;
           continue;
         }
         if (row.slot > afterSlot) {
@@ -118,23 +138,35 @@ export async function discoverIngestSlots(
 
       const oldestOnPage = page[page.length - 1]!;
       if (oldestOnPage.slot < program.deploySlot) {
-        reachedFloor = true;
+        reachedDeployFloor = true;
+        done = true;
       }
-      // Live: once we have walked into already-processed slots, stop this program.
-      if (liveFollow && oldestOnPage.slot <= afterSlot) {
-        reachedFloor = true;
-      }
+      // Short page → no further history; range enumerated (floor vacuously reached).
       if (page.length < pageLimit) {
-        reachedFloor = true;
+        reachedDeployFloor = true;
+        done = true;
+      }
+      // Live: stop at watermark without claiming deploy floor unless already evidenced.
+      if (liveFollow && oldestOnPage.slot <= afterSlot) {
+        done = true;
       }
       before = oldestOnPage.signature;
     }
+    programFloors.push({
+      evidenceKey: program.evidenceKey,
+      programId: program.programId,
+      reachedFloor: reachedDeployFloor,
+    });
   }
+
+  const reachedEveryProgramFloor = programFloors.every((p) => p.reachedFloor);
 
   return {
     ok: true,
     slots: [...slotSet].sort((a, b) => a - b),
     signaturePages,
     signatureRows,
+    reachedEveryProgramFloor,
+    programFloors,
   };
 }

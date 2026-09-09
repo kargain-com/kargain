@@ -13,7 +13,7 @@ import {
   type BootstrapCatchupState,
   type CatchupIncident,
 } from "../../lib/svm/ingest-refusal.js";
-import { discoverIngestSlots } from "../../lib/svm/ingest-slot-discovery.js";
+import { discoverIngestSlots, type DiscoverIngestSlotsOk } from "../../lib/svm/ingest-slot-discovery.js";
 import { parseTransactionForIngest } from "../../lib/svm/parse-transaction-ingest.js";
 import {
   evaluateStartupRetention,
@@ -46,6 +46,8 @@ export type IngestLoopOptions = {
   projector?: ProjectionProjector;
   /** Test-only injectable metadata fetcher for inline capture. */
   metadataFetcher?: MetadataFetcher;
+  /** Test-only injectable slot discovery (defaults to discoverIngestSlots owner). */
+  discoverSlots?: typeof discoverIngestSlots;
 };
 
 export function createIngestLoop(opts: IngestLoopOptions) {
@@ -219,9 +221,10 @@ export function createIngestLoop(opts: IngestLoopOptions) {
 
   async function discoverOrIncident(args: {
     afterSlot?: number;
-  }): Promise<number[] | null> {
+  }): Promise<DiscoverIngestSlotsOk | null> {
+    const discover = opts.discoverSlots ?? discoverIngestSlots;
     try {
-      const result = await discoverIngestSlots({
+      const result = await discover({
         programs: opts.followedPrograms,
         rpc: opts.rpc,
         afterSlot: args.afterSlot,
@@ -237,7 +240,7 @@ export function createIngestLoop(opts: IngestLoopOptions) {
         );
         return null;
       }
-      return result.slots;
+      return result;
     } catch (err) {
       if (err instanceof SvmIngestRpcBudgetExhaustedError) {
         await recordIncident(
@@ -249,6 +252,20 @@ export function createIngestLoop(opts: IngestLoopOptions) {
       }
       throw err;
     }
+  }
+
+  async function refuseBootstrapRangeNotEnumerated(
+    discovery: DiscoverIngestSlotsOk,
+  ): Promise<void> {
+    await recordIncident(
+      "bootstrap_range_not_enumerated",
+      {
+        reason: "bootstrap_floors_not_reached",
+        reachedEveryProgramFloor: discovery.reachedEveryProgramFloor,
+        programFloors: discovery.programFloors,
+      },
+      null,
+    );
   }
 
   async function processSlotList(
@@ -310,7 +327,10 @@ export function createIngestLoop(opts: IngestLoopOptions) {
 
   /**
    * Bootstrap: page all programs to floors, getBlock discovered slots,
-   * verify re-poll empty of extras, clear historical_backfill.
+   * verify re-poll empty of extras. Clear historical_backfill only when discovery
+   * reports every program floor enumerated (positive fact — never emptiness alone).
+   * Empty + floors: watermark may advance to observed head. Floors absent: named
+   * incident, flag stays, watermark unchanged.
    */
   async function catchUpToHead(): Promise<void> {
     halted = false;
@@ -324,12 +344,18 @@ export function createIngestLoop(opts: IngestLoopOptions) {
     const head = await opts.rpc.getSlot();
     await assertStartupRetention(head);
 
-    const slots = await discoverOrIncident({ afterSlot: undefined });
-    if (slots === null) {
+    const primary = await discoverOrIncident({ afterSlot: undefined });
+    if (primary === null) {
+      state.lagSlots = head - state.lastContiguousSlot;
+      return;
+    }
+    if (state.bootstrapState && !primary.reachedEveryProgramFloor) {
+      await refuseBootstrapRangeNotEnumerated(primary);
       state.lagSlots = head - state.lastContiguousSlot;
       return;
     }
 
+    const slots = primary.slots;
     const ok = await processSlotList(slots, head);
     if (!ok) {
       state.lagSlots = head - state.lastContiguousSlot;
@@ -342,7 +368,12 @@ export function createIngestLoop(opts: IngestLoopOptions) {
       state.lagSlots = head - state.lastContiguousSlot;
       return;
     }
-    const extras = verify.filter((s) => s > state.lastContiguousSlot);
+    if (state.bootstrapState && !verify.reachedEveryProgramFloor) {
+      await refuseBootstrapRangeNotEnumerated(verify);
+      state.lagSlots = head - state.lastContiguousSlot;
+      return;
+    }
+    const extras = verify.slots.filter((s) => s > state.lastContiguousSlot);
     if (extras.length > 0) {
       const okExtras = await processSlotList(extras, head);
       if (!okExtras) {
@@ -354,7 +385,12 @@ export function createIngestLoop(opts: IngestLoopOptions) {
         state.lagSlots = head - state.lastContiguousSlot;
         return;
       }
-      const still = again.filter((s) => s > state.lastContiguousSlot);
+      if (state.bootstrapState && !again.reachedEveryProgramFloor) {
+        await refuseBootstrapRangeNotEnumerated(again);
+        state.lagSlots = head - state.lastContiguousSlot;
+        return;
+      }
+      const still = again.slots.filter((s) => s > state.lastContiguousSlot);
       if (still.length > 0) {
         await recordIncident(
           "discovery_incomplete",
@@ -373,7 +409,7 @@ export function createIngestLoop(opts: IngestLoopOptions) {
       if (state.lastContiguousSlot < opts.startSlot - 1) {
         state.lastContiguousSlot = opts.startSlot - 1;
       }
-      // Empty discovery: watermark jumps to observed head so live follow starts clean.
+      // Watermark → head only under the same positive fact (floors already checked).
       if (slots.length === 0 && extras.length === 0) {
         state.lastContiguousSlot = Math.max(state.lastContiguousSlot, head);
       }
@@ -392,17 +428,17 @@ export function createIngestLoop(opts: IngestLoopOptions) {
     if (state.bootstrapState) return;
 
     const head = await opts.rpc.getSlot();
-    const slots = await discoverOrIncident({
+    const discovered = await discoverOrIncident({
       afterSlot: state.lastContiguousSlot,
     });
-    if (slots === null) {
+    if (discovered === null) {
       state.lagSlots = head - state.lastContiguousSlot;
       return;
     }
 
     await clearRetriableIncident();
 
-    const pending = slots.filter((s) => s > state.lastContiguousSlot);
+    const pending = discovered.slots.filter((s) => s > state.lastContiguousSlot);
     state.lagSlots =
       pending.length > 0 ? head - pending[0]! : 0;
 

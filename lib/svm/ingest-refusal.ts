@@ -19,15 +19,17 @@ export type CatchupIncident =
   | "sequence_gap"
   | "startup_retention_unavailable"
   | "discovery_incomplete"
+  | "bootstrap_range_not_enumerated"
   | "rpc_budget_exhausted";
 
 /**
- * Transient RPC/pagination failures — surface on /ready until the next successful
- * discovery tick, but must not permanently halt the follow loop.
+ * Transient RPC/pagination / incomplete-range failures — surface on /ready until the
+ * next successful discovery tick, but must not permanently halt the follow loop.
  * Permanent: catchup_window_exceeded, sequence_gap, startup_retention_unavailable.
  */
 export const RETRIABLE_CATCHUP_INCIDENTS = [
   "discovery_incomplete",
+  "bootstrap_range_not_enumerated",
   "rpc_budget_exhausted",
 ] as const satisfies readonly CatchupIncident[];
 

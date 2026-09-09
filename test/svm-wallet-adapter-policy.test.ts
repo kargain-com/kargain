@@ -12,6 +12,9 @@ const SVM_OWNERS = [
   "lib/web3/svm-account-adapter.ts",
   "lib/web3/svm-account-session.tsx",
   "lib/web3/svm-wallet-discovery.ts",
+  // П-8: entry exposes svmWallet; Irys door types Wallet from wallet-standard.
+  "hooks/use-active-account.ts",
+  "lib/passport/upload-passport-metadata.ts",
 ] as const;
 
 const SVM_DEP_IMPORT =
