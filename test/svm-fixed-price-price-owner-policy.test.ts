@@ -7,12 +7,13 @@
  * - Constructed dual parse offsets outside crate fail scanner
  */
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+
+import { searchPaths } from "./policy-content-search.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const FP_IX = path.join(ROOT, "svm/programs/kar-fixed-price/src/ix.rs");
@@ -29,16 +30,6 @@ const OFFSET_PARSE =
 const ASC_ORACLE_BAN =
   String.raw`kargain_price|read_price_update|PriceUpdateV2|pyth|hermes|staleness_tolerance|max_confidence`;
 
-function rg(pattern: string, files: string[]): string {
-  try {
-    return execFileSync("rg", ["-n", "-i", pattern, ...files], { encoding: "utf8" });
-  } catch (e: unknown) {
-    const err = e as { status?: number; stdout?: string };
-    if (err.status === 1) return "";
-    throw e;
-  }
-}
-
 describe("svm-fixed-price-price-owner-policy", () => {
   it("kargain-price is sole offset/decode owner; FixedPrice consumes it", () => {
     const price = fs.readFileSync(PRICE, "utf8");
@@ -54,7 +45,7 @@ describe("svm-fixed-price-price-owner-policy", () => {
     assert.ok(!fp.includes("FiatDenominationRefused"), "FixedPrice must not use ascending-only Fiat refuse");
 
     // Offset constants must not appear under programs/ (only crate)
-    const dual = rg(OFFSET_PARSE, [PROGRAMS]);
+    const dual = searchPaths(OFFSET_PARSE, [PROGRAMS]);
     const codeHits = dual
       .split("\n")
       .filter((l) => l.trim())
@@ -63,7 +54,7 @@ describe("svm-fixed-price-price-owner-policy", () => {
   });
 
   it("Ascending remains oracle-banned", () => {
-    const hit = rg(ASC_ORACLE_BAN, [ASC_IX]);
+    const hit = searchPaths(ASC_ORACLE_BAN, [ASC_IX]);
     const codeHits = hit
       .split("\n")
       .filter((l) => l.trim())
@@ -113,7 +104,7 @@ describe("svm-fixed-price-price-owner-policy", () => {
       dirty,
       `const FEED_ID_OFFSET: usize = 41;\nfn f(d: &[u8]) { let _ = &d[FEED_ID_OFFSET..]; }\n`,
     );
-    const hit = rg(OFFSET_PARSE, [dirty]);
+    const hit = searchPaths(OFFSET_PARSE, [dirty]);
     assert.ok(hit.trim().length > 0, "scanner must catch dual offset parse");
     fs.rmSync(dir, { recursive: true, force: true });
   });
@@ -132,7 +123,7 @@ describe("svm-fixed-price-price-owner-policy", () => {
     const ws = fs.readFileSync(path.join(ROOT, "svm/Cargo.toml"), "utf8");
     assert.ok(ws.includes("kargain-price"));
     // No second read_price_update under crates except owner
-    const hits = rg(String.raw`fn read_price_update`, [CRATES]);
+    const hits = searchPaths(String.raw`fn read_price_update`, [CRATES]);
     const files = [
       ...new Set(
         hits

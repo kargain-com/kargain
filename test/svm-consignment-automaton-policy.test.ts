@@ -8,30 +8,17 @@
  * - Harness is the only program that instantiates the automaton for validator proof
  */
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { searchUnder } from "./policy-content-search.ts";
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SVM = path.join(ROOT, "svm");
 const BASE = path.join(SVM, "crates/kargain-consignment-base/src/lib.rs");
 const HARNESS = path.join(SVM, "programs/consignment-harness/src");
-
-function rg(pattern: string, cwd: string, globs: string[]): string {
-  try {
-    return execFileSync(
-      "rg",
-      ["-n", "--glob", "!**/target/**", ...globs.flatMap((g) => ["--glob", g]), pattern, cwd],
-      { encoding: "utf8" },
-    );
-  } catch (e: unknown) {
-    const err = e as { status?: number; stdout?: string };
-    if (err.status === 1) return "";
-    throw e;
-  }
-}
 
 describe("svm-consignment-automaton-policy", () => {
   it("sole crate owns phase / mandate / recall seeds and require_can_open order", () => {
@@ -55,7 +42,7 @@ describe("svm-consignment-automaton-policy", () => {
     assert.ok(src.includes("kargain_agented_split"), "imports split owner");
     assert.ok(src.includes("compute_agented_split") || src.includes("compute_direct_split"));
     // Ban a second BPS mul formula that looks like platform = settled * fee / 10000 in this crate
-    const hit = rg(String.raw`settled\s*\*\s*.*fee|fee_bps\s*\*\s*settled`, path.dirname(BASE), [
+    const hit = searchUnder(String.raw`settled\s*\*\s*.*fee|fee_bps\s*\*\s*settled`, path.dirname(BASE), [
       "*.rs",
     ]);
     // allow imports / comments only — raw arithmetic for platform share must not appear outside agented-split
@@ -70,7 +57,7 @@ describe("svm-consignment-automaton-policy", () => {
       fs.readFileSync(fp, "utf8").includes("kargain_consignment_base"),
       "FixedPrice consumes shared automaton",
     );
-    const other = rg(
+    const other = searchUnder(
       String.raw`require_can_open|RECALL_COOLDOWN_SECS|write_open\s*\(`,
       path.join(SVM, "programs"),
       ["*.rs"],
@@ -91,7 +78,7 @@ describe("svm-consignment-automaton-policy", () => {
     assert.ok(ix.includes("classify_spl_receive_reachability"));
     assert.ok(ix.includes("pay_spl"));
     assert.ok(!ix.includes("pay_spl_or_credit"));
-    const hit = rg(String.raw`pay_spl_or_credit`, HARNESS, ["*.rs"]);
+    const hit = searchUnder(String.raw`pay_spl_or_credit`, HARNESS, ["*.rs"]);
     assert.equal(hit.trim(), "", hit);
   });
 

@@ -9,32 +9,19 @@
  * - Reachability classifier exists; pay_spl takes pre-classified reachability
  */
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { searchUnder } from "./policy-content-search.ts";
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SVM = path.join(ROOT, "svm");
 
-function rg(pattern: string, cwd: string, globs: string[]): string {
-  try {
-    return execFileSync(
-      "rg",
-      ["-n", "--glob", "!**/target/**", ...globs.flatMap((g) => ["--glob", g]), pattern, cwd],
-      { encoding: "utf8" },
-    );
-  } catch (e: unknown) {
-    const err = e as { status?: number; stdout?: string };
-    if (err.status === 1) return "";
-    throw e;
-  }
-}
-
 describe("svm-money-model-policy", () => {
   it("bans push_ok / transfer_ok outcome parameters under svm/", () => {
-    const hit = rg(String.raw`\b(push_ok|transfer_ok)\s*:`, SVM, ["*.rs"]);
+    const hit = searchUnder(String.raw`\b(push_ok|transfer_ok)\s*:`, SVM, ["*.rs"]);
     assert.equal(hit.trim(), "", `outcome-as-parameter still present:\n${hit}`);
   });
 
@@ -65,13 +52,13 @@ describe("svm-money-model-policy", () => {
     );
 
     // Reintroduction detector: any svm Rust that does Err => ... credit_claim
-    const hit = rg(
+    const hit = searchUnder(
       String.raw`Err\s*\([^)]*\)\s*=>[\s\S]{0,200}credit_claim`,
       SVM,
       ["*.rs"],
     );
-    // Multiline may not work in default rg — also ban pay_spl_or_credit symbol
-    const hit2 = rg(String.raw`pay_spl_or_credit|transfer_to_recipient\(\)`, SVM, ["*.rs"]);
+    // Multiline may not work in default line search — also ban pay_spl_or_credit symbol
+    const hit2 = searchUnder(String.raw`pay_spl_or_credit|transfer_to_recipient\(\)`, SVM, ["*.rs"]);
     assert.equal(
       (hit + hit2).trim(),
       "",
@@ -81,7 +68,7 @@ describe("svm-money-model-policy", () => {
 
   it("bans rescue_excess and global pending/locked totals in money crates", () => {
     const crates = path.join(SVM, "crates");
-    const hit = rg(
+    const hit = searchUnder(
       String.raw`rescue_excess|total_pending_native|total_locked_bonds|ClaimablePayoutsState|BTreeMap`,
       crates,
       ["**/kargain-claimable-payouts/**", "**/kargain-bonded-challenge/**"],
@@ -90,7 +77,7 @@ describe("svm-money-model-policy", () => {
   });
 
   it("PassportChallengeBook and VAULT_SEED stay deleted", () => {
-    const hit = rg(String.raw`PassportChallengeBook|VAULT_SEED|vault_pda`, SVM, ["*.rs"]);
+    const hit = searchUnder(String.raw`PassportChallengeBook|VAULT_SEED|vault_pda`, SVM, ["*.rs"]);
     assert.equal(hit.trim(), "", `dead money account symbols remain:\n${hit}`);
   });
 

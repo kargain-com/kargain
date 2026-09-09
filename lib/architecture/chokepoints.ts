@@ -320,6 +320,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     ],
   },
   {
+    id: "policy-content-search",
+    owner: "test/policy-content-search.ts",
+    rule: "Sole content-search door for policy suites; never shell out to host rg (absent on GitHub Actions)",
+    guardTests: ["policy-content-search-policy.test.ts"],
+  },
+  {
     id: "active-account",
     owner: "hooks/use-active-account.ts · lib/web3/active-account.ts · evm/svm adapters",
     rule: "Sole who-is-connected entry (discriminated account only); EVM facts via requireEvmSession / commercialNamespaceOf / switch availability (named causes); wagmi account hooks only in evm-account-adapter; no invented SVM namespace; no EVM-field undefined forks outside owners",

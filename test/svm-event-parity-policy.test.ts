@@ -5,7 +5,6 @@
  * Wire owner: svm/crates/kargain-events (encode + sol_log_data only).
  */
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
@@ -16,6 +15,7 @@ import {
   commercialAbiEventFieldNames,
   type CommercialContractName,
 } from "../lib/svm/commercial-abi-events.js";
+import { searchUnder } from "./policy-content-search.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MANIFEST_PATH = path.join(ROOT, "svm/crates/kargain-events/events.manifest.json");
@@ -55,20 +55,6 @@ type NamedDivergence = {
   module?: string;
   proof?: string;
 };
-
-function rg(pattern: string, cwd: string, globs: string[]): string {
-  try {
-    return execFileSync(
-      "rg",
-      ["-n", "--glob", "!**/target/**", ...globs.flatMap((g) => ["--glob", g]), pattern, cwd],
-      { encoding: "utf8" },
-    );
-  } catch (e: unknown) {
-    const err = e as { status?: number; stdout?: string };
-    if (err.status === 1) return "";
-    throw e;
-  }
-}
 
 function parseRegistryFromGenerated(source: string): Array<{ contract: string; event: string }> {
   const rows: Array<{ contract: string; event: string }> = [];
@@ -253,7 +239,7 @@ describe("svm-event-parity-policy", () => {
   });
 
   it("sole sol_log_data owner: only kargain-events/src/lib.rs", () => {
-    const hit = rg(String.raw`sol_log_data\s*\(`, SVM, ["*.rs"]);
+    const hit = searchUnder(String.raw`sol_log_data\s*\(`, SVM, ["*.rs"]);
     const lines = hit
       .split("\n")
       .filter((l) => l.trim())
@@ -263,9 +249,9 @@ describe("svm-event-parity-policy", () => {
 
   it("programs route structured emission through kargain_events (not inline encode)", () => {
     const programs = path.join(SVM, "programs");
-    const hit = rg(String.raw`emit_program_data\s*\(`, programs, ["*.rs"]);
+    const hit = searchUnder(String.raw`emit_program_data\s*\(`, programs, ["*.rs"]);
     assert.equal(hit.trim(), "", `inline emit_program_data in programs:\n${hit}`);
-    const uses = rg(String.raw`kargain_events::`, programs, ["*.rs"]);
+    const uses = searchUnder(String.raw`kargain_events::`, programs, ["*.rs"]);
     assert.ok(uses.trim().length > 0, "programs must import kargain_events");
   });
 

@@ -6,12 +6,13 @@
  * - Constructed dirty fixtures fail the scanners
  */
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+
+import { searchPaths } from "./policy-content-search.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ASC_IX = path.join(ROOT, "svm/programs/kar-ascending/src/ix.rs");
@@ -23,21 +24,11 @@ const PROGRAMS = path.join(ROOT, "svm/programs");
 const ORACLE_BAN =
   String.raw`pyth|hermes|PriceUpdateV2|price_account|Chainlink|AggregatorV3|staleness|fiatToUsd|usdToNative|_quoteAmount`;
 
-function rg(pattern: string, files: string[]): string {
-  try {
-    return execFileSync("rg", ["-n", "-i", pattern, ...files], { encoding: "utf8" });
-  } catch (e: unknown) {
-    const err = e as { status?: number; stdout?: string };
-    if (err.status === 1) return "";
-    throw e;
-  }
-}
-
 describe("svm-ascending-asset-only-policy", () => {
   it("no oracle / price-feed imports under Ascending program (+ LIVE if present)", () => {
     const files = [ASC_IX];
     if (fs.existsSync(LIVE)) files.push(LIVE);
-    const hit = rg(ORACLE_BAN, files);
+    const hit = searchPaths(ORACLE_BAN, files);
     const codeHits = hit
       .split("\n")
       .filter((l) => l.trim())
@@ -68,7 +59,7 @@ describe("svm-ascending-asset-only-policy", () => {
     assert.ok(money.includes("fn require_full_delivery"));
     assert.ok(money.includes("fn spl_token_account_amount"));
 
-    const dual = rg(
+    const dual = searchPaths(
       String.raw`fn require_full_delivery|SPL_TOKEN_ACCOUNT_AMOUNT_OFFSET\s*=`,
       [PROGRAMS],
     );
@@ -90,7 +81,7 @@ describe("svm-ascending-asset-only-policy", () => {
       dirty,
       `use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;\nfn f() { let _ = PriceUpdateV2; }\n`,
     );
-    const hit = rg(ORACLE_BAN, [dirty]);
+    const hit = searchPaths(ORACLE_BAN, [dirty]);
     assert.ok(hit.trim().length > 0, "scanner must catch constructed pyth import");
     fs.rmSync(dir, { recursive: true, force: true });
   });
