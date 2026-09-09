@@ -555,8 +555,20 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "deploy-ponder-svm-ingest-ci",
     owner:
       ".github/workflows/ci.yml · .github/workflows/deploy-ponder.yml · .github/workflows/deploy-svm-ingest.yml · lib/architecture/ci-verify-partition.ts",
-    rule: "Trunk CI (ci.yml) runs compile/typecheck/lint/test:ci/build; deploy workflows needs: gates via workflow_call; test:ci = test:verify ∖ DEPLOY_MACHINE_VERIFY_SUITES (sole partition owner); Ponder never lists svm-ingest paths; svm-ingest never builds ponder",
+    rule: "Trunk CI (ci.yml) runs compile/typecheck/lint/test:ci/build; deploy workflows needs: gates via workflow_call; test:ci = test:verify ∖ DEPLOY_MACHINE_VERIFY_SUITES (sole partition owner); Ponder never lists svm-ingest paths; svm-ingest never builds ponder; ponder deploy probes /ready and skips recreate on unchanged executable fingerprint",
     guardTests: ["deploy-ponder-svm-ingest-ci-policy.test.ts"],
+  },
+  {
+    id: "ponder-deploy-identity",
+    owner:
+      "scripts/lib/ponder-identity-fingerprint.ts · scripts/lib/ponder-executable-fingerprint.ts · scripts/lib/ponder-readiness-probe.ts",
+    rule: "Two fingerprints (identity = may need reindex; executable = must recreate) plus reserved /ready probe; neither equals Ponder build_id; scripts.test:* never recreates",
+    guardTests: [
+      "ponder-identity-fingerprint.test.ts",
+      "ponder-executable-fingerprint.test.ts",
+      "ponder-readiness-probe.test.ts",
+      "deploy-ponder-svm-ingest-ci-policy.test.ts",
+    ],
   },
   {
     id: "lib-scripts-boundary",

@@ -166,6 +166,27 @@ After backfill reaches chain head, **leave the same numeric start blocks**. Pond
 | Steady production (after sync) | **Same numeric values** — do not set `latest` |
 | Fresh deploy after schema wipe | Reset both to manifest `indexFromBlock` when running `ponder-reindex.sql` again |
 
+### Deploy fingerprints + readiness (CI — Problem A)
+
+Ponder’s own `build_id` is framework-internal (config contracts + schema file + indexing sources under `src/`, hashed by Ponder 0.16). This repo **never reproduces** that id. A `MigrationError` on start remains the named refusal when a new image disagrees with the live schema.
+
+What CI owns instead — two digests, neither equal to `build_id`:
+
+| Digest | Owner | Answers |
+|--------|-------|---------|
+| **Identity** | `scripts/lib/ponder-identity-fingerprint.ts` | Might a reindex be required? (chains, addresses, start blocks, `abis.generated.ts` digest, schema, EVM indexing sources — not RPC URLs) |
+| **Executable** | `scripts/lib/ponder-executable-fingerprint.ts` | Must we recreate the container? (import graph from process entries + Dockerfile/compose/lock + `package.json` runtime slice: `dependencies` / `packageManager` / patches / `ponder:start`) |
+
+Rules:
+
+1. **A green Deploy Ponder job is not proof of a live indexer** unless the readiness probe passed. The job polls reserved `GET http://127.0.0.1:42069/ready` after recreate; **any HTTP answer** (200 caught up **or** 503 backfill) counts as “process up.” No answer within 90s fails the job by name (`ponder_did_not_become_ready`). Custom `/health` is banned.
+2. **Executable digest alone gates recreate.** If it matches `/opt/kargain/.ponder-deploy-fingerprints`, the job prints that executable inputs are unchanged and **leaves the running service alone** (no build / no `up`).
+3. **Identity digest never suppresses recreate.** When it differs from the stored value, the job prints **before** rebuild that a reindex may be required. The founder still runs `ponder-reindex.sql` from this runbook — CI does not wipe.
+4. **`package.json` `scripts.test:*` edits do not change the executable digest** (runtime slice only). Path triggers may still fire the workflow; the fingerprint decides whether production restarts.
+5. **Image pollution residual:** `Dockerfile.ponder` still `COPY . .`, so Ponder’s glob can hash `src/svm-ingest/**` inside the image. Our identity digest **excludes** those paths and the two ingest writers. Do not remove them from the image in a casual Dockerfile edit — that would change live `build_id` and force a wipe. Treat image narrowing as a separate unit.
+
+First deploy after this unit lands: expect either skip-recreate (if the running image’s executable set already matches) or rebuild+probe **without** an identity “reindex may be required” warning unless bake inputs changed. The pending commits ahead of `origin/master` (test-suite membership + svm-ingest loop + CI gates) do **not** change schema / addresses / start blocks — **no reindex expected** for that push alone.
+
 ### Deploy new Ponder code (schema change)
 
 1. `docker compose stop ponder`
@@ -197,7 +218,7 @@ After backfill reaches chain head, **leave the same numeric start blocks**. Pond
 Examples that **do not** require reindex:
 
 - **`src/svm-ingest/**` / `lib/svm/**` / `Dockerfile.svm-ingest` only** — separate compose service; CI [`.github/workflows/deploy-svm-ingest.yml`](../../.github/workflows/deploy-svm-ingest.yml) runs `docker compose build svm-ingest && docker compose up -d --force-recreate svm-ingest` and **never** builds or restarts Ponder. Manual: same compose commands. [`.github/workflows/deploy-ponder.yml`](../../.github/workflows/deploy-ponder.yml) must **not** list those paths (omit by design). A needless Ponder rebuild can still exit with `MigrationError` if the baked image’s contract `build_id` (addresses / start blocks from `COMMERCIAL_ACTIVE`) no longer matches the DB — that is not an SVM-ingest signal to wipe.
-- **VPS deploys wait on trunk CI.** Both deploy workflows `needs: gates` ([`ci.yml`](../../.github/workflows/ci.yml): compile → typecheck → lint → `test:ci` → build). Full live-manifest match (`commercial-active-manifest-policy`) stays on the deploy machine via `pnpm test:verify`; CI runs the derived partition without that suite.
+- **VPS deploys wait on trunk CI.** Both deploy workflows `needs: gates` ([`ci.yml`](../../.github/workflows/ci.yml): compile → typecheck → lint → `test:ci` → build). Full live-manifest match (`commercial-active-manifest-policy`) stays on the deploy machine via `pnpm test:verify`; CI runs the derived partition without that suite. **Deploy Ponder** additionally fingerprints identity vs executable and probes reserved `/ready` after recreate — a green job that skipped recreate left the prior container running; a green job that recreated proved the process answered (200 or 503), not that backfill finished.
 - Phase 5 polish UI (PR5a–d): typed record labels, attestation form, browse chain-status sample (`getPassportStatus` via wagmi on the client)
 - Irys upload hardening (June 2026): client-side only — no Ponder schema change
 - Basescan verify (`pnpm verify:sepolia`, `--auction-only` after auction deploy) — ops-only, no indexer impact; HHE80009 bytecode mismatch exits 0 by default

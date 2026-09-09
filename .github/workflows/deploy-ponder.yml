@@ -6,6 +6,7 @@ on:
     # Do not use a bare `src/**` — that rebuilds Ponder on every svm-ingest push.
     # paths + paths-ignore cannot both be set on the same event; exclude by omission.
     # svm-ingest / Dockerfile.svm-ingest / lib/svm deploy via deploy-svm-ingest.yml only.
+    # Fingerprints (not this list) decide whether a rebuild recreates the container.
     paths:
       - "ponder.config.ts"
       - "ponder.schema.ts"
@@ -23,6 +24,12 @@ on:
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/deploy-ponder.yml"
+      - "scripts/lib/ponder-identity-fingerprint.ts"
+      - "scripts/lib/ponder-executable-fingerprint.ts"
+      - "scripts/lib/ponder-readiness-probe.ts"
+      - "scripts/ponder-deploy-fingerprints.ts"
+      - "scripts/ponder-ready-probe.ts"
+      - "scripts/lib/ponder-env.ts"
 
 jobs:
   gates:
@@ -32,18 +39,81 @@ jobs:
     needs: gates
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable pnpm via corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.6.5 --activate
+          pnpm --version
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Compute Ponder fingerprints
+        id: fingerprints
+        run: |
+          # identity= / executable= lines → GITHUB_OUTPUT (no env values)
+          node --import tsx scripts/ponder-deploy-fingerprints.ts >> "$GITHUB_OUTPUT"
+
       - name: Deploy Ponder to VPS
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          IDENTITY_DIGEST: ${{ steps.fingerprints.outputs.identity }}
+          EXECUTABLE_DIGEST: ${{ steps.fingerprints.outputs.executable }}
+          DEPLOY_SHA: ${{ github.sha }}
         with:
           host: ${{ secrets.VPS_SSH_HOST }}
           username: ${{ secrets.VPS_SSH_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_SSH_PORT }}
+          envs: IDENTITY_DIGEST,EXECUTABLE_DIGEST,DEPLOY_SHA
           script: |
+            set -euo pipefail
             cd /opt/kargain
-            git pull https://github.com/kargain-com/kargain.git master
+            git fetch https://github.com/kargain-com/kargain.git master
+            git checkout --force "$DEPLOY_SHA"
+
+            STATE_FILE=/opt/kargain/.ponder-deploy-fingerprints
+            STORED_EXEC=""
+            STORED_ID=""
+            if [ -f "$STATE_FILE" ]; then
+              STORED_EXEC=$(python3 -c "import json; print(json.load(open('$STATE_FILE')).get('executable',''))")
+              STORED_ID=$(python3 -c "import json; print(json.load(open('$STATE_FILE')).get('identity',''))")
+            fi
+
+            # Executable fingerprint alone decides recreate. Identity never suppresses it.
+            if [ -n "$STORED_EXEC" ] && [ "$STORED_EXEC" = "$EXECUTABLE_DIGEST" ]; then
+              echo "Ponder executable inputs unchanged — leaving running service alone"
+              echo "identity=$IDENTITY_DIGEST executable=$EXECUTABLE_DIGEST"
+              exit 0
+            fi
+
+            if [ -n "$STORED_ID" ] && [ "$STORED_ID" != "$IDENTITY_DIGEST" ]; then
+              echo "Ponder identity inputs changed — a reindex may be required before the indexer stops answering"
+              echo "If the new image's build_id disagrees with the live schema, Ponder exits with MigrationError; run ponder-reindex.sql (founder runbook) before restarting."
+              echo "prior_identity=$STORED_ID new_identity=$IDENTITY_DIGEST"
+            else
+              echo "Ponder identity fingerprint=$IDENTITY_DIGEST (no prior identity change detected)"
+            fi
+            echo "Ponder executable fingerprint changed — recreating container"
+            echo "prior_executable=${STORED_EXEC:-none} new_executable=$EXECUTABLE_DIGEST"
+
             docker compose build ponder
             docker compose up -d ponder
+
+            # Probe via the image's node (host may lack tsx). --network host → published :42069.
+            IMAGE_ID=$(docker compose images -q ponder)
+            docker run --rm --network host --entrypoint node "$IMAGE_ID" \
+              --import tsx /app/scripts/ponder-ready-probe.ts
+
+            python3 -c "import json,os; p='$STATE_FILE'; json.dump({'identity':os.environ['IDENTITY_DIGEST'],'executable':os.environ['EXECUTABLE_DIGEST']}, open(p,'w')); print('wrote', p)"
             docker image prune -f
             docker builder prune -f --filter until=72h
             docker compose ps

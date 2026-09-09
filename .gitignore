@@ -37,6 +37,7 @@ ignition/deployments/
 # ponder
 .ponder/
 ponder/.ponder
+.ponder-deploy-fingerprints
 
 # vincent commons derivation output (pnpm vincent:derive)
 .vincent-commons/

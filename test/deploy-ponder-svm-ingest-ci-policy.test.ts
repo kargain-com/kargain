@@ -30,6 +30,28 @@ function pathsBlock(yaml: string): string {
   return m[1]!;
 }
 
+/** Deploy path must poll reserved /ready via the readiness-probe owner. */
+export function ponderDeployLacksReadinessProbe(yaml: string): string | null {
+  if (!/ponder-ready-probe/.test(yaml)) {
+    return "deploy path lacks ponder-ready-probe readiness verification";
+  }
+  if (!/\/ready/.test(yaml) && !/ponder-ready-probe/.test(yaml)) {
+    return "deploy path lacks /ready readiness verification";
+  }
+  return null;
+}
+
+/** Deploy path must skip recreate when the executable fingerprint is unchanged. */
+export function ponderDeployLacksExecutableSkip(yaml: string): string | null {
+  if (!/executable inputs unchanged/.test(yaml)) {
+    return "deploy path lacks executable-fingerprint skip-recreate branch";
+  }
+  if (!/EXECUTABLE_DIGEST/.test(yaml)) {
+    return "deploy path lacks EXECUTABLE_DIGEST comparison";
+  }
+  return null;
+}
+
 describe("deploy-ponder-svm-ingest-ci-policy", () => {
   it("ponder workflow omits svm-ingest paths and Dockerfile.svm-ingest", () => {
     const yaml = readFileSync(PONDER_WF, "utf8");
@@ -40,6 +62,46 @@ describe("deploy-ponder-svm-ingest-ci-policy", () => {
     assert.match(yaml, /docker compose build ponder/);
     assert.match(yaml, /docker compose up -d ponder/);
     assert.doesNotMatch(yaml, /build svm-ingest/);
+  });
+
+  it("ponder deploy verifies readiness and skips recreate on unchanged executable", () => {
+    const yaml = readFileSync(PONDER_WF, "utf8");
+    assert.equal(ponderDeployLacksReadinessProbe(yaml), null);
+    assert.equal(ponderDeployLacksExecutableSkip(yaml), null);
+    assert.match(yaml, /ponder-deploy-fingerprints/);
+    assert.match(yaml, /IDENTITY_DIGEST/);
+    assert.match(
+      yaml,
+      /Ponder executable inputs unchanged — leaving running service alone/,
+    );
+    assert.match(yaml, /a reindex may be required/);
+    assert.doesNotMatch(yaml, /continue-on-error/);
+  });
+
+  it("constructed: deploy YAML without readiness probe is red", () => {
+    const planted = `
+deploy:
+  steps:
+    - run: docker compose build ponder
+    - run: docker compose up -d ponder
+`;
+    assert.equal(
+      ponderDeployLacksReadinessProbe(planted),
+      "deploy path lacks ponder-ready-probe readiness verification",
+    );
+  });
+
+  it("constructed: deploy YAML without executable skip is red", () => {
+    const planted = `
+deploy:
+  steps:
+    - run: node --import tsx scripts/ponder-ready-probe.ts
+    - run: docker compose up -d ponder
+`;
+    assert.equal(
+      ponderDeployLacksExecutableSkip(planted),
+      "deploy path lacks executable-fingerprint skip-recreate branch",
+    );
   });
 
   it("svm-ingest workflow exists and never builds or restarts ponder", () => {
