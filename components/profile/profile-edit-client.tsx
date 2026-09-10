@@ -43,6 +43,10 @@ import { publishNostrProfile } from "@/lib/nostr/profile";
 import { LightningAddressField, isLightningAddressInvalid } from "@/components/profile/lightning-address-field";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
+import {
+  nativeUnitOf,
+  commercialActive,
+} from "@/lib/web3/commercial-active";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 const ABOUT_MAX = 280;
@@ -463,10 +467,22 @@ export function ProfileEditClient() {
                 href={karProSectionHref("fee")}
                 linkText="Edit →"
               >
-                <VerificationFeeDisplay
-                  feeWei={verifierProfile?.verificationFee ?? 0n}
-                  primaryClassName="font-mono text-sm text-text-primary tabular-nums"
-                />
+                {(() => {
+                  const stack =
+                    chainId != null ? commercialActive(chainId) : undefined;
+                  if (stack == null) {
+                    return (
+                      <p className="font-mono text-sm text-text-secondary">—</p>
+                    );
+                  }
+                  return (
+                    <VerificationFeeDisplay
+                      feeWei={verifierProfile?.verificationFee ?? 0n}
+                      nativeUnit={nativeUnitOf(stack)}
+                      primaryClassName="font-mono text-sm text-text-primary tabular-nums"
+                    />
+                  );
+                })()}
               </KarProReadoutRow>
               <KarProReadoutRow
                 label="Payments"

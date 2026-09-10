@@ -22,11 +22,17 @@ import {
   SVM_MESSAGING_UNAVAILABLE,
 } from "@/lib/messaging/snapshot-ui";
 import { evmSessionRefusalCopy } from "@/hooks/use-active-account";
+import {
+  nativeUnitOf,
+  requireCommercialActive,
+} from "@/lib/web3/commercial-active";
 
 type Props = {
   verifierAddress: `0x${string}`;
   verifierName: string;
   verificationFee?: bigint;
+  /** Membership network for fee formatting — never a hub invent. */
+  chainId: number;
 };
 
 type PassportRow = {
@@ -78,6 +84,7 @@ export function VerificationRequestButton({
   verifierAddress,
   verifierName,
   verificationFee,
+  chainId,
 }: Props) {
   const { account, signingBinding } = useActiveAccount();
   const evm = requireEvmSession(account);
@@ -206,6 +213,7 @@ export function VerificationRequestButton({
       {verificationFee != null && verificationFee > 0n && (
         <VerificationFeeDisplay
           feeWei={verificationFee}
+          nativeUnit={nativeUnitOf(requireCommercialActive(chainId))}
           primaryClassName="font-mono text-xs text-text-secondary tabular-nums"
         />
       )}

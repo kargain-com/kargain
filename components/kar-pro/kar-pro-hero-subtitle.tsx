@@ -8,7 +8,6 @@ import { formatStakeNative } from "@/lib/kar-pro/stake-format";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import {
-  COMMERCIAL_ACTIVE,
   commercialActive,
   nativeUnitOf,
 } from "@/lib/web3/commercial-active";
@@ -32,11 +31,10 @@ export function KarProHeroSubtitle() {
   });
 
   const stack = chainId != null ? commercialActive(chainId) : undefined;
-  const unit = stack
-    ? nativeUnitOf(stack)
-    : nativeUnitOf(COMMERCIAL_ACTIVE[84532]!);
-  const stakeLabel = formatStakeNative(minStake, unit);
-  const showPending = chainId == null || minStakePending;
+  const unit = stack ? nativeUnitOf(stack) : null;
+  const stakeLabel =
+    unit != null ? `${formatStakeNative(minStake, unit)} ${unit.symbol}` : null;
+  const showPending = chainId == null || unit == null || minStakePending;
 
   return (
     <p className="font-sans text-fluid-body-lg font-normal leading-[1.55] text-text-secondary mt-4">
@@ -47,7 +45,7 @@ export function KarProHeroSubtitle() {
           aria-hidden
         />
       ) : (
-        `${stakeLabel} ETH`
+        stakeLabel
       )}
       , build your reputation, help buyers trust sellers.
     </p>

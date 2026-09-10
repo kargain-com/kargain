@@ -58,7 +58,7 @@ export function AppTopNav({ identityBadges = false }: AppTopNavProps) {
   const urlChain = sp.get("chain");
   const parsed = urlChain ? Number.parseInt(urlChain, 10) : NaN;
   /** Only when URL sets `?chain=` — do not fall back to hub for wrong-network. */
-  const expectedChainId = Number.isFinite(parsed) ? parsed : undefined;
+  const expectedNamespace = Number.isFinite(parsed) ? parsed : undefined;
   const auctionsChainId = resolveAuctionsNavChainId({
     walletChainId,
     isConnected,
@@ -169,7 +169,7 @@ export function AppTopNav({ identityBadges = false }: AppTopNavProps) {
           )}
           <ChainSelector
             syncSearchParam={isMarketplaceBrowse}
-            expectedChainId={expectedChainId}
+            expectedNamespace={expectedNamespace}
             className="hidden md:flex"
           />
           <WalletLoginButton />

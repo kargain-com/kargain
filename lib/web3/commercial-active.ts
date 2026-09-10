@@ -296,7 +296,6 @@ export function commercialEip155Ids(
 
 /**
  * Sorted reserved-band namespace ids for registered SVM commercial stacks.
- * Empty until S9-B inserts a `vm: "svm"` row.
  */
 export function commercialSvmNamespaceIds(
   registry: CommercialRegistry = COMMERCIAL_ACTIVE,

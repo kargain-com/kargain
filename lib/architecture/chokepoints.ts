@@ -317,6 +317,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "irys-solana-adapter-policy.test.ts",
       "svm-wallet-adapter-policy.test.ts",
       "native-amount-policy.test.ts",
+      "commercial-active-hub-literal-policy.test.ts",
     ],
   },
   {
@@ -353,6 +354,23 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     owner: "lib/web3/* network-class entry points",
     rule: "Product tree must not branch on commercial VM discriminant except allowlisted lib owners",
     guardTests: ["network-vm-component-policy.test.ts"],
+  },
+  {
+    id: "chain-selector-state",
+    owner: "lib/web3/chain-selector-state.ts",
+    rule: "Commercial-namespace selector derive + picker enumeration; symmetric wrong_vm; EVM-only switch targets; no hub invent",
+    guardTests: [
+      "chain-selector-state.test.ts",
+      "active-account.test.ts",
+      "s8-5-named-unavailability-policy.test.ts",
+      "commercial-active-hub-literal-policy.test.ts",
+    ],
+  },
+  {
+    id: "commercial-active-hub-literal",
+    owner: "lib/web3/commercial-active.ts (registry) · parent-injected nativeUnit",
+    rule: "app|components|hooks must not index COMMERCIAL_ACTIVE with a numeric literal (no hub invent)",
+    guardTests: ["commercial-active-hub-literal-policy.test.ts"],
   },
   {
     id: "bridge-route-resolver",

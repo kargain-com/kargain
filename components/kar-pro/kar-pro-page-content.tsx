@@ -10,7 +10,6 @@ import { formatStakeNative } from "@/lib/kar-pro/stake-format";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import {
-  COMMERCIAL_ACTIVE,
   commercialActive,
   nativeUnitOf,
 } from "@/lib/web3/commercial-active";
@@ -51,10 +50,9 @@ export function KarProPageContent() {
   });
 
   const stack = chainId != null ? commercialActive(chainId) : undefined;
-  const unit = stack
-    ? nativeUnitOf(stack)
-    : nativeUnitOf(COMMERCIAL_ACTIVE[84532]!);
-  const stakeLabel = formatStakeNative(minStake, unit);
+  const unit = stack ? nativeUnitOf(stack) : null;
+  const stakeLabel =
+    unit != null ? `${formatStakeNative(minStake, unit)} ${unit.symbol}` : null;
 
   const [prevIdentity, setPrevIdentity] = useState(`${address}:${evm.ok}:${chainId}`);
   const identity = `${address}:${evm.ok}:${chainId}`;
@@ -78,13 +76,13 @@ export function KarProPageContent() {
             >
               <p className="font-mono text-2xl md:text-4xl font-normal tabular-nums tracking-tight text-text-primary">
                 {"stakeStat" in prop ? (
-                  chainId == null || minStakePending ? (
+                  chainId == null || unit == null || minStakePending || stakeLabel == null ? (
                     <span
                       className="inline-block h-4 w-16 animate-pulse rounded-sm bg-bg-surface align-baseline"
                       aria-hidden
                     />
                   ) : (
-                    `${stakeLabel} ETH`
+                    stakeLabel
                   )
                 ) : (
                   prop.value

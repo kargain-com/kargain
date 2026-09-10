@@ -128,13 +128,26 @@ describe("active-account owners (S8-2-fix)", () => {
   });
 });
 
-describe("chain-selector wrong_vm (S8-2-fix)", () => {
-  it("SVM connected (no namespace) → wrong_vm with empty switch targets", () => {
+describe("chain-selector commercial namespace (pre-§7.2)", () => {
+  it("SVM + expected EVM → wrong_vm with empty switch targets", () => {
     assert.equal(
-      deriveChainSelectorState({ account: SVM, expectedChainId: 84532 }),
+      deriveChainSelectorState({ account: SVM, expectedNamespace: 84532 }),
       "wrong_vm",
     );
     assert.deepEqual(chainSelectorSwitchTargets(84532, "wrong_vm"), []);
+  });
+
+  it("SVM + expected SVM → ok", () => {
+    const ns = commercialNamespaceOf(SVM);
+    assert.equal(ns.ok, true);
+    if (!ns.ok) return;
+    assert.equal(
+      deriveChainSelectorState({
+        account: SVM,
+        expectedNamespace: Number(ns.namespace),
+      }),
+      "ok",
+    );
   });
 
   it("EVM wrong network stays wrong_network", () => {
@@ -144,7 +157,7 @@ describe("chain-selector wrong_vm (S8-2-fix)", () => {
       namespace: mintKargainNamespace(11155111),
     };
     assert.equal(
-      deriveChainSelectorState({ account: eth, expectedChainId: 84532 }),
+      deriveChainSelectorState({ account: eth, expectedNamespace: 84532 }),
       "wrong_network",
     );
   });
@@ -153,7 +166,7 @@ describe("chain-selector wrong_vm (S8-2-fix)", () => {
     assert.equal(
       deriveChainSelectorState({
         account: { status: "disconnected" },
-        expectedChainId: 84532,
+        expectedNamespace: 84532,
       }),
       "ok",
     );

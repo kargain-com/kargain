@@ -12,26 +12,24 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  commercialNamespaceOf,
   evmSwitchChainAvailability,
-  requireEvmSession,
   useActiveAccount,
 } from "@/hooks/use-active-account";
 import {
+  chainSelectorMaySwitchChain,
   chainSelectorStateCopy,
   chainSelectorSwitchTargets,
+  commercialNetworkLabel,
+  commercialPickerEntries,
   deriveChainSelectorState,
 } from "@/lib/web3/chain-selector-state";
-import {
-  getViemChain,
-  kargainChains,
-  shortChainName,
-} from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
 type Props = {
   syncSearchParam?: boolean;
-  /** Set only when URL/page requires a specific chain — never hub DEFAULT fallback. */
-  expectedChainId?: number;
+  /** Set only when URL/page requires a specific namespace — never hub DEFAULT fallback. */
+  expectedNamespace?: number;
   className?: string;
 };
 
@@ -44,20 +42,25 @@ function ChainStatusDot({ wrong }: { wrong?: boolean }) {
 
 /**
  * Chain selector driven by {@link deriveChainSelectorState}.
- * Disconnected → hidden. SVM → visible `wrong_vm` (§4.7 copy; empty switch targets).
+ * Disconnected → hidden. Picker lists every commercial network; EVM switch
+ * only when {@link chainSelectorMaySwitchChain} allows.
  */
-export function ChainSelector({ syncSearchParam, expectedChainId, className }: Props) {
+export function ChainSelector({
+  syncSearchParam,
+  expectedNamespace,
+  className,
+}: Props) {
   const router = useRouter();
   const path = usePathname();
   const sp = useSearchParams();
   const { account, switchChain, isConnectPending: isPending } = useActiveAccount();
-  const evm = requireEvmSession(account);
   const switchAvail = evmSwitchChainAvailability(account);
-  const walletChainId = evm.ok ? evm.chainId : undefined;
+  const sessionNs = commercialNamespaceOf(account);
+  const sessionNamespace = sessionNs.ok ? Number(sessionNs.namespace) : undefined;
 
   const selectorState = deriveChainSelectorState({
     account,
-    expectedChainId,
+    expectedNamespace,
   });
 
   const urlChain = useMemo(() => {
@@ -66,26 +69,35 @@ export function ChainSelector({ syncSearchParam, expectedChainId, className }: P
     return Number.isFinite(n) ? n : null;
   }, [sp]);
 
-  const displayChainId =
-    syncSearchParam ? (urlChain ?? walletChainId ?? 0) : (walletChainId ?? 0);
+  const displayNamespace =
+    syncSearchParam
+      ? (urlChain ?? sessionNamespace ?? 0)
+      : (sessionNamespace ?? 0);
   const wrong = selectorState !== "ok";
-  const activeChain = getViemChain(displayChainId);
-  const stateCopy = chainSelectorStateCopy(selectorState);
+  const stateCopy = chainSelectorStateCopy(selectorState, expectedNamespace);
   const chainName =
-    stateCopy ?? activeChain?.name ?? `Chain ${displayChainId}`;
-  const switchTargets = chainSelectorSwitchTargets(expectedChainId, selectorState);
+    stateCopy ??
+    (displayNamespace !== 0
+      ? commercialNetworkLabel(displayNamespace)
+      : "Unknown network");
+  const switchTargets = chainSelectorSwitchTargets(
+    expectedNamespace,
+    selectorState,
+  );
+  const pickerEntries = commercialPickerEntries();
 
   const onSwitchTo = useCallback(
     (id: number) => {
+      if (!chainSelectorMaySwitchChain(account, id)) return;
       if (!switchAvail.available) return;
       void switchChain(id).catch(() => {
         /* user rejected */
       });
     },
-    [switchAvail, switchChain],
+    [account, switchAvail, switchChain],
   );
 
-  const onSelectChain = useCallback(
+  const onSelectNamespace = useCallback(
     async (id: number) => {
       if (syncSearchParam) {
         const next = new URLSearchParams(sp.toString());
@@ -93,9 +105,10 @@ export function ChainSelector({ syncSearchParam, expectedChainId, className }: P
         router.push(`${path}?${next.toString()}`);
       }
       if (
+        chainSelectorMaySwitchChain(account, id) &&
         switchAvail.available &&
-        walletChainId != null &&
-        id !== walletChainId
+        sessionNamespace != null &&
+        id !== sessionNamespace
       ) {
         try {
           await switchChain(id);
@@ -104,10 +117,19 @@ export function ChainSelector({ syncSearchParam, expectedChainId, className }: P
         }
       }
     },
-    [path, router, sp, switchAvail, switchChain, syncSearchParam, walletChainId],
+    [
+      account,
+      path,
+      router,
+      sessionNamespace,
+      sp,
+      switchAvail,
+      switchChain,
+      syncSearchParam,
+    ],
   );
 
-  // No session → no chrome. Connected (incl. SVM wrong_vm) always surfaces state.
+  // No session → no chrome. Connected (incl. wrong_vm) always surfaces state.
   if (account.status !== "connected") return null;
 
   const triggerClass = cn(
@@ -122,16 +144,20 @@ export function ChainSelector({ syncSearchParam, expectedChainId, className }: P
     <>
       <ChainStatusDot wrong={wrong} />
       <span className="max-w-[14rem] truncate">{chainName}</span>
-      {switchTargets.length > 0 ? (
+      {wrong ? (
+        switchTargets.length > 0 ? (
+          <ChevronDownIcon size={14} className="shrink-0 text-text-secondary" aria-hidden />
+        ) : null
+      ) : (
         <ChevronDownIcon size={14} className="shrink-0 text-text-secondary" aria-hidden />
-      ) : null}
+      )}
     </>
   );
 
   if (wrong) {
     const ariaTarget =
-      expectedChainId != null
-        ? shortChainName(expectedChainId)
+      expectedNamespace != null
+        ? commercialNetworkLabel(expectedNamespace)
         : "a Kargain network";
     const ariaLabel =
       selectorState === "wrong_vm"
@@ -158,7 +184,7 @@ export function ChainSelector({ syncSearchParam, expectedChainId, className }: P
                 className="font-mono text-xs"
                 onSelect={() => onSwitchTo(id)}
               >
-                Switch to {shortChainName(id)}
+                Switch to {commercialNetworkLabel(id)}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
@@ -181,35 +207,43 @@ export function ChainSelector({ syncSearchParam, expectedChainId, className }: P
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[180px] p-1">
-        {kargainChains.map((c) => {
-          const isActive = c.id === displayChainId;
+        {pickerEntries.map((entry) => {
+          const isActive = entry.namespace === displayNamespace;
           if (isActive) {
             return (
               <div
-                key={c.id}
+                key={entry.namespace}
                 className="flex cursor-default items-center gap-2.5 rounded-sm px-3 py-2"
               >
                 <ChainStatusDot />
-                <span className="font-mono text-xs text-text-primary">{c.name}</span>
-                <span className="ml-auto font-mono text-[10px] text-accent-warm">Active</span>
+                <span className="font-mono text-xs text-text-primary">
+                  {entry.label}
+                </span>
+                <span className="ml-auto font-mono text-[10px] text-accent-warm">
+                  Active
+                </span>
               </div>
             );
           }
           return (
             <DropdownMenuItem
-              key={c.id}
+              key={entry.namespace}
               className="font-mono text-xs"
-              onSelect={() => void onSelectChain(c.id)}
+              onSelect={() => void onSelectNamespace(entry.namespace)}
             >
               <ChainStatusDot />
-              <span className="text-text-secondary">{c.name}</span>
+              <span className="text-text-secondary">{entry.label}</span>
             </DropdownMenuItem>
           );
         })}
-        <DropdownMenuSeparator />
-        <div className="cursor-default px-3 py-2 font-mono text-xs italic text-text-secondary">
-          More networks coming
-        </div>
+        {pickerEntries.length === 0 ? (
+          <>
+            <DropdownMenuSeparator />
+            <div className="cursor-default px-3 py-2 font-mono text-xs italic text-text-secondary">
+              No commercial networks
+            </div>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

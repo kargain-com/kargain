@@ -18,7 +18,10 @@ import { deriveSetupChecklist } from "@/lib/kar-pro/setup-checklist";
 import { proPassTokenIdFromAddress } from "@/lib/kar-pro/pro-pass-token-id";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
-import { requireCommercialActive } from "@/lib/web3/commercial-active";
+import {
+  nativeUnitOf,
+  requireCommercialActive,
+} from "@/lib/web3/commercial-active";
 import { explorerAddressUrl } from "@/lib/web3/network-explorer";
 
 type KarProOverviewSectionProps = {
@@ -138,7 +141,10 @@ export function KarProOverviewSection({
       <div className="space-y-1 border-t border-border-default pt-4">
         <p className="font-sans text-xs text-text-tertiary">Verification fee</p>
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <VerificationFeeDisplay feeWei={feeWei} />
+          <VerificationFeeDisplay
+            feeWei={feeWei}
+            nativeUnit={nativeUnitOf(requireCommercialActive(chainId))}
+          />
           <button
             type="button"
             onClick={goToFee}

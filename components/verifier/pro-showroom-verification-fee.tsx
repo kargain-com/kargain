@@ -9,6 +9,10 @@ import {
 import { VerificationPayButton } from "@/components/verifier/verification-payment-modal";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
+import {
+  nativeUnitOf,
+  requireCommercialActive,
+} from "@/lib/web3/commercial-active";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 
@@ -46,6 +50,7 @@ export function ProShowroomVerificationFee({
       <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <VerificationFeeDisplay
           feeWei={effectiveFeeWei}
+          nativeUnit={nativeUnitOf(requireCommercialActive(chainId))}
           prefix="Verification fee "
           primaryClassName="font-mono text-sm text-text-secondary tabular-nums"
         />

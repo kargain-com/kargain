@@ -26,6 +26,10 @@ import {
   type VerifierDirectorySortKey,
 } from "@/lib/verifier/filter-verifiers";
 import { commercialChainIds } from "@/lib/web3/chain-context";
+import {
+  nativeUnitOf,
+  requireCommercialActive,
+} from "@/lib/web3/commercial-active";
 import { shortChainName } from "@/lib/web3/supported-chains";
 import { parseWeiString } from "@/lib/web3/parse-wei-string";
 import { navShortAddress } from "@/lib/web3/wallet-display";
@@ -151,6 +155,7 @@ function VerifierCard({ verifier, profile, onSelectAgent, layout = "grid" }: Ver
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <VerificationFeeDisplay
             feeWei={feeWei}
+            nativeUnit={nativeUnitOf(requireCommercialActive(verifier.chainId))}
             primaryClassName="font-mono text-xs text-text-secondary tabular-nums"
           />
           <VerificationPaymentChips profile={profile} />
@@ -182,11 +187,13 @@ function VerifierCard({ verifier, profile, onSelectAgent, layout = "grid" }: Ver
               verifierAddress={verifier.address}
               verifierName={name}
               verificationFee={feeWei}
+              chainId={verifier.chainId}
             />
             <VerificationPayButton
               verifierAddress={verifier.address}
               verifierName={name}
               feeWei={feeWei}
+              membershipChainId={verifier.chainId}
             />
           </>
         )}

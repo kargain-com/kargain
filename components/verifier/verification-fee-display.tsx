@@ -12,16 +12,13 @@ import {
   formatVerificationFee,
   verificationFeeToUsd1e8,
 } from "@/lib/verifier/verification-fee";
-import {
-  COMMERCIAL_ACTIVE,
-  nativeUnitOf,
-} from "@/lib/web3/commercial-active";
+import type { CommercialNativeUnit } from "@/lib/web3/commercial-native-unit";
 import { cn } from "@/lib/utils";
-
-const hubNativeUnit = nativeUnitOf(COMMERCIAL_ACTIVE[84532]!);
 
 type VerificationFeeDisplayProps = {
   feeWei: bigint;
+  /** Native unit of the membership / fee network — never a hub invent. */
+  nativeUnit: CommercialNativeUnit;
   primaryClassName?: string;
   prefix?: ReactNode;
   className?: string;
@@ -64,6 +61,7 @@ export function VerificationPaymentChips({
 
 export function VerificationFeeDisplay({
   feeWei,
+  nativeUnit,
   primaryClassName = DEFAULT_PRIMARY,
   prefix,
   className,
@@ -77,20 +75,20 @@ export function VerificationFeeDisplay({
     if (!needsConversion) return null;
     if (ethUsd == null || ethUsd <= 0n) return null;
 
-    const usd1e8 = verificationFeeToUsd1e8(feeWei, ethUsd, hubNativeUnit);
+    const usd1e8 = verificationFeeToUsd1e8(feeWei, ethUsd, nativeUnit);
     if (usd1e8 <= 0n) return null;
 
     const converted = convertPrice(usd1e8, 0);
     if (converted === "—") return null;
 
     return converted;
-  }, [needsConversion, feeWei, ethUsd, convertPrice]);
+  }, [needsConversion, feeWei, ethUsd, convertPrice, nativeUnit]);
 
   return (
     <span className={cn("inline-flex flex-col gap-0.5", className)}>
       <span className={primaryClassName}>
         {prefix}
-        {formatVerificationFee(feeWei, hubNativeUnit)}
+        {formatVerificationFee(feeWei, nativeUnit)}
       </span>
       {secondaryLine != null && (
         <span className="font-mono text-xs text-text-tertiary tabular-nums">

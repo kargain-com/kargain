@@ -9,7 +9,6 @@ import {
   type OpenableTerms,
 } from "@/lib/commerce/openable-terms";
 import {
-  COMMERCIAL_ACTIVE,
   commercialActive,
   nativeUnitOf,
 } from "@/lib/web3/commercial-active";
@@ -20,8 +19,9 @@ export const openableTermsQueryKey = (
   mode: CommerceMode,
 ) => indexerQueryKey("commerce-open-options", chainId, mode);
 
-function nativePairing(chainId: number) {
-  const stack = commercialActive(chainId) ?? COMMERCIAL_ACTIVE[84532]!;
+function nativePairing(chainId: number): { label: string; decimals: number } | null {
+  const stack = commercialActive(chainId);
+  if (stack == null) return null;
   const u = nativeUnitOf(stack);
   return { label: u.symbol, decimals: u.decimals };
 }
@@ -31,7 +31,8 @@ const EMPTY_UNAVAILABLE = (mode: CommerceMode): OpenableTerms =>
     mode,
     modeAvailable: false,
     configResolved: true,
-    native: nativePairing(84532),
+    // Placeholder only — mode unavailable so pairings are never offered.
+    native: { label: "—", decimals: 0 },
     paymentTokens: [],
     currencyFeeds: [],
   });
@@ -45,26 +46,27 @@ export function useOpenableTerms(
   mode: CommerceMode,
 ) {
   const enabled = chainId != null && Number.isFinite(chainId);
+  const pairing = enabled ? nativePairing(chainId!) : null;
   const query = useQuery({
     queryKey: openableTermsQueryKey(chainId ?? 0, mode),
     queryFn: () => getOpenableTerms(chainId!, mode),
-    enabled,
+    enabled: enabled && pairing != null,
     staleTime: 30_000,
   });
 
   const options =
     query.data?.options ??
-    (enabled
+    (enabled && pairing != null
       ? deriveOpenableTerms({
           mode,
           modeAvailable: true,
           configResolved: false,
-          native: nativePairing(chainId!),
+          native: pairing,
           paymentTokens: [],
           currencyFeeds: [],
         })
       : EMPTY_UNAVAILABLE(mode));
-  const pending = enabled && query.isPending;
+  const pending = enabled && pairing != null && query.isPending;
 
   return {
     options,

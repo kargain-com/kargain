@@ -19,6 +19,7 @@ import {
   chainSelectorStateCopy,
   chainSelectorSwitchTargets,
 } from "../lib/web3/chain-selector-state.ts";
+import { commercialSvmNamespaceIds } from "../lib/web3/commercial-active.ts";
 import { txWriteRefusalMessage } from "../lib/web3/tx-write-availability.ts";
 import { SVM_MESSAGING_UNAVAILABLE } from "../lib/messaging/snapshot-ui.ts";
 import { FIAT_TOKEN_FEED_REQUIRED_REASON } from "../lib/commerce/openable-terms.ts";
@@ -106,7 +107,10 @@ describe("S8-5 named unavailability owners", () => {
     assert.equal(wrongVmActionCopy("svm"), SPEC_WRONG_VM_SVM);
     assert.equal(evmSessionRefusalCopy("wrong_vm"), SPEC_WRONG_VM_EVM);
     assert.equal(txWriteRefusalMessage("wrong_vm"), SPEC_WRONG_VM_EVM);
-    assert.equal(chainSelectorStateCopy("wrong_vm"), SPEC_WRONG_VM_EVM);
+    assert.equal(chainSelectorStateCopy("wrong_vm", 84532), SPEC_WRONG_VM_EVM);
+    const svmNs = commercialSvmNamespaceIds()[0];
+    assert.ok(svmNs != null);
+    assert.equal(chainSelectorStateCopy("wrong_vm", svmNs), SPEC_WRONG_VM_SVM);
   });
 
   it("disconnectedTitle never overrides wrong_vm (verification-modal class)", () => {

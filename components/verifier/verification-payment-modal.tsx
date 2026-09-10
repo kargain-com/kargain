@@ -41,7 +41,6 @@ import { acceptedPaymentMethods } from "@/lib/verifier/payment-methods";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import {
-  COMMERCIAL_ACTIVE,
   commercialActive,
   nativeUnitOf,
 } from "@/lib/web3/commercial-active";
@@ -159,9 +158,7 @@ export function VerificationPaymentModal({
   const isPending = isEthPending || isWritePending || txPhase !== "idle";
 
   const feeStack = chainId != null ? commercialActive(chainId) : undefined;
-  const feeNativeUnit = feeStack
-    ? nativeUnitOf(feeStack)
-    : nativeUnitOf(COMMERCIAL_ACTIVE[84532]!);
+  const feeNativeUnit = feeStack ? nativeUnitOf(feeStack) : null;
 
   const { data: chainFeeWei } = useReadContract({
     address: staking,
@@ -216,7 +213,7 @@ export function VerificationPaymentModal({
   const hasTokenId = tokenId.length > 0;
 
   const usdcAmount =
-    ethUsd != null && ethUsd > 0n
+    feeNativeUnit != null && ethUsd != null && ethUsd > 0n
       ? verificationFeeInUsdc(effectiveFeeWei, ethUsd, feeNativeUnit)
       : 0n;
   const usdcOptionDisabled =
@@ -684,7 +681,9 @@ export function VerificationPaymentModal({
                         <div className="flex items-baseline justify-between gap-3">
                           <span className="font-sans text-xs text-text-tertiary">You pay</span>
                           <span className="font-mono text-xs text-text-secondary">
-                            {formatVerificationFee(effectiveFeeWei, feeNativeUnit)}
+                            {feeNativeUnit != null
+                              ? formatVerificationFee(effectiveFeeWei, feeNativeUnit)
+                              : "—"}
                           </span>
                         </div>
                         <p className="font-sans text-xs text-text-secondary">
@@ -732,7 +731,9 @@ export function VerificationPaymentModal({
                           </span>
                         </div>
                         <p className="font-mono text-xs text-text-secondary">
-                          {formatVerificationFee(effectiveFeeWei, feeNativeUnit)}
+                          {feeNativeUnit != null
+                            ? formatVerificationFee(effectiveFeeWei, feeNativeUnit)
+                            : "—"}
                         </p>
                         {hasTokenId && (
                           <p className="font-sans text-xs text-text-secondary">

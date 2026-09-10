@@ -6,6 +6,10 @@ import {
 import { categoryLabel, instrumentReadoutPanel, monoLinkSm } from "@/lib/design/instrument-classes";
 import type { KarProActiveMembershipFact } from "@/lib/kar-pro/membership-roster";
 import { proShowroomHref } from "@/lib/kar-pro/pro-showroom-href";
+import {
+  nativeUnitOf,
+  requireCommercialActive,
+} from "@/lib/web3/commercial-active";
 import { shortChainName } from "@/lib/web3/supported-chains";
 
 type ProfileKarProNetworksProps = {
@@ -53,6 +57,7 @@ export function ProfileKarProNetworks({ facts, isOwner }: ProfileKarProNetworksP
                       {" · "}
                       <VerificationFeeDisplay
                         feeWei={fact.verificationFee}
+                        nativeUnit={nativeUnitOf(requireCommercialActive(fact.chainId))}
                         prefix="Fee "
                         primaryClassName="font-mono text-xs text-text-secondary tabular-nums"
                       />
