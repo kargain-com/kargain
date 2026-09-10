@@ -42,6 +42,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["evm-write-adapter-policy.test.ts"],
   },
   {
+    id: "svm-write-census",
+    owner: "test/svm-write-census-policy.test.ts",
+    rule: "Sole enumerated set of product write-site files under app|components|hooks (excludes use-tx-sync); human action matrix is local research annex only and never imported by tests",
+    guardTests: ["svm-write-census-policy.test.ts"],
+  },
+  {
     id: "ponder-tagged-read",
     owner: "lib/web3/ponder-tagged-read.ts",
     rule: "Mutable Ponder projections read only through tagged use cache (T3)",
