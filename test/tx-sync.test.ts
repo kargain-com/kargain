@@ -320,12 +320,18 @@ async function legacyRunEvmWriteLifecycle({
 }: LegacyLifecycleOptions): Promise<LegacyEvmLifecycleSuccess> {
   const avail = txWriteAvailability(account, chainId);
   if (!avail.available) {
-    throw new Error(txWriteRefusalMessage(avail.cause));
+    throw new Error(txWriteRefusalMessage(avail));
   }
   onPhase?.("wallet");
   const targetChainId = resolveTargetChainId(chainId);
   if (avail.vm !== "evm") {
-    throw new Error(txWriteRefusalMessage("wrong_vm"));
+    throw new Error(
+      txWriteRefusalMessage({
+        available: false,
+        cause: "wrong_vm",
+        wanted: "evm",
+      }),
+    );
   }
   if (avail.walletChainId !== targetChainId) {
     const switchAvail = evmSwitchChainAvailability(account);

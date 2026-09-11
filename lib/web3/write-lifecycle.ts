@@ -80,7 +80,7 @@ export async function awaitWriteReceipt({
 }: AwaitWriteReceiptOptions) {
   const avail = txWriteAvailability(account, chainId, registry);
   if (!avail.available) {
-    throw new Error(txWriteRefusalMessage(avail.cause));
+    throw new Error(txWriteRefusalMessage(avail));
   }
   if (avail.vm !== "evm") {
     throw svmAwaitReceiptRefusal();
@@ -112,7 +112,7 @@ export async function runWriteLifecycle({
 }: RunWriteLifecycleOptions): Promise<WriteOutcome> {
   const avail = txWriteAvailability(account, chainId, registry);
   if (!avail.available) {
-    throw new Error(txWriteRefusalMessage(avail.cause));
+    throw new Error(txWriteRefusalMessage(avail));
   }
   if (avail.vm === "evm") {
     return runEvmWriteLifecycle({

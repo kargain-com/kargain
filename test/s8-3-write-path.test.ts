@@ -36,7 +36,10 @@ describe("txWriteAvailability", () => {
   it("refuses disconnected with named cause", () => {
     const r = txWriteAvailability({ status: "disconnected" }, 84532);
     assert.deepEqual(r, { available: false, cause: "disconnected" });
-    assert.match(txWriteRefusalMessage("disconnected"), /Connect/);
+    assert.match(
+      txWriteRefusalMessage({ available: false, cause: "disconnected" }),
+      /Connect/,
+    );
   });
 
   it("refuses SVM session for EVM commercial chainId with wrong_vm", () => {
@@ -44,7 +47,11 @@ describe("txWriteAvailability", () => {
       { status: "connected", vm: "svm", address: "So11111111111111111111111111111111111111112" },
       84532,
     );
-    assert.deepEqual(r, { available: false, cause: "wrong_vm" });
+    assert.deepEqual(r, {
+      available: false,
+      cause: "wrong_vm",
+      wanted: "evm",
+    });
   });
 
   it("allows EVM session on a live commercial chain", () => {

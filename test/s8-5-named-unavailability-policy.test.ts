@@ -20,7 +20,11 @@ import {
   chainSelectorSwitchTargets,
 } from "../lib/web3/chain-selector-state.ts";
 import { commercialSvmNamespaceIds } from "../lib/web3/commercial-active.ts";
-import { txWriteRefusalMessage } from "../lib/web3/tx-write-availability.ts";
+import { mintKargainNamespace } from "../lib/web3/kargain-namespace.ts";
+import {
+  txWriteAvailability,
+  txWriteRefusalMessage,
+} from "../lib/web3/tx-write-availability.ts";
 import { SVM_MESSAGING_UNAVAILABLE } from "../lib/messaging/snapshot-ui.ts";
 import { FIAT_TOKEN_FEED_REQUIRED_REASON } from "../lib/commerce/openable-terms.ts";
 import {
@@ -106,10 +110,31 @@ describe("S8-5 named unavailability owners", () => {
     assert.equal(wrongVmActionCopy("evm"), SPEC_WRONG_VM_EVM);
     assert.equal(wrongVmActionCopy("svm"), SPEC_WRONG_VM_SVM);
     assert.equal(evmSessionRefusalCopy("wrong_vm"), SPEC_WRONG_VM_EVM);
-    assert.equal(txWriteRefusalMessage("wrong_vm"), SPEC_WRONG_VM_EVM);
+    const svmSession = {
+      status: "connected" as const,
+      vm: "svm" as const,
+      address: "So11111111111111111111111111111111111111112",
+    };
+    const refuseEvmTarget = txWriteAvailability(svmSession, 84532);
+    assert.equal(refuseEvmTarget.available, false);
+    if (!refuseEvmTarget.available) {
+      assert.equal(txWriteRefusalMessage(refuseEvmTarget), SPEC_WRONG_VM_EVM);
+    }
     assert.equal(chainSelectorStateCopy("wrong_vm", 84532), SPEC_WRONG_VM_EVM);
     const svmNs = commercialSvmNamespaceIds()[0];
     assert.ok(svmNs != null);
+    const evmSession = {
+      status: "connected" as const,
+      vm: "evm" as const,
+      address: "0x0000000000000000000000000000000000000001" as `0x${string}`,
+      namespace: mintKargainNamespace(84532),
+      chainId: 84532,
+    };
+    const refuseSvmTarget = txWriteAvailability(evmSession, svmNs);
+    assert.equal(refuseSvmTarget.available, false);
+    if (!refuseSvmTarget.available) {
+      assert.equal(txWriteRefusalMessage(refuseSvmTarget), SPEC_WRONG_VM_SVM);
+    }
     assert.equal(chainSelectorStateCopy("wrong_vm", svmNs), SPEC_WRONG_VM_SVM);
   });
 
