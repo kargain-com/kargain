@@ -13,11 +13,6 @@ import {
   wrongVmActionCopy,
 } from "@/lib/web3/active-account";
 
-export type TxWriteCause =
-  | "disconnected"
-  | "wrong_vm"
-  | "unresolved_namespace";
-
 /** Unavailable write — `wrong_vm` always names the target stack's family. */
 export type TxWriteUnavailable =
   | { available: false; cause: "disconnected" }
