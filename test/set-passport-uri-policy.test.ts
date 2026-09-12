@@ -25,6 +25,9 @@ import {
   planSetPassportUri,
 } from "@/lib/passport/set-passport-uri";
 import {
+  preparePassportEditWrite,
+} from "@/lib/passport/prepare-passport-edit-write";
+import {
   commercialSvmNamespaceIds,
   requireSvmCommercialActive,
 } from "@/lib/web3/commercial-active";
@@ -33,6 +36,11 @@ import type { SvmSignAndSendPort } from "@/lib/web3/svm-write-adapter";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
+  txWriteAvailability,
+  txWriteRefusalTitle,
+} from "@/lib/web3/tx-write-availability";
+import { wrongVmActionCopy } from "@/lib/web3/active-account";
+import {
   vmBranchViolationInSource,
   VM_BRANCH_ALLOWLIST,
 } from "./network-vm-component-policy.test.ts";
@@ -40,10 +48,12 @@ import { scanProductSources } from "./policy-scan-helpers.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OWNER_REL = "lib/passport/set-passport-uri.ts";
+const PREP_REL = "lib/passport/prepare-passport-edit-write.ts";
 const WIZARD_REL = "components/passport/edit-passport-wizard.tsx";
 const FOREIGN_READER_REL = "lib/svm/foreign-programs.ts";
 const FOREIGN_MANIFEST_REL =
   "svm/crates/kargain-ix-wire/foreign-programs.manifest.json";
+const TX_WRITE_REFUSAL_REL = "components/shell/tx-write-refusal.tsx";
 
 const MOCK_BLOCKHASH = getBase58Decoder().decode(new Uint8Array(32).fill(7));
 
@@ -336,15 +346,18 @@ describe("setPassportUri ownership + panel surface", () => {
     assert.doesNotMatch(src, /useEvmWriteContract/);
     assert.match(src, /useSetPassportUri/);
     assert.match(src, /setPassportUri\(\{\s*chainId,\s*tokenId,\s*uri\s*\}\)/);
+    assert.match(src, /preparePassportEditWrite/);
+    assert.match(src, /TxWriteRefusal/);
+    assert.match(src, /txWriteAvailability/);
+    assert.doesNotMatch(src, /\bensureSiweSession\b/);
     assert.equal(vmBranchViolationInSource(src), false);
   });
 
   /**
-   * Known-incomplete: this panel still refuses SVM sessions before the set-URI
-   * owner runs. Holds that limitation by name so U6.1 (session chrome) must
-   * invert this pin in place — same file, same title, flipped assertion.
+   * U6.1 inverted in place: the panel no longer refuses SVM sessions before the
+   * set-URI owner. Same file, same case identity, flipped assertion vs U6.0-fix.
    */
-  it("edit wizard still gates on requireEvmSession — SVM session cannot reach setPassportUri (U6.1 inverts this pin in place)", () => {
+  it("edit wizard no longer gates on requireEvmSession — SVM session can reach setPassportUri (U6.1 inverted in place)", () => {
     function wizardGatesOnEvmSession(source: string): boolean {
       return (
         /\brequireEvmSession\s*\(\s*account\s*\)/.test(source) &&
@@ -355,22 +368,177 @@ describe("setPassportUri ownership + panel surface", () => {
     const live = wizardSource();
     assert.equal(
       wizardGatesOnEvmSession(live),
-      true,
-      "live wizard must still gate on requireEvmSession + EvmSessionRefusal",
+      false,
+      "live wizard must not gate on requireEvmSession + EvmSessionRefusal",
     );
+    assert.match(live, /txWriteAvailability\s*\(\s*account\s*,\s*chainId\s*\)/);
+    assert.match(live, /TxWriteRefusal/);
+    assert.doesNotMatch(live, /\brequireEvmSession\b/);
+    assert.doesNotMatch(live, /\bEvmSessionRefusal\b/);
 
-    // Planted change: remove requireEvmSession(account) and the !evm.ok refusal.
-    const planted = live
-      .replace(/\brequireEvmSession\s*\(\s*account\s*\)/g, "/* planted: no requireEvmSession */ null")
-      .replace(
-        /if\s*\(\s*!evm\.ok\s*\)\s*\{[\s\S]*?\bEvmSessionRefusal\b[\s\S]*?\n\s*\}\n/,
-        "/* planted: no EvmSessionRefusal gate */\n",
-      );
+    // Planted change: restore the old EVM-only gate — must turn the inverted pin red.
+    const planted = `${live}
+const evm = requireEvmSession(account);
+if (!evm.ok) {
+  return <EvmSessionRefusal cause={evm.cause} />;
+}
+`;
     assert.equal(
       wizardGatesOnEvmSession(planted),
-      false,
-      "planted gate removal must turn the limitation pin red",
+      true,
+      "planted requireEvmSession + EvmSessionRefusal must turn the inverted pin red",
     );
+  });
+
+  it("SVM session admitted by write availability reaches executeSetPassportUri via named prep", async () => {
+    const namespaces = commercialSvmNamespaceIds();
+    assert.ok(namespaces.length > 0, "live SVM commercial row required");
+    const ns = namespaces[0]!;
+    const owner = "So11111111111111111111111111111111111111112";
+    const account = {
+      status: "connected" as const,
+      vm: "svm" as const,
+      address: owner,
+    };
+
+    const avail = txWriteAvailability(account, ns);
+    assert.equal(avail.available, true);
+    if (!avail.available) throw new Error("expected available");
+    assert.equal(avail.vm, "svm");
+
+    const order: string[] = [];
+    const prep = await preparePassportEditWrite({
+      account,
+      targetChainId: ns,
+      switchChain: async () => {
+        order.push("switch");
+      },
+      signMessageAsync: async () => {
+        order.push("siwe");
+        return "0x" as `0x${string}`;
+      },
+      ensureSiweSession: async () => {
+        order.push("siwe");
+      },
+    });
+    assert.deepEqual(prep, { ok: true, prep: "svm_none_required" });
+    assert.deepEqual(order, [], "SVM prep must not switch or SIWE");
+
+    let wireSeen = false;
+    const port: SvmSignAndSendPort = {
+      async signAndSendTransaction() {
+        wireSeen = true;
+        return new Uint8Array(64).fill(9);
+      },
+    };
+    const sig = await executeSetPassportUri({
+      account,
+      chainId: ns,
+      tokenId: "1",
+      uri: "ar://u61-reach",
+      writeEvmContract: async () => {
+        throw new Error("evm arm must not run");
+      },
+      svmPort: port,
+      fetchBlockhash: async () =>
+        ({
+          ok: true as const,
+          value: {
+            blockhash: MOCK_BLOCKHASH,
+            lastValidBlockHeight: 1_000_000n,
+          },
+        }) as const,
+    });
+    assert.equal(typeof sig, "string");
+    assert.equal(sig.length > 0, true);
+    assert.equal(wireSeen, true);
+  });
+
+  it("EVM prep switches chain then SIWE before evm_prepared; planted omissions red", async () => {
+    const account = {
+      status: "connected" as const,
+      vm: "evm" as const,
+      address: "0x0000000000000000000000000000000000000001" as `0x${string}`,
+      namespace: mintKargainNamespace(84532),
+      chainId: 11155111,
+    };
+    const targetChainId = 84532;
+
+    async function runPrep(opts: {
+      switch?: boolean;
+      siwe?: boolean;
+    }): Promise<{ order: string[]; prep: Awaited<ReturnType<typeof preparePassportEditWrite>> }> {
+      const order: string[] = [];
+      const prep = await preparePassportEditWrite({
+        account,
+        targetChainId,
+        switchChain: async (id) => {
+          if (opts.switch === false) return;
+          order.push("switch");
+          assert.equal(id, wagmiChainId(targetChainId));
+        },
+        signMessageAsync: async () => "0xdead" as `0x${string}`,
+        ensureSiweSession: async () => {
+          if (opts.siwe === false) return;
+          order.push("siwe");
+        },
+      });
+      return { order, prep };
+    }
+
+    const live = await runPrep({});
+    assert.deepEqual(live.prep, { ok: true, prep: "evm_prepared" });
+    assert.deepEqual(live.order, ["switch", "siwe"]);
+
+    // Planted: omit chain switch when wallet chain differs → order pin red.
+    const noSwitch = await runPrep({ switch: false });
+    assert.throws(() => {
+      assert.deepEqual(noSwitch.order, ["switch", "siwe"]);
+    });
+
+    // Planted: omit SIWE → order pin red.
+    const noSiwe = await runPrep({ siwe: false });
+    assert.throws(() => {
+      assert.deepEqual(noSiwe.order, ["switch", "siwe"]);
+    });
+  });
+
+  it("txWriteRefusalTitle never lets disconnectedTitle override wrong_vm", () => {
+    const editDisconnected = "Connect wallet to edit this passport.";
+    const wrongVm: { available: false; cause: "wrong_vm"; wanted: "evm" } = {
+      available: false,
+      cause: "wrong_vm",
+      wanted: "evm",
+    };
+    const disconnected: { available: false; cause: "disconnected" } = {
+      available: false,
+      cause: "disconnected",
+    };
+    assert.equal(
+      txWriteRefusalTitle(wrongVm, editDisconnected),
+      wrongVmActionCopy("evm"),
+    );
+    assert.equal(
+      txWriteRefusalTitle(disconnected, editDisconnected),
+      editDisconnected,
+    );
+
+    const plantedBroken = (
+      refusal: typeof wrongVm | typeof disconnected,
+      override?: string,
+    ) => override ?? txWriteRefusalTitle(refusal);
+    assert.equal(
+      plantedBroken(wrongVm, editDisconnected),
+      editDisconnected,
+      "control: ungated override would lie to a wrong-family session",
+    );
+    assert.notEqual(
+      txWriteRefusalTitle(wrongVm, editDisconnected),
+      editDisconnected,
+    );
+
+    const chrome = readFileSync(path.join(ROOT, TX_WRITE_REFUSAL_REL), "utf8");
+    assert.match(chrome, /txWriteRefusalTitle/);
   });
 
   it("planted if(vm) in wizard is red; live wizard is green", () => {
@@ -384,10 +552,14 @@ if (account.vm === "svm") return null;
     assert.equal(vmBranchViolationInSource(planted), true);
   });
 
-  it("VM branch allowlist includes the set-uri owner; app/components/hooks stay empty of forks", () => {
+  it("VM branch allowlist includes set-uri + prep owners; app/components/hooks stay empty of forks", () => {
     assert.ok(
       (VM_BRANCH_ALLOWLIST as readonly string[]).includes(OWNER_REL),
       "set-passport-uri must be on VM_BRANCH_ALLOWLIST",
+    );
+    assert.ok(
+      (VM_BRANCH_ALLOWLIST as readonly string[]).includes(PREP_REL),
+      "prepare-passport-edit-write must be on VM_BRANCH_ALLOWLIST",
     );
     const violations = scanProductSources((rel, source) => {
       if ((VM_BRANCH_ALLOWLIST as readonly string[]).includes(rel)) return false;

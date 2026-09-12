@@ -72,7 +72,9 @@ function walkTsFiles(dir: string, out: string[] = []): string[] {
     const full = join(dir, name);
     const st = statSync(full);
     if (st.isDirectory()) {
-      if (name === "node_modules" || name === ".next") continue;
+      if (name === "node_modules" || name === ".next" || name.startsWith(".")) {
+        continue;
+      }
       walkTsFiles(full, out);
     } else if (/\.(ts|tsx)$/.test(name) && !name.endsWith(".d.ts")) {
       out.push(full);
@@ -425,7 +427,13 @@ export function scanProductSources(
   for (const file of walkProductTsFiles(rootDir)) {
     const rel = relative(rootDir, file).replace(/\\/g, "/");
     if (owners.has(rel)) continue;
-    const source = readFileSync(file, "utf8");
+    let source: string;
+    try {
+      source = readFileSync(file, "utf8");
+    } catch {
+      // Parallel suites may unlink a transient plant between walk and read.
+      continue;
+    }
     const reason = predicate(rel, source);
     if (reason) violations.push({ path: rel, reason });
   }

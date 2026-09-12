@@ -34,6 +34,8 @@ export const VM_BRANCH_ALLOWLIST = [
   "lib/passport/upload-passport-metadata.ts",
   // U6 set-URI write owner — VM fork for EVM/SVM arms; panels stay blind.
   "lib/passport/set-passport-uri.ts",
+  // U6.1 edit-write prep — EVM switch+SIWE vs named SVM none-required; panels stay blind.
+  "lib/passport/prepare-passport-edit-write.ts",
 ] as const;
 
 /** VM / stack.vm branching patterns that belong in allowlisted lib owners only. */

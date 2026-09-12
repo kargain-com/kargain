@@ -153,6 +153,13 @@ const SMART_WALLET_PHOTO_COUNT_THRESHOLD = 1;
 const SMART_WALLET_UPLOAD_BYTES_THRESHOLD = 1_500_000;
 const LARGE_UPLOAD_BYTES_THRESHOLD = 5_000_000;
 
+/**
+ * Named absence when wallet account kind cannot be read (non-EVM session).
+ * Never invent eoa/contract for Solana — kind is an Ethereum notion.
+ */
+export const ACCOUNT_KIND_EVM_ONLY_ABSENCE =
+  "Wallet account kind applies to Ethereum sessions only.";
+
 export function passportStorageUploadHint(input: {
   kind: WalletAccountKind;
   photoCount: number;

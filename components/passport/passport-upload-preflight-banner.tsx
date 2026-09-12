@@ -6,6 +6,7 @@ import { formatUploadSize, sumFileBytes } from "@/lib/storage/irys-upload-estima
 import type { PassportFlowContext } from "@/lib/passport/passport-flow-messages";
 import { preflightPhotoCountLabel } from "@/lib/passport/passport-flow-messages";
 import {
+  ACCOUNT_KIND_EVM_ONLY_ABSENCE,
   passportStorageUploadHint,
   type WalletAccountKind,
 } from "@/lib/web3/wallet-account";
@@ -33,9 +34,9 @@ export function PassportUploadPreflightBanner({
           photoCount: photos.length,
           totalBytes,
         })
-      : null;
+      : ACCOUNT_KIND_EVM_ONLY_ABSENCE;
 
-  if (!hint) return null;
+  if (accountKind != null && !hint) return null;
 
   const isWarning = accountKind === "contract";
   const Icon = isWarning ? WarningIcon : CircleInformationIcon;

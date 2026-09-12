@@ -63,8 +63,8 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "passport-set-uri",
     owner:
-      "lib/passport/set-passport-uri.ts · hooks/use-set-passport-uri.ts · lib/svm/foreign-programs.ts · lib/svm/event-payload-decode.ts",
-    rule: "Dual-VM set passport URI: sole owner plans EVM setPassportURI / SVM SetPassportUri metas; panels call via useSetPassportUri + runTx; foreign program ids from Rust sibling manifest; tokenId↔bytes32 beside event-payload-decode",
+      "lib/passport/set-passport-uri.ts · hooks/use-set-passport-uri.ts · lib/passport/prepare-passport-edit-write.ts · lib/svm/foreign-programs.ts · lib/svm/event-payload-decode.ts · components/shell/tx-write-refusal.tsx",
+    rule: "Dual-VM set passport URI: sole owner plans EVM setPassportURI / SVM SetPassportUri metas; edit panel admits via txWriteAvailability + TxWriteRefusal; EVM switch+SIWE via preparePassportEditWrite (SVM named none-required); panels call via useSetPassportUri + runTx; foreign program ids from Rust sibling manifest; tokenId↔bytes32 beside event-payload-decode",
     guardTests: ["set-passport-uri-policy.test.ts"],
   },
   {

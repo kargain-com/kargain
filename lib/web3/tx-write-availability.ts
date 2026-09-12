@@ -65,3 +65,19 @@ export function txWriteRefusalMessage(refusal: TxWriteUnavailable): string {
       return "This network is not available for commercial writes.";
   }
 }
+
+/**
+ * Title for dual-VM write-session refusal chrome.
+ * Surface-specific `disconnectedTitle` applies **only** to `disconnected`.
+ * `wrong_vm` / `unresolved_namespace` always use {@link txWriteRefusalMessage}
+ * — never a generic "connect your wallet" override (design-spec §4.7).
+ */
+export function txWriteRefusalTitle(
+  refusal: TxWriteUnavailable,
+  disconnectedTitle?: string,
+): string {
+  if (refusal.cause === "disconnected" && disconnectedTitle) {
+    return disconnectedTitle;
+  }
+  return txWriteRefusalMessage(refusal);
+}

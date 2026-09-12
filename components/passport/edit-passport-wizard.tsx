@@ -1,6 +1,9 @@
 "use client";
 
-import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+import {
+  isAccountConnected,
+  useActiveAccount,
+} from "@/hooks/use-active-account";
 import { useSetPassportUri } from "@/hooks/use-set-passport-uri";
 
 import Link from "next/link";
@@ -18,10 +21,9 @@ import { PassportIdLabel } from "@/components/passport/passport-id-label";
 import { PhotoDropZone } from "@/components/passport/photo-drop-zone";
 import { PhotoThumbGrid } from "@/components/passport/photo-thumb-grid";
 import { Button } from "@/components/ui/button";
-import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
+import { TxWriteRefusal } from "@/components/shell/tx-write-refusal";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useWalletAccountKind } from "@/hooks/use-wallet-account-kind";
-import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
 import { isHeicFile } from "@/lib/passport/compress-passport-image";
 import {
   buildMetadataWireForEdit,
@@ -57,6 +59,11 @@ import {
   VERIFIED_ANCHOR_WARNING,
   type EditPhase,
 } from "@/lib/passport/passport-flow-messages";
+import {
+  passportEditSwitchPrompt,
+  passportEditWritePrepRefusalMessage,
+  preparePassportEditWrite,
+} from "@/lib/passport/prepare-passport-edit-write";
 import type { PassportStatus } from "@/lib/types/ponder";
 import {
   formatPassportUploadError,
@@ -68,6 +75,7 @@ import { reorderArrayItem } from "@/lib/reorder-array";
 import { resetIrysUploaderCache } from "@/lib/storage/irys-client";
 import { resolveUri } from "@/lib/storage/resolve-uri";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
+import { txWriteAvailability } from "@/lib/web3/tx-write-availability";
 
 type EditPhotoItem =
   | { id: string; kind: "existing"; uri: string }
@@ -94,11 +102,10 @@ export function EditPassportWizard({
   existingPhotoUris,
 }: Props) {
   const { account, switchChain, signingBinding, svmWallet } = useActiveAccount();
-  const evm = requireEvmSession(account);
-  const address = evm.ok ? evm.address : undefined;
-  const walletChain = evm.ok ? evm.chainId : undefined;
+  const writeAvail = txWriteAvailability(account, chainId);
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
-  const switchAvail = evmSwitchChainAvailability(account);
+  const evmAddress = signingBinding.ok ? signingBinding.address : undefined;
+  const switchPrompt = passportEditSwitchPrompt(account, chainId);
 
   const { signMessageAsync } = useSignMessage();
   const {
@@ -113,9 +120,8 @@ export function EditPassportWizard({
     syncLagged,
   } = useTxSync(chainId);
   const wc = wagmiChainId(chainId);
-  const wrongChain = evm.ok && walletChain !== chainId;
   const { kind: accountKind, isLoading: isLoadingAccountKind } = useWalletAccountKind(
-    address,
+    evmAddress,
     connector,
   );
 
@@ -254,7 +260,7 @@ export function EditPassportWizard({
   }, [baselineMetadata, form, passportStatus, photos]);
 
   const executeSave = async () => {
-    if (!address || !connector) return;
+    if (!isAccountConnected(account)) return;
 
     const hadVerificationResetOnSave = computeVerificationReset();
 
@@ -264,15 +270,15 @@ export function EditPassportWizard({
     setShowSuccess(false);
 
     try {
-      if (wrongChain) {
-        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
-        await switchChain(wc );
-      }
-      await ensureSiweSession({
-        address,
-        chainId,
+      const prep = await preparePassportEditWrite({
+        account,
+        targetChainId: chainId,
+        switchChain,
         signMessageAsync,
       });
+      if (!prep.ok) {
+        throw new Error(passportEditWritePrepRefusalMessage(prep));
+      }
 
       const newFiles = photos
         .filter((item): item is Extract<EditPhotoItem, { kind: "new" }> => item.kind === "new")
@@ -383,10 +389,10 @@ export function EditPassportWizard({
       ? "Save changes"
       : editPhaseLabel(displayPhase);
 
-  if (!evm.ok) {
+  if (!writeAvail.available) {
     return (
-      <EvmSessionRefusal
-        cause={evm.cause}
+      <TxWriteRefusal
+        refusal={writeAvail}
         disconnectedTitle="Connect wallet to edit this passport."
         className="space-y-4"
       />
@@ -430,15 +436,15 @@ export function EditPassportWizard({
         </p>
       )}
 
-      {wrongChain && (
+      {switchPrompt.show && (
         <p className="rounded-md border border-border-hover bg-bg-surface p-4 text-sm text-text-secondary">
           Switch to {shortChainName(chainId)} to save.{" "}
           <button
             type="button"
             className="link-underline"
             onClick={() => {
-              if (!switchAvail.available) return;
-              void switchChain(wc );
+              if (!switchPrompt.switchAvail.available) return;
+              void switchChain(wc);
             }}
           >
             Switch network

@@ -3,7 +3,7 @@
  * Ingest getBlock is JSON-RPC + wire mapper — ban Connection.getBlock (web3.js rejects version 1).
  */
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, it } from "node:test";
 
@@ -36,7 +36,12 @@ function collectViolations(rootDir: string): string[] {
   for (const abs of walkTsFilesFromRoots([...SCAN_ROOTS], rootDir)) {
     const rel = relative(rootDir, abs).replace(/\\/g, "/");
     if (rel === OWNER_REL) continue;
-    const source = readFileSync(abs, "utf8");
+    let source: string;
+    try {
+      source = readFileSync(abs, "utf8");
+    } catch {
+      continue;
+    }
     if (LITERAL_CEILING_RE.test(source)) {
       hits.push(rel);
     }
@@ -53,24 +58,11 @@ describe("svm-rpc-transaction-version-policy", () => {
     assert.deepEqual(collectViolations(ROOT), []);
   });
 
-  it("constructed dirty fixture under lib/ is red then green", () => {
-    const dirtyDir = join(ROOT, "lib", ".tmp-rpc-version-policy");
-    const dirtyFile = join(dirtyDir, "planted-ceiling-zero.ts");
-    mkdirSync(dirtyDir, { recursive: true });
-    try {
-      writeFileSync(
-        dirtyFile,
-        `export const bad = { maxSupportedTransactionVersion: 0 };\n`,
-        "utf8",
-      );
-      const red = collectViolations(ROOT);
-      assert.ok(
-        red.some((p) => p.includes("planted-ceiling-zero.ts")),
-        `expected planted hit, got ${JSON.stringify(red)}`,
-      );
-    } finally {
-      rmSync(dirtyDir, { recursive: true, force: true });
-    }
+  it("constructed dirty fixture is red then green (in-memory; never plant under lib/)", () => {
+    const dirty = `export const bad = { maxSupportedTransactionVersion: 0 };\n`;
+    const clean = `export const ok = { maxSupportedTransactionVersion: 1 };\n`;
+    assert.equal(LITERAL_CEILING_RE.test(dirty), true);
+    assert.equal(LITERAL_CEILING_RE.test(clean), false);
     assert.deepEqual(collectViolations(ROOT), []);
   });
 

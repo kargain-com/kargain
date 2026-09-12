@@ -92,7 +92,7 @@ function isActionSurface(rel: string): boolean {
 }
 
 function consumesRefusalCopy(source: string): boolean {
-  return /evmSessionRefusalCopy|wrongVmActionCopy|EvmSessionRefusal|SVM_MESSAGING_UNAVAILABLE|chainSelectorStateCopy|txWriteRefusalMessage|isSvmMessagingRefusal/.test(
+  return /evmSessionRefusalCopy|wrongVmActionCopy|EvmSessionRefusal|TxWriteRefusal|SVM_MESSAGING_UNAVAILABLE|chainSelectorStateCopy|txWriteRefusalMessage|txWriteRefusalTitle|isSvmMessagingRefusal/.test(
     source,
   );
 }
