@@ -15,6 +15,8 @@ const SVM_OWNERS = [
   // П-8: entry exposes svmWallet; Irys door types Wallet from wallet-standard.
   "hooks/use-active-account.ts",
   "lib/passport/upload-passport-metadata.ts",
+  // §7.2 U4: sole PDA derivation owner — async getProgramDerivedAddress from kit.
+  "lib/svm/derive-pda.ts",
 ] as const;
 
 const SVM_DEP_IMPORT =

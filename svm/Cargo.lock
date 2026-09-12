@@ -707,9 +707,13 @@ dependencies = [
  "kar-passport",
  "kar-pro-pass",
  "kar-pro-staking",
+ "kargain-bonded-challenge",
+ "kargain-claimable-payouts",
+ "kargain-consignment-base",
  "kargain-price",
  "serde",
  "serde_json",
+ "solana-program",
 ]
 
 [[package]]

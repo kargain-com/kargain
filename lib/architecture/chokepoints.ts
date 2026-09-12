@@ -48,6 +48,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-instruction-encoder-policy.test.ts"],
   },
   {
+    id: "svm-pda-derivation",
+    owner: "lib/svm/derive-pda.ts · svm/crates/kargain-ix-wire",
+    rule: "Commercial SVM PDA derivation only via derive-pda; recipes+goldens from Rust find_program_address (committed pda.manifest.json); async kit only",
+    guardTests: ["svm-pda-derivation-policy.test.ts"],
+  },
+  {
     id: "svm-write-census",
     owner: "test/svm-write-census-policy.test.ts",
     rule: "Sole enumerated set of product write-site files under app|components|hooks (excludes use-tx-sync); human action matrix is local research annex only and never imported by tests",

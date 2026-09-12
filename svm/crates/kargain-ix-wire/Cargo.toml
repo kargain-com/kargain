@@ -4,16 +4,21 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "Commercial instruction wire census — Rust BorshSerialize → committed manifest + goldens"
+description = "Commercial instruction + PDA wire census — Rust truth → committed manifests + goldens"
 
 [[bin]]
 name = "emit-ix-manifest"
 path = "src/bin/emit-ix-manifest.rs"
 
+[[bin]]
+name = "emit-pda-manifest"
+path = "src/bin/emit-pda-manifest.rs"
+
 [dependencies]
 borsh = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1" }
+solana-program = { workspace = true }
 kar-passport = { path = "../../programs/kar-passport", features = ["no-entrypoint"] }
 kar-gateway = { path = "../../programs/kar-gateway", features = ["no-entrypoint"] }
 kar-pro-staking = { path = "../../programs/kar-pro-staking", features = ["no-entrypoint"] }
@@ -21,3 +26,6 @@ kar-pro-pass = { path = "../../programs/kar-pro-pass", features = ["no-entrypoin
 kar-fixed-price = { path = "../../programs/kar-fixed-price", features = ["no-entrypoint"] }
 kar-ascending = { path = "../../programs/kar-ascending", features = ["no-entrypoint"] }
 kargain-price = { workspace = true }
+kargain-consignment-base = { workspace = true }
+kargain-claimable-payouts = { workspace = true }
+kargain-bonded-challenge = { workspace = true }

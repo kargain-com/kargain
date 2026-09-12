@@ -1,0 +1,450 @@
+{
+  "version": 1,
+  "syntheticProgramIdHex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "recipes": [
+    {
+      "owner": "kar-passport",
+      "id": "kar-passport/config",
+      "seedTagHex": "636f6e666967",
+      "dynamics": [],
+      "sample": {},
+      "goldenAddress": "EgeHZ5Vov6Sy6tiJotQepwXAvJ8oFbepp81jHWfvEKpq",
+      "goldenBump": 255
+    },
+    {
+      "owner": "kar-passport",
+      "id": "kar-passport/asset",
+      "seedTagHex": "6173736574",
+      "dynamics": [
+        {
+          "name": "token_id",
+          "encoding": "bytes32"
+        }
+      ],
+      "sample": {
+        "token_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "goldenAddress": "FTnWbfQXUgio4Pd9uT13JUbguLvejuziaRR3oj1GKaLh",
+      "goldenBump": 254
+    },
+    {
+      "owner": "kar-passport",
+      "id": "kar-passport/state",
+      "seedTagHex": "7374617465",
+      "dynamics": [
+        {
+          "name": "token_id",
+          "encoding": "bytes32"
+        }
+      ],
+      "sample": {
+        "token_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "goldenAddress": "AsMUa6dZvnVf3d9Q6hETPQLPG5QyF8kH8LnVxZ4pZp78",
+      "goldenBump": 252
+    },
+    {
+      "owner": "kar-passport",
+      "id": "kar-passport/record",
+      "seedTagHex": "7265636f7264",
+      "dynamics": [
+        {
+          "name": "token_id",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "index",
+          "encoding": "u32_le"
+        }
+      ],
+      "sample": {
+        "index": 7,
+        "token_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "goldenAddress": "DmDbDeT7StEGtQpSQn3dUi1qAYCRSAoFca74vzsk5vbn",
+      "goldenBump": 254
+    },
+    {
+      "owner": "kar-gateway",
+      "id": "kar-gateway/config",
+      "seedTagHex": "636f6e666967",
+      "dynamics": [],
+      "sample": {},
+      "goldenAddress": "EgeHZ5Vov6Sy6tiJotQepwXAvJ8oFbepp81jHWfvEKpq",
+      "goldenBump": 255
+    },
+    {
+      "owner": "kar-gateway",
+      "id": "kar-gateway/freeze",
+      "seedTagHex": "667265657a65",
+      "dynamics": [],
+      "sample": {},
+      "goldenAddress": "86by31GHRvjEkorWf3QgYfdXL5XmYvL295NqCWmvDLyQ",
+      "goldenBump": 255
+    },
+    {
+      "owner": "kar-gateway",
+      "id": "kar-gateway/peer",
+      "seedTagHex": "50656572",
+      "dynamics": [
+        {
+          "name": "gateway_config",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "remote_eid",
+          "encoding": "u32_be"
+        }
+      ],
+      "sample": {
+        "gateway_config": "0303030303030303030303030303030303030303030303030303030303030303",
+        "remote_eid": 40245
+      },
+      "goldenAddress": "1pxYp4uyW26p3392Nh2qkFPxMeUuBVssJczXkWo8oyE",
+      "goldenBump": 253
+    },
+    {
+      "owner": "kar-gateway",
+      "id": "kar-gateway/lz_receive_types",
+      "seedTagHex": "4c7a526563656976655479706573",
+      "dynamics": [
+        {
+          "name": "oapp",
+          "encoding": "bytes32"
+        }
+      ],
+      "sample": {
+        "oapp": "0404040404040404040404040404040404040404040404040404040404040404"
+      },
+      "goldenAddress": "JAqoQpbhAu9gUhj2UDWrQKfg2RQQdQXNiPoPV8i3x6TH",
+      "goldenBump": 253
+    },
+    {
+      "owner": "kar-pro-staking",
+      "id": "kar-pro-staking/config",
+      "seedTagHex": "636f6e666967",
+      "dynamics": [],
+      "sample": {},
+      "goldenAddress": "EgeHZ5Vov6Sy6tiJotQepwXAvJ8oFbepp81jHWfvEKpq",
+      "goldenBump": 255
+    },
+    {
+      "owner": "kar-pro-staking",
+      "id": "kar-pro-staking/stake",
+      "seedTagHex": "7374616b65",
+      "dynamics": [
+        {
+          "name": "verifier",
+          "encoding": "bytes32"
+        }
+      ],
+      "sample": {
+        "verifier": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "goldenAddress": "9tpyXnUy61bYLw4zT7tFeAGQnZVkXfgsis6jMzEBJ1jU",
+      "goldenBump": 254
+    },
+    {
+      "owner": "kar-pro-pass",
+      "id": "kar-pro-pass/config",
+      "seedTagHex": "636f6e666967",
+      "dynamics": [],
+      "sample": {},
+      "goldenAddress": "EgeHZ5Vov6Sy6tiJotQepwXAvJ8oFbepp81jHWfvEKpq",
+      "goldenBump": 255
+    },
+    {
+      "owner": "kar-pro-pass",
+      "id": "kar-pro-pass/freeze",
+      "seedTagHex": "667265657a65",
+      "dynamics": [],
+      "sample": {},
+      "goldenAddress": "86by31GHRvjEkorWf3QgYfdXL5XmYvL295NqCWmvDLyQ",
+      "goldenBump": 255
+    },
+    {
+      "owner": "kar-pro-pass",
+      "id": "kar-pro-pass/pass_asset",
+      "seedTagHex": "70617373",
+      "dynamics": [
+        {
+          "name": "holder",
+          "encoding": "bytes32"
+        }
+      ],
+      "sample": {
+        "holder": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "goldenAddress": "2krF6VsCviySjPRDa4B1n4GjGWnn8PgqzysJMaizbxbq",
+      "goldenBump": 253
+    },
+    {
+      "owner": "kar-pro-pass",
+      "id": "kar-pro-pass/pass_meta",
+      "seedTagHex": "706173735f6d657461",
+      "dynamics": [
+        {
+          "name": "holder",
+          "encoding": "bytes32"
+        }
+      ],
+      "sample": {
+        "holder": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "goldenAddress": "8swSBzvjaHLPTCJkTppxMzeqZ5rd3xL7qf5qFTpg2mSB",
+      "goldenBump": 252
+    },
+    {
+      "owner": "kar-fixed-price",
+      "id": "kar-fixed-price/payment_token",
+      "seedTagHex": "7061796d656e742d746f6b656e",
+      "dynamics": [
+        {
+          "name": "mint",
+          "encoding": "bytes32"
+        }
+      ],
+      "sample": {
+        "mint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "goldenAddress": "9jipEQyogj4XTcwbkyQxipse1Cc6VXZRAYanXjNTp1RV",
+      "goldenBump": 255
+    },
+    {
+      "owner": "kar-fixed-price",
+      "id": "kar-fixed-price/note",
+      "seedTagHex": "736574746c656d656e742d6e6f7465",
+      "dynamics": [
+        {
+          "name": "token_id",
+          "encoding": "bytes32"
+        }
+      ],
+      "sample": {
+        "token_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "goldenAddress": "99mtxoRRK84zinwQZ5GJq34WFdx6cBQyWBdQt5VzvTBi",
+      "goldenBump": 251
+    },
+    {
+      "owner": "kar-fixed-price",
+      "id": "kar-fixed-price/price_lab",
+      "seedTagHex": "70726963652d6c6162",
+      "dynamics": [
+        {
+          "name": "feed_id",
+          "encoding": "bytes32"
+        }
+      ],
+      "sample": {
+        "feed_id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "goldenAddress": "9J5wSbxUQNkxmzMFMNLpMe2Z1KzQgqcYY7Q6KyZCNXsg",
+      "goldenBump": 254
+    },
+    {
+      "owner": "kar-ascending",
+      "id": "kar-ascending/auction",
+      "seedTagHex": "61756374696f6e",
+      "dynamics": [
+        {
+          "name": "token_id",
+          "encoding": "bytes32"
+        }
+      ],
+      "sample": {
+        "token_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "goldenAddress": "CjgqDp86GysLdiYEcK1PhS7QXDjhxi7aQSnVbx2WXEmS",
+      "goldenBump": 255
+    },
+    {
+      "owner": "kar-ascending",
+      "id": "kar-ascending/hold",
+      "seedTagHex": "686f6c64",
+      "dynamics": [
+        {
+          "name": "token_id",
+          "encoding": "bytes32"
+        }
+      ],
+      "sample": {
+        "token_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "goldenAddress": "E8r3j8KMdSvcYbXnH5Lm1RtS71BCLyKfyehcQHgCZt2z",
+      "goldenBump": 253
+    },
+    {
+      "owner": "kar-ascending",
+      "id": "kar-ascending/payment_token",
+      "seedTagHex": "7061796d656e742d746f6b656e",
+      "dynamics": [
+        {
+          "name": "mint",
+          "encoding": "bytes32"
+        }
+      ],
+      "sample": {
+        "mint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "goldenAddress": "9jipEQyogj4XTcwbkyQxipse1Cc6VXZRAYanXjNTp1RV",
+      "goldenBump": 255
+    },
+    {
+      "owner": "kargain-consignment-base",
+      "id": "kargain-consignment-base/config",
+      "seedTagHex": "636f6e7369676e2d636f6e666967",
+      "dynamics": [],
+      "sample": {},
+      "goldenAddress": "9oKypdVVf3gDYAUcgvDeWZ9gWeCAqqyJxxFLiHeQMprc",
+      "goldenBump": 255
+    },
+    {
+      "owner": "kargain-consignment-base",
+      "id": "kargain-consignment-base/consignment",
+      "seedTagHex": "636f6e7369676e6d656e74",
+      "dynamics": [
+        {
+          "name": "token_id",
+          "encoding": "bytes32"
+        }
+      ],
+      "sample": {
+        "token_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "goldenAddress": "Cau72QX6JytahSjBjNse6ZFBmox145sfHDtMZxVuGj37",
+      "goldenBump": 253
+    },
+    {
+      "owner": "kargain-consignment-base",
+      "id": "kargain-consignment-base/mandate",
+      "seedTagHex": "6d616e64617465",
+      "dynamics": [
+        {
+          "name": "token_id",
+          "encoding": "bytes32"
+        }
+      ],
+      "sample": {
+        "token_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "goldenAddress": "FV8ZMfD5ZaXm8y9GhXwnrC1XfCDCMx8Ah4ydqoVP4nci",
+      "goldenBump": 255
+    },
+    {
+      "owner": "kargain-consignment-base",
+      "id": "kargain-consignment-base/recall",
+      "seedTagHex": "726563616c6c",
+      "dynamics": [
+        {
+          "name": "token_id",
+          "encoding": "bytes32"
+        }
+      ],
+      "sample": {
+        "token_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "goldenAddress": "FLwn1CMLHhyKQN7JNiNQXhsxZCGjHh69dkLAniT3VbLq",
+      "goldenBump": 255
+    },
+    {
+      "owner": "kargain-consignment-base",
+      "id": "kargain-consignment-base/asset",
+      "seedTagHex": "6861726e6573732d6173736574",
+      "dynamics": [
+        {
+          "name": "token_id",
+          "encoding": "bytes32"
+        }
+      ],
+      "sample": {
+        "token_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "goldenAddress": "98d9WR2B6tsoE5ubrNBNmeyMCCYuHNWdCnRmo4bc4iUv",
+      "goldenBump": 255
+    },
+    {
+      "owner": "kargain-consignment-base",
+      "id": "kargain-consignment-base/custody_authority",
+      "seedTagHex": "637573746f6479",
+      "dynamics": [],
+      "sample": {},
+      "goldenAddress": "HDj1acJ3QPXv3ncmP5ZebECDPuavc7FiA6t4576BYqn6",
+      "goldenBump": 254
+    },
+    {
+      "owner": "kargain-claimable-payouts",
+      "id": "kargain-claimable-payouts/claim",
+      "seedTagHex": "636c61696d",
+      "dynamics": [
+        {
+          "name": "recipient",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "mint",
+          "encoding": "bytes32"
+        }
+      ],
+      "sample": {
+        "mint": "0202020202020202020202020202020202020202020202020202020202020202",
+        "recipient": "0101010101010101010101010101010101010101010101010101010101010101"
+      },
+      "goldenAddress": "BJbrrdAUUXNA9GvR8uBpFydENpECEkKBFiQ4QnVVhjHP",
+      "goldenBump": 254
+    },
+    {
+      "owner": "kargain-claimable-payouts",
+      "id": "kargain-claimable-payouts/claim_ata",
+      "seedTagHex": "636c61696d2d617461",
+      "dynamics": [
+        {
+          "name": "recipient",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "mint",
+          "encoding": "bytes32"
+        }
+      ],
+      "sample": {
+        "mint": "0202020202020202020202020202020202020202020202020202020202020202",
+        "recipient": "0101010101010101010101010101010101010101010101010101010101010101"
+      },
+      "goldenAddress": "4bF8qsp12JPA95eF4MXsg8gEGVPNZn1AwcmeHXj8XuBq",
+      "goldenBump": 251
+    },
+    {
+      "owner": "kargain-claimable-payouts",
+      "id": "kargain-claimable-payouts/escrow",
+      "seedTagHex": "657363726f77",
+      "dynamics": [
+        {
+          "name": "consignment_id",
+          "encoding": "bytes32"
+        }
+      ],
+      "sample": {
+        "consignment_id": "0606060606060606060606060606060606060606060606060606060606060606"
+      },
+      "goldenAddress": "FkWgEj1oKTwNS6zKtHcxZ15cDtsPeAAszqXHyTreWav2",
+      "goldenBump": 251
+    },
+    {
+      "owner": "kargain-bonded-challenge",
+      "id": "kargain-bonded-challenge/challenge",
+      "seedTagHex": "6368616c6c656e6765",
+      "dynamics": [
+        {
+          "name": "subject_id",
+          "encoding": "bytes32"
+        }
+      ],
+      "sample": {
+        "subject_id": "0505050505050505050505050505050505050505050505050505050505050505"
+      },
+      "goldenAddress": "9EX68WthvvLVPYTfDGiBMFzk9ZR9LyYWm16nJwFYkeK2",
+      "goldenBump": 253
+    }
+  ]
+}

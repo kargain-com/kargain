@@ -1,9 +1,11 @@
-//! Commercial instruction wire census.
+//! Commercial instruction + PDA wire census.
 //!
-//! Authority: Rust `BorshSerialize` of the six program instruction enums.
-//! Committed artifact: `ix.manifest.json` (layout + deterministic sample + goldenHex).
+//! Instruction authority: Rust `BorshSerialize` of the six program enums
+//! (`ix.manifest.json`). PDA authority: real `find_program_address` via each
+//! owner's `*_pda` helper (`pda.manifest.json`).
 
 mod samples;
+pub mod pda;
 
 use serde::Serialize;
 use serde_json::{json, Map, Value};
