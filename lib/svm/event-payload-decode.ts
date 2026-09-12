@@ -143,6 +143,29 @@ export function tokenIdFromBytes32(bytes: Uint8Array): string {
   return value.toString();
 }
 
+const BYTES32_MAX = (1n << 256n) - 1n;
+
+/**
+ * Inverse of {@link tokenIdFromBytes32}: decimal tokenId → 32-byte BE.
+ * Sole product owner for instruction fields and token-keyed PDA seeds.
+ */
+export function tokenIdToBytes32(tokenId: string): Uint8Array {
+  if (!/^\d+$/.test(tokenId)) {
+    throw new EventPayloadDecodeError("tokenId must be decimal digits");
+  }
+  const value = BigInt(tokenId);
+  if (value > BYTES32_MAX) {
+    throw new EventPayloadDecodeError("tokenId out of bytes32 range");
+  }
+  const bytes = new Uint8Array(32);
+  let remaining = value;
+  for (let i = 31; i >= 0; i--) {
+    bytes[i] = Number(remaining & 0xffn);
+    remaining >>= 8n;
+  }
+  return bytes;
+}
+
 export function decodeEventPayloadBody(args: {
   contractName: string;
   eventName: string;

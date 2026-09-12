@@ -5,6 +5,7 @@
 //! owner's `*_pda` helper (`pda.manifest.json`).
 
 mod samples;
+pub mod foreign_programs;
 pub mod pda;
 
 use serde::Serialize;

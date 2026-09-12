@@ -711,6 +711,7 @@ dependencies = [
  "kargain-claimable-payouts",
  "kargain-consignment-base",
  "kargain-price",
+ "mpl-core",
  "serde",
  "serde_json",
  "solana-program",

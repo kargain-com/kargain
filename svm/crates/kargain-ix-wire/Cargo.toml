@@ -14,11 +14,16 @@ path = "src/bin/emit-ix-manifest.rs"
 name = "emit-pda-manifest"
 path = "src/bin/emit-pda-manifest.rs"
 
+[[bin]]
+name = "emit-foreign-programs-manifest"
+path = "src/bin/emit-foreign-programs-manifest.rs"
+
 [dependencies]
 borsh = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1" }
 solana-program = { workspace = true }
+mpl-core = { workspace = true }
 kar-passport = { path = "../../programs/kar-passport", features = ["no-entrypoint"] }
 kar-gateway = { path = "../../programs/kar-gateway", features = ["no-entrypoint"] }
 kar-pro-staking = { path = "../../programs/kar-pro-staking", features = ["no-entrypoint"] }

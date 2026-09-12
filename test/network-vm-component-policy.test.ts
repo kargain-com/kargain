@@ -32,6 +32,8 @@ export const VM_BRANCH_ALLOWLIST = [
   "lib/storage/irys-upload-plan.ts",
   // П-8 Irys session door — account.vm fork lives here, not in wizards.
   "lib/passport/upload-passport-metadata.ts",
+  // U6 set-URI write owner — VM fork for EVM/SVM arms; panels stay blind.
+  "lib/passport/set-passport-uri.ts",
 ] as const;
 
 /** VM / stack.vm branching patterns that belong in allowlisted lib owners only. */

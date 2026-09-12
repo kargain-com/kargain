@@ -66,6 +66,7 @@ const ENUMERATED_WRITE_FILES: readonly string[] = [
   "components/verifier/verification-payment-modal.tsx",
   "hooks/use-bridge.ts",
   "hooks/use-passport-approval.ts",
+  "hooks/use-set-passport-uri.ts",
 ].sort();
 
 function listTsFiles(dir: string): string[] {
@@ -124,10 +125,14 @@ describe("svm write census policy", () => {
     );
 
     // Compared objects: one sorted file path per write-site file.
-    assert.equal(detected.length, 31);
+    assert.equal(detected.length, 32);
     assert.ok(
       detected.includes("hooks/use-passport-approval.ts"),
       "passport approval owner must be in the write-file set (runTx grep undercount)",
+    );
+    assert.ok(
+      detected.includes("hooks/use-set-passport-uri.ts"),
+      "set-passport-uri port hook must be in the write-file set",
     );
   });
 

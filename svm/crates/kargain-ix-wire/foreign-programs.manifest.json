@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "programs": [
+    {
+      "id": "mpl_core",
+      "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
+    },
+    {
+      "id": "system",
+      "address": "11111111111111111111111111111111"
+    }
+  ]
+}

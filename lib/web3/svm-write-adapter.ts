@@ -31,7 +31,7 @@ import {
 } from "@/lib/web3/svm-rpc";
 import type { WalletStandardChain } from "@/lib/web3/wallet-standard-chain";
 
-export type { AccountRole };
+export { AccountRole };
 
 export type SvmSignAndSendPort = {
   signAndSendTransaction: (input: {

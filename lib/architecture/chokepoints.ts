@@ -61,6 +61,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-write-adapter-policy.test.ts"],
   },
   {
+    id: "passport-set-uri",
+    owner:
+      "lib/passport/set-passport-uri.ts · hooks/use-set-passport-uri.ts · lib/svm/foreign-programs.ts · lib/svm/event-payload-decode.ts",
+    rule: "Dual-VM set passport URI: sole owner plans EVM setPassportURI / SVM SetPassportUri metas; panels call via useSetPassportUri + runTx; foreign program ids from Rust sibling manifest; tokenId↔bytes32 beside event-payload-decode",
+    guardTests: ["set-passport-uri-policy.test.ts"],
+  },
+  {
     id: "svm-write-census",
     owner: "test/svm-write-census-policy.test.ts",
     rule: "Sole enumerated set of product write-site files under app|components|hooks (excludes use-tx-sync); human action matrix is local research annex only and never imported by tests",

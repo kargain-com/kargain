@@ -1,6 +1,7 @@
 "use client";
 
 import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+import { useSetPassportUri } from "@/hooks/use-set-passport-uri";
 
 import Link from "next/link";
 import { nanoid } from "nanoid";
@@ -21,7 +22,6 @@ import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useWalletAccountKind } from "@/hooks/use-wallet-account-kind";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
-import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import { isHeicFile } from "@/lib/passport/compress-passport-image";
 import {
   buildMetadataWireForEdit,
@@ -67,9 +67,7 @@ import { processPassportPhotoFiles } from "@/lib/passport/process-passport-photo
 import { reorderArrayItem } from "@/lib/reorder-array";
 import { resetIrysUploaderCache } from "@/lib/storage/irys-client";
 import { resolveUri } from "@/lib/storage/resolve-uri";
-import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
-import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type EditPhotoItem =
   | { id: string; kind: "existing"; uri: string }
@@ -103,7 +101,11 @@ export function EditPassportWizard({
   const switchAvail = evmSwitchChainAvailability(account);
 
   const { signMessageAsync } = useSignMessage();
-  const { writeContractAsync, isPending, reset: resetWrite } = useEvmWriteContract();
+  const {
+    setPassportUri,
+    isPending,
+    reset: resetWrite,
+  } = useSetPassportUri();
   const {
     runTx,
     phase: txPhase,
@@ -253,11 +255,6 @@ export function EditPassportWizard({
 
   const executeSave = async () => {
     if (!address || !connector) return;
-    const passport = karPassportAddress(chainId);
-    if (!passport) {
-      setFormError("Passport contract not configured.");
-      return;
-    }
 
     const hadVerificationResetOnSave = computeVerificationReset();
 
@@ -312,13 +309,7 @@ export function EditPassportWizard({
       setUploadProgress(null);
       setPhase("saving");
       const synchronized = await runTx(() =>
-        writeContractAsync({
-          address: passport,
-          abi: KarPassportAbi,
-          functionName: "setPassportURI",
-          args: [BigInt(tokenId), uri],
-          chainId: wc,
-        }),
+        setPassportUri({ chainId, tokenId, uri }),
       );
       if (!synchronized) {
         resetIrysUploaderCache();
