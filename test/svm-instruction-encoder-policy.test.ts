@@ -88,15 +88,21 @@ export function handRolledIxPredicate(
 }
 
 describe("svm instruction encoder policy", () => {
-  it("manifest entry count is the measured census floor (98)", () => {
+  // Equality pin on the wire census (not a floor): appending a variant is
+  // expected to turn this red until a human acknowledges the new wire entry.
+  it("wire census entry count equals the acknowledged total (98)", () => {
     assert.equal(ENTRIES.length, 98);
     const working = loadWorkingManifest();
     assert.equal(working.entries.length, 98);
   });
 
-  it("every entry has goldenHex + sample; every golden maps to an entry (bidirectional)", () => {
+  // Per-entry presence of goldenHex + sample, and unique (program,name,index).
+  // Manifest↔Rust-source identity is owned by assert_committed_matches_regen
+  // (pnpm test:svm / cargo); CI has no Rust toolchain, so that direction must
+  // not be re-invented here as a second walk over the same committed objects.
+  it("every manifest entry has goldenHex, sample, and a unique key", () => {
     const working = loadWorkingManifest();
-    const goldenKeys = new Set<string>();
+    const seenKeys = new Set<string>();
     for (const e of working.entries) {
       assert.ok(
         typeof e.goldenHex === "string" && e.goldenHex.length > 0,
@@ -107,19 +113,10 @@ describe("svm instruction encoder policy", () => {
         `missing_sample:${e.program}:${e.name}`,
       );
       const key = `${e.program}:${e.name}:${e.index}`;
-      assert.equal(goldenKeys.has(key), false, `duplicate_golden_key:${key}`);
-      goldenKeys.add(key);
+      assert.equal(seenKeys.has(key), false, `duplicate_golden_key:${key}`);
+      seenKeys.add(key);
     }
-    for (const key of goldenKeys) {
-      const [program, name, indexStr] = key.split(":");
-      const found = working.entries.find(
-        (e) =>
-          e.program === program &&
-          e.name === name &&
-          e.index === Number(indexStr),
-      );
-      assert.ok(found, `golden_without_entry:${key}`);
-    }
+    assert.equal(seenKeys.size, working.entries.length);
   });
 
   it("per-program variant indices are dense from 0 with no gaps or duplicates", () => {
@@ -170,7 +167,6 @@ describe("svm instruction encoder policy", () => {
       comparisons += 1;
     }
     assert.equal(comparisons, ENTRIES.length);
-    assert.equal(comparisons, 98);
     // Visible count for acceptance reports.
     console.log(
       `svm-instruction-encoder: ${comparisons} byte comparisons over ${ENTRIES.length} goldens`,
