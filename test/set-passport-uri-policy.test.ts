@@ -20,7 +20,6 @@ import {
   systemProgramId,
 } from "@/lib/svm/foreign-programs";
 import {
-  assembleSetPassportUriAccounts,
   buildEvmSetPassportUriCall,
   executeSetPassportUri,
   planSetPassportUri,
@@ -269,40 +268,16 @@ describe("setPassportUri SVM metas order", () => {
     assert.equal(accounts[6]!.address, systemProgramId());
     assert.equal(planned.plan.programId, stack.karPassport);
     assert.equal(planned.plan.feePayer, owner);
-  });
 
-  it("planted adjacent meta swap is red; live assembly is green", () => {
-    const live = assembleSetPassportUriAccounts({
-      config: "Cfg111111111111111111111111111111111111111",
-      asset: "Ast111111111111111111111111111111111111111",
-      state: "Sta111111111111111111111111111111111111111",
-      owner: "Own111111111111111111111111111111111111111",
-      payer: "Pay111111111111111111111111111111111111111",
-      core: mplCoreProgramId(),
-      system: systemProgramId(),
+    // Adjacent owner↔payer swap fails the same role pin (processor order).
+    const swapped = [...accounts];
+    const tmp = swapped[3]!;
+    swapped[3] = swapped[4]!;
+    swapped[4] = tmp;
+    assert.throws(() => {
+      assert.equal(swapped[3]!.role, AccountRole.READONLY_SIGNER);
+      assert.equal(swapped[4]!.role, AccountRole.WRITABLE_SIGNER);
     });
-    assert.equal(live[3]!.address.startsWith("Own"), true);
-    assert.equal(live[4]!.address.startsWith("Pay"), true);
-
-    // Planted change: swap owner and payer (adjacent metas)
-    const planted = [...live];
-    const tmp = planted[3]!;
-    planted[3] = planted[4]!;
-    planted[4] = tmp;
-    assert.notEqual(planted[3]!.address, live[3]!.address);
-    assert.notEqual(planted[4]!.address, live[4]!.address);
-    assert.deepEqual(
-      live.map((a) => a.role),
-      [
-        AccountRole.READONLY,
-        AccountRole.WRITABLE,
-        AccountRole.WRITABLE,
-        AccountRole.READONLY_SIGNER,
-        AccountRole.WRITABLE_SIGNER,
-        AccountRole.READONLY,
-        AccountRole.READONLY,
-      ],
-    );
   });
 
   it("executeSetPassportUri SVM sends assembled metas via sendSvmInstruction", async () => {
@@ -362,6 +337,40 @@ describe("setPassportUri ownership + panel surface", () => {
     assert.match(src, /useSetPassportUri/);
     assert.match(src, /setPassportUri\(\{\s*chainId,\s*tokenId,\s*uri\s*\}\)/);
     assert.equal(vmBranchViolationInSource(src), false);
+  });
+
+  /**
+   * Known-incomplete: this panel still refuses SVM sessions before the set-URI
+   * owner runs. Holds that limitation by name so U6.1 (session chrome) must
+   * invert this pin in place — same file, same title, flipped assertion.
+   */
+  it("edit wizard still gates on requireEvmSession — SVM session cannot reach setPassportUri (U6.1 inverts this pin in place)", () => {
+    function wizardGatesOnEvmSession(source: string): boolean {
+      return (
+        /\brequireEvmSession\s*\(\s*account\s*\)/.test(source) &&
+        /if\s*\(\s*!evm\.ok\s*\)\s*\{[\s\S]*?\bEvmSessionRefusal\b/.test(source)
+      );
+    }
+
+    const live = wizardSource();
+    assert.equal(
+      wizardGatesOnEvmSession(live),
+      true,
+      "live wizard must still gate on requireEvmSession + EvmSessionRefusal",
+    );
+
+    // Planted change: remove requireEvmSession(account) and the !evm.ok refusal.
+    const planted = live
+      .replace(/\brequireEvmSession\s*\(\s*account\s*\)/g, "/* planted: no requireEvmSession */ null")
+      .replace(
+        /if\s*\(\s*!evm\.ok\s*\)\s*\{[\s\S]*?\bEvmSessionRefusal\b[\s\S]*?\n\s*\}\n/,
+        "/* planted: no EvmSessionRefusal gate */\n",
+      );
+    assert.equal(
+      wizardGatesOnEvmSession(planted),
+      false,
+      "planted gate removal must turn the limitation pin red",
+    );
   });
 
   it("planted if(vm) in wizard is red; live wizard is green", () => {
