@@ -23,6 +23,11 @@ type GetTransactionResult = {
   } | null;
 } | null;
 
+type GetLatestBlockhashRpcValue = {
+  blockhash?: string;
+  lastValidBlockHeight?: number | string;
+} | null;
+
 /**
  * Browser/public Solana RPC for product writes and confirms.
  * Fail closed when unset — no silent public Devnet invent in the owner.
@@ -34,6 +39,107 @@ export function productSvmRpcUrl(): string | null {
 
 export function productSvmRpcUrlRefusalCopy(): string {
   return "Solana RPC is not configured for this network.";
+}
+
+export type SvmLatestBlockhash = {
+  blockhash: string;
+  lastValidBlockHeight: bigint;
+};
+
+export type FetchSvmLatestBlockhashCause =
+  | "blockhash_unavailable"
+  | "blockhash_expired";
+
+export type FetchSvmLatestBlockhashResult =
+  | { ok: true; value: SvmLatestBlockhash }
+  | {
+      ok: false;
+      cause: FetchSvmLatestBlockhashCause;
+      detail: string;
+    };
+
+/**
+ * Latest blockhash for product SVM writes — same transport as confirm/getTransaction.
+ * No retry loop; missing/malformed/expired are named refusals.
+ */
+export async function fetchProductSvmLatestBlockhash(opts?: {
+  /** Injected tip height for expiry checks (tests). Default: `getBlockHeight`. */
+  fetchBlockHeight?: (rpcUrl: string) => Promise<bigint>;
+}): Promise<FetchSvmLatestBlockhashResult> {
+  const rpcUrl = productSvmRpcUrl();
+  if (!rpcUrl) {
+    return {
+      ok: false,
+      cause: "blockhash_unavailable",
+      detail: productSvmRpcUrlRefusalCopy(),
+    };
+  }
+  let value: GetLatestBlockhashRpcValue;
+  try {
+    const result = await postSolanaJsonRpc<{ value: GetLatestBlockhashRpcValue }>(
+      rpcUrl,
+      "getLatestBlockhash",
+      [{ commitment: "confirmed" }],
+    );
+    value = result.value;
+  } catch (err) {
+    return {
+      ok: false,
+      cause: "blockhash_unavailable",
+      detail: err instanceof Error ? err.message : String(err),
+    };
+  }
+  const blockhash =
+    typeof value?.blockhash === "string" ? value.blockhash.trim() : "";
+  if (blockhash.length === 0) {
+    return {
+      ok: false,
+      cause: "blockhash_unavailable",
+      detail: "getLatestBlockhash returned no blockhash",
+    };
+  }
+  let lastValidBlockHeight: bigint;
+  try {
+    lastValidBlockHeight = BigInt(value?.lastValidBlockHeight ?? "");
+  } catch {
+    return {
+      ok: false,
+      cause: "blockhash_unavailable",
+      detail: "getLatestBlockhash returned no lastValidBlockHeight",
+    };
+  }
+
+  const fetchHeight =
+    opts?.fetchBlockHeight ??
+    (async (url: string) => {
+      const height = await postSolanaJsonRpc<number | string>(url, "getBlockHeight", [
+        { commitment: "confirmed" },
+      ]);
+      return BigInt(height);
+    });
+
+  let tip: bigint;
+  try {
+    tip = await fetchHeight(rpcUrl);
+  } catch (err) {
+    return {
+      ok: false,
+      cause: "blockhash_unavailable",
+      detail: err instanceof Error ? err.message : String(err),
+    };
+  }
+  if (tip > lastValidBlockHeight) {
+    return {
+      ok: false,
+      cause: "blockhash_expired",
+      detail: `tip ${tip} > lastValidBlockHeight ${lastValidBlockHeight}`,
+    };
+  }
+
+  return {
+    ok: true,
+    value: { blockhash, lastValidBlockHeight },
+  };
 }
 
 /**

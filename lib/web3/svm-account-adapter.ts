@@ -3,6 +3,9 @@
 /**
  * SVM account adapter — Wallet Standard session + discovery list.
  * Kit validates addresses; web3.js never enters this module.
+ *
+ * Sign-and-send port: re-exports {@link createSvmSignAndSendPort} from the
+ * session-adjacent owner (Wallet Standard feature bind).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -15,6 +18,12 @@ import {
   type SvmDiscoveredWallet,
 } from "@/lib/web3/svm-wallet-discovery";
 import type { Wallet } from "@wallet-standard/base";
+
+export {
+  createSvmSignAndSendPort,
+  type CreateSvmSignAndSendPortCause,
+  type CreateSvmSignAndSendPortResult,
+} from "@/lib/web3/svm-sign-and-send-port";
 
 export type SvmAccountAdapterSnapshot = {
   connected: ActiveAccountSvm | null;

@@ -54,6 +54,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-pda-derivation-policy.test.ts"],
   },
   {
+    id: "svm-write-adapter",
+    owner:
+      "lib/web3/svm-write-adapter.ts · lib/web3/svm-sign-and-send-port.ts · lib/web3/svm-rpc.ts · lib/web3/commercial-active.ts",
+    rule: "SVM write: kit-assemble instruction + COMMERCIAL_ACTIVE program/chain + svm-rpc blockhash + solana:signAndSendTransaction port only (no signTransaction, no product submitter); base58 via kit decoder",
+    guardTests: ["svm-write-adapter-policy.test.ts"],
+  },
+  {
     id: "svm-write-census",
     owner: "test/svm-write-census-policy.test.ts",
     rule: "Sole enumerated set of product write-site files under app|components|hooks (excludes use-tx-sync); human action matrix is local research annex only and never imported by tests",

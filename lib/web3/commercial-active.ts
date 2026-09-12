@@ -31,9 +31,14 @@ import {
   type CommercialNativeUnit,
 } from "@/lib/web3/commercial-native-unit";
 import { mintExplorerOrigin, type ExplorerOrigin } from "@/lib/web3/explorer-origin";
+import {
+  mintWalletStandardChain,
+  type WalletStandardChain,
+} from "@/lib/web3/wallet-standard-chain";
 
 export type { CommercialNativeUnit } from "@/lib/web3/commercial-native-unit";
 export type { ExplorerOrigin } from "@/lib/web3/explorer-origin";
+export type { WalletStandardChain } from "@/lib/web3/wallet-standard-chain";
 
 export type CommercialActiveBlocks = {
   timelock?: number;
@@ -113,6 +118,12 @@ export type SvmCommercialActiveStack = {
   nativeUnit: CommercialNativeUnit;
   /** Block explorer origin — minted via {@link mintExplorerOrigin}. */
   explorerBaseUrl: ExplorerOrigin;
+  /**
+   * Wallet Standard `chain` for `solana:signAndSendTransaction`.
+   * Minted via {@link mintWalletStandardChain}; read only through
+   * {@link walletStandardChainOf} — never invent a cluster default.
+   */
+  walletStandardChain: WalletStandardChain;
   karPassport: string;
   karProPass: string;
   karProStaking: string;
@@ -236,6 +247,7 @@ const SOLANA_DEVNET_40168 = {
   namespace: mintKargainNamespace(SOLANA_DEVNET_NAMESPACE),
   nativeUnit: SOL_NATIVE_UNIT,
   explorerBaseUrl: mintExplorerOrigin("https://explorer.solana.com"),
+  walletStandardChain: mintWalletStandardChain("solana:devnet"),
   karPassport: "ArvcryxBL1mP44Vo4MoK1FE3YCnNG8JdVa3iTKxgWnTQ",
   karProPass: "4TE2kf7N4F43ab1436KA71ZwKKokdGt7ANRDbreWbnHr",
   karProStaking: "8tts6h74Uos5FuUJMEQ8uQd5oPXfKZ41Xfid9D6iZvXY",
@@ -439,4 +451,41 @@ export function namespaceOfCommercial(chainId: CommercialChainId): KargainNamesp
 /** Native unit from the network class (sole reader). */
 export function nativeUnitOf(stack: CommercialActiveStack): CommercialNativeUnit {
   return stack.nativeUnit;
+}
+
+export type WalletStandardChainOfCause = "missing_wallet_standard_chain";
+
+export type WalletStandardChainOfResult =
+  | { ok: true; chain: WalletStandardChain }
+  | {
+      ok: false;
+      cause: WalletStandardChainOfCause;
+      detail: string;
+    };
+
+/**
+ * Sole reader of Wallet Standard `chain` for an SVM commercial stack.
+ * Total over the registry contract: refuses by name when the field is absent
+ * or not a minted cluster — never defaults to `solana:devnet`.
+ */
+export function walletStandardChainOf(
+  stack: SvmCommercialActiveStack,
+): WalletStandardChainOfResult {
+  const raw = (stack as { walletStandardChain?: unknown }).walletStandardChain;
+  if (raw == null || typeof raw !== "string" || raw.trim().length === 0) {
+    return {
+      ok: false,
+      cause: "missing_wallet_standard_chain",
+      detail: `SVM namespace ${Number(stack.namespace)} has no walletStandardChain`,
+    };
+  }
+  try {
+    return { ok: true, chain: mintWalletStandardChain(raw) };
+  } catch {
+    return {
+      ok: false,
+      cause: "missing_wallet_standard_chain",
+      detail: String(raw),
+    };
+  }
 }

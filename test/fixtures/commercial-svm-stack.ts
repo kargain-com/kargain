@@ -10,6 +10,7 @@ import {
   mintKargainNamespace,
   namespaceFromLayerZeroEid,
 } from "@/lib/web3/kargain-namespace";
+import { mintWalletStandardChain } from "@/lib/web3/wallet-standard-chain";
 
 /** Solana Devnet LayerZero EID 40168 → reserved namespace (SPEC §13.1). */
 export const FIXTURE_SVM_NAMESPACE = namespaceFromLayerZeroEid(40168);
@@ -27,6 +28,7 @@ export const FIXTURE_SVM_STACK = {
   namespace: mintKargainNamespace(FIXTURE_SVM_NAMESPACE),
   nativeUnit: mintCommercialNativeUnit("SOL", 9),
   explorerBaseUrl: mintExplorerOrigin("https://explorer.solana.com"),
+  walletStandardChain: mintWalletStandardChain("solana:devnet"),
   karPassport: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   karProPass: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
   karProStaking: "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",

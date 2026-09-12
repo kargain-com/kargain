@@ -17,6 +17,9 @@ const SVM_OWNERS = [
   "lib/passport/upload-passport-metadata.ts",
   // §7.2 U4: sole PDA derivation owner — async getProgramDerivedAddress from kit.
   "lib/svm/derive-pda.ts",
+  // §7.2 U5: write adapter (kit assemble) + sign-and-send port (Wallet Standard).
+  "lib/web3/svm-write-adapter.ts",
+  "lib/web3/svm-sign-and-send-port.ts",
 ] as const;
 
 const SVM_DEP_IMPORT =
