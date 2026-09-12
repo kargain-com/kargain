@@ -9,6 +9,7 @@ members = [
   "crates/kargain-consignment-base",
   "crates/kargain-price",
   "crates/kargain-events",
+  "crates/kargain-ix-wire",
     "programs/kar-passport",
   "programs/kar-gateway",
   "programs/mock-staking",

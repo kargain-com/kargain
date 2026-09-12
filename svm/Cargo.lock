@@ -697,6 +697,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "kargain-ix-wire"
+version = "0.1.0"
+dependencies = [
+ "borsh 1.8.1",
+ "kar-ascending",
+ "kar-fixed-price",
+ "kar-gateway",
+ "kar-passport",
+ "kar-pro-pass",
+ "kar-pro-staking",
+ "kargain-price",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "kargain-onft-codec"
 version = "0.1.0"
 dependencies = [

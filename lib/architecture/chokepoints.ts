@@ -42,6 +42,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["evm-write-adapter-policy.test.ts"],
   },
   {
+    id: "svm-instruction-encoder",
+    owner: "lib/svm/encode-instruction.ts · svm/crates/kargain-ix-wire",
+    rule: "Commercial instruction data bytes only via encode-instruction; layout+goldens from Rust BorshSerialize (committed ix.manifest.json)",
+    guardTests: ["svm-instruction-encoder-policy.test.ts"],
+  },
+  {
     id: "svm-write-census",
     owner: "test/svm-write-census-policy.test.ts",
     rule: "Sole enumerated set of product write-site files under app|components|hooks (excludes use-tx-sync); human action matrix is local research annex only and never imported by tests",

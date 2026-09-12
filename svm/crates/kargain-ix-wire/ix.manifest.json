@@ -1,0 +1,2099 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 0,
+      "name": "Initialize",
+      "fields": [
+        {
+          "name": "namespace",
+          "type": "u128"
+        },
+        {
+          "name": "local_eid",
+          "type": "u32"
+        },
+        {
+          "name": "endpoint_program",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "dispute_deposit",
+          "type": "u64"
+        },
+        {
+          "name": "staking_program",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "forfeit_recipient",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "dispute_deposit": "1000000000",
+        "endpoint_program": "1111111111111111111111111111111111111111111111111111111111111111",
+        "forfeit_recipient": "3333333333333333333333333333333333333333333333333333333333333333",
+        "local_eid": 40168,
+        "namespace": "2000040168",
+        "staking_program": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "goldenHex": "00e8303677000000000000000000000000e89c0000111111111111111111111111111111111111111111111111111111111111111100ca9a3b0000000022222222222222222222222222222222222222222222222222222222222222223333333333333333333333333333333333333333333333333333333333333333"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 1,
+      "name": "SetBridgeGateway",
+      "fields": [
+        {
+          "name": "gateway",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "gateway": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "goldenHex": "014444444444444444444444444444444444444444444444444444444444444444"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 2,
+      "name": "MintPassport",
+      "fields": [
+        {
+          "name": "uri",
+          "type": "string"
+        }
+      ],
+      "sample": {
+        "uri": "ar://sample-uri"
+      },
+      "goldenHex": "020f00000061723a2f2f73616d706c652d757269"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 3,
+      "name": "SetPassportUri",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "uri",
+          "type": "string"
+        }
+      ],
+      "sample": {
+        "token_id": "5555555555555555555555555555555555555555555555555555555555555555",
+        "uri": "ar://uri-2"
+      },
+      "goldenHex": "0355555555555555555555555555555555555555555555555555555555555555550a00000061723a2f2f7572692d32"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 4,
+      "name": "May",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "intent",
+          "type": "u8"
+        }
+      ],
+      "sample": {
+        "intent": 1,
+        "token_id": "5656565656565656565656565656565656565656565656565656565656565656"
+      },
+      "goldenHex": "04565656565656565656565656565656565656565656565656565656565656565601"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 5,
+      "name": "AppendRecord",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "record_type",
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "evidence_cid",
+          "type": "string"
+        }
+      ],
+      "sample": {
+        "description": "desc",
+        "evidence_cid": "ar://ev",
+        "record_type": "service",
+        "token_id": "5757575757575757575757575757575757575757575757575757575757575757"
+      },
+      "goldenHex": "055757575757575757575757575757575757575757575757575757575757575757070000007365727669636504000000646573630700000061723a2f2f6576"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 6,
+      "name": "SetCustodyLock",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "locked",
+          "type": "bool"
+        }
+      ],
+      "sample": {
+        "locked": true,
+        "token_id": "5858585858585858585858585858585858585858585858585858585858585858"
+      },
+      "goldenHex": "06585858585858585858585858585858585858585858585858585858585858585801"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 7,
+      "name": "BridgeMint",
+      "fields": [
+        {
+          "name": "to",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "uri",
+          "type": "string"
+        }
+      ],
+      "sample": {
+        "to": "5959595959595959595959595959595959595959595959595959595959595959",
+        "token_id": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "uri": "ar://bridge"
+      },
+      "goldenHex": "0759595959595959595959595959595959595959595959595959595959595959595a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a0b00000061723a2f2f627269646765"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 8,
+      "name": "BridgeBurn",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b"
+      },
+      "goldenHex": "085b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 9,
+      "name": "BridgeResetOnUnlock",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "uri",
+          "type": "string"
+        }
+      ],
+      "sample": {
+        "token_id": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+        "uri": "ar://reset"
+      },
+      "goldenHex": "095c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c0a00000061723a2f2f7265736574"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 10,
+      "name": "SetStakingProgram",
+      "fields": [
+        {
+          "name": "staking_program",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "staking_program": "5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d"
+      },
+      "goldenHex": "0a5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 11,
+      "name": "VerifyPassport",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+      },
+      "goldenHex": "0b5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 12,
+      "name": "OpenChallenge",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f"
+      },
+      "goldenHex": "0c5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 13,
+      "name": "WithdrawChallenge",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "6060606060606060606060606060606060606060606060606060606060606060"
+      },
+      "goldenHex": "0d6060606060606060606060606060606060606060606060606060606060606060"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 14,
+      "name": "JudgeChallenge",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "outcome",
+          "type": "u8"
+        }
+      ],
+      "sample": {
+        "outcome": 2,
+        "token_id": "6161616161616161616161616161616161616161616161616161616161616161"
+      },
+      "goldenHex": "0e616161616161616161616161616161616161616161616161616161616161616102"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 15,
+      "name": "ConcludeChallenge",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "6262626262626262626262626262626262626262626262626262626262626262"
+      },
+      "goldenHex": "0f6262626262626262626262626262626262626262626262626262626262626262"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 16,
+      "name": "WithdrawClaim",
+      "fields": [],
+      "sample": {},
+      "goldenHex": "10"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 17,
+      "name": "SetDisputeDeposit",
+      "fields": [
+        {
+          "name": "dispute_deposit",
+          "type": "u64"
+        }
+      ],
+      "sample": {
+        "dispute_deposit": "2000000000"
+      },
+      "goldenHex": "110094357700000000"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 18,
+      "name": "ReportDiscrepancy",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "evidence_cid",
+          "type": "string"
+        }
+      ],
+      "sample": {
+        "description": "disc",
+        "evidence_cid": "ar://d",
+        "token_id": "6363636363636363636363636363636363636363636363636363636363636363"
+      },
+      "goldenHex": "12636363636363636363636363636363636363636363636363636363636363636304000000646973630600000061723a2f2f64"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 19,
+      "name": "AppendAttestation",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "evidence_cid",
+          "type": "string"
+        }
+      ],
+      "sample": {
+        "description": "att",
+        "evidence_cid": "ar://a",
+        "token_id": "6464646464646464646464646464646464646464646464646464646464646464"
+      },
+      "goldenHex": "136464646464646464646464646464646464646464646464646464646464646464030000006174740600000061723a2f2f61"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 20,
+      "name": "TransferPassport",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "6565656565656565656565656565656565656565656565656565656565656565"
+      },
+      "goldenHex": "146565656565656565656565656565656565656565656565656565656565656565"
+    },
+    {
+      "program": "kar-gateway",
+      "enum": "GatewayIx",
+      "index": 0,
+      "name": "Initialize",
+      "fields": [
+        {
+          "name": "local_eid",
+          "type": "u32"
+        },
+        {
+          "name": "endpoint_program",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "passport_program",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "namespace",
+          "type": "u128"
+        }
+      ],
+      "sample": {
+        "endpoint_program": "7171717171717171717171717171717171717171717171717171717171717171",
+        "local_eid": 40168,
+        "namespace": "2000040168",
+        "passport_program": "7272727272727272727272727272727272727272727272727272727272727272"
+      },
+      "goldenHex": "00e89c000071717171717171717171717171717171717171717171717171717171717171717272727272727272727272727272727272727272727272727272727272727272e8303677000000000000000000000000"
+    },
+    {
+      "program": "kar-gateway",
+      "enum": "GatewayIx",
+      "index": 1,
+      "name": "Send",
+      "fields": [
+        {
+          "name": "dst_eid",
+          "type": "u32"
+        },
+        {
+          "name": "to",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "native_fee",
+          "type": "u64"
+        },
+        {
+          "name": "options",
+          "type": "vec_u8"
+        }
+      ],
+      "sample": {
+        "dst_eid": 40245,
+        "native_fee": "5000",
+        "options": "a5a501",
+        "to": "7373737373737373737373737373737373737373737373737373737373737373",
+        "token_id": "7474747474747474747474747474747474747474747474747474747474747474"
+      },
+      "goldenHex": "01359d000073737373737373737373737373737373737373737373737373737373737373737474747474747474747474747474747474747474747474747474747474747474881300000000000003000000a5a501"
+    },
+    {
+      "program": "kar-gateway",
+      "enum": "GatewayIx",
+      "index": 2,
+      "name": "LzReceive",
+      "fields": [
+        {
+          "name": "src_eid",
+          "type": "u32"
+        },
+        {
+          "name": "sender",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "nonce",
+          "type": "u64"
+        },
+        {
+          "name": "guid",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "message",
+          "type": "vec_u8"
+        }
+      ],
+      "sample": {
+        "guid": "7676767676767676767676767676767676767676767676767676767676767676",
+        "message": "01020304",
+        "nonce": "7",
+        "sender": "7575757575757575757575757575757575757575757575757575757575757575",
+        "src_eid": 40245
+      },
+      "goldenHex": "02359d00007575757575757575757575757575757575757575757575757575757575757575070000000000000076767676767676767676767676767676767676767676767676767676767676760400000001020304"
+    },
+    {
+      "program": "kar-gateway",
+      "enum": "GatewayIx",
+      "index": 3,
+      "name": "RecoverLockedHome",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "to",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "to": "7878787878787878787878787878787878787878787878787878787878787878",
+        "token_id": "7777777777777777777777777777777777777777777777777777777777777777"
+      },
+      "goldenHex": "0377777777777777777777777777777777777777777777777777777777777777777878787878787878787878787878787878787878787878787878787878787878"
+    },
+    {
+      "program": "kar-gateway",
+      "enum": "GatewayIx",
+      "index": 4,
+      "name": "LzReceiveTypes",
+      "fields": [
+        {
+          "name": "message",
+          "type": "vec_u8"
+        }
+      ],
+      "sample": {
+        "message": "1020"
+      },
+      "goldenHex": "04020000001020"
+    },
+    {
+      "program": "kar-gateway",
+      "enum": "GatewayIx",
+      "index": 5,
+      "name": "RegisterOApp",
+      "fields": [
+        {
+          "name": "delegate",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "delegate": "7979797979797979797979797979797979797979797979797979797979797979"
+      },
+      "goldenHex": "057979797979797979797979797979797979797979797979797979797979797979"
+    },
+    {
+      "program": "kar-gateway",
+      "enum": "GatewayIx",
+      "index": 6,
+      "name": "SetPeer",
+      "fields": [
+        {
+          "name": "remote_eid",
+          "type": "u32"
+        },
+        {
+          "name": "peer",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "peer": "7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a",
+        "remote_eid": 40245
+      },
+      "goldenHex": "06359d00007a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+    },
+    {
+      "program": "kar-gateway",
+      "enum": "GatewayIx",
+      "index": 7,
+      "name": "InitLzReceiveTypes",
+      "fields": [],
+      "sample": {},
+      "goldenHex": "07"
+    },
+    {
+      "program": "kar-pro-staking",
+      "enum": "StakingIx",
+      "index": 0,
+      "name": "Initialize",
+      "fields": [
+        {
+          "name": "pass_program",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "min_stake_lamports",
+          "type": "u64"
+        },
+        {
+          "name": "min_stake_floor_lamports",
+          "type": "u64"
+        },
+        {
+          "name": "unbonding_period_secs",
+          "type": "u64"
+        }
+      ],
+      "sample": {
+        "min_stake_floor_lamports": "100000000",
+        "min_stake_lamports": "500000000",
+        "pass_program": "8181818181818181818181818181818181818181818181818181818181818181",
+        "unbonding_period_secs": "1209600"
+      },
+      "goldenHex": "0081818181818181818181818181818181818181818181818181818181818181810065cd1d0000000000e1f505000000000075120000000000"
+    },
+    {
+      "program": "kar-pro-staking",
+      "enum": "StakingIx",
+      "index": 1,
+      "name": "Join",
+      "fields": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "category",
+          "type": "u8"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "metadata_uri",
+          "type": "string"
+        }
+      ],
+      "sample": {
+        "amount": "500000000",
+        "category": 3,
+        "metadata_uri": "ar://kar-pro",
+        "name": "Verifier One"
+      },
+      "goldenHex": "010065cd1d00000000030c0000005665726966696572204f6e650c00000061723a2f2f6b61722d70726f"
+    },
+    {
+      "program": "kar-pro-staking",
+      "enum": "StakingIx",
+      "index": 2,
+      "name": "Leave",
+      "fields": [],
+      "sample": {},
+      "goldenHex": "02"
+    },
+    {
+      "program": "kar-pro-staking",
+      "enum": "StakingIx",
+      "index": 3,
+      "name": "ClaimStake",
+      "fields": [],
+      "sample": {},
+      "goldenHex": "03"
+    },
+    {
+      "program": "kar-pro-staking",
+      "enum": "StakingIx",
+      "index": 4,
+      "name": "SetVerificationFee",
+      "fields": [
+        {
+          "name": "fee",
+          "type": "u64"
+        }
+      ],
+      "sample": {
+        "fee": "50000000"
+      },
+      "goldenHex": "0480f0fa0200000000"
+    },
+    {
+      "program": "kar-pro-staking",
+      "enum": "StakingIx",
+      "index": 5,
+      "name": "SetMinStakeNative",
+      "fields": [
+        {
+          "name": "lamports",
+          "type": "u64"
+        }
+      ],
+      "sample": {
+        "lamports": "600000000"
+      },
+      "goldenHex": "050046c32300000000"
+    },
+    {
+      "program": "kar-pro-staking",
+      "enum": "StakingIx",
+      "index": 6,
+      "name": "ClosePass",
+      "fields": [],
+      "sample": {},
+      "goldenHex": "06"
+    },
+    {
+      "program": "kar-pro-pass",
+      "enum": "PassIx",
+      "index": 0,
+      "name": "Initialize",
+      "fields": [
+        {
+          "name": "staking_program",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "staking_program": "9191919191919191919191919191919191919191919191919191919191919191"
+      },
+      "goldenHex": "009191919191919191919191919191919191919191919191919191919191919191"
+    },
+    {
+      "program": "kar-pro-pass",
+      "enum": "PassIx",
+      "index": 1,
+      "name": "Mint",
+      "fields": [
+        {
+          "name": "category",
+          "type": "u8"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "metadata_uri",
+          "type": "string"
+        }
+      ],
+      "sample": {
+        "category": 1,
+        "metadata_uri": "ar://pass",
+        "name": "Pro"
+      },
+      "goldenHex": "01010300000050726f0900000061723a2f2f70617373"
+    },
+    {
+      "program": "kar-pro-pass",
+      "enum": "PassIx",
+      "index": 2,
+      "name": "ClosePass",
+      "fields": [
+        {
+          "name": "holder",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "holder": "9292929292929292929292929292929292929292929292929292929292929292"
+      },
+      "goldenHex": "029292929292929292929292929292929292929292929292929292929292929292"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 0,
+      "name": "InitConfig",
+      "fields": [
+        {
+          "name": "platform_fee_bps",
+          "type": "u16"
+        }
+      ],
+      "sample": {
+        "platform_fee_bps": 250
+      },
+      "goldenHex": "00fa00"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 1,
+      "name": "CreateAsset",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+      },
+      "goldenHex": "01a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 2,
+      "name": "ApproveEscrow",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2"
+      },
+      "goldenHex": "02a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 3,
+      "name": "SetMayOpen",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "allowed",
+          "type": "bool"
+        }
+      ],
+      "sample": {
+        "allowed": true,
+        "token_id": "a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3"
+      },
+      "goldenHex": "03a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a301"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 4,
+      "name": "SetSelfEncumbrance",
+      "fields": [
+        {
+          "name": "registered",
+          "type": "bool"
+        }
+      ],
+      "sample": {
+        "registered": true
+      },
+      "goldenHex": "0401"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 5,
+      "name": "Grant",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "agent",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "expiry",
+          "type": "u64"
+        },
+        {
+          "name": "asset_mint",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "denom_kind",
+          "type": "u8"
+        },
+        {
+          "name": "currency_code",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "floor",
+          "type": "u64"
+        },
+        {
+          "name": "form",
+          "type": "u8"
+        },
+        {
+          "name": "commission_bps",
+          "type": "u16"
+        }
+      ],
+      "sample": {
+        "agent": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+        "asset_mint": "a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6",
+        "commission_bps": 500,
+        "currency_code": "a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7",
+        "denom_kind": 0,
+        "expiry": "1700000000",
+        "floor": "1000000",
+        "form": 0,
+        "token_id": "a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4"
+      },
+      "goldenHex": "05a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a500f1536500000000a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a600a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a740420f000000000000f401"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 6,
+      "name": "Revoke",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8"
+      },
+      "goldenHex": "06a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 7,
+      "name": "OpenDirect",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "asset_mint",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "denom_kind",
+          "type": "u8"
+        },
+        {
+          "name": "currency_code",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "price",
+          "type": "u64"
+        }
+      ],
+      "sample": {
+        "asset_mint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "currency_code": "abababababababababababababababababababababababababababababababab",
+        "denom_kind": 0,
+        "price": "2000000",
+        "token_id": "a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9"
+      },
+      "goldenHex": "07a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa00abababababababababababababababababababababababababababababababab80841e0000000000"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 8,
+      "name": "OpenFromMandate",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "denom_kind",
+          "type": "u8"
+        },
+        {
+          "name": "currency_code",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "price",
+          "type": "u64"
+        }
+      ],
+      "sample": {
+        "currency_code": "adadadadadadadadadadadadadadadadadadadadadadadadadadadadadadadad",
+        "denom_kind": 1,
+        "price": "3000000",
+        "token_id": "acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac"
+      },
+      "goldenHex": "08acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac01adadadadadadadadadadadadadadadadadadadadadadadadadadadadadadadadc0c62d0000000000"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 9,
+      "name": "SetPrice",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "new_price",
+          "type": "u64"
+        }
+      ],
+      "sample": {
+        "new_price": "4000000",
+        "token_id": "aeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeae"
+      },
+      "goldenHex": "09aeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeae00093d0000000000"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 10,
+      "name": "LowerFloor",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "new_floor",
+          "type": "u64"
+        }
+      ],
+      "sample": {
+        "new_floor": "900000",
+        "token_id": "afafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafaf"
+      },
+      "goldenHex": "0aafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafa0bb0d0000000000"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 11,
+      "name": "LowerCommission",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "new_bps",
+          "type": "u16"
+        }
+      ],
+      "sample": {
+        "new_bps": 400,
+        "token_id": "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0"
+      },
+      "goldenHex": "0bb0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b09001"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 12,
+      "name": "RequestRecall",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+      },
+      "goldenHex": "0cb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 13,
+      "name": "ForceRecall",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+      },
+      "goldenHex": "0db2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 14,
+      "name": "OwnerWithdraw",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3"
+      },
+      "goldenHex": "0eb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 15,
+      "name": "AgentWithdraw",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4"
+      },
+      "goldenHex": "0fb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 16,
+      "name": "EnterCommitted",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5"
+      },
+      "goldenHex": "10b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 17,
+      "name": "Pause",
+      "fields": [],
+      "sample": {},
+      "goldenHex": "11"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 18,
+      "name": "Unpause",
+      "fields": [],
+      "sample": {},
+      "goldenHex": "12"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 19,
+      "name": "ApprovePaymentToken",
+      "fields": [
+        {
+          "name": "price_program",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "feed_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "staleness_tolerance",
+          "type": "u32"
+        },
+        {
+          "name": "max_confidence_bps",
+          "type": "u32"
+        }
+      ],
+      "sample": {
+        "feed_id": "b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8",
+        "max_confidence_bps": 100,
+        "price_program": "b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6",
+        "staleness_tolerance": 120
+      },
+      "goldenHex": "13b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b87800000064000000"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 20,
+      "name": "RevokePaymentToken",
+      "fields": [
+        {
+          "name": "mint",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "mint": "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9"
+      },
+      "goldenHex": "14b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 21,
+      "name": "Buy",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "babababababababababababababababababababababababababababababababa"
+      },
+      "goldenHex": "15babababababababababababababababababababababababababababababababa"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 22,
+      "name": "SetSettlementNote",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "note",
+          "type": "fixed_bytes",
+          "len": 256
+        },
+        {
+          "name": "note_len",
+          "type": "u32"
+        }
+      ],
+      "sample": {
+        "note": "6e6f7465000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        "note_len": 4,
+        "token_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "goldenHex": "16bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb6e6f746500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 23,
+      "name": "ConfirmExternalPayment",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "buyer",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "buyer": "bdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbd",
+        "token_id": "bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc"
+      },
+      "goldenHex": "17bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbd"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 24,
+      "name": "WithdrawClaim",
+      "fields": [],
+      "sample": {},
+      "goldenHex": "18"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 25,
+      "name": "ForceRecallRequestedAt",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "requested_at",
+          "type": "u64"
+        }
+      ],
+      "sample": {
+        "requested_at": "1700000100",
+        "token_id": "bebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebe"
+      },
+      "goldenHex": "19bebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebe64f1536500000000"
+    },
+    {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 26,
+      "name": "ForceSeedPriceAccount",
+      "fields": [
+        {
+          "name": "feed_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "data",
+          "type": "fixed_bytes",
+          "len": 134
+        }
+      ],
+      "sample": {
+        "data": "b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7",
+        "feed_id": "bfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbf"
+      },
+      "goldenHex": "1abfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 0,
+      "name": "InitConfig",
+      "fields": [
+        {
+          "name": "platform_fee_bps",
+          "type": "u16"
+        },
+        {
+          "name": "challenge_bond",
+          "type": "u64"
+        },
+        {
+          "name": "challenge_window",
+          "type": "u64"
+        },
+        {
+          "name": "staking_program",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "challenge_bond": "100000000",
+        "challenge_window": "1209600",
+        "platform_fee_bps": 250,
+        "staking_program": "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+      },
+      "goldenHex": "00fa0000e1f505000000000075120000000000c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 1,
+      "name": "CreateAsset",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2"
+      },
+      "goldenHex": "01c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 2,
+      "name": "ApproveEscrow",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+      },
+      "goldenHex": "02c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 3,
+      "name": "SetMayOpen",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "allowed",
+          "type": "bool"
+        }
+      ],
+      "sample": {
+        "allowed": false,
+        "token_id": "c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4"
+      },
+      "goldenHex": "03c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c400"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 4,
+      "name": "SetVerified",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "verified",
+          "type": "bool"
+        }
+      ],
+      "sample": {
+        "token_id": "c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5",
+        "verified": true
+      },
+      "goldenHex": "04c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c501"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 5,
+      "name": "SetSelfEncumbrance",
+      "fields": [
+        {
+          "name": "registered",
+          "type": "bool"
+        }
+      ],
+      "sample": {
+        "registered": false
+      },
+      "goldenHex": "0500"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 6,
+      "name": "Grant",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "agent",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "expiry",
+          "type": "u64"
+        },
+        {
+          "name": "asset_mint",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "denom_kind",
+          "type": "u8"
+        },
+        {
+          "name": "currency_code",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "floor",
+          "type": "u64"
+        },
+        {
+          "name": "form",
+          "type": "u8"
+        },
+        {
+          "name": "commission_bps",
+          "type": "u16"
+        }
+      ],
+      "sample": {
+        "agent": "c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7",
+        "asset_mint": "c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8",
+        "commission_bps": 300,
+        "currency_code": "c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9",
+        "denom_kind": 0,
+        "expiry": "1800000000",
+        "floor": "5000000",
+        "form": 1,
+        "token_id": "c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6"
+      },
+      "goldenHex": "06c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c700d2496b00000000c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c800c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9404b4c0000000000012c01"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 7,
+      "name": "Revoke",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "cacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacaca"
+      },
+      "goldenHex": "07cacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacaca"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 8,
+      "name": "OpenDirect",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "asset_mint",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "denom_kind",
+          "type": "u8"
+        },
+        {
+          "name": "currency_code",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "price",
+          "type": "u64"
+        }
+      ],
+      "sample": {
+        "asset_mint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "currency_code": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "denom_kind": 0,
+        "price": "6000000",
+        "token_id": "cbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcb"
+      },
+      "goldenHex": "08cbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc00cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd808d5b0000000000"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 9,
+      "name": "OpenFromMandate",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "denom_kind",
+          "type": "u8"
+        },
+        {
+          "name": "currency_code",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "price",
+          "type": "u64"
+        }
+      ],
+      "sample": {
+        "currency_code": "cfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcf",
+        "denom_kind": 0,
+        "price": "7000000",
+        "token_id": "cececececececececececececececececececececececececececececececece"
+      },
+      "goldenHex": "09cececececececececececececececececececececececececececececececece00cfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfc0cf6a0000000000"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 10,
+      "name": "SetPrice",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "new_price",
+          "type": "u64"
+        }
+      ],
+      "sample": {
+        "new_price": "8000000",
+        "token_id": "d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0"
+      },
+      "goldenHex": "0ad0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d000127a0000000000"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 11,
+      "name": "OpenAscendingDirect",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "asset_mint",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "reserve",
+          "type": "u64"
+        },
+        {
+          "name": "duration",
+          "type": "u64"
+        },
+        {
+          "name": "protection_window",
+          "type": "u64"
+        }
+      ],
+      "sample": {
+        "asset_mint": "d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2",
+        "duration": "259200",
+        "protection_window": "604800",
+        "reserve": "1000000",
+        "token_id": "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1"
+      },
+      "goldenHex": "0bd1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d240420f000000000080f4030000000000803a090000000000"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 12,
+      "name": "OpenAscendingFromMandate",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "reserve",
+          "type": "u64"
+        },
+        {
+          "name": "duration",
+          "type": "u64"
+        },
+        {
+          "name": "protection_window",
+          "type": "u64"
+        }
+      ],
+      "sample": {
+        "duration": "345600",
+        "protection_window": "1209600",
+        "reserve": "1100000",
+        "token_id": "d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3"
+      },
+      "goldenHex": "0cd3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3e0c810000000000000460500000000000075120000000000"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 13,
+      "name": "Bid",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ],
+      "sample": {
+        "amount": "2000000",
+        "token_id": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
+      },
+      "goldenHex": "0dd4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d480841e0000000000"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 14,
+      "name": "Settle",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5"
+      },
+      "goldenHex": "0ed5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 15,
+      "name": "ConfirmReceipt",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6"
+      },
+      "goldenHex": "0fd6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 16,
+      "name": "ReleaseFunds",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7"
+      },
+      "goldenHex": "10d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 17,
+      "name": "CompleteReversal",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8"
+      },
+      "goldenHex": "11d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 18,
+      "name": "AbandonReversal",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9"
+      },
+      "goldenHex": "12d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 19,
+      "name": "OpenChallenge",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "dadadadadadadadadadadadadadadadadadadadadadadadadadadadadadadada"
+      },
+      "goldenHex": "13dadadadadadadadadadadadadadadadadadadadadadadadadadadadadadadada"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 20,
+      "name": "WithdrawChallenge",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "dbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdb"
+      },
+      "goldenHex": "14dbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdb"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 21,
+      "name": "JudgeChallenge",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "outcome",
+          "type": "u8"
+        }
+      ],
+      "sample": {
+        "outcome": 1,
+        "token_id": "dcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdc"
+      },
+      "goldenHex": "15dcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdc01"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 22,
+      "name": "ConcludeChallenge",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "token_id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "goldenHex": "16dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 23,
+      "name": "ApprovePaymentToken",
+      "fields": [],
+      "sample": {},
+      "goldenHex": "17"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 24,
+      "name": "RevokePaymentToken",
+      "fields": [
+        {
+          "name": "mint",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "mint": "dededededededededededededededededededededededededededededededede"
+      },
+      "goldenHex": "18dededededededededededededededededededededededededededededededede"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 25,
+      "name": "Pause",
+      "fields": [],
+      "sample": {},
+      "goldenHex": "19"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 26,
+      "name": "Unpause",
+      "fields": [],
+      "sample": {},
+      "goldenHex": "1a"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 27,
+      "name": "SetChallengeBond",
+      "fields": [
+        {
+          "name": "challenge_bond",
+          "type": "u64"
+        }
+      ],
+      "sample": {
+        "challenge_bond": "150000000"
+      },
+      "goldenHex": "1b80d1f00800000000"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 28,
+      "name": "WithdrawClaim",
+      "fields": [],
+      "sample": {},
+      "goldenHex": "1c"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 29,
+      "name": "ForceAuctionEndsAt",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "ends_at",
+          "type": "u64"
+        }
+      ],
+      "sample": {
+        "ends_at": "1900000000",
+        "token_id": "dfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdf"
+      },
+      "goldenHex": "1ddfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdf00b33f7100000000"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 30,
+      "name": "ForceHoldClock",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "protection_ends_at",
+          "type": "u64"
+        },
+        {
+          "name": "frozen_remaining",
+          "type": "u64"
+        },
+        {
+          "name": "abandonment_deadline",
+          "type": "u64"
+        }
+      ],
+      "sample": {
+        "abandonment_deadline": "1900100000",
+        "frozen_remaining": "50000",
+        "protection_ends_at": "1900000100",
+        "token_id": "e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0"
+      },
+      "goldenHex": "1ee0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e064b33f710000000050c3000000000000a039417100000000"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 31,
+      "name": "ForceAssetOwner",
+      "fields": [
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "owner",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "owner": "e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2",
+        "token_id": "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1"
+      },
+      "goldenHex": "1fe1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2"
+    }
+  ]
+}
