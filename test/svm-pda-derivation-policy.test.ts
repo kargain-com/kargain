@@ -3,6 +3,8 @@
  *
  * Goldens are authored solely by Rust `find_program_address` (`kargain-ix-wire`).
  * This suite never repairs or regenerates them.
+ *
+ * Doors: product entry = registry only; layout seam = synthetic only.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -21,7 +23,10 @@ import {
   type PdaManifest,
   type PdaManifestRecipe,
 } from "@/lib/svm/derive-pda";
-import { commercialSvmNamespaceIds, requireSvmCommercialActive } from "@/lib/web3/commercial-active";
+import {
+  commercialSvmNamespaceIds,
+  requireSvmCommercialActive,
+} from "@/lib/web3/commercial-active";
 import {
   scanProductSources,
   type ProductSourcePredicate,
@@ -73,7 +78,10 @@ function assertMatchesGolden(
   }
 }
 
-/** Product-graph ban: web3.js sync PDA / package / ad-hoc seed literals. */
+/**
+ * Product-graph ban: web3.js sync PDA / package / ad-hoc seed literals /
+ * product import of the golden-verification seam.
+ */
 export function productPdaBypassPredicate(
   relPath: string,
   source: string,
@@ -105,6 +113,14 @@ export function productPdaBypassPredicate(
     /\bexport\s+const\s+deriveSvmPda\b/.test(source)
   ) {
     return `second_pda_owner (${relPath})`;
+  }
+  // Layout seam is golden/plant only — product files must not import it.
+  if (
+    /\bderiveSvmPdaLayout\b/.test(source) &&
+    (/\bimport\s*\{[^}]*\bderiveSvmPdaLayout\b/.test(source) ||
+      /\bimport\s+\*\s+as\s+\w+\s+from\s+["'][^"']*derive-pda["']/.test(source))
+  ) {
+    return `product_imports_pda_layout_seam (${relPath})`;
   }
   return false;
 }
@@ -145,7 +161,9 @@ describe("svm pda derivation policy", () => {
         `missing_golden_address:${r.id}`,
       );
       assert.ok(
-        Number.isInteger(r.goldenBump) && r.goldenBump >= 0 && r.goldenBump <= 255,
+        Number.isInteger(r.goldenBump) &&
+          r.goldenBump >= 0 &&
+          r.goldenBump <= 255,
         `missing_golden_bump:${r.id}`,
       );
       goldenById.set(r.id, {
@@ -164,11 +182,11 @@ describe("svm pda derivation policy", () => {
     }
   });
 
-  it("TS owner reproduces every committed golden address and bump", async () => {
+  it("layout seam reproduces every committed golden address and bump", async () => {
     let comparisons = 0;
     for (const recipe of RECIPES) {
-      const result = await deriveSvmPda({
-        recipe: recipe.id,
+      const result = await deriveSvmPdaLayout({
+        recipe,
         programId: SYNTHETIC,
         seeds: sampleSeedsFromManifest(recipe),
       });
@@ -198,13 +216,13 @@ describe("svm pda derivation policy", () => {
     assert.ok(claim && claimAta);
     assert.deepEqual(claim!.sample, claimAta!.sample);
     assert.notEqual(claim!.seedTagHex, claimAta!.seedTagHex);
-    const a = await deriveSvmPda({
-      recipe: claim!.id,
+    const a = await deriveSvmPdaLayout({
+      recipe: claim!,
       programId: SYNTHETIC,
       seeds: sampleSeedsFromManifest(claim!),
     });
-    const b = await deriveSvmPda({
-      recipe: claimAta!.id,
+    const b = await deriveSvmPdaLayout({
+      recipe: claimAta!,
       programId: SYNTHETIC,
       seeds: sampleSeedsFromManifest(claimAta!),
     });
@@ -233,19 +251,45 @@ describe("svm pda derivation policy", () => {
     }
   });
 
-  it("all four refusal causes are reachable by name", async () => {
+  it("product entry refuses the synthetic program id as unregistered_program", async () => {
+    // Planted change: deriveSvmPda({…, programId: SYNTHETIC}).
+    const result = await deriveSvmPda({
+      recipe: "kar-passport/config",
+      programId: SYNTHETIC,
+    });
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.equal(result.cause, "unregistered_program");
+    }
+  });
+
+  it("layout seam refuses a live registry program id as not_synthetic_program", async () => {
+    const passport = LIVE_SVM_PROGRAM_IDS[0]!;
+    // Planted change: deriveSvmPdaLayout({…, programId: liveRegistryId}).
+    const result = await deriveSvmPdaLayout({
+      recipe: RECIPES.find((r) => r.id === "kar-passport/config")!,
+      programId: passport,
+    });
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.equal(result.cause, "not_synthetic_program");
+    }
+  });
+
+  it("all five refusal causes are reachable by name", async () => {
+    const passport = LIVE_SVM_PROGRAM_IDS[0]!;
     const causes = new Set<DeriveSvmPdaCause>();
 
     const unknown = await deriveSvmPda({
       recipe: "no-such/recipe",
-      programId: SYNTHETIC,
+      programId: passport,
     });
     assert.equal(unknown.ok, false);
     if (!unknown.ok) causes.add(unknown.cause);
 
     const missing = await deriveSvmPda({
       recipe: "kar-passport/asset",
-      programId: SYNTHETIC,
+      programId: passport,
       seeds: {},
     });
     assert.equal(missing.ok, false);
@@ -253,7 +297,7 @@ describe("svm pda derivation policy", () => {
 
     const invalid = await deriveSvmPda({
       recipe: "kar-passport/asset",
-      programId: SYNTHETIC,
+      programId: passport,
       seeds: { token_id: "aa" },
     });
     assert.equal(invalid.ok, false);
@@ -261,16 +305,24 @@ describe("svm pda derivation policy", () => {
 
     const unreg = await deriveSvmPda({
       recipe: "kar-passport/config",
-      programId: "So11111111111111111111111111111111111111112",
+      programId: SYNTHETIC,
     });
     assert.equal(unreg.ok, false);
     if (!unreg.ok) causes.add(unreg.cause);
+
+    const notSynth = await deriveSvmPdaLayout({
+      recipe: RECIPES.find((r) => r.id === "kar-passport/config")!,
+      programId: passport,
+    });
+    assert.equal(notSynth.ok, false);
+    if (!notSynth.ok) causes.add(notSynth.cause);
 
     assert.deepEqual(
       [...causes].sort(),
       [
         "invalid_seed",
         "missing_seed",
+        "not_synthetic_program",
         "unknown_recipe",
         "unregistered_program",
       ],
@@ -325,26 +377,41 @@ describe("svm pda derivation policy", () => {
     );
   });
 
-  it("product graph bans findProgramAddressSync, web3.js, and ad-hoc seed literals outside the owner", () => {
+  it("product graph bans findProgramAddressSync, web3.js, ad-hoc seeds, and layout-seam imports outside the owner", () => {
     const hits = scanProductSources(
       productPdaBypassPredicate as ProductSourcePredicate,
     );
     assert.deepEqual(hits, []);
   });
 
-  it("planted product bypass predicate turns red then green", () => {
-    const planted = `
+  it("planted product bypass and layout-seam import turn red then green", () => {
+    const plantedWeb3 = `
       import { PublicKey } from "@solana/web3.js";
       PublicKey.findProgramAddressSync([Buffer.from("config")], programId);
     `;
     assert.ok(
-      productPdaBypassPredicate("lib/planted-pda.ts", planted),
-      "planted bypass must fire",
+      productPdaBypassPredicate("lib/planted-pda.ts", plantedWeb3),
+      "planted web3 bypass must fire",
     );
     assert.equal(
-      productPdaBypassPredicate(OWNER_REL, planted),
+      productPdaBypassPredicate(OWNER_REL, plantedWeb3),
       false,
       "owner path is allowlisted",
+    );
+
+    // Planted change: import { deriveSvmPdaLayout } from "@/lib/svm/derive-pda"
+    const plantedSeam = `
+      import { deriveSvmPdaLayout } from "@/lib/svm/derive-pda";
+      void deriveSvmPdaLayout;
+    `;
+    assert.equal(
+      productPdaBypassPredicate("lib/commerce/planted-seam.ts", plantedSeam),
+      "product_imports_pda_layout_seam (lib/commerce/planted-seam.ts)",
+    );
+    assert.equal(
+      productPdaBypassPredicate(OWNER_REL, plantedSeam),
+      false,
+      "owner may reference the seam",
     );
   });
 });

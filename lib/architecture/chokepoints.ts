@@ -50,7 +50,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-pda-derivation",
     owner: "lib/svm/derive-pda.ts · svm/crates/kargain-ix-wire",
-    rule: "Commercial SVM PDA derivation only via derive-pda; recipes+goldens from Rust find_program_address (committed pda.manifest.json); async kit only",
+    rule: "Commercial SVM PDA: product entry deriveSvmPda = recipe id + COMMERCIAL_ACTIVE program only; layout seam deriveSvmPdaLayout = synthetic-only golden/plant path; product scanner bans seam imports; async kit only",
     guardTests: ["svm-pda-derivation-policy.test.ts"],
   },
   {

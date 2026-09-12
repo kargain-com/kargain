@@ -5,6 +5,11 @@
  * committed `svm/crates/kargain-ix-wire/pda.manifest.json`. This module never
  * authors goldens. Async only — `@solana/kit` has no sync PDA primitive.
  *
+ * Two doors, typed by job:
+ * - {@link deriveSvmPda} — product entry: recipe id + registry program id only.
+ * - {@link deriveSvmPdaLayout} — golden/plant seam: explicit layout + synthetic
+ *   program id only. Not a product path.
+ *
  * Import derivation from `@solana/kit` only (never `@solana/addresses`,
  * `@solana/web3.js`, or `scripts/`).
  */
@@ -51,7 +56,8 @@ export type DeriveSvmPdaCause =
   | "unknown_recipe"
   | "missing_seed"
   | "invalid_seed"
-  | "unregistered_program";
+  | "unregistered_program"
+  | "not_synthetic_program";
 
 export type DeriveSvmPdaOk = {
   ok: true;
@@ -121,10 +127,11 @@ export function pdaSyntheticProgramIdHex(): string {
 }
 
 /**
- * Derive a PDA for a named recipe.
+ * Product entry: derive a PDA for a named committed recipe.
  *
- * `programId` must be a commercial SVM program id from `COMMERCIAL_ACTIVE`, or
- * the committed synthetic program id (golden verification only).
+ * `programId` must be a commercial SVM program id from `COMMERCIAL_ACTIVE`.
+ * The synthetic verification id is refused as `unregistered_program` — product
+ * code must not invent a stack that is not deployed.
  */
 export async function deriveSvmPda(input: {
   recipe: string;
@@ -139,7 +146,14 @@ export async function deriveSvmPda(input: {
       detail: input.recipe,
     };
   }
-  return deriveSvmPdaLayout({
+  if (!REGISTERED_PROGRAM_IDS.has(input.programId)) {
+    return {
+      ok: false,
+      cause: "unregistered_program",
+      detail: input.programId,
+    };
+  }
+  return deriveCore({
     recipe,
     programId: input.programId,
     seeds: input.seeds,
@@ -147,26 +161,37 @@ export async function deriveSvmPda(input: {
 }
 
 /**
- * Derive using an explicit recipe layout object (seed tag + dynamics order).
- * Product call sites use {@link deriveSvmPda}; this seam exists so policy plants
- * can flip a seed tag or swap dynamic slots without mutating the committed import.
+ * Golden-verification seam: derive against an explicit layout object.
+ *
+ * Accepts **only** the committed synthetic program id. A registry (or any
+ * other) program id refuses as `not_synthetic_program`. Product call sites use
+ * {@link deriveSvmPda}; this seam exists for golden parity and planted controls.
  */
 export async function deriveSvmPdaLayout(input: {
   recipe: PdaManifestRecipe;
   programId: string;
   seeds?: Record<string, PdaSeedValue>;
 }): Promise<DeriveSvmPdaResult> {
-  if (
-    input.programId !== SYNTHETIC_PROGRAM_ID &&
-    !REGISTERED_PROGRAM_IDS.has(input.programId)
-  ) {
+  if (input.programId !== SYNTHETIC_PROGRAM_ID) {
     return {
       ok: false,
-      cause: "unregistered_program",
+      cause: "not_synthetic_program",
       detail: input.programId,
     };
   }
+  return deriveCore({
+    recipe: input.recipe,
+    programId: input.programId,
+    seeds: input.seeds,
+  });
+}
 
+/** Shared seed encode + kit call — not exported. */
+async function deriveCore(input: {
+  recipe: PdaManifestRecipe;
+  programId: string;
+  seeds?: Record<string, PdaSeedValue>;
+}): Promise<DeriveSvmPdaResult> {
   let programAddress: Address;
   try {
     programAddress = address(input.programId);
@@ -299,7 +324,7 @@ function hexToBytesExact(hex: string, expectedLen?: number): Uint8Array {
   return out;
 }
 
-/** Sample dynamics from a manifest recipe → seed map for {@link deriveSvmPda}. */
+/** Sample dynamics from a manifest recipe → seed map for derivation doors. */
 export function sampleSeedsFromManifest(
   recipe: PdaManifestRecipe,
 ): Record<string, PdaSeedValue> {
