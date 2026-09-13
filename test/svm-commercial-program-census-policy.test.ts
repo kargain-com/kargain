@@ -37,6 +37,7 @@ import {
 import { SVM_COMMERCIAL_PROGRAMS } from "../scripts/lib/svm-deploy-plan.ts";
 import { FIXTURE_SVM_STACK } from "./fixtures/commercial-svm-stack.ts";
 import {
+  assertCleanProductScan,
   scanProductSources,
   traceStaticReachabilityToModules,
 } from "./policy-scan-helpers.ts";
@@ -455,9 +456,12 @@ describe("svm commercial program census (registry runtime)", () => {
           source.includes("@solana/web3.js")
             ? "sdk"
             : false,
-        { rootDir: plantedRoot },
+        { rootDir: plantedRoot, allowEmptyTargets: true },
       );
-      assert.deepEqual(textScan, []);
+      assertCleanProductScan(textScan, {
+        rootDir: plantedRoot,
+        allowEmptyTargets: true,
+      });
 
       const reachability = traceStaticReachabilityToModules(
         ["scripts/lib/load-deployment.ts"],

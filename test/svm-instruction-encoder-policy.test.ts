@@ -26,6 +26,7 @@ import {
   type IxManifestEntry,
 } from "@/lib/svm/encode-instruction";
 import {
+  assertCleanProductScan,
   scanProductSources,
   type ProductSourcePredicate,
 } from "./policy-scan-helpers.ts";
@@ -232,15 +233,11 @@ describe("svm instruction encoder policy", () => {
   });
 
   it("product graph has no hand-rolled ix tag outside the encoder", () => {
-    const violations = scanProductSources(
+    const scan = scanProductSources(
       handRolledIxPredicate as ProductSourcePredicate,
       { owners: [ENCODER_REL] },
     );
-    assert.deepEqual(
-      violations,
-      [],
-      violations.map((v) => `${v.path}: ${v.reason}`).join("\n"),
-    );
+    assertCleanProductScan(scan, { owners: [ENCODER_REL] });
   });
 
   it("catches a planted hand-rolled ix tag (red→green)", () => {

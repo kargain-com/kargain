@@ -6,7 +6,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { scanProductSources } from "./policy-scan-helpers.ts";
+import {
+  assertCleanProductScan,
+  scanProductSources,
+} from "./policy-scan-helpers.ts";
 
 /**
  * Lib modules allowed to fork on `vm` / `stack.vm` (network-class entry points).
@@ -59,14 +62,10 @@ function vmPredicate(rel: string, source: string): string | false {
 
 describe("network VM component policy (S8-1-fix)", () => {
   it("no product file outside allowlist branches on vm or stack.vm", () => {
-    const violations = scanProductSources(vmPredicate, {
+    const scan = scanProductSources(vmPredicate, {
       owners: VM_BRANCH_ALLOWLIST,
     });
-    assert.deepEqual(
-      violations,
-      [],
-      violations.map((v) => `${v.path}: ${v.reason}`).join("\n"),
-    );
+    assertCleanProductScan(scan, { owners: VM_BRANCH_ALLOWLIST });
   });
 
   it("constructed dirty component is red", () => {
@@ -93,7 +92,7 @@ export function useBad(stack: { vm: string }) {
     const live = scanProductSources(vmPredicate, {
       owners: VM_BRANCH_ALLOWLIST,
     });
-    assert.deepEqual(live, []);
+    assertCleanProductScan(live, { owners: VM_BRANCH_ALLOWLIST });
   });
 
   it("clean consumer without vm branch is green", () => {

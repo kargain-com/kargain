@@ -340,6 +340,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     owner: "test/policy-scan-helpers.ts",
     rule: "Sole product ownership-policy walk and static import reachability helper; policies supply predicate + owners only",
     guardTests: [
+      "product-policy-scan-policy.test.ts",
       "network-explorer-owner-policy.test.ts",
       "network-vm-component-policy.test.ts",
       "passport-presence-owner-policy.test.ts",

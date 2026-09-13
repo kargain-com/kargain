@@ -6,7 +6,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { scanProductSources } from "./policy-scan-helpers.ts";
+import {
+  assertCleanProductScan,
+  scanProductSources,
+} from "./policy-scan-helpers.ts";
 
 /** Bracket-index of COMMERCIAL_ACTIVE with a numeric literal (hub invent). */
 const HUB_LITERAL =
@@ -30,12 +33,8 @@ function hubLiteralPredicate(rel: string, source: string): string | false {
 
 describe("commercial-active hub literal policy", () => {
   it("bans COMMERCIAL_ACTIVE[<number>] under app|components|hooks", () => {
-    const violations = scanProductSources(hubLiteralPredicate);
-    assert.deepEqual(
-      violations,
-      [],
-      violations.map((v) => `${v.path}: ${v.reason}`).join("\n"),
-    );
+    const scan = scanProductSources(hubLiteralPredicate);
+    assertCleanProductScan(scan);
   });
 
   it("catches planted COMMERCIAL_ACTIVE[84532] in a component path (red→green)", () => {

@@ -32,7 +32,10 @@ import {
   FIXTURE_SVM_NAMESPACE,
   FIXTURE_SVM_STACK,
 } from "./fixtures/commercial-svm-stack.ts";
-import { scanProductSources } from "./policy-scan-helpers.ts";
+import {
+  assertCleanProductScan,
+  scanProductSources,
+} from "./policy-scan-helpers.ts";
 
 const WRITE_ADAPTER = "lib/web3/svm-write-adapter.ts";
 const SIGN_PORT = "lib/web3/svm-sign-and-send-port.ts";
@@ -474,13 +477,13 @@ describe("svm-write-adapter ownership policy", () => {
     assert.match(adapter, /from\s*["']@solana\/kit["']/);
     const port = readFileSync(SIGN_PORT, "utf8");
     assert.match(port, /from\s*["']@wallet-standard\/base["']/);
-    const violations = scanProductSources(
+    const scan = scanProductSources(
       (rel, source) => {
         if (rel === WRITE_ADAPTER && /@solana\/kit/.test(source)) return false;
         return false;
       },
       { owners: [WRITE_ADAPTER, SIGN_PORT] },
     );
-    assert.deepEqual(violations, []);
+    assertCleanProductScan(scan, { owners: [WRITE_ADAPTER, SIGN_PORT] });
   });
 });

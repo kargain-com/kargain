@@ -9,6 +9,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 
 import {
+  assertCleanProductScan,
   scanProductSources,
   traceStaticReachabilityToPackages,
 } from "./policy-scan-helpers.ts";
@@ -56,7 +57,7 @@ describe("solana web3.js app-graph policy (S8-2)", () => {
     );
 
     const oldScan = scanProductSources(solanaSdkTextPredicate, { rootDir: root });
-    assert.deepEqual(oldScan, []);
+    assertCleanProductScan(oldScan, { rootDir: root });
 
     const reachability = traceStaticReachabilityToPackages(
       ["@solana/web3.js", "@solana/spl-token"],

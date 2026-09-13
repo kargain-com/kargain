@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
+  assertCleanProductScan,
   POLICY_SCAN_ROOT,
   scanProductSources,
 } from "./policy-scan-helpers.ts";
@@ -42,14 +43,10 @@ function svmConfirmPredicate(rel: string, source: string): string | false {
 
 describe("evm write adapter policy", () => {
   it("allows useWriteContract / useSendTransaction import only in the write adapter", () => {
-    const violations = scanProductSources(writeHookPredicate, {
+    const scan = scanProductSources(writeHookPredicate, {
       owners: [WRITE_ADAPTER],
     });
-    assert.deepEqual(
-      violations,
-      [],
-      violations.map((v) => `${v.path}: ${v.reason}`).join("\n"),
-    );
+    assertCleanProductScan(scan, { owners: [WRITE_ADAPTER] });
   });
 
   it("owning adapter imports both write hooks from wagmi", () => {
@@ -72,14 +69,10 @@ describe("evm write adapter policy", () => {
 
 describe("tx confirm ownership policy", () => {
   it("allows waitForTransactionReceipt only in evm-tx-confirm", () => {
-    const violations = scanProductSources(receiptWaitPredicate, {
+    const scan = scanProductSources(receiptWaitPredicate, {
       owners: [EVM_CONFIRM],
     });
-    assert.deepEqual(
-      violations,
-      [],
-      violations.map((v) => `${v.path}: ${v.reason}`).join("\n"),
-    );
+    assertCleanProductScan(scan, { owners: [EVM_CONFIRM] });
   });
 
   it("lifecycle owners consume confirm ports while use-tx-sync stays confirm-blind", () => {
@@ -95,14 +88,10 @@ describe("tx confirm ownership policy", () => {
   });
 
   it("confirmSvmTransaction is only called from the SVM lifecycle owner", () => {
-    const violations = scanProductSources(svmConfirmPredicate, {
+    const scan = scanProductSources(svmConfirmPredicate, {
       owners: [SVM_CONFIRM, SVM_LIFECYCLE],
     });
-    assert.deepEqual(
-      violations,
-      [],
-      violations.map((v) => `${v.path}: ${v.reason}`).join("\n"),
-    );
+    assertCleanProductScan(scan, { owners: [SVM_CONFIRM, SVM_LIFECYCLE] });
   });
 
   it("catches a planted receipt wait outside the confirm owner (red→green)", () => {

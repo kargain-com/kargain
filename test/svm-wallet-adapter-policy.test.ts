@@ -6,7 +6,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
-import { scanProductSources } from "./policy-scan-helpers.ts";
+import {
+  assertCleanProductScan,
+  scanProductSources,
+} from "./policy-scan-helpers.ts";
 
 const SVM_OWNERS = [
   "lib/web3/svm-account-adapter.ts",
@@ -32,14 +35,10 @@ function svmDepPredicate(rel: string, source: string): string | false {
 
 describe("svm wallet adapter policy (S8-2)", () => {
   it("kit / wallet-standard / solana react stay in SVM owners", () => {
-    const violations = scanProductSources(svmDepPredicate, {
+    const scan = scanProductSources(svmDepPredicate, {
       owners: [...SVM_OWNERS],
     });
-    assert.deepEqual(
-      violations,
-      [],
-      violations.map((v) => `${v.path}: ${v.reason}`).join("\n"),
-    );
+    assertCleanProductScan(scan, { owners: [...SVM_OWNERS] });
   });
 
   it("constructed dirty component import is red", () => {

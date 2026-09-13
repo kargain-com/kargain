@@ -7,6 +7,7 @@
  * product roots alone miss those collection builders.
  */
 
+import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import path from "node:path";
@@ -51,6 +52,22 @@ export const COMMERCIAL_ABI_ENUMERATION_ROOT_FILES = [
 
 export type ProductSourceHit = { path: string; reason: string };
 
+/** Outcome of {@link scanProductSources} — never treat violations alone as clean. */
+export type ProductSourceScanResult = {
+  /** Product files successfully read and predicate-evaluated (owner skips excluded). */
+  filesRead: number;
+  violations: ProductSourceHit[];
+  /** Paths the walk selected but could not be read — must fail the scan, never pass. */
+  unreadable: ProductSourceHit[];
+};
+
+export type ProductScanOptions = {
+  owners?: readonly string[];
+  rootDir?: string;
+  /** Synthetic fixtures only — production suites must not set this. */
+  allowEmptyTargets?: boolean;
+};
+
 export type ProductSourcePredicate = (
   relPath: string,
   source: string,
@@ -72,7 +89,7 @@ function walkTsFiles(dir: string, out: string[] = []): string[] {
     const full = join(dir, name);
     const st = statSync(full);
     if (st.isDirectory()) {
-      if (name === "node_modules" || name === ".next" || name.startsWith(".")) {
+      if (name === "node_modules" || name === ".next") {
         continue;
       }
       walkTsFiles(full, out);
@@ -409,35 +426,137 @@ export function traceStaticReachabilityToModules(
 }
 
 /**
+ * Count product files a scan would read (walk minus owner skips).
+ * Must match {@link scanProductSources} `filesRead` on a fully readable tree.
+ */
+export function countProductScanTargets(options?: ProductScanOptions): number {
+  const rootDir = options?.rootDir ?? POLICY_SCAN_ROOT;
+  const owners = new Set(
+    (options?.owners ?? []).map((p) => p.replace(/\\/g, "/")),
+  );
+  let count = 0;
+  for (const file of walkProductTsFiles(rootDir)) {
+    const rel = relative(rootDir, file).replace(/\\/g, "/");
+    if (owners.has(rel)) continue;
+    count++;
+  }
+  return count;
+}
+
+/**
  * Scan product sources. `owners` paths are skipped (normalized `/`).
  * Predicate returns a reason string when the file violates, else false.
+ * Unreadable targets are reported in `unreadable` — never silently skipped.
  */
 export function scanProductSources(
   predicate: ProductSourcePredicate,
-  options?: {
-    owners?: readonly string[];
-    rootDir?: string;
-  },
-): ProductSourceHit[] {
+  options?: ProductScanOptions,
+): ProductSourceScanResult {
   const rootDir = options?.rootDir ?? POLICY_SCAN_ROOT;
   const owners = new Set(
     (options?.owners ?? []).map((p) => p.replace(/\\/g, "/")),
   );
   const violations: ProductSourceHit[] = [];
+  const unreadable: ProductSourceHit[] = [];
+  let filesRead = 0;
   for (const file of walkProductTsFiles(rootDir)) {
     const rel = relative(rootDir, file).replace(/\\/g, "/");
     if (owners.has(rel)) continue;
     let source: string;
     try {
       source = readFileSync(file, "utf8");
-    } catch {
-      // Parallel suites may unlink a transient plant between walk and read.
+    } catch (err) {
+      const detail =
+        err instanceof Error ? err.message : String(err);
+      unreadable.push({
+        path: rel,
+        reason: `scan_read_failed: ${detail}`,
+      });
       continue;
     }
+    filesRead++;
     const reason = predicate(rel, source);
     if (reason) violations.push({ path: rel, reason });
   }
-  return violations;
+  return { filesRead, violations, unreadable };
+}
+
+/**
+ * Assert a product scan is clean: no unreadable paths, no violations, and
+ * `filesRead` equals {@link countProductScanTargets} for the same options.
+ */
+export function assertCleanProductScan(
+  scan: ProductSourceScanResult,
+  options?: ProductScanOptions,
+): void {
+  assert.deepEqual(
+    scan.unreadable,
+    [],
+    scan.unreadable.map((u) => `${u.path}: ${u.reason}`).join("\n"),
+  );
+  assert.deepEqual(
+    scan.violations,
+    [],
+    scan.violations.map((v) => `${v.path}: ${v.reason}`).join("\n"),
+  );
+  const expected = countProductScanTargets(options);
+  if (!options?.allowEmptyTargets) {
+    assert.ok(
+      expected > 0,
+      "product scan must read at least one file under app|components|hooks|lib",
+    );
+  }
+  assert.equal(
+    scan.filesRead,
+    expected,
+    `scan read ${scan.filesRead} files; expected ${expected}`,
+  );
+}
+
+/** Count commercial-ABI enumeration scan targets (walk minus owner skips). */
+export function countCommercialAbiEnumerationTargets(
+  options?: ProductScanOptions,
+): number {
+  const rootDir = options?.rootDir ?? POLICY_SCAN_ROOT;
+  const owners = new Set(
+    (options?.owners ?? []).map((p) => p.replace(/\\/g, "/")),
+  );
+  let count = 0;
+  for (const file of walkCommercialAbiEnumerationTsFiles(rootDir)) {
+    const rel = relative(rootDir, file).replace(/\\/g, "/");
+    if (owners.has(rel)) continue;
+    count++;
+  }
+  return count;
+}
+
+/** Assert a commercial-ABI enumeration scan is fully readable and clean. */
+export function assertCleanCommercialAbiEnumerationScan(
+  scan: ProductSourceScanResult,
+  options?: ProductScanOptions,
+): void {
+  assert.deepEqual(
+    scan.unreadable,
+    [],
+    scan.unreadable.map((u) => `${u.path}: ${u.reason}`).join("\n"),
+  );
+  assert.deepEqual(
+    scan.violations,
+    [],
+    scan.violations.map((v) => `${v.path}: ${v.reason}`).join("\n"),
+  );
+  const expected = countCommercialAbiEnumerationTargets(options);
+  if (!options?.allowEmptyTargets) {
+    assert.ok(
+      expected > 0,
+      "commercial ABI enumeration scan must read at least one file",
+    );
+  }
+  assert.equal(
+    scan.filesRead,
+    expected,
+    `scan read ${scan.filesRead} files; expected ${expected}`,
+  );
 }
 
 /**
@@ -446,27 +565,33 @@ export function scanProductSources(
  */
 export function scanCommercialAbiEnumerationSources(
   predicate: ProductSourcePredicate,
-  options?: {
-    owners?: readonly string[];
-    rootDir?: string;
-  },
-): ProductSourceHit[] {
+  options?: ProductScanOptions,
+): ProductSourceScanResult {
   const rootDir = options?.rootDir ?? POLICY_SCAN_ROOT;
   const owners = new Set(
     (options?.owners ?? []).map((p) => p.replace(/\\/g, "/")),
   );
   const violations: ProductSourceHit[] = [];
+  const unreadable: ProductSourceHit[] = [];
+  let filesRead = 0;
   for (const file of walkCommercialAbiEnumerationTsFiles(rootDir)) {
     const rel = relative(rootDir, file).replace(/\\/g, "/");
     if (owners.has(rel)) continue;
     let source: string;
     try {
       source = readFileSync(file, "utf8");
-    } catch {
+    } catch (err) {
+      const detail =
+        err instanceof Error ? err.message : String(err);
+      unreadable.push({
+        path: rel,
+        reason: `scan_read_failed: ${detail}`,
+      });
       continue;
     }
+    filesRead++;
     const reason = predicate(rel, source);
     if (reason) violations.push({ path: rel, reason });
   }
-  return violations;
+  return { filesRead, violations, unreadable };
 }

@@ -7,7 +7,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
-import { scanProductSources } from "./policy-scan-helpers.ts";
+import {
+  assertCleanProductScan,
+  scanProductSources,
+} from "./policy-scan-helpers.ts";
 
 const EVM_ADAPTER = "lib/web3/evm-account-adapter.ts";
 const ENTRY = "hooks/use-active-account.ts";
@@ -85,14 +88,10 @@ function undefinedFieldForkPredicate(
 
 describe("active-account owner policy (S8-2-fix)", () => {
   it("no product file outside EVM adapter imports or calls account hooks", () => {
-    const violations = scanProductSources(accountHookPredicate, {
+    const scan = scanProductSources(accountHookPredicate, {
       owners: [EVM_ADAPTER],
     });
-    assert.deepEqual(
-      violations,
-      [],
-      violations.map((v) => `${v.path}: ${v.reason}`).join("\n"),
-    );
+    assertCleanProductScan(scan, { owners: [EVM_ADAPTER] });
   });
 
   it("constructed dirty component is red", () => {
@@ -123,14 +122,10 @@ export function useBad() {
   });
 
   it("no EVM-shaped entry members or removed projections outside owners", () => {
-    const violations = scanProductSources(evmShapedMemberPredicate, {
+    const scan = scanProductSources(evmShapedMemberPredicate, {
       owners: OWNERS,
     });
-    assert.deepEqual(
-      violations,
-      [],
-      violations.map((v) => `${v.path}: ${v.reason}`).join("\n"),
-    );
+    assertCleanProductScan(scan, { owners: OWNERS });
   });
 
   it("constructed EVM-shaped member on a consumer is red", () => {
@@ -161,14 +156,10 @@ export function Bad(isEvmConnected: boolean) {
   });
 
   it("no undefined-field forks on banned EVM names outside owners", () => {
-    const violations = scanProductSources(undefinedFieldForkPredicate, {
+    const scan = scanProductSources(undefinedFieldForkPredicate, {
       owners: OWNERS,
     });
-    assert.deepEqual(
-      violations,
-      [],
-      violations.map((v) => `${v.path}: ${v.reason}`).join("\n"),
-    );
+    assertCleanProductScan(scan, { owners: OWNERS });
   });
 
   it("entry surface does not declare removed EVM-shaped members", () => {

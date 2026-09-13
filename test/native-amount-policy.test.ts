@@ -18,7 +18,10 @@ import {
 import { planIrysUpload } from "../lib/storage/irys-upload-plan.ts";
 import { mintKargainNamespace } from "../lib/web3/kargain-namespace.ts";
 import { FIXTURE_SVM_STACK } from "./fixtures/commercial-svm-stack.ts";
-import { scanProductSources } from "./policy-scan-helpers.ts";
+import {
+  assertCleanProductScan,
+  scanProductSources,
+} from "./policy-scan-helpers.ts";
 
 const NATIVE_AMOUNT_OWNER = "lib/web3/native-amount.ts";
 
@@ -37,14 +40,10 @@ function eighteenPredicate(rel: string, source: string): string | false {
 
 describe("native amount ownership policy", () => {
   it("allows parseEther/formatEther/decimals:18/??18 only in the formatting owner", () => {
-    const violations = scanProductSources(eighteenPredicate, {
+    const scan = scanProductSources(eighteenPredicate, {
       owners: [NATIVE_AMOUNT_OWNER],
     });
-    assert.deepEqual(
-      violations,
-      [],
-      violations.map((v) => `${v.path}: ${v.reason}`).join("\n"),
-    );
+    assertCleanProductScan(scan, { owners: [NATIVE_AMOUNT_OWNER] });
   });
 
   it("catches planted parseEther outside the owner (red→green)", () => {

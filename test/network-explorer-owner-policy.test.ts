@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 
 import {
+  assertCleanProductScan,
   POLICY_SCAN_ROOT,
   scanProductSources,
 } from "./policy-scan-helpers.ts";
@@ -51,14 +52,10 @@ function explorerPredicate(
 
 describe("network explorer owner policy (S8-1-fix)", () => {
   it("no product path assembles explorer URLs outside network-explorer", () => {
-    const violations = scanProductSources(explorerPredicate, {
+    const scan = scanProductSources(explorerPredicate, {
       owners: ALLOWLIST,
     });
-    assert.deepEqual(
-      violations,
-      [],
-      violations.map((v) => `${v.path}: ${v.reason}`).join("\n"),
-    );
+    assertCleanProductScan(scan, { owners: ALLOWLIST });
   });
 
   it("constructed wallet-button fixture is red", () => {
@@ -83,7 +80,7 @@ export function bad() {
       true,
     );
     const live = scanProductSources(explorerPredicate, { owners: ALLOWLIST });
-    assert.deepEqual(live, []);
+    assertCleanProductScan(live, { owners: ALLOWLIST });
   });
 
   it("owner module itself is exempt", () => {
@@ -96,6 +93,6 @@ export function bad() {
     const hits = scanProductSources((_rel, source) =>
       ban.test(source) ? "imports commercial-svm-stack fixture" : false,
     );
-    assert.deepEqual(hits, []);
+    assertCleanProductScan(hits);
   });
 });

@@ -44,7 +44,10 @@ import {
   vmBranchViolationInSource,
   VM_BRANCH_ALLOWLIST,
 } from "./network-vm-component-policy.test.ts";
-import { scanProductSources } from "./policy-scan-helpers.ts";
+import {
+  assertCleanProductScan,
+  scanProductSources,
+} from "./policy-scan-helpers.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OWNER_REL = "lib/passport/set-passport-uri.ts";
@@ -108,7 +111,7 @@ describe("foreign-programs reader", () => {
   });
 
   it("product lib has no web3.js SystemProgram and no literal Core id outside the reader", () => {
-    const violations = scanProductSources((rel, source) => {
+    const scan = scanProductSources((rel, source) => {
       if (rel === FOREIGN_READER_REL) return false;
       if (/\bSystemProgram\.programId\b/.test(source)) {
         return `SystemProgram.programId outside foreign-programs (${rel})`;
@@ -121,11 +124,7 @@ describe("foreign-programs reader", () => {
       }
       return false;
     });
-    assert.deepEqual(
-      violations,
-      [],
-      violations.map((v) => `${v.path}: ${v.reason}`).join("\n"),
-    );
+    assertCleanProductScan(scan);
   });
 });
 
@@ -561,11 +560,11 @@ if (account.vm === "svm") return null;
       (VM_BRANCH_ALLOWLIST as readonly string[]).includes(PREP_REL),
       "prepare-passport-edit-write must be on VM_BRANCH_ALLOWLIST",
     );
-    const violations = scanProductSources((rel, source) => {
+    const scan = scanProductSources((rel, source) => {
       if ((VM_BRANCH_ALLOWLIST as readonly string[]).includes(rel)) return false;
       if (!vmBranchViolationInSource(source)) return false;
       return `vm / stack.vm branch outside allowlist (${rel})`;
     });
-    assert.deepEqual(violations, []);
+    assertCleanProductScan(scan);
   });
 });

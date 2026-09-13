@@ -32,7 +32,10 @@ import {
   bridgeNextHopWrongVmCopy,
   BRIDGE_SECOND_HOP_REQUIRED,
 } from "../lib/passport/bridge-surface.ts";
-import { scanProductSources } from "./policy-scan-helpers.ts";
+import {
+  assertCleanProductScan,
+  scanProductSources,
+} from "./policy-scan-helpers.ts";
 
 const SPEC_WRONG_VM_EVM = "Connect an Ethereum wallet to act on this network";
 const SPEC_WRONG_VM_SVM = "Connect a Solana wallet to act on this network";
@@ -257,7 +260,7 @@ describe("S8-5 named unavailability owners", () => {
 
 describe("S8-5 action-surface refusal census", () => {
   it("requireEvmSession action surfaces consume refusal copy (not bare isConnected)", () => {
-    const violations = scanProductSources((rel, source) => {
+    const scan = scanProductSources((rel, source) => {
       if (!isActionSurface(rel)) return false;
       if (ALLOWLIST_NO_REFUSAL_COPY.has(rel)) return false;
       if (!/requireEvmSession\s*\(/.test(source)) return false;
@@ -266,11 +269,7 @@ describe("S8-5 action-surface refusal census", () => {
       }
       return false;
     });
-    assert.deepEqual(
-      violations,
-      [],
-      violations.map((v) => `${v.path}: ${v.reason}`).join("\n"),
-    );
+    assertCleanProductScan(scan);
   });
 
   it("watchlist / offers / comments / make-offer are not allowlisted silent hides", () => {

@@ -28,6 +28,7 @@ import {
   requireSvmCommercialActive,
 } from "@/lib/web3/commercial-active";
 import {
+  assertCleanProductScan,
   scanProductSources,
   type ProductSourcePredicate,
 } from "./policy-scan-helpers.ts";
@@ -378,10 +379,10 @@ describe("svm pda derivation policy", () => {
   });
 
   it("product graph bans findProgramAddressSync, web3.js, ad-hoc seeds, and layout-seam imports outside the owner", () => {
-    const hits = scanProductSources(
+    const scan = scanProductSources(
       productPdaBypassPredicate as ProductSourcePredicate,
     );
-    assert.deepEqual(hits, []);
+    assertCleanProductScan(scan);
   });
 
   it("planted product bypass and layout-seam import turn red then green", () => {

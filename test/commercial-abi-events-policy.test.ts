@@ -21,6 +21,7 @@ import {
 } from "../lib/svm/commercial-abi-events.js";
 import {
   POLICY_SCAN_ROOT,
+  assertCleanCommercialAbiEnumerationScan,
   scanCommercialAbiEnumerationSources,
 } from "./policy-scan-helpers.ts";
 
@@ -153,15 +154,14 @@ describe("commercial abi events policy", () => {
   });
 
   it("no file outside owners assembles a commercial ABI collection", () => {
-    const violations = scanCommercialAbiEnumerationSources(enumerationPredicate, {
+    const scan = scanCommercialAbiEnumerationSources(enumerationPredicate, {
       owners: COMMERCIAL_ABI_ENUMERATION_OWNERS,
       rootDir: POLICY_SCAN_ROOT,
     });
-    assert.deepEqual(
-      violations,
-      [],
-      violations.map((v) => `${v.path}: ${v.reason}`).join("\n"),
-    );
+    assertCleanCommercialAbiEnumerationScan(scan, {
+      owners: COMMERCIAL_ABI_ENUMERATION_OWNERS,
+      rootDir: POLICY_SCAN_ROOT,
+    });
   });
 
   it("constructed violation: parallel ABI map turns red then green", () => {

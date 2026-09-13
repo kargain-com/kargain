@@ -10,6 +10,7 @@ import { describe, it } from "node:test";
 
 import {
   POLICY_SCAN_ROOT,
+  assertCleanProductScan,
   scanProductSources,
 } from "./policy-scan-helpers.ts";
 
@@ -55,14 +56,10 @@ describe("passport presence deriver ownership", () => {
   });
 
   it("no product file outside owners calls the deriver", () => {
-    const violations = scanProductSources(presencePredicate, {
+    const scan = scanProductSources(presencePredicate, {
       owners: PASSPORT_PRESENCE_DERIVER_OWNERS,
     });
-    assert.deepEqual(
-      violations,
-      [],
-      violations.map((v) => `${v.path}: ${v.reason}`).join("\n"),
-    );
+    assertCleanProductScan(scan, { owners: PASSPORT_PRESENCE_DERIVER_OWNERS });
   });
 
   it("constructed violation: panel deriving location itself turns red", () => {
@@ -110,7 +107,7 @@ export function invent() {
     const live = scanProductSources(presencePredicate, {
       owners: PASSPORT_PRESENCE_DERIVER_OWNERS,
     });
-    assert.deepEqual(live, []);
+    assertCleanProductScan(live, { owners: PASSPORT_PRESENCE_DERIVER_OWNERS });
   });
 
   it("owners may call the deriver", () => {
