@@ -10,9 +10,11 @@ import { useReadContract, useSignMessage } from "wagmi";
 import { EvidenceInput } from "@/components/passport/evidence-input";
 import { MetadataDiffPanel } from "@/components/passport/metadata-diff-panel";
 import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
+import { TxWriteRefusal } from "@/components/shell/tx-write-refusal";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useAppendPassportRecord } from "@/hooks/use-append-passport-record";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useNow } from "@/hooks/use-now";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
@@ -42,6 +44,10 @@ import {
   isAvailable,
 } from "@/lib/passport/action-surface";
 import {
+  preparePassportRecordWrite,
+  passportRecordWritePrepRefusalMessage,
+} from "@/lib/passport/prepare-passport-record-write";
+import {
   OWNER_SERVICE_RECORD_TYPES,
   type OwnerServiceRecordType,
 } from "@/lib/passport/record-types";
@@ -63,6 +69,7 @@ import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { usePassportCommerceFacts } from "@/hooks/use-passport-commerce-facts";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
+import { txWriteAvailability } from "@/lib/web3/tx-write-availability";
 
 type Props = {
   tokenId: string;
@@ -117,9 +124,16 @@ export function PassportActionsPanel({
   const { account, signingBinding, svmWallet } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
+  const sessionAddress =
+    account.status === "connected" ? account.address : undefined;
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const { signMessageAsync } = useSignMessage();
   const { writeContractAsync, isPending } = useEvmWriteContract();
+  const {
+    appendPassportRecord,
+    isPending: appendPending,
+  } = useAppendPassportRecord();
+  const writeAvail = txWriteAvailability(account, chainId);
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const [clarificationText, setClarificationText] = useState("");
   const [discrepancyText, setDiscrepancyText] = useState("");
@@ -145,6 +159,9 @@ export function PassportActionsPanel({
   const [recordEvidenceFile, setRecordEvidenceFile] = useState<File | null>(null);
 
   const passport = karPassportAddress(chainId);
+  /** EVM hex address or any commercial stack (SVM program id) — no VM fork. */
+  const writeTargetConfigured =
+    passport != null || commercialActive(chainId) != null;
   const staking = karProStakingAddress(chainId);
   const wc = wagmiChainId(chainId);
   const tid = BigInt(tokenId);
@@ -208,9 +225,9 @@ export function PassportActionsPanel({
         ? undefined
         : false;
 
-  const isOwner = isOnChainNftOwner(address, effectiveOwner);
+  const isOwner = isOnChainNftOwner(sessionAddress, effectiveOwner);
   const holder = isPassportHolder({
-    address,
+    address: sessionAddress,
     onChainOwner,
     ponderOwner: passportOwner,
     listingActive,
@@ -272,7 +289,7 @@ export function PassportActionsPanel({
       custodyUnresolved: custodyUnresolved ?? null,
     },
     challenge: challengeSurface,
-    wallet: address,
+    wallet: sessionAddress,
     isOwner,
     holder,
     isActiveVerifier,
@@ -361,28 +378,49 @@ export function PassportActionsPanel({
     [discrepancyEvidenceFile, discrepancyEvidencePaste, uploadEvidenceFromInput],
   );
 
-  const resolveClarificationEvidence = useCallback(
-    () => uploadEvidenceFromInput(clarificationEvidenceFile, clarificationEvidencePaste),
-    [clarificationEvidenceFile, clarificationEvidencePaste, uploadEvidenceFromInput],
-  );
-
-  const resolveOwnerRecordEvidence = useCallback(
-    () => uploadEvidenceFromInput(recordEvidenceFile, recordEvidencePaste),
-    [recordEvidenceFile, recordEvidencePaste, uploadEvidenceFromInput],
+  const resolveRecordEvidenceCid = useCallback(
+    async (file: File | null, paste: string): Promise<string> => {
+      if (file) {
+        setIsUploadingEvidence(true);
+        try {
+          return await uploadEvidenceFile(file, {
+            account,
+            evmConnector: connector ?? undefined,
+            svmWallet,
+          });
+        } finally {
+          setIsUploadingEvidence(false);
+        }
+      }
+      return paste.trim();
+    },
+    [account, connector, svmWallet],
   );
 
   const submitOwnerRecord = useCallback(async () => {
     const description = recordDescription.trim();
-    if (description.length < 10 || !passport) return;
+    if (description.length < 10 || !writeTargetConfigured) return;
 
     const result = await runTx(async () => {
-      const evidenceCID = await resolveOwnerRecordEvidence();
-      return writeContractAsync({
-        address: passport,
-        abi: KarPassportAbi,
-        functionName: "appendRecord",
-        args: [tid, recordType, description, evidenceCID],
-        chainId: wc,
+      const prep = await preparePassportRecordWrite({
+        account,
+        targetChainId: chainId,
+        evidenceFile: recordEvidenceFile,
+        signMessageAsync,
+      });
+      if (!prep.ok) {
+        throw new Error(passportRecordWritePrepRefusalMessage(prep));
+      }
+      const evidenceCid = await resolveRecordEvidenceCid(
+        recordEvidenceFile,
+        recordEvidencePaste,
+      );
+      return appendPassportRecord({
+        chainId,
+        tokenId,
+        recordType,
+        description,
+        evidenceCid,
       });
     });
     if (result) {
@@ -394,15 +432,19 @@ export function PassportActionsPanel({
       revealPassportRecordsTab(pathname);
     }
   }, [
-    passport,
+    account,
+    appendPassportRecord,
+    chainId,
     pathname,
     recordDescription,
+    recordEvidenceFile,
+    recordEvidencePaste,
     recordType,
-    resolveOwnerRecordEvidence,
+    resolveRecordEvidenceCid,
     runTx,
-    tid,
-    wc,
-    writeContractAsync,
+    signMessageAsync,
+    tokenId,
+    writeTargetConfigured,
   ]);
 
   const submitDiscrepancy = useCallback(async () => {
@@ -437,16 +479,28 @@ export function PassportActionsPanel({
 
   const submitClarification = useCallback(async () => {
     const description = clarificationText.trim();
-    if (!description || !passport) return;
+    if (!description || !writeTargetConfigured) return;
 
     const result = await runTx(async () => {
-      const evidenceCID = await resolveClarificationEvidence();
-      return writeContractAsync({
-        address: passport,
-        abi: KarPassportAbi,
-        functionName: "appendRecord",
-        args: [tid, "dispute-clarification", description, evidenceCID],
-        chainId: wc,
+      const prep = await preparePassportRecordWrite({
+        account,
+        targetChainId: chainId,
+        evidenceFile: clarificationEvidenceFile,
+        signMessageAsync,
+      });
+      if (!prep.ok) {
+        throw new Error(passportRecordWritePrepRefusalMessage(prep));
+      }
+      const evidenceCid = await resolveRecordEvidenceCid(
+        clarificationEvidenceFile,
+        clarificationEvidencePaste,
+      );
+      return appendPassportRecord({
+        chainId,
+        tokenId,
+        recordType: "dispute-clarification",
+        description,
+        evidenceCid,
       });
     });
     if (result) {
@@ -456,13 +510,17 @@ export function PassportActionsPanel({
       setMessage("Clarification appended.");
     }
   }, [
+    account,
+    appendPassportRecord,
+    chainId,
+    clarificationEvidenceFile,
+    clarificationEvidencePaste,
     clarificationText,
-    passport,
-    resolveClarificationEvidence,
+    resolveRecordEvidenceCid,
     runTx,
-    tid,
-    wc,
-    writeContractAsync,
+    signMessageAsync,
+    tokenId,
+    writeTargetConfigured,
   ]);
 
   const submitAttestation = useCallback(async () => {
@@ -495,7 +553,8 @@ export function PassportActionsPanel({
     writeContractAsync,
   ]);
 
-  const actionsBusy = isPending || isUploadingEvidence || phase !== "idle";
+  const actionsBusy =
+    isPending || appendPending || isUploadingEvidence || phase !== "idle";
 
   const actionsDirty =
     Boolean(
@@ -524,6 +583,13 @@ export function PassportActionsPanel({
 
   return (
     <>
+      {!writeAvail.available && (
+        <TxWriteRefusal
+          refusal={writeAvail}
+          disconnectedTitle="Connect your wallet to add records or clarifications."
+        />
+      )}
+
       {!evm.ok && (
         <EvmSessionRefusal
           cause={evm.cause}
@@ -535,7 +601,7 @@ export function PassportActionsPanel({
         <p className="text-sm text-text-secondary">Passport contract not configured.</p>
       )}
 
-      {passport && evm.ok && (
+      {(writeTargetConfigured || (passport && evm.ok)) && (
     <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-6">
       {!embeddedInSheet && (
         <h2 className="font-sans text-base font-medium text-text-primary">Actions</h2>
@@ -554,19 +620,19 @@ export function PassportActionsPanel({
         </p>
       ) : null}
 
-      {isAvailable(actionSurface.editMetadata) && (
+      {passport && evm.ok && isAvailable(actionSurface.editMetadata) && (
         <Button asChild variant="secondary" className="w-full">
           <Link href={`/passport/${tokenId}/edit?chain=${chainId}`}>Edit metadata</Link>
         </Button>
       )}
 
-      {isAvailable(actionSurface.editMetadata) && status === "VERIFIED" && (
+      {passport && evm.ok && isAvailable(actionSurface.editMetadata) && status === "VERIFIED" && (
         <p className="text-xs text-text-secondary">
           Editing anchor fields while verified will reset verification status.
         </p>
       )}
 
-      {isAvailable(actionSurface.verify) && (
+      {passport && evm.ok && isAvailable(actionSurface.verify) && (
         <div className="space-y-3">
           <MetadataDiffPanel
             chainId={chainId}
@@ -599,7 +665,7 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {isAvailable(actionSurface.open) && (
+      {passport && evm.ok && isAvailable(actionSurface.open) && (
         <div className="space-y-2">
           {disputeDepositLoading ? (
             <p className="text-xs text-text-secondary">Loading deposit requirement…</p>
@@ -645,7 +711,10 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {status === "DISPUTED" && actionSurface.presence.status === "here" && (
+      {passport &&
+        evm.ok &&
+        status === "DISPUTED" &&
+        actionSurface.presence.status === "here" && (
         <div className="space-y-3 rounded-md border border-border-default bg-bg-primary/80 p-3">
           {actionSurface.challenge.phase === "active" && (
             <p className="text-sm text-text-secondary">
@@ -679,7 +748,7 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {isAvailable(actionSurface.judge) && (
+      {passport && evm.ok && isAvailable(actionSurface.judge) && (
         <div className="flex flex-col gap-2">
           <div className="space-y-2 rounded-md border border-border-default bg-bg-primary/80 p-3">
             <p className="text-xs text-text-secondary">
@@ -733,7 +802,7 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {isAvailable(actionSurface.withdraw) && (
+      {passport && evm.ok && isAvailable(actionSurface.withdraw) && (
         <div className="space-y-2">
           <p className="text-xs text-text-secondary">
             {actionSurface.challenge.terminals.withdrawn.withdrawCopy}
@@ -763,7 +832,7 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {isAvailable(actionSurface.conclude) && (
+      {passport && evm.ok && isAvailable(actionSurface.conclude) && (
         <div className="space-y-2">
           <p className="text-xs text-text-secondary">
             {actionSurface.challenge.terminals.expired.concludeCopy}
@@ -792,7 +861,9 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {isAvailable(actionSurface.ownerClarification) && (
+      {writeAvail.available &&
+        writeTargetConfigured &&
+        isAvailable(actionSurface.ownerClarification) && (
         <div className="space-y-2">
           <Label htmlFor="clarification">Owner clarification</Label>
           <Textarea
@@ -827,13 +898,19 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {listingActive && holder && actionSurface.presence.status === "here" && (
+      {writeAvail.available &&
+        writeTargetConfigured &&
+        listingActive &&
+        holder &&
+        actionSurface.presence.status === "here" && (
         <p className="text-xs text-text-secondary">
           Service records can be added after delisting.
         </p>
       )}
 
-      {isAvailable(actionSurface.appendRecord) && (
+      {writeAvail.available &&
+        writeTargetConfigured &&
+        isAvailable(actionSurface.appendRecord) && (
         <div className="space-y-2 border-t border-border-default pt-4">
           <Button
             type="button"
@@ -910,7 +987,7 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {isAvailable(actionSurface.appendAttestation) && (
+      {passport && evm.ok && isAvailable(actionSurface.appendAttestation) && (
         <div className="space-y-2 border-t border-border-default pt-4">
           <Label htmlFor="attestation-text">Verifier attestation</Label>
           <p className="text-xs text-text-secondary">
@@ -949,7 +1026,7 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {isAvailable(actionSurface.reportDiscrepancy) && (
+      {passport && evm.ok && isAvailable(actionSurface.reportDiscrepancy) && (
       <div className="space-y-2 border-t border-border-default pt-4">
         <Label htmlFor="discrepancy">Report discrepancy</Label>
         <Textarea

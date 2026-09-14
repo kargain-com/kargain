@@ -39,6 +39,9 @@ export const VM_BRANCH_ALLOWLIST = [
   "lib/passport/set-passport-uri.ts",
   // U6.1 edit-write prep — EVM switch+SIWE vs named SVM none-required; panels stay blind.
   "lib/passport/prepare-passport-edit-write.ts",
+  // U6.3 AppendRecord write owner + evidence-file SIWE prep; panels stay blind.
+  "lib/passport/append-passport-record.ts",
+  "lib/passport/prepare-passport-record-write.ts",
   // U6.2 verification-fee write owner + surface/hub admit — panels stay blind.
   "lib/verifier/set-verification-fee.ts",
   "lib/verifier/verification-fee-surface.ts",
