@@ -4,6 +4,7 @@ import { followedProgramsFromStack } from "@/lib/svm/ingest-config";
 import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "@/lib/svm/rpc-max-supported-transaction-version";
 import { postSolanaJsonRpc } from "@/lib/svm/solana-json-rpc";
 import type { SvmCommercialActiveStack } from "@/lib/web3/commercial-active";
+import type { SvmKeyedAccountSource } from "@/lib/web3/svm-keyed-read";
 import {
   createSvmTxConfirmPort,
   type SvmTxConfirmPort,
@@ -26,6 +27,13 @@ type GetTransactionResult = {
 type GetLatestBlockhashRpcValue = {
   blockhash?: string;
   lastValidBlockHeight?: number | string;
+} | null;
+
+type GetAccountInfoRpcValue = {
+  data?: [string, string] | string;
+  executable?: boolean;
+  lamports?: number;
+  owner?: string;
 } | null;
 
 /**
@@ -139,6 +147,102 @@ export async function fetchProductSvmLatestBlockhash(opts?: {
   return {
     ok: true,
     value: { blockhash, lastValidBlockHeight },
+  };
+}
+
+export type FetchSvmAccountDataCause =
+  | "rpc_unavailable"
+  | "account_not_found"
+  | "malformed_response";
+
+export type FetchSvmAccountDataResult =
+  | { ok: true; value: Uint8Array }
+  | {
+      ok: false;
+      cause: FetchSvmAccountDataCause;
+      detail: string;
+    };
+
+/**
+ * Account data bytes for product SVM keyed reads — same transport as blockhash.
+ * Absent accounts are named (`account_not_found`); never an empty buffer.
+ */
+export async function fetchProductSvmAccountData(
+  account: string,
+): Promise<FetchSvmAccountDataResult> {
+  const rpcUrl = productSvmRpcUrl();
+  if (!rpcUrl) {
+    return {
+      ok: false,
+      cause: "rpc_unavailable",
+      detail: productSvmRpcUrlRefusalCopy(),
+    };
+  }
+  let value: GetAccountInfoRpcValue;
+  try {
+    const result = await postSolanaJsonRpc<{ value: GetAccountInfoRpcValue }>(
+      rpcUrl,
+      "getAccountInfo",
+      [account, { encoding: "base64", commitment: "confirmed" }],
+    );
+    value = result.value;
+  } catch (err) {
+    return {
+      ok: false,
+      cause: "rpc_unavailable",
+      detail: err instanceof Error ? err.message : String(err),
+    };
+  }
+  if (value == null) {
+    return {
+      ok: false,
+      cause: "account_not_found",
+      detail: `getAccountInfo returned null for ${account}`,
+    };
+  }
+  const data = value.data;
+  if (!Array.isArray(data) || data.length < 2) {
+    return {
+      ok: false,
+      cause: "malformed_response",
+      detail: "getAccountInfo data is not a base64 tuple",
+    };
+  }
+  const [b64, encoding] = data;
+  if (encoding !== "base64" || typeof b64 !== "string") {
+    return {
+      ok: false,
+      cause: "malformed_response",
+      detail: `getAccountInfo unexpected encoding: ${String(encoding)}`,
+    };
+  }
+  try {
+    const binary =
+      typeof atob === "function"
+        ? Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+        : Uint8Array.from(Buffer.from(b64, "base64"));
+    return { ok: true, value: binary };
+  } catch (err) {
+    return {
+      ok: false,
+      cause: "malformed_response",
+      detail: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
+ * Product {@link SvmKeyedAccountSource}: live getAccountInfo via svm-rpc.
+ * Not-found → null (keyed-read names the miss). Other refusals throw by cause name.
+ */
+export function createProductSvmKeyedAccountSource(): SvmKeyedAccountSource {
+  return {
+    getAccountData: async (account: string) => {
+      const result = await fetchProductSvmAccountData(account);
+      if (result.ok) return result.value;
+      if (result.cause === "account_not_found") return null;
+      throw new Error(`${result.cause}: ${result.detail}`);
+    },
   };
 }
 

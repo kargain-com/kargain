@@ -18,6 +18,10 @@ path = "src/bin/emit-pda-manifest.rs"
 name = "emit-foreign-programs-manifest"
 path = "src/bin/emit-foreign-programs-manifest.rs"
 
+[[bin]]
+name = "emit-state-manifest"
+path = "src/bin/emit-state-manifest.rs"
+
 [dependencies]
 borsh = { workspace = true }
 serde = { version = "1", features = ["derive"] }

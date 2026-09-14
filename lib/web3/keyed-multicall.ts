@@ -1,15 +1,16 @@
 "use client";
 
 /**
- * Sole owner of wagmi `useReadContracts` and the SVM batch-read sibling (S8-3).
+ * Sole owner of wagmi `useReadContracts` and the SVM batch-read sibling (S8-3 / U7).
  * Consumers address results by named key — never by ordinal position.
  * Import ban: `test/keyed-multicall-policy.test.ts`.
  */
 
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Abi, Address } from "viem";
 import { useReadContracts } from "wagmi";
 
+import { createProductSvmKeyedAccountSource } from "@/lib/web3/svm-rpc";
 import {
   resolveSvmKeyedReads,
   type SvmKeyedAccountSource,
@@ -129,12 +130,22 @@ function resultApi<K extends string>(
   };
 }
 
+function mapSvmEntries(
+  resolved: Awaited<ReturnType<typeof resolveSvmKeyedReads>>,
+): KeyedEntry[] {
+  return resolved.entries.map((e) =>
+    e.status === "success"
+      ? { status: "success", result: e.result }
+      : { status: "failure", error: e.error },
+  );
+}
+
 /**
  * One multicall per batch. Conditional membership = omit named entries;
  * repeated groups = composite keys — never index or stride arithmetic.
  *
  * EVM batches use wagmi. SVM batches use {@link resolveSvmKeyedReads}
- * (fail-closed without an account source until S9).
+ * (product default = live svm-rpc source; explicit `null` → unresolved_namespace).
  */
 export function useKeyedReadContracts<const T extends readonly KeyedContract[]>(opts: {
   contracts: T;
@@ -144,7 +155,11 @@ export function useKeyedReadContracts<const T extends readonly KeyedContract[]>(
     gcTime?: number;
   };
   allowFailure?: boolean;
-  /** Tests-only SVM account bytes; product omits → unresolved_namespace. */
+  /**
+   * SVM account source. Omit → product live RPC source.
+   * Pass `null` → every entry fails `unresolved_namespace` (tests).
+   * Pass an object → inject (tests / future domain owners).
+   */
   svmAccountSource?: SvmKeyedAccountSource | null;
 }): KeyedReadContractsResult<T[number]["key"]> {
   type K = T[number]["key"];
@@ -177,55 +192,99 @@ export function useKeyedReadContracts<const T extends readonly KeyedContract[]>(
     query: { ...query, enabled },
   });
 
-  const svmResolved = useMemo(() => {
+  const productSource = useMemo(
+    () => (isSvmBatch ? createProductSvmKeyedAccountSource() : null),
+    [isSvmBatch],
+  );
+
+  const effectiveSource: SvmKeyedAccountSource | null | undefined =
+    svmAccountSource !== undefined
+      ? svmAccountSource
+      : (productSource ?? undefined);
+
+  const svmRequests = useMemo(() => {
     if (!isSvmBatch) return null;
-    const requests = (contracts as readonly KeyedSvmContract<K>[]).map((c) => ({
+    return (contracts as readonly KeyedSvmContract<K>[]).map((c) => ({
       key: c.key,
       account: c.account,
     }));
-    return resolveSvmKeyedReads(requests, svmAccountSource);
-  }, [contracts, isSvmBatch, svmAccountSource]);
+  }, [contracts, isSvmBatch]);
 
-  if (isSvmBatch && svmResolved) {
-    const keyedEntries: KeyedEntry[] = svmResolved.entries.map((e) =>
-      e.status === "success"
-        ? { status: "success", result: e.result }
-        : { status: "failure", error: e.error },
+  const svmRequestKey = useMemo(
+    () => (svmRequests == null ? null : JSON.stringify(svmRequests)),
+    [svmRequests],
+  );
+
+  const [svmSnapshot, setSvmSnapshot] = useState<{
+    key: string;
+    entries: KeyedEntry[];
+  } | null>(null);
+  const [svmFetchEpoch, setSvmFetchEpoch] = useState(0);
+
+  useEffect(() => {
+    if (!isSvmBatch || svmRequests == null || svmRequestKey == null) {
+      return;
+    }
+    let cancelled = false;
+    const key = svmRequestKey;
+    void resolveSvmKeyedReads(svmRequests, effectiveSource).then((resolved) => {
+      if (cancelled) return;
+      setSvmSnapshot({ key, entries: mapSvmEntries(resolved) });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isSvmBatch, svmRequests, svmRequestKey, effectiveSource, svmFetchEpoch]);
+
+  const refetchSvm = useCallback(async () => {
+    if (!isSvmBatch || svmRequests == null || svmRequestKey == null) {
+      return {
+        get: (_key: K) => undefined as unknown | undefined,
+        entry: (_key: K) => undefined as KeyedEntry | undefined,
+      };
+    }
+    const again = await resolveSvmKeyedReads(svmRequests, effectiveSource);
+    const fresh = mapSvmEntries(again);
+    setSvmSnapshot({ key: svmRequestKey, entries: fresh });
+    setSvmFetchEpoch((n) => n + 1);
+    const map = buildKeyMap(
+      contracts as readonly KeyedContract<K>[],
+      fresh,
     );
+    return {
+      get: (key: K) => {
+        const e = map.get(key);
+        return e?.status === "success" ? e.result : undefined;
+      },
+      entry: (key: K) => map.get(key),
+    };
+  }, [isSvmBatch, svmRequests, svmRequestKey, effectiveSource, contracts]);
+
+  if (isSvmBatch) {
+    const matched =
+      svmSnapshot != null &&
+      svmRequestKey != null &&
+      svmSnapshot.key === svmRequestKey;
+    const keyedEntries: KeyedEntry[] = matched
+      ? svmSnapshot.entries
+      : (contracts as readonly KeyedSvmContract<K>[]).map(
+          () =>
+            ({
+              status: "failure",
+              error: new Error("svm_keyed_read_pending"),
+            }) satisfies KeyedEntry,
+        );
     const byKey = buildKeyMap(
       contracts as readonly KeyedContract<K>[],
       keyedEntries,
     );
+    const pending = !matched;
     return resultApi(
       contracts as readonly KeyedContract<K>[],
       byKey,
       keyedEntries,
-      { isPending: false, isFetching: false, isLoading: false },
-      async () => {
-        const again = resolveSvmKeyedReads(
-          (contracts as readonly KeyedSvmContract<K>[]).map((c) => ({
-            key: c.key,
-            account: c.account,
-          })),
-          svmAccountSource,
-        );
-        const fresh: KeyedEntry[] = again.entries.map((e) =>
-          e.status === "success"
-            ? { status: "success", result: e.result }
-            : { status: "failure", error: e.error },
-        );
-        const map = buildKeyMap(
-          contracts as readonly KeyedContract<K>[],
-          fresh,
-        );
-        return {
-          get: (key: K) => {
-            const e = map.get(key);
-            return e?.status === "success" ? e.result : undefined;
-          },
-          entry: (key: K) => map.get(key),
-        };
-      },
+      { isPending: pending, isFetching: pending, isLoading: pending },
+      refetchSvm,
     );
   }
 

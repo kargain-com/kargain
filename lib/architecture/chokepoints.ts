@@ -54,6 +54,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-pda-derivation-policy.test.ts"],
   },
   {
+    id: "svm-account-state-decode",
+    owner: "lib/svm/decode-account-state.ts · svm/crates/kargain-ix-wire",
+    rule: "Commercial SVM account-state decode (PassportState) only via decode-account-state; layout+goldens from Rust BorshSerialize padded to PASSPORT_STATE_SPACE (committed state.manifest.json); cursor decode ignores trailing padding; no hand offsets; no chrome amounts",
+    guardTests: ["svm-account-state-decode-policy.test.ts"],
+  },
+  {
     id: "svm-write-adapter",
     owner:
       "lib/web3/svm-write-adapter.ts · lib/web3/svm-sign-and-send-port.ts · lib/web3/svm-rpc.ts · lib/web3/commercial-active.ts",
@@ -106,9 +112,14 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   },
   {
     id: "keyed-multicall",
-    owner: "lib/web3/keyed-multicall.ts · lib/web3/svm-keyed-read.ts",
-    rule: "useReadContracts + SVM batch sibling only inside keyed-multicall; consumers use named keys",
-    guardTests: ["keyed-multicall-policy.test.ts", "s8-3-write-path.test.ts"],
+    owner:
+      "lib/web3/keyed-multicall.ts · lib/web3/svm-keyed-read.ts · lib/web3/svm-rpc.ts",
+    rule: "useReadContracts + async SVM batch sibling only inside keyed-multicall; product default account source = createProductSvmKeyedAccountSource (svm-rpc getAccountInfo); explicit null → unresolved_namespace; refuse mixed EVM/SVM batches by name; EVM entry shape unchanged",
+    guardTests: [
+      "keyed-multicall-policy.test.ts",
+      "s8-3-write-path.test.ts",
+      "svm-keyed-read-policy.test.ts",
+    ],
   },
   {
     id: "passport-approval",

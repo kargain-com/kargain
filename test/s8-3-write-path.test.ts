@@ -121,8 +121,8 @@ describe("txWriteAvailability", () => {
 });
 
 describe("resolveSvmKeyedReads", () => {
-  it("fails closed with unresolved_namespace without an account source", () => {
-    const { entries, cause } = resolveSvmKeyedReads([
+  it("fails closed with unresolved_namespace without an account source", async () => {
+    const { entries, cause } = await resolveSvmKeyedReads([
       { key: "a", account: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" },
     ]);
     assert.equal(cause, "unresolved_namespace");
@@ -133,11 +133,11 @@ describe("resolveSvmKeyedReads", () => {
     }
   });
 
-  it("returns injected account bytes when a source is provided", () => {
+  it("returns injected account bytes when a source is provided", async () => {
     const bytes = new Uint8Array([1, 2, 3]);
-    const { entries, cause } = resolveSvmKeyedReads(
+    const { entries, cause } = await resolveSvmKeyedReads(
       [{ key: "a", account: "acct" }],
-      { getAccountData: (a) => (a === "acct" ? bytes : null) },
+      { getAccountData: async (a) => (a === "acct" ? bytes : null) },
     );
     assert.equal(cause, null);
     assert.deepEqual(entries[0], { status: "success", result: bytes });

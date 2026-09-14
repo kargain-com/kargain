@@ -39,14 +39,11 @@ use crate::records::{
 };
 use crate::seeds::{asset_pda, config_pda, state_pda, CONFIG_SEED, STATE_SEED};
 use crate::state::{
-    PassportConfig, PassportState, Status, PASSPORT_CONFIG_DISCRIMINATOR,
+    PassportConfig, PassportState, Status, PASSPORT_CONFIG_DISCRIMINATOR, PASSPORT_STATE_SPACE,
 };
 use crate::uri::{check_mint_uri, check_set_uri};
 use crate::verify::check_verify_passport;
 use kargain_bonded_challenge::JudgeOutcome;
-
-/// Fixed state PDA space (never closed; tombstone after foreign burn).
-pub const PASSPORT_STATE_SPACE: usize = 256;
 
 pub fn process_instruction(
     program_id: &Pubkey,

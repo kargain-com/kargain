@@ -78,6 +78,11 @@ pub struct PassportState {
 
 pub const PASSPORT_STATE_DISCRIMINATOR: [u8; 8] = *b"kp_st\0\0\0";
 
+/// Fixed account allocation for the state PDA. Borsh payload is shorter — trailing
+/// zeros are load-bearing padding. Entrypoint decodes with `deserialize(&mut cursor)`,
+/// never `try_from_slice` (exact-length), which rejects valid accounts.
+pub const PASSPORT_STATE_SPACE: usize = 256;
+
 impl PassportState {
     pub fn new_unverified(token_id: [u8; 32], bump: u8) -> Self {
         Self {

@@ -1,12 +1,15 @@
-//! Commercial instruction + PDA wire census.
+//! Commercial instruction + PDA + account-state wire census.
 //!
 //! Instruction authority: Rust `BorshSerialize` of the six program enums
 //! (`ix.manifest.json`). PDA authority: real `find_program_address` via each
-//! owner's `*_pda` helper (`pda.manifest.json`).
+//! owner's `*_pda` helper (`pda.manifest.json`). Account-state authority:
+//! `PassportState` BorshSerialize padded to `PASSPORT_STATE_SPACE`
+//! (`state.manifest.json`).
 
 mod samples;
 pub mod foreign_programs;
 pub mod pda;
+pub mod state;
 
 use serde::Serialize;
 use serde_json::{json, Map, Value};
