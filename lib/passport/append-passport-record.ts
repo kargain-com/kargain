@@ -137,7 +137,7 @@ export function assembleAppendPassportRecordAccounts(args: {
 }): SvmWriteAccountMeta[] {
   return [
     { address: args.config, role: AccountRole.READONLY },
-    { address: args.asset, role: AccountRole.WRITABLE },
+    { address: args.asset, role: AccountRole.READONLY },
     { address: args.state, role: AccountRole.WRITABLE },
     { address: args.record, role: AccountRole.WRITABLE },
     { address: args.author, role: AccountRole.READONLY_SIGNER },

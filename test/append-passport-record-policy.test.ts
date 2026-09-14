@@ -399,7 +399,7 @@ describe("appendPassportRecord SVM metas order", () => {
     const accounts = planned.plan.accounts;
     assert.equal(accounts.length, 7);
     assert.equal(accounts[0]!.role, AccountRole.READONLY); // config
-    assert.equal(accounts[1]!.role, AccountRole.WRITABLE); // asset
+    assert.equal(accounts[1]!.role, AccountRole.READONLY); // asset — read-only in AppendRecord
     assert.equal(accounts[2]!.role, AccountRole.WRITABLE); // state
     assert.equal(accounts[3]!.role, AccountRole.WRITABLE); // record
     assert.equal(accounts[4]!.role, AccountRole.READONLY_SIGNER); // author
@@ -411,6 +411,20 @@ describe("appendPassportRecord SVM metas order", () => {
     assert.equal(planned.plan.programId, stack.karPassport);
     assert.equal(planned.plan.feePayer, owner);
     assert.equal(planned.plan.recordCount, recordCount);
+
+    // Planted over-writable asset role is red; live pin is green.
+    const plantedWritableAsset = {
+      ...accounts[1]!,
+      role: AccountRole.WRITABLE,
+    };
+    assert.throws(() => {
+      assert.equal(
+        plantedWritableAsset.role,
+        AccountRole.READONLY,
+        "planted writable asset role",
+      );
+    });
+    assert.equal(accounts[1]!.role, AccountRole.READONLY);
 
     const expectedRecord = await deriveSvmPda({
       recipe: "kar-passport/record",
