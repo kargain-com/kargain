@@ -780,7 +780,7 @@ KarProStaking `verificationFee` is informational on-chain — Kargain does not e
 | Rule | Value |
 |------|-------|
 | Hub layout | Identity strip + sticky section nav — see §4.11 KarPro hub rows; join flow (`KarProJoinForm`) unchanged for non-verifiers |
-| Fee composer | [`kar-pro-fee-section.tsx`](../components/kar-pro/kar-pro-fee-section.tsx) — service margin in nav display currency + live `verifyPassport` gas estimate → single wei via `setVerificationFee`; empty / zero margin → *Contact for quote*; gas captured at save only |
+| Fee composer | [`kar-pro-fee-section.tsx`](../components/kar-pro/kar-pro-fee-section.tsx) — service margin in nav display currency; **EVM:** + live `verifyPassport` gas estimate → single wei via `setVerificationFee`; **SVM (locked):** service margin only in stack native units (no gas / CU fold) — SPEC I.4; empty / zero margin → *Contact for quote*; gas captured at save only on EVM |
 | Payment methods | [`kar-pro-payments-section.tsx`](../components/kar-pro/kar-pro-payments-section.tsx) — Nostr kind 0 `verifierPaymentMethods` (`eth` \| `usdc` \| `lightning`); field absent = all three; ≥1 must stay enabled; Lightning enabled requires non-empty valid `lud16` ([`LightningAddressField`](../components/profile/lightning-address-field.tsx)); separate **Save fee** (chain) and **Save payment methods** (Nostr) actions |
 | Widget | [`KarProStatusWidget`](../components/profile/karpro-status-widget.tsx) remains read-only links to KarPro hub sections — **Membership →** for stake/leave, **Edit fee →** for fee; writes live in Fee / Payments sections |
 
