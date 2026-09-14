@@ -69,9 +69,9 @@ export function useActiveAccount(): UseActiveAccountResult {
     async (target: ConnectTarget) => {
       await dispatchConnect(target, {
         clearSvm: svm.clear,
-        connectEvm: evm.connect,
-        disconnectEvm: evm.disconnect,
-        connectSvm: svm.connect,
+        onEvmConnect: evm.connect,
+        onEvmDisconnect: evm.disconnect,
+        onSvmConnect: svm.connect,
         evmConnected: Boolean(evm.connected),
       });
     },

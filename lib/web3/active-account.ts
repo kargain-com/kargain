@@ -116,9 +116,9 @@ export function connectTargetFromOption(opt: ConnectOption): ConnectTarget {
  */
 export type ConnectDispatchPorts = {
   clearSvm: () => void;
-  connectEvm: (connector: Connector) => Promise<void>;
-  disconnectEvm: () => Promise<void>;
-  connectSvm: (walletName: string) => Promise<void>;
+  onEvmConnect: (connector: Connector) => Promise<void>;
+  onEvmDisconnect: () => Promise<void>;
+  onSvmConnect: (walletName: string) => Promise<void>;
   evmConnected: boolean;
 };
 
@@ -129,13 +129,13 @@ export async function dispatchConnect(
 ): Promise<void> {
   if (target.family === "evm") {
     ports.clearSvm();
-    await ports.connectEvm(target.connector);
+    await ports.onEvmConnect(target.connector);
     return;
   }
   if (ports.evmConnected) {
-    await ports.disconnectEvm();
+    await ports.onEvmDisconnect();
   }
-  await ports.connectSvm(target.walletName);
+  await ports.onSvmConnect(target.walletName);
 }
 
 /** Display / copy address for any connected family; undefined when disconnected. */
