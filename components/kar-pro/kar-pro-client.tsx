@@ -38,14 +38,14 @@ export function KarProClient({
   const { account } = useActiveAccount();
   const hub = admitKarProHub(account);
 
-  const address = hub.kind === "evm" ? hub.address : undefined;
-  const walletChainId = hub.kind === "evm" ? hub.walletChainId : undefined;
+  const address = hub.admission === "full" ? hub.address : undefined;
+  const walletChainId = hub.admission === "full" ? hub.walletChainId : undefined;
   const chainId = resolveKarProTargetChainId(walletChainId);
 
   const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
   const wc = chainId != null ? wagmiChainId(chainId) : undefined;
 
-  // EVM-only multicall — never enabled on SVM (do not invent inactive).
+  // Full-hub multicall only — never invent inactive on fee_only admission.
   const stakingReads = useKeyedReadContracts({
     contracts: staking && wc != null && address
       ? [
@@ -61,7 +61,7 @@ export function KarProClient({
       : [],
     query: {
       enabled: Boolean(
-        hub.kind === "evm" && staking && address && chainId != null,
+        hub.admission === "full" && staking && address && chainId != null,
       ),
     },
   });
@@ -80,7 +80,7 @@ export function KarProClient({
   } = useKarProVerifierProfile(address, {
     isActiveVerifier,
     chainId,
-    syncWhileMissing: hub.kind === "evm",
+    syncWhileMissing: hub.admission === "full",
   });
 
   const handleJoinSuccess = () => {
@@ -101,7 +101,7 @@ export function KarProClient({
     ? "space-y-5 text-text-primary"
     : "mx-auto w-full max-w-lg space-y-8 text-text-primary";
 
-  if (hub.kind === "refusal") {
+  if (hub.admission === "refusal") {
     if (hub.cause === "staking_not_configured") {
       return (
         <div className={containerClass}>
@@ -121,8 +121,8 @@ export function KarProClient({
     );
   }
 
-  // U6.2: SVM reaches fee only — join/profile/payments stay EVM-bound.
-  if (hub.kind === "svm_fee_island") {
+  // Fee-only admission — join/profile/payments stay on the full hub path.
+  if (hub.admission === "fee_only") {
     return (
       <div className={containerClass}>
         <p className="font-sans text-fluid-sm text-text-secondary">

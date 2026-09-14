@@ -362,6 +362,7 @@ export function bridgeNextHopWrongVmCopy(input: {
   networkName: string;
   wantedFamily: "evm" | "svm";
 }): string {
-  const family = input.wantedFamily === "evm" ? "Ethereum" : "Solana";
+  const FAMILY_LABEL = { evm: "Ethereum", svm: "Solana" } as const;
+  const family = FAMILY_LABEL[input.wantedFamily];
   return `The next hop is on ${input.networkName}. Connect a ${family} wallet to continue.`;
 }

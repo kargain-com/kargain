@@ -12,6 +12,7 @@ import type { Wallet } from "@wallet-standard/base";
 
 import {
   connectedAddress,
+  dispatchConnect,
   isAccountConnected,
   requireEvmSigningBinding,
   type AccountSigningBinding,
@@ -66,15 +67,13 @@ export function useActiveAccount(): UseActiveAccountResult {
 
   const connect = useCallback(
     async (target: ConnectTarget) => {
-      if (target.family === "evm") {
-        svm.clear();
-        await evm.connect(target.connector);
-        return;
-      }
-      if (evm.connected) {
-        await evm.disconnect();
-      }
-      await svm.connect(target.walletName);
+      await dispatchConnect(target, {
+        clearSvm: svm.clear,
+        connectEvm: evm.connect,
+        disconnectEvm: evm.disconnect,
+        connectSvm: svm.connect,
+        evmConnected: Boolean(evm.connected),
+      });
     },
     [evm, svm],
   );
@@ -154,10 +153,13 @@ export type {
 export {
   commercialNamespaceOf,
   connectedAddress,
+  connectTargetFromOption,
+  dispatchConnect,
   evmSessionRefusalCopy,
   evmSessionRefusalTitle,
   evmSwitchChainAvailability,
   isAccountConnected,
+  isEvmConnectOption,
   requireEvmSession,
   requireEvmSigningBinding,
   wrongVmActionCopy,

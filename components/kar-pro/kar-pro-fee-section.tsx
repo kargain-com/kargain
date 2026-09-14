@@ -48,26 +48,40 @@ export function KarProFeeSection({ chainId }: KarProFeeSectionProps) {
   const { setVerificationFee } = useSetVerificationFee();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
 
-  const isEvmSurface = surface.kind === "evm";
-  const isSvmSurface = surface.kind === "svm";
+  const includesExecutionCost =
+    surface.configured && surface.includesExecutionCost;
+  const feeReadable =
+    surface.configured && surface.currentFee.status === "readable"
+      ? surface.currentFee
+      : null;
+  const feeUnread =
+    surface.configured && surface.currentFee.status === "unread"
+      ? surface.currentFee
+      : null;
+  const marginNative =
+    surface.configured && surface.marginEntry.input === "native"
+      ? surface.marginEntry
+      : null;
+  const marginDisplayFx =
+    surface.configured && surface.marginEntry.input === "display_fx";
 
   const { displayCurrency, isRatesLoading, ...rateFields } = useDisplayCurrency();
   const rates = useMemo(() => pickPartialFxRates(rateFields), [rateFields]);
 
-  useMarketRatesRequest(isEvmSurface);
-  useMarketRates({ enabled: isEvmSurface });
+  useMarketRatesRequest(includesExecutionCost);
+  useMarketRates({ enabled: includesExecutionCost });
   const { costWei: gasCostWei, isLoading: gasLoading } = useVerifyGasEstimate({
     chainId,
-    enabled: isEvmSurface,
+    enabled: includesExecutionCost,
   });
 
   const verifierAddress =
-    isEvmSurface && account.status === "connected"
+    feeReadable && account.status === "connected"
       ? (account.address as `0x${string}`)
       : undefined;
 
-  const staking = isEvmSurface ? surface.stakingAddress : undefined;
-  const wc = isEvmSurface ? wagmiChainId(chainId) : undefined;
+  const staking = feeReadable?.stakingAddress;
+  const wc = feeReadable ? wagmiChainId(chainId) : undefined;
 
   const { data: onChainFee } = useReadContract({
     address: staking,
@@ -75,10 +89,10 @@ export function KarProFeeSection({ chainId }: KarProFeeSectionProps) {
     functionName: "verificationFee",
     args: verifierAddress ? [verifierAddress] : undefined,
     chainId: wc,
-    query: { enabled: Boolean(isEvmSurface && staking && verifierAddress) },
+    query: { enabled: Boolean(feeReadable && staking && verifierAddress) },
   });
 
-  const ratesReady = isEvmSurface
+  const ratesReady = includesExecutionCost
     ? canComposeFeeInDisplayCurrency(displayCurrency, rates)
     : true;
 
@@ -89,7 +103,7 @@ export function KarProFeeSection({ chainId }: KarProFeeSectionProps) {
   const feeSaving = txPhase !== "idle";
 
   useEffect(() => {
-    if (!isEvmSurface) return;
+    if (!feeReadable) return;
     if (marginInitialized || onChainFee === undefined) return;
 
     const marginWei = deriveMarginWeiFromOnChain(onChainFee, gasCostWei);
@@ -100,7 +114,7 @@ export function KarProFeeSection({ chainId }: KarProFeeSectionProps) {
     );
     setMarginInitialized(true);
   }, [
-    isEvmSurface,
+    feeReadable,
     marginInitialized,
     onChainFee,
     gasCostWei,
@@ -109,46 +123,46 @@ export function KarProFeeSection({ chainId }: KarProFeeSectionProps) {
   ]);
 
   const marginWei = useMemo(() => {
-    if (!isEvmSurface) return null;
+    if (!marginDisplayFx) return null;
     return displayAmountToFeeWei(marginInput, displayCurrency, rates);
-  }, [isEvmSurface, marginInput, displayCurrency, rates]);
+  }, [marginDisplayFx, marginInput, displayCurrency, rates]);
 
   const marginLamports = useMemo(() => {
-    if (!isSvmSurface) return null;
-    return parseSvmFeeMarginNative(marginInput, surface.unit);
-  }, [isSvmSurface, marginInput, surface]);
+    if (marginNative == null) return null;
+    return parseSvmFeeMarginNative(marginInput, marginNative.unit);
+  }, [marginNative, marginInput]);
 
   const totalWei = useMemo(() => {
-    if (!isEvmSurface || marginWei == null) return null;
+    if (!includesExecutionCost || marginWei == null) return null;
     return marginWei <= 0n ? 0n : marginWei + (gasCostWei ?? 0n);
-  }, [isEvmSurface, marginWei, gasCostWei]);
+  }, [includesExecutionCost, marginWei, gasCostWei]);
 
   const totalLamports = useMemo(() => {
-    if (!isSvmSurface || marginLamports == null) return null;
+    if (marginNative == null || marginLamports == null) return null;
     return marginLamports <= 0n ? 0n : marginLamports;
-  }, [isSvmSurface, marginLamports]);
+  }, [marginNative, marginLamports]);
 
   const marginDisplay =
-    isEvmSurface && marginWei != null
+    marginDisplayFx && marginWei != null
       ? formatFeeWeiInDisplayCurrency(marginWei, displayCurrency, rates)
-      : isSvmSurface && marginLamports != null
-        ? formatNativeAmountLabeled(marginLamports, surface.unit)
+      : marginNative != null && marginLamports != null
+        ? formatNativeAmountLabeled(marginLamports, marginNative.unit)
         : null;
   const gasDisplay =
-    isEvmSurface && gasCostWei != null
+    includesExecutionCost && gasCostWei != null
       ? formatFeeWeiInDisplayCurrency(gasCostWei, displayCurrency, rates)
       : null;
   const totalDisplay =
-    isEvmSurface && totalWei != null
+    includesExecutionCost && totalWei != null
       ? formatFeeWeiInDisplayCurrency(totalWei, displayCurrency, rates)
-      : isSvmSurface && totalLamports != null
-        ? formatNativeAmountLabeled(totalLamports, surface.unit)
+      : marginNative != null && totalLamports != null
+        ? formatNativeAmountLabeled(totalLamports, marginNative.unit)
         : null;
 
   const onSaveFee = async () => {
-    if (!writeAvail.available) return;
+    if (!writeAvail.available || !surface.configured) return;
 
-    if (isEvmSurface) {
+    if (includesExecutionCost) {
       if (!ratesReady) {
         setFeeError("Exchange rates unavailable. Try again in a moment.");
         return;
@@ -172,9 +186,9 @@ export function KarProFeeSection({ chainId }: KarProFeeSectionProps) {
       return;
     }
 
-    if (isSvmSurface) {
+    if (marginNative != null) {
       if (marginLamports == null || totalLamports == null) {
-        setFeeError(`Enter a valid amount in ${surface.unit.symbol}.`);
+        setFeeError(`Enter a valid amount in ${marginNative.unit.symbol}.`);
         return;
       }
       setFeeError(null);
@@ -198,7 +212,7 @@ export function KarProFeeSection({ chainId }: KarProFeeSectionProps) {
     );
   }
 
-  if (surface.kind === "unconfigured") {
+  if (!surface.configured) {
     return (
       <p className="font-sans text-sm text-text-secondary">
         Staking not configured for this network.
@@ -206,13 +220,13 @@ export function KarProFeeSection({ chainId }: KarProFeeSectionProps) {
     );
   }
 
-  const currencyLabel = isSvmSurface
-    ? surface.unit.symbol
+  const currencyLabel = marginNative
+    ? marginNative.unit.symbol
     : displayCurrencyLabel(displayCurrency);
   const feeSaveDisabled =
     feeSaving ||
-    (isEvmSurface && (!ratesReady || isRatesLoading || marginWei == null)) ||
-    (isSvmSurface && marginLamports == null);
+    (includesExecutionCost && (!ratesReady || isRatesLoading || marginWei == null)) ||
+    (marginNative != null && marginLamports == null);
 
   return (
     <div className="rounded-md border border-border-default bg-bg-card p-6 md:p-8">
@@ -234,10 +248,10 @@ export function KarProFeeSection({ chainId }: KarProFeeSectionProps) {
               setMarginInput(e.target.value);
               setFeeSaved(false);
             }}
-            disabled={feeSaving || (isEvmSurface && !ratesReady)}
+            disabled={feeSaving || (includesExecutionCost && !ratesReady)}
             className="font-mono tabular-nums"
           />
-          {isEvmSurface && !ratesReady && (
+          {includesExecutionCost && !ratesReady && (
             <p className="font-sans text-xs text-text-secondary">
               Exchange rates unavailable — fee save disabled until rates load.
             </p>
@@ -245,7 +259,7 @@ export function KarProFeeSection({ chainId }: KarProFeeSectionProps) {
         </div>
 
         <div className="space-y-1 rounded-md border border-border-default bg-bg-surface p-4">
-          {isEvmSurface ? (
+          {includesExecutionCost ? (
             <>
               <div className="flex items-baseline justify-between gap-3">
                 <span className="font-sans text-xs text-text-tertiary">
@@ -267,11 +281,11 @@ export function KarProFeeSection({ chainId }: KarProFeeSectionProps) {
                 </p>
               )}
             </>
-          ) : (
+          ) : feeUnread != null ? (
             <p className="font-sans text-xs text-text-secondary" role="status">
-              {surface.currentFeeAbsence}
+              {feeUnread.message}
             </p>
-          )}
+          ) : null}
 
           <div className="flex items-baseline justify-between gap-3 border-t border-border-default pt-2">
             <span className="font-sans text-xs text-text-tertiary">
@@ -279,15 +293,15 @@ export function KarProFeeSection({ chainId }: KarProFeeSectionProps) {
             </span>
             <span className="font-mono text-sm tabular-nums text-text-primary">
               {totalDisplay ?? "—"}
-              {isEvmSurface && totalWei != null && totalWei > 0n && (
+              {includesExecutionCost && totalWei != null && totalWei > 0n && (
                 <span className="ml-2 text-xs text-text-secondary">
                   {formatFeeWeiEth(totalWei)}
                 </span>
               )}
             </span>
           </div>
-          {((isEvmSurface && marginWei === 0n) ||
-            (isSvmSurface && marginLamports === 0n)) &&
+          {((includesExecutionCost && marginWei === 0n) ||
+            (marginNative != null && marginLamports === 0n)) &&
             marginDisplay != null && (
               <p className="font-sans text-xs text-text-secondary">
                 Empty or zero service fee shows as contact for quote.

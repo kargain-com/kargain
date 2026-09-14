@@ -95,6 +95,49 @@ export type ConnectOption =
       walletName: string;
     };
 
+/** True when the connect-dialog row is an EVM connector option. */
+export function isEvmConnectOption(
+  opt: ConnectOption,
+): opt is Extract<ConnectOption, { family: "evm" }> {
+  return opt.family === "evm";
+}
+
+/** Build a {@link ConnectTarget} from a dialog option (family fork lives here). */
+export function connectTargetFromOption(opt: ConnectOption): ConnectTarget {
+  if (opt.family === "evm") {
+    return { family: "evm", connector: opt.connector };
+  }
+  return { family: "svm", walletName: opt.walletName };
+}
+
+/**
+ * Ports for {@link dispatchConnect} — adapters supply connect/clear/disconnect.
+ * Family fork lives in this allowlisted owner, not in hooks/components.
+ */
+export type ConnectDispatchPorts = {
+  clearSvm: () => void;
+  connectEvm: (connector: Connector) => Promise<void>;
+  disconnectEvm: () => Promise<void>;
+  connectSvm: (walletName: string) => Promise<void>;
+  evmConnected: boolean;
+};
+
+/** Dispatch a connect target to the correct adapter (mutual exclusion). */
+export async function dispatchConnect(
+  target: ConnectTarget,
+  ports: ConnectDispatchPorts,
+): Promise<void> {
+  if (target.family === "evm") {
+    ports.clearSvm();
+    await ports.connectEvm(target.connector);
+    return;
+  }
+  if (ports.evmConnected) {
+    await ports.disconnectEvm();
+  }
+  await ports.connectSvm(target.walletName);
+}
+
 /** Display / copy address for any connected family; undefined when disconnected. */
 export function connectedAddress(
   account: ActiveAccount,

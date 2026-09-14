@@ -1,6 +1,7 @@
 /**
- * KarPro hub session admit (U6.2 minimal).
- * SVM reaches the fee island; EVM keeps the full hub. VM fork lives here.
+ * KarPro hub session admit (U6.2-fix).
+ * SVM reaches the fee island; EVM keeps the full hub.
+ * Product consumers see `admission` capabilities — not `"evm"` / `"svm"` kinds.
  */
 
 import {
@@ -17,48 +18,48 @@ import type { KargainNamespace } from "@/lib/web3/kargain-namespace";
 
 export type KarProHubAdmit =
   | {
-      kind: "evm";
+      admission: "full";
       address: `0x${string}`;
       walletChainId: number;
       namespace: KargainNamespace;
     }
   | {
-      kind: "svm_fee_island";
+      admission: "fee_only";
       address: string;
       chainId: number;
       namespace: KargainNamespace;
     }
   | {
-      kind: "refusal";
+      admission: "refusal";
       cause: EvmSessionCause | "unresolved_namespace" | "staking_not_configured";
     };
 
 /**
  * Admit a connected session into the KarPro hub.
- * - EVM: address + wallet chain (existing join/profile path).
- * - SVM: fee island only when commercial staking exists on the sole SVM namespace.
- * Missing EVM multicall must not invent inactive for SVM (caller never asks).
+ * - full: address + wallet chain (existing join/profile path).
+ * - fee_only: fee island when commercial staking exists on the sole SVM namespace.
+ * Missing EVM multicall must not invent inactive for fee_only (caller never asks).
  */
 export function admitKarProHub(
   account: ActiveAccount,
   registry?: CommercialRegistry,
 ): KarProHubAdmit {
   if (account.status !== "connected") {
-    return { kind: "refusal", cause: "disconnected" };
+    return { admission: "refusal", cause: "disconnected" };
   }
 
   if (account.vm === "svm") {
     const ns = commercialNamespaceOf(account, registry);
     if (!ns.ok) {
-      return { kind: "refusal", cause: ns.cause };
+      return { admission: "refusal", cause: ns.cause };
     }
     const chainId = Number(ns.namespace);
     const stack = commercialActive(chainId, registry);
     if (stack == null || stack.vm !== "svm" || !stack.karProStaking) {
-      return { kind: "refusal", cause: "staking_not_configured" };
+      return { admission: "refusal", cause: "staking_not_configured" };
     }
     return {
-      kind: "svm_fee_island",
+      admission: "fee_only",
       address: account.address,
       chainId,
       namespace: ns.namespace,
@@ -67,10 +68,10 @@ export function admitKarProHub(
 
   const evm = requireEvmSession(account);
   if (!evm.ok) {
-    return { kind: "refusal", cause: evm.cause };
+    return { admission: "refusal", cause: evm.cause };
   }
   return {
-    kind: "evm",
+    admission: "full",
     address: evm.address,
     walletChainId: evm.chainId,
     namespace: evm.namespace,

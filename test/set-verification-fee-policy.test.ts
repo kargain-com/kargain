@@ -212,32 +212,33 @@ describe("U6.2 pin 3 — named absence (SVM current-fee readout)", () => {
     const namespaces = commercialSvmNamespaceIds();
     const ns = namespaces[0]!;
     const surface = verificationFeeSurface(ns);
-    assert.equal(surface.kind, "svm");
-    if (surface.kind !== "svm") throw new Error("expected svm surface");
-    assert.equal(surface.currentFeeAbsence, VERIFICATION_FEE_SVM_CURRENT_UNREAD);
-    assert.doesNotMatch(surface.currentFeeAbsence, /\b0\s*SOL\b/i);
+    assert.equal(surface.configured, true);
+    if (!surface.configured) throw new Error("expected configured surface");
+    assert.equal(surface.includesExecutionCost, false);
+    assert.equal(surface.currentFee.status, "unread");
+    if (surface.currentFee.status !== "unread") throw new Error("expected unread");
+    assert.equal(surface.currentFee.message, VERIFICATION_FEE_SVM_CURRENT_UNREAD);
+    assert.doesNotMatch(surface.currentFee.message, /\b0\s*SOL\b/i);
     assert.doesNotMatch(VERIFICATION_FEE_SVM_CURRENT_UNREAD, /^0$/);
   });
 
   it("fee panel quotes named absence; planted 0 fallback is red", () => {
     const live = readRel(PANEL_REL);
-    assert.match(live, /currentFeeAbsence|VERIFICATION_FEE_SVM_CURRENT_UNREAD/);
-    assert.doesNotMatch(
-      live,
-      /currentFeeAbsence\s*\?\?\s*["']0/,
-    );
+    assert.match(live, /feeUnread|status:\s*"unread"|VERIFICATION_FEE_SVM_CURRENT_UNREAD/);
+    assert.doesNotMatch(live, /currentFeeAbsence\s*\?\?\s*["']0/);
     assert.doesNotMatch(live, /formatNativeAmountLabeled\(\s*0n/);
 
     function inventsZeroFeeFallback(source: string): boolean {
       return (
         /currentFeeAbsence\s*\?\?\s*["']0/.test(source) ||
+        /feeUnread\.message\s*\?\?\s*["']0/.test(source) ||
         /SVM.*\?\?\s*["']0\s*SOL["']/.test(source) ||
         /currentFee\s*=\s*0n/.test(source)
       );
     }
     assert.equal(inventsZeroFeeFallback(live), false);
 
-    const planted = `${live}\nconst shown = surface.currentFeeAbsence ?? "0 SOL";\n`;
+    const planted = `${live}\nconst shown = feeUnread.message ?? "0 SOL";\n`;
     assert.equal(
       inventsZeroFeeFallback(planted),
       true,
@@ -351,6 +352,8 @@ describe("U6.2 ownership + panel + hub admit", () => {
     assert.match(panel, /setVerificationFee\(/);
     assert.match(panel, /TxWriteRefusal/);
     assert.match(panel, /txWriteAvailability/);
+    assert.doesNotMatch(panel, /isEvmSurface|isSvmSurface/);
+    assert.doesNotMatch(panel, /\.kind\s*===\s*["'](?:evm|svm)["']/);
     assert.equal(vmBranchViolationInSource(panel), false);
 
     const hook = readRel(HOOK_REL);
@@ -358,7 +361,29 @@ describe("U6.2 ownership + panel + hub admit", () => {
     assert.equal(vmBranchViolationInSource(hook), false);
   });
 
-  it("hub no longer gates entire surface on requireEvmSession — SVM reaches fee", () => {
+  it("U6.2-fix: panel kind-rename evasion is red before, green after; renamed prop plant red", () => {
+    const preFix = `
+const isEvmSurface = surface.kind === "evm";
+const isSvmSurface = surface.kind === "svm";
+`;
+    assert.equal(
+      vmBranchViolationInSource(preFix),
+      true,
+      "pre-fix fee panel kind fork must be red",
+    );
+
+    const live = readRel(PANEL_REL);
+    assert.equal(vmBranchViolationInSource(live), false);
+
+    const planted = `${live}\nif (surface.lane === "svm") return null;\n`;
+    assert.equal(
+      vmBranchViolationInSource(planted),
+      true,
+      "planted .lane === svm must turn the extended scanner red",
+    );
+  });
+
+  it("hub no longer gates entire surface on requireEvmSession — fee_only reaches fee", () => {
     function hubGatesEntirelyOnEvm(source: string): boolean {
       return (
         /\brequireEvmSession\s*\(\s*account\s*\)/.test(source) &&
@@ -370,10 +395,13 @@ describe("U6.2 ownership + panel + hub admit", () => {
     const live = readRel(CLIENT_REL);
     assert.equal(hubGatesEntirelyOnEvm(live), false);
     assert.match(live, /\badmitKarProHub\b/);
-    assert.match(live, /svm_fee_island/);
+    assert.match(live, /fee_only/);
+    assert.doesNotMatch(live, /svm_fee_island/);
+    assert.doesNotMatch(live, /\.kind\s*===\s*["'](?:evm|svm)["']/);
     assert.match(live, /<KarProFeeSection\s+chainId=\{/);
     assert.doesNotMatch(live, /staking=\{staking\}/);
     assert.doesNotMatch(live, /address=\{address!\}\s+staking=/);
+    assert.equal(vmBranchViolationInSource(live), false);
 
     const planted = `import { requireEvmSession } from "@/hooks/use-active-account";
 const evm = requireEvmSession(account);
@@ -384,14 +412,14 @@ if (!evm.ok) {
     assert.equal(hubGatesEntirelyOnEvm(planted), true);
   });
 
-  it("admitKarProHub: SVM → fee island; EVM → hub; disconnected refuses", () => {
+  it("admitKarProHub: fee_only / full / refusal", () => {
     const svm = admitKarProHub({
       status: "connected",
       vm: "svm",
       address: "So11111111111111111111111111111111111111112",
     });
-    assert.equal(svm.kind, "svm_fee_island");
-    if (svm.kind === "svm_fee_island") {
+    assert.equal(svm.admission, "fee_only");
+    if (svm.admission === "fee_only") {
       assert.ok(svm.chainId > 0);
     }
 
@@ -402,11 +430,11 @@ if (!evm.ok) {
       namespace: mintKargainNamespace(84532),
       chainId: 84532,
     });
-    assert.equal(evm.kind, "evm");
+    assert.equal(evm.admission, "full");
 
     const disc = admitKarProHub({ status: "disconnected" });
-    assert.equal(disc.kind, "refusal");
-    if (disc.kind === "refusal") assert.equal(disc.cause, "disconnected");
+    assert.equal(disc.admission, "refusal");
+    if (disc.admission === "refusal") assert.equal(disc.cause, "disconnected");
   });
 
   it("write owners are on VM allowlist; panel/client/compose are not", () => {
@@ -431,5 +459,10 @@ if (!evm.ok) {
       return `vm branch outside allowlist (${rel})`;
     }, { owners: VM_BRANCH_ALLOWLIST });
     assertCleanProductScan(scan, { owners: VM_BRANCH_ALLOWLIST });
+    // Report compared file count (live product walk; floor not a second inventory).
+    assert.ok(
+      scan.filesRead >= 600,
+      `extended scanner compared ${scan.filesRead} files (expected ≥600)`,
+    );
   });
 });

@@ -31,6 +31,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   commercialNamespaceOf,
+  connectTargetFromOption,
+  isEvmConnectOption,
   requireEvmSession,
   wrongVmActionCopy,
   useActiveAccount,
@@ -93,7 +95,7 @@ export function WalletLoginButton() {
   const visibleOptions = useMemo(
     () =>
       connectOptions.filter((opt) => {
-        if (opt.family === "evm") return isEvmOptionVisible(opt.connector);
+        if (isEvmConnectOption(opt)) return isEvmOptionVisible(opt.connector);
         return true;
       }),
     [connectOptions],
@@ -331,10 +333,7 @@ function ConnectWalletDialog(props: {
                     disabled={isConnectPending}
                     onClick={() => {
                       setPendingKey(opt.key);
-                      const target =
-                        opt.family === "evm"
-                          ? ({ family: "evm" as const, connector: opt.connector })
-                          : ({ family: "svm" as const, walletName: opt.walletName });
+                      const target = connectTargetFromOption(opt);
                       void connect(target)
                         .then(() => {
                           setPendingKey(null);

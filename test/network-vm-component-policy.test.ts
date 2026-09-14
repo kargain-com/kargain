@@ -45,7 +45,10 @@ export const VM_BRANCH_ALLOWLIST = [
   "lib/kar-pro/kar-pro-hub-admit.ts",
 ] as const;
 
-/** VM / stack.vm branching patterns that belong in allowlisted lib owners only. */
+/**
+ * VM / stack.vm branching, plus any property compared to the literals
+ * "evm" / "svm" (U6.2-fix — kind-rename evasion).
+ */
 const VM_BRANCH_PATTERNS = [
   /\bvm\s*===\s*["'](?:evm|svm)["']/,
   /\bvm\s*!==\s*["'](?:evm|svm)["']/,
@@ -53,6 +56,9 @@ const VM_BRANCH_PATTERNS = [
   /\.vm\s*!==\s*["'](?:evm|svm)["']/,
   /stack\.vm\b/,
   /["']\.vm["']/,
+  // U6.2-fix: surface.kind / hub.kind / opt.family — any .prop === "evm"|"svm"
+  /\.\w+\s*===\s*["'](?:evm|svm)["']/,
+  /\.\w+\s*!==\s*["'](?:evm|svm)["']/,
 ] as const;
 
 export function vmBranchViolationInSource(source: string): boolean {
@@ -61,11 +67,11 @@ export function vmBranchViolationInSource(source: string): boolean {
 
 function vmPredicate(rel: string, source: string): string | false {
   if (!vmBranchViolationInSource(source)) return false;
-  return `vm / stack.vm branch outside allowlist (${rel})`;
+  return `vm / stack.vm / kind-literal branch outside allowlist (${rel})`;
 }
 
 describe("network VM component policy (S8-1-fix)", () => {
-  it("no product file outside allowlist branches on vm or stack.vm", () => {
+  it("no product file outside allowlist branches on vm, stack.vm, or kind-literals", () => {
     const scan = scanProductSources(vmPredicate, {
       owners: VM_BRANCH_ALLOWLIST,
     });
@@ -82,6 +88,26 @@ export function Bad({ stack }: { stack: { vm: string } }) {
     assert.equal(vmBranchViolationInSource(dirty), true);
   });
 
+  it("U6.2-fix: kind-rename evasion (any .prop === evm|svm) is red", () => {
+    const kindEvasion = `
+const isEvmSurface = surface.kind === "evm";
+const isSvmSurface = surface.kind === "svm";
+`;
+    assert.equal(
+      vmBranchViolationInSource(kindEvasion),
+      true,
+      "pre-fix fee panel kind fork must be red under extended scanner",
+    );
+    const renamedProp = `
+if (surface.lane === "svm") return null;
+`;
+    assert.equal(
+      vmBranchViolationInSource(renamedProp),
+      true,
+      "renamed property still compared to svm must be red",
+    );
+  });
+
   it("constructed dirty hook (old scope miss) is red, live tree green", () => {
     const dirty = `
 export function useBad(stack: { vm: string }) {
@@ -91,7 +117,7 @@ export function useBad(stack: { vm: string }) {
     assert.equal(vmBranchViolationInSource(dirty), true);
     assert.equal(
       vmPredicate("hooks/use-invented-vm.ts", dirty),
-      `vm / stack.vm branch outside allowlist (hooks/use-invented-vm.ts)`,
+      `vm / stack.vm / kind-literal branch outside allowlist (hooks/use-invented-vm.ts)`,
     );
     const live = scanProductSources(vmPredicate, {
       owners: VM_BRANCH_ALLOWLIST,
