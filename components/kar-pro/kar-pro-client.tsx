@@ -1,6 +1,6 @@
 "use client";
 
-import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import { useActiveAccount } from "@/hooks/use-active-account";
 
 import { KarProCommonsSection } from "@/components/kar-pro/kar-pro-commons-section";
 import { KarProMembershipSection } from "@/components/kar-pro/kar-pro-membership-section";
@@ -19,6 +19,7 @@ import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { useKarProMembershipRoster } from "@/hooks/use-kar-pro-membership-roster";
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { useMessagingSession } from "@/hooks/use-messaging-session";
+import { admitKarProHub } from "@/lib/kar-pro/kar-pro-hub-admit";
 import { otherActiveChainIdsFromRoster } from "@/lib/kar-pro/membership-roster";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { messagingReadyForChecklist, needsMessagingSetupCard } from "@/lib/messaging/snapshot-ui";
@@ -35,14 +36,16 @@ export function KarProClient({
   onVerifierStatusChange?: (isActiveVerifier: boolean) => void;
 }) {
   const { account } = useActiveAccount();
-  const evm = requireEvmSession(account);
-  const address = evm.ok ? evm.address : undefined;
-  const walletChainId = evm.ok ? evm.chainId : undefined;
+  const hub = admitKarProHub(account);
+
+  const address = hub.kind === "evm" ? hub.address : undefined;
+  const walletChainId = hub.kind === "evm" ? hub.walletChainId : undefined;
   const chainId = resolveKarProTargetChainId(walletChainId);
 
   const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
   const wc = chainId != null ? wagmiChainId(chainId) : undefined;
 
+  // EVM-only multicall — never enabled on SVM (do not invent inactive).
   const stakingReads = useKeyedReadContracts({
     contracts: staking && wc != null && address
       ? [
@@ -56,7 +59,11 @@ export function KarProClient({
           },
         ]
       : [],
-    query: { enabled: Boolean(staking && address && chainId != null) },
+    query: {
+      enabled: Boolean(
+        hub.kind === "evm" && staking && address && chainId != null,
+      ),
+    },
   });
 
   const isActiveVerifier = stakingReads.get("isActiveVerifier") === true;
@@ -73,7 +80,7 @@ export function KarProClient({
   } = useKarProVerifierProfile(address, {
     isActiveVerifier,
     chainId,
-    syncWhileMissing: true,
+    syncWhileMissing: hub.kind === "evm",
   });
 
   const handleJoinSuccess = () => {
@@ -94,13 +101,35 @@ export function KarProClient({
     ? "space-y-5 text-text-primary"
     : "mx-auto w-full max-w-lg space-y-8 text-text-primary";
 
-  if (!evm.ok) {
+  if (hub.kind === "refusal") {
+    if (hub.cause === "staking_not_configured") {
+      return (
+        <div className={containerClass}>
+          <p className="font-sans text-fluid-sm text-text-secondary">
+            Staking not configured for this network.
+          </p>
+        </div>
+      );
+    }
     return (
       <div className={containerClass}>
         <EvmSessionRefusal
-          cause={evm.cause}
+          cause={hub.cause === "unresolved_namespace" ? "wrong_vm" : hub.cause}
           disconnectedTitle="Connect your wallet to become a KarPro verifier."
         />
+      </div>
+    );
+  }
+
+  // U6.2: SVM reaches fee only — join/profile/payments stay EVM-bound.
+  if (hub.kind === "svm_fee_island") {
+    return (
+      <div className={containerClass}>
+        <p className="font-sans text-fluid-sm text-text-secondary">
+          Solana KarPro fee settings. Join and profile stay on EVM networks for
+          this release.
+        </p>
+        <KarProFeeSection chainId={hub.chainId} />
       </div>
     );
   }
@@ -195,7 +224,7 @@ export function KarProClient({
             onUpdated={() => void refetchProfile()}
           />
         }
-        fee={<KarProFeeSection chainId={chainId} address={address!} staking={staking} />}
+        fee={<KarProFeeSection chainId={chainId} />}
         payments={<KarProPaymentsSection chainId={chainId} address={address!} />}
         commons={<KarProCommonsSection address={address!} />}
         membership={

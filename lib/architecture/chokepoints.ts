@@ -68,6 +68,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["set-passport-uri-policy.test.ts"],
   },
   {
+    id: "kar-pro-set-verification-fee",
+    owner:
+      "lib/verifier/set-verification-fee.ts · lib/verifier/verification-fee-composition.ts · lib/verifier/verification-fee-surface.ts · hooks/use-set-verification-fee.ts · lib/kar-pro/kar-pro-hub-admit.ts",
+    rule: "Dual-VM KarPro setVerificationFee: sole owner plans EVM setVerificationFee / SVM SetVerificationFee metas (config→stake→verifier); VM-named composition (EVM margin+gas; SVM margin-only); fee panel admits via txWriteAvailability + TxWriteRefusal; hub admits SVM fee island via admitKarProHub; SVM current fee named unread until U7; no staking/address write props",
+    guardTests: ["set-verification-fee-policy.test.ts"],
+  },
+  {
     id: "svm-write-census",
     owner: "test/svm-write-census-policy.test.ts",
     rule: "Sole enumerated set of product write-site files under app|components|hooks (excludes use-tx-sync); human action matrix is local research annex only and never imported by tests",
