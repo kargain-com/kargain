@@ -1,5 +1,11 @@
 /**
- * §7.2 U6.3 — passport AppendRecord write owner: EVM pin, freshness, SVM metas.
+ * §7.2 U6.4 — passport ReportDiscrepancy write owner: EVM 3-arg pin,
+ * freshness, SVM metas, surface unchanged, no fusion with AppendRecord.
+ *
+ * Reviewer rule: do not extract a shared seven-meta assembler into a third
+ * file. Signer identity (author vs reporter) is the instruction. The import
+ * ban cannot see a new `lib/passport/assemble-record-metas.ts` until it is
+ * imported; refuse that extract at review.
  */
 
 import assert from "node:assert/strict";
@@ -15,18 +21,15 @@ import {
   deriveChallengeSurface,
 } from "@/lib/challenge";
 import {
-  assembleAppendPassportRecordAccounts,
-  buildEvmAppendPassportRecordCall,
-  executeAppendPassportRecord,
-  planAppendPassportRecord,
-} from "@/lib/passport/append-passport-record";
-import {
   derivePassportActionSurface,
   isAvailable,
 } from "@/lib/passport/action-surface";
 import {
-  preparePassportRecordWrite,
-} from "@/lib/passport/prepare-passport-record-write";
+  assembleReportPassportDiscrepancyAccounts,
+  buildEvmReportPassportDiscrepancyCall,
+  executeReportPassportDiscrepancy,
+  planReportPassportDiscrepancy,
+} from "@/lib/passport/report-passport-discrepancy";
 import {
   hexToBytes,
   passportStateLayout,
@@ -43,20 +46,16 @@ import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import type { SvmSignAndSendPort } from "@/lib/web3/svm-write-adapter";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
-  decodeSvmProgramError,
-  REVERT_COPY,
-  txErrorMessage,
-} from "@/lib/marketplace/tx-error-message";
-import {
   vmBranchViolationInSource,
   VM_BRANCH_ALLOWLIST,
 } from "./network-vm-component-policy.test.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const OWNER_REL = "lib/passport/append-passport-record.ts";
+const OWNER_REL = "lib/passport/report-passport-discrepancy.ts";
+const APPEND_OWNER_REL = "lib/passport/append-passport-record.ts";
 const PREP_REL = "lib/passport/prepare-passport-record-write.ts";
 const PANEL_REL = "components/passport/passport-actions-panel.tsx";
-const HOOK_REL = "hooks/use-append-passport-record.ts";
+const HOOK_REL = "hooks/use-report-passport-discrepancy.ts";
 
 const MOCK_BLOCKHASH = getBase58Decoder().decode(new Uint8Array(32).fill(7));
 
@@ -67,28 +66,28 @@ function ownerSource(): string {
   return readFileSync(path.join(ROOT, OWNER_REL), "utf8");
 }
 
-function panelSource(): string {
-  return readFileSync(path.join(ROOT, PANEL_REL), "utf8");
+function appendOwnerSource(): string {
+  return readFileSync(path.join(ROOT, APPEND_OWNER_REL), "utf8");
 }
 
-function prepSource(): string {
-  return readFileSync(path.join(ROOT, PREP_REL), "utf8");
+function panelSource(): string {
+  return readFileSync(path.join(ROOT, PANEL_REL), "utf8");
 }
 
 function assertEvmCallPin(
   call: {
     functionName: string;
     args: readonly unknown[];
+    address?: string;
   },
   tokenId: string,
-  recordType: string,
   description: string,
   evidenceCid: string,
 ): void {
-  assert.equal(call.functionName, "appendRecord");
+  assert.equal(call.functionName, "reportDiscrepancy");
+  assert.equal(call.args.length, 3);
   assert.deepEqual(call.args, [
     BigInt(tokenId),
-    recordType,
     description,
     evidenceCid,
   ]);
@@ -125,30 +124,28 @@ function challengeIdle(wallet: string) {
   });
 }
 
-describe("appendPassportRecord EVM behavioural pin", () => {
+describe("reportPassportDiscrepancy EVM behavioural pin", () => {
   const tokenId = "42";
-  const recordType = "service";
-  const description = "Oil change and filter";
+  const description = "Scratch found on bumper";
   const evidenceCid = "ar://evidence";
 
-  it("buildEvmAppendPassportRecordCall yields appendRecord with four args", () => {
+  it("buildEvmReportPassportDiscrepancyCall yields reportDiscrepancy with three args", () => {
     const address = karPassportAddress(84532);
     assert.ok(address);
-    const call = buildEvmAppendPassportRecordCall({
+    const call = buildEvmReportPassportDiscrepancyCall({
       address,
       tokenId,
-      recordType,
       description,
       evidenceCid,
       chainId: 84532,
     });
-    assertEvmCallPin(call, tokenId, recordType, description, evidenceCid);
+    assertEvmCallPin(call, tokenId, description, evidenceCid);
     assert.equal(call.chainId, wagmiChainId(84532));
     assert.equal(call.address, address);
   });
 
-  it("planAppendPassportRecord EVM arm matches today's call for live hub", async () => {
-    const planned = await planAppendPassportRecord({
+  it("planReportPassportDiscrepancy EVM arm matches today's call for live hub", async () => {
+    const planned = await planReportPassportDiscrepancy({
       account: {
         status: "connected",
         vm: "evm",
@@ -158,87 +155,69 @@ describe("appendPassportRecord EVM behavioural pin", () => {
       },
       chainId: 84532,
       tokenId,
-      recordType,
       description,
       evidenceCid,
     });
     assert.equal(planned.ok, true);
     if (!planned.ok || planned.vm !== "evm") throw new Error("expected evm plan");
-    assertEvmCallPin(planned.call, tokenId, recordType, description, evidenceCid);
+    assertEvmCallPin(planned.call, tokenId, description, evidenceCid);
   });
 
-  it("clarification uses the same builder with dispute-clarification type", async () => {
-    const planned = await planAppendPassportRecord({
-      account: {
-        status: "connected",
-        vm: "evm",
-        address: "0x0000000000000000000000000000000000000001",
-        namespace: mintKargainNamespace(84532),
-        chainId: 84532,
-      },
-      chainId: 84532,
-      tokenId,
-      recordType: "dispute-clarification",
-      description: "Owner reply",
-      evidenceCid: "",
-    });
-    assert.equal(planned.ok, true);
-    if (!planned.ok || planned.vm !== "evm") throw new Error("expected evm plan");
-    assertEvmCallPin(
-      planned.call,
-      tokenId,
-      "dispute-clarification",
-      "Owner reply",
-      "",
-    );
-  });
-
-  it("planted wrong functionName is red; live builder is green", () => {
+  it("planted fourth argument (appendRecord shape) is red; live three-arg is green", () => {
     const address = karPassportAddress(84532)!;
-    const live = buildEvmAppendPassportRecordCall({
+    const live = buildEvmReportPassportDiscrepancyCall({
       address,
       tokenId,
-      recordType,
       description,
       evidenceCid,
       chainId: 84532,
     });
-    assertEvmCallPin(live, tokenId, recordType, description, evidenceCid);
+    assertEvmCallPin(live, tokenId, description, evidenceCid);
+
+    const plantedFourArgs = {
+      ...live,
+      args: [
+        BigInt(tokenId),
+        "discrepancy",
+        description,
+        evidenceCid,
+      ] as unknown as [bigint, string, string],
+    };
+    assert.throws(() => {
+      assertEvmCallPin(
+        plantedFourArgs,
+        tokenId,
+        description,
+        evidenceCid,
+      );
+    });
+    assert.equal(live.args.length, 3);
+  });
+
+  it("planted appendRecord functionName is red; live builder is green", () => {
+    const address = karPassportAddress(84532)!;
+    const live = buildEvmReportPassportDiscrepancyCall({
+      address,
+      tokenId,
+      description,
+      evidenceCid,
+      chainId: 84532,
+    });
+    assertEvmCallPin(live, tokenId, description, evidenceCid);
 
     const planted = {
       ...live,
-      functionName: "addRecord" as const,
+      functionName: "appendRecord" as const,
     };
     assert.throws(() => {
-      assertEvmCallPin(planted, tokenId, recordType, description, evidenceCid);
+      assertEvmCallPin(planted, tokenId, description, evidenceCid);
     });
   });
 
-  it("planted deleted EVM arm is red; live owner source is green", () => {
-    const live = ownerSource();
-    assert.match(live, /buildEvmAppendPassportRecordCall/);
-    assert.match(live, /functionName:\s*"appendRecord"/);
-    assert.match(live, /avail\.vm === "evm"/);
-
-    const planted = live
-      .split("\n")
-      .filter(
-        (line) =>
-          !line.includes("buildEvmAppendPassportRecordCall") &&
-          !line.includes('functionName: "appendRecord"') &&
-          !line.includes('avail.vm === "evm"'),
-      )
-      .join("\n");
-    assert.equal(/buildEvmAppendPassportRecordCall/.test(planted), false);
-    assert.equal(/functionName:\s*"appendRecord"/.test(planted), false);
-    assert.equal(/avail\.vm === "evm"/.test(planted), false);
-    assert.equal(/buildEvmAppendPassportRecordCall/.test(live), true);
-  });
-
-  it("executeAppendPassportRecord EVM passes the pinned call through writeEvmContract", async () => {
+  it("executeReportPassportDiscrepancy EVM passes the pinned call through writeEvmContract", async () => {
     const address = karPassportAddress(84532)!;
     let captured: unknown;
-    const hash = await executeAppendPassportRecord({
+    const hash = await executeReportPassportDiscrepancy({
       account: {
         status: "connected",
         vm: "evm",
@@ -248,7 +227,6 @@ describe("appendPassportRecord EVM behavioural pin", () => {
       },
       chainId: 84532,
       tokenId,
-      recordType,
       description,
       evidenceCid,
       writeEvmContract: async (call) => {
@@ -261,7 +239,6 @@ describe("appendPassportRecord EVM behavioural pin", () => {
     assertEvmCallPin(
       captured as { functionName: string; args: readonly unknown[] },
       tokenId,
-      recordType,
       description,
       evidenceCid,
     );
@@ -269,12 +246,12 @@ describe("appendPassportRecord EVM behavioural pin", () => {
   });
 });
 
-describe("appendPassportRecord SVM freshness", () => {
+describe("reportPassportDiscrepancy SVM freshness", () => {
   it("every assembly re-reads state; plant cached recordCount is red", async () => {
     const namespaces = commercialSvmNamespaceIds();
     assert.ok(namespaces.length > 0, "live SVM commercial row required");
     const ns = namespaces[0]!;
-    const owner = "So11111111111111111111111111111111111111112";
+    const reporter = "So11111111111111111111111111111111111111112";
     const tokenId = "1";
     let fetchCount = 0;
     const fetchAccountData = async () => {
@@ -282,20 +259,18 @@ describe("appendPassportRecord SVM freshness", () => {
       return { ok: true as const, value: stateBytesWithRecordCount(7) };
     };
 
-    const first = await planAppendPassportRecord({
-      account: { status: "connected", vm: "svm", address: owner },
+    const first = await planReportPassportDiscrepancy({
+      account: { status: "connected", vm: "svm", address: reporter },
       chainId: ns,
       tokenId,
-      recordType: "service",
       description: "first",
       evidenceCid: "",
       fetchAccountData,
     });
-    const second = await planAppendPassportRecord({
-      account: { status: "connected", vm: "svm", address: owner },
+    const second = await planReportPassportDiscrepancy({
+      account: { status: "connected", vm: "svm", address: reporter },
       chainId: ns,
       tokenId,
-      recordType: "service",
       description: "second",
       evidenceCid: "",
       fetchAccountData,
@@ -304,12 +279,9 @@ describe("appendPassportRecord SVM freshness", () => {
     assert.equal(second.ok, true);
     assert.equal(fetchCount, 2, "live owner must fetch on every assembly");
 
-    // Planted: reuse first plan's recordCount without a second fetch.
     if (!first.ok || first.vm !== "svm") throw new Error("expected svm");
     if (!second.ok || second.vm !== "svm") throw new Error("expected svm");
-    const plantedReuse = first.plan.recordCount;
-    assert.equal(second.plan.recordCount, plantedReuse);
-    // Control: a plant that skips the second fetch must fail the freshness pin.
+    assert.equal(second.plan.recordCount, first.plan.recordCount);
     assert.throws(() => {
       assert.equal(
         fetchCount,
@@ -323,17 +295,16 @@ describe("appendPassportRecord SVM freshness", () => {
     const namespaces = commercialSvmNamespaceIds();
     const ns = namespaces[0]!;
     const stack = requireSvmCommercialActive(ns);
-    const owner = "So11111111111111111111111111111111111111112";
+    const reporter = "So11111111111111111111111111111111111111112";
     const tokenId = "1";
     const tokenBytes = tokenIdToBytes32(tokenId);
     const freshCount = 7;
     const staleCount = 3;
 
-    const planned = await planAppendPassportRecord({
-      account: { status: "connected", vm: "svm", address: owner },
+    const planned = await planReportPassportDiscrepancy({
+      account: { status: "connected", vm: "svm", address: reporter },
       chainId: ns,
       tokenId,
-      recordType: "service",
       description: "fresh",
       evidenceCid: "",
       fetchAccountData: async () => ({
@@ -371,21 +342,23 @@ describe("appendPassportRecord SVM freshness", () => {
   });
 });
 
-describe("appendPassportRecord SVM metas order", () => {
-  it("seven accounts in processor order; record from decoded recordCount", async () => {
+describe("reportPassportDiscrepancy SVM metas order", () => {
+  // Processor: entrypoint.rs report_discrepancy
+  // :793 config, :794 asset (READONLY — gate_and_read_owner then discard),
+  // :795 state, :796 record, :797 reporter (signer), :798 payer, :799 system.
+  it("seven accounts in processor order; reporter in signer position; asset read-only", async () => {
     const namespaces = commercialSvmNamespaceIds();
     assert.ok(namespaces.length > 0);
     const ns = namespaces[0]!;
     const stack = requireSvmCommercialActive(ns);
-    const owner = "So11111111111111111111111111111111111111112";
+    const reporter = "So11111111111111111111111111111111111111112";
     const tokenId = "1";
     const recordCount = 11;
 
-    const planned = await planAppendPassportRecord({
-      account: { status: "connected", vm: "svm", address: owner },
+    const planned = await planReportPassportDiscrepancy({
+      account: { status: "connected", vm: "svm", address: reporter },
       chainId: ns,
       tokenId,
-      recordType: "service",
       description: "metas",
       evidenceCid: "ar://x",
       fetchAccountData: async () => ({
@@ -398,21 +371,20 @@ describe("appendPassportRecord SVM metas order", () => {
 
     const accounts = planned.plan.accounts;
     assert.equal(accounts.length, 7);
-    assert.equal(accounts[0]!.role, AccountRole.READONLY); // config
-    assert.equal(accounts[1]!.role, AccountRole.READONLY); // asset — read-only in AppendRecord
-    assert.equal(accounts[2]!.role, AccountRole.WRITABLE); // state
-    assert.equal(accounts[3]!.role, AccountRole.WRITABLE); // record
-    assert.equal(accounts[4]!.role, AccountRole.READONLY_SIGNER); // author
-    assert.equal(accounts[5]!.role, AccountRole.WRITABLE_SIGNER); // payer
-    assert.equal(accounts[6]!.role, AccountRole.READONLY); // system
-    assert.equal(accounts[4]!.address, owner);
-    assert.equal(accounts[5]!.address, owner);
+    assert.equal(accounts[0]!.role, AccountRole.READONLY); // config :793
+    assert.equal(accounts[1]!.role, AccountRole.READONLY); // asset :794
+    assert.equal(accounts[2]!.role, AccountRole.WRITABLE); // state :795
+    assert.equal(accounts[3]!.role, AccountRole.WRITABLE); // record :796
+    assert.equal(accounts[4]!.role, AccountRole.READONLY_SIGNER); // reporter :797
+    assert.equal(accounts[5]!.role, AccountRole.WRITABLE_SIGNER); // payer :798
+    assert.equal(accounts[6]!.role, AccountRole.READONLY); // system :799
+    assert.equal(accounts[4]!.address, reporter);
+    assert.equal(accounts[5]!.address, reporter);
     assert.equal(accounts[6]!.address, systemProgramId());
     assert.equal(planned.plan.programId, stack.karPassport);
-    assert.equal(planned.plan.feePayer, owner);
+    assert.equal(planned.plan.feePayer, reporter);
     assert.equal(planned.plan.recordCount, recordCount);
 
-    // Planted over-writable asset role is red; live pin is green.
     const plantedWritableAsset = {
       ...accounts[1]!,
       role: AccountRole.WRITABLE,
@@ -435,7 +407,7 @@ describe("appendPassportRecord SVM metas order", () => {
     if (!expectedRecord.ok) return;
     assert.equal(accounts[3]!.address, expectedRecord.address);
 
-    // Adjacent author↔payer role swap fails the pin.
+    // Adjacent reporter↔payer role swap fails the pin.
     const swapped = [...accounts];
     const tmp = swapped[4]!;
     swapped[4] = swapped[5]!;
@@ -445,14 +417,13 @@ describe("appendPassportRecord SVM metas order", () => {
       assert.equal(swapped[5]!.role, AccountRole.WRITABLE_SIGNER);
     });
 
-    // Planted constant record address (not derived from count) is red.
-    const plantedConstant = assembleAppendPassportRecordAccounts({
+    const plantedConstant = assembleReportPassportDiscrepancyAccounts({
       config: accounts[0]!.address,
       asset: accounts[1]!.address,
       state: accounts[2]!.address,
-      record: accounts[0]!.address, // wrong — reused config
-      author: owner,
-      payer: owner,
+      record: accounts[0]!.address,
+      reporter,
+      payer: reporter,
       system: systemProgramId(),
     });
     assert.throws(() => {
@@ -460,10 +431,10 @@ describe("appendPassportRecord SVM metas order", () => {
     });
   });
 
-  it("executeAppendPassportRecord SVM sends assembled metas via sendSvmInstruction", async () => {
+  it("executeReportPassportDiscrepancy SVM sends assembled metas via sendSvmInstruction", async () => {
     const namespaces = commercialSvmNamespaceIds();
     const ns = namespaces[0]!;
-    const owner = "So11111111111111111111111111111111111111112";
+    const reporter = "So11111111111111111111111111111111111111112";
     let wireSeen = false;
     const port: SvmSignAndSendPort = {
       async signAndSendTransaction() {
@@ -471,11 +442,10 @@ describe("appendPassportRecord SVM metas order", () => {
         return new Uint8Array(64).fill(9);
       },
     };
-    const sig = await executeAppendPassportRecord({
-      account: { status: "connected", vm: "svm", address: owner },
+    const sig = await executeReportPassportDiscrepancy({
+      account: { status: "connected", vm: "svm", address: reporter },
       chainId: ns,
       tokenId: "1",
-      recordType: "service",
       description: "send",
       evidenceCid: "",
       writeEvmContract: async () => {
@@ -501,66 +471,121 @@ describe("appendPassportRecord SVM metas order", () => {
   });
 });
 
-describe("appendPassportRecord no compensating patch + named refusal", () => {
-  it("owner source has no retry loop, local increment, or index search", () => {
-    const src = ownerSource();
-    assert.doesNotMatch(src, /recordCount\s*\+\+/);
-    assert.doesNotMatch(src, /record_count\s*\+\+/);
-    assert.doesNotMatch(src, /for\s*\([^)]*recordCount/);
-    assert.doesNotMatch(src, /while\s*\([^)]*AccountAlreadyInitialized/);
-    assert.doesNotMatch(src, /free.?index|nextIndex|findFree/i);
-    assert.match(src, /fetchAccountData|fetchProductSvmAccountData/);
-    assert.match(src, /decodePassportState/);
-  });
+describe("reportPassportDiscrepancy action-surface gates unchanged", () => {
+  it("holder unavailable; stranger available; DISPUTED and listing do not block", () => {
+    const holderWallet = "0x0000000000000000000000000000000000000001";
+    const strangerWallet = "0x00000000000000000000000000000000000000aa";
 
-  it("EmptyField still surfaces through existing SVM error owners", () => {
-    const err = new Error("Transaction failed: custom program error: 0x5");
-    const decoded = decodeSvmProgramError(err);
-    assert.ok(decoded);
-    assert.equal(decoded!.name, "EmptyField");
-    assert.equal(REVERT_COPY.EmptyField, "A required field is empty.");
-    assert.equal(txErrorMessage(err), REVERT_COPY.EmptyField);
-  });
-});
-
-describe("appendPassportRecord action-surface gates unchanged", () => {
-  it("append admitted when owner + not DISPUTED + not listed; clarification opposite status", () => {
-    const wallet = "0x0000000000000000000000000000000000000001";
-    const base = {
+    const holder = derivePassportActionSurface({
       presenceFacts: presenceHere(),
-      challenge: challengeIdle(wallet),
-      wallet,
+      challenge: challengeIdle(holderWallet),
+      wallet: holderWallet,
       isOwner: true,
       holder: true,
-      isActiveVerifier: false as boolean | undefined,
+      isActiveVerifier: false,
+      status: "VERIFIED",
       listingActive: false,
-    };
-
-    const appendOk = derivePassportActionSurface({
-      ...base,
-      status: "UNVERIFIED",
     });
-    assert.equal(isAvailable(appendOk.appendRecord), true);
-    assert.equal(isAvailable(appendOk.ownerClarification), false);
+    assert.equal(isAvailable(holder.reportDiscrepancy), false);
+    assert.equal(
+      holder.reportDiscrepancy.status === "blocked" &&
+        holder.reportDiscrepancy.cause,
+      "is_holder",
+    );
 
-    const clarificationOk = derivePassportActionSurface({
-      ...base,
+    const stranger = derivePassportActionSurface({
+      presenceFacts: presenceHere(),
+      challenge: challengeIdle(strangerWallet),
+      wallet: strangerWallet,
+      isOwner: false,
+      holder: false,
+      isActiveVerifier: false,
+      status: "VERIFIED",
+      listingActive: false,
+    });
+    assert.equal(isAvailable(stranger.reportDiscrepancy), true);
+
+    const disputed = derivePassportActionSurface({
+      presenceFacts: presenceHere(),
+      challenge: challengeIdle(strangerWallet),
+      wallet: strangerWallet,
+      isOwner: false,
+      holder: false,
+      isActiveVerifier: false,
       status: "DISPUTED",
+      listingActive: false,
     });
-    assert.equal(isAvailable(clarificationOk.appendRecord), false);
-    assert.equal(isAvailable(clarificationOk.ownerClarification), true);
+    assert.equal(isAvailable(disputed.reportDiscrepancy), true);
 
-    // Planted flip: treat DISPUTED as append-allowed — red against live law.
-    assert.throws(() => {
-      assert.equal(isAvailable(clarificationOk.appendRecord), true);
+    const listed = derivePassportActionSurface({
+      presenceFacts: presenceHere(),
+      challenge: challengeIdle(strangerWallet),
+      wallet: strangerWallet,
+      isOwner: false,
+      holder: false,
+      isActiveVerifier: false,
+      status: "VERIFIED",
+      listingActive: true,
     });
+    assert.equal(isAvailable(listed.reportDiscrepancy), true);
+
+    // Planted: treat DISPUTED as blocking discrepancy — red against live law.
     assert.throws(() => {
-      assert.equal(isAvailable(appendOk.ownerClarification), true);
+      assert.equal(isAvailable(disputed.reportDiscrepancy), false);
     });
   });
 });
 
-describe("appendPassportRecord ownership + panel surface", () => {
+describe("reportPassportDiscrepancy no fusion with AppendRecord", () => {
+  it("owners do not import each other; assemblers and variants stay distinct", () => {
+    const report = ownerSource();
+    const append = appendOwnerSource();
+
+    // Import ban (path literals in import/require) — docstring cross-refs are fine.
+    assert.doesNotMatch(
+      report,
+      /from\s+["'][^"']*append-passport-record["']/,
+    );
+    assert.doesNotMatch(
+      append,
+      /from\s+["'][^"']*report-passport-discrepancy["']/,
+    );
+
+    assert.match(report, /assembleReportPassportDiscrepancyAccounts/);
+    assert.match(report, /variant:\s*"ReportDiscrepancy"/);
+    assert.doesNotMatch(report, /assembleAppendPassportRecordAccounts/);
+    assert.doesNotMatch(report, /variant:\s*"AppendRecord"/);
+    assert.doesNotMatch(report, /functionName:\s*"appendRecord"/);
+
+    assert.match(append, /assembleAppendPassportRecordAccounts/);
+    assert.match(append, /variant:\s*"AppendRecord"/);
+    assert.doesNotMatch(append, /assembleReportPassportDiscrepancyAccounts/);
+    assert.doesNotMatch(append, /variant:\s*"ReportDiscrepancy"/);
+
+    // Planted: re-export append assembler as the discrepancy assembler — red.
+    const plantedFusion = [
+      'import { assembleAppendPassportRecordAccounts as assembleReportPassportDiscrepancyAccounts } from "@/lib/passport/append-passport-record";',
+      "export { assembleReportPassportDiscrepancyAccounts };",
+    ].join("\n");
+    assert.match(plantedFusion, /assembleAppendPassportRecordAccounts/);
+    assert.match(
+      plantedFusion,
+      /from\s+["'][^"']*append-passport-record["']/,
+    );
+    assert.throws(() => {
+      assert.doesNotMatch(
+        plantedFusion,
+        /from\s+["'][^"']*append-passport-record["']/,
+      );
+    });
+    assert.doesNotMatch(
+      report,
+      /from\s+["'][^"']*append-passport-record["']/,
+    );
+  });
+});
+
+describe("reportPassportDiscrepancy ownership + panel surface", () => {
   it("owner composes encode / derive / decode / send / system / tokenIdToBytes32", () => {
     const src = ownerSource();
     assert.match(src, /encodeSvmInstruction/);
@@ -573,101 +598,30 @@ describe("appendPassportRecord ownership + panel surface", () => {
     assert.doesNotMatch(src, /mplCoreProgramId/);
   });
 
-  it("panel migrates append/clarification; leaves other writes; no if(vm)", () => {
+  it("panel migrates discrepancy; leaves attestation/challenge; no if(vm)", () => {
     const src = panelSource();
-    assert.match(src, /useAppendPassportRecord|appendPassportRecord/);
+    assert.match(src, /useReportPassportDiscrepancy|reportPassportDiscrepancy/);
     assert.match(src, /preparePassportRecordWrite/);
     assert.match(src, /TxWriteRefusal/);
     assert.match(src, /txWriteAvailability/);
-    assert.doesNotMatch(src, /functionName:\s*"appendRecord"/);
-    // U6.4 moved reportDiscrepancy off writeContractAsync; attestation/challenge remain.
     assert.doesNotMatch(src, /functionName:\s*"reportDiscrepancy"/);
+    // Attestation / challenge still use writeContractAsync.
     assert.match(src, /functionName:\s*"appendAttestation"/);
     assert.match(src, /functionName:\s*"verifyPassport"/);
     assert.equal(vmBranchViolationInSource(src), false);
 
-    // Append/clarification paths must not call ensureSiweSession inline.
-    // Safer: submitOwnerRecord / submitClarification blocks lack ensureSiweSession.
-    const ownerSubmit = src.match(
-      /const submitOwnerRecord = useCallback\(async \(\) => \{[\s\S]*?\}, \[/,
+    const discSubmit = src.match(
+      /const submitDiscrepancy = useCallback\(async \(\) => \{[\s\S]*?\}, \[/,
     );
-    const clarSubmit = src.match(
-      /const submitClarification = useCallback\(async \(\) => \{[\s\S]*?\}, \[/,
-    );
-    assert.ok(ownerSubmit);
-    assert.ok(clarSubmit);
-    assert.doesNotMatch(ownerSubmit![0]!, /\bensureSiweSession\b/);
-    assert.doesNotMatch(clarSubmit![0]!, /\bensureSiweSession\b/);
-    assert.match(prepSource(), /\bensureSiweSession\b/);
+    assert.ok(discSubmit);
+    assert.doesNotMatch(discSubmit![0]!, /\bensureSiweSession\b/);
+    assert.match(discSubmit![0]!, /preparePassportRecordWrite/);
+    assert.match(discSubmit![0]!, /reportPassportDiscrepancy/);
     // Attestation still has inline SIWE.
     assert.match(src, /resolveAttestationEvidence[\s\S]*?ensureSiweSession/);
   });
 
-  it("prep: SVM named none-required; EVM+file runs SIWE; paste skips SIWE", async () => {
-    const namespaces = commercialSvmNamespaceIds();
-    const ns = namespaces[0]!;
-    const svmAccount = {
-      status: "connected" as const,
-      vm: "svm" as const,
-      address: "So11111111111111111111111111111111111111112",
-    };
-    const svmOrder: string[] = [];
-    const svmPrep = await preparePassportRecordWrite({
-      account: svmAccount,
-      targetChainId: ns,
-      evidenceFile: new File(["x"], "e.bin"),
-      signMessageAsync: async () => {
-        svmOrder.push("sign");
-        return "0x" as `0x${string}`;
-      },
-      ensureSiweSession: async () => {
-        svmOrder.push("siwe");
-      },
-    });
-    assert.deepEqual(svmPrep, { ok: true, prep: "svm_none_required" });
-    assert.equal(svmOrder.length, 0);
-
-    const evmAccount = {
-      status: "connected" as const,
-      vm: "evm" as const,
-      address: "0x0000000000000000000000000000000000000001" as `0x${string}`,
-      namespace: mintKargainNamespace(84532),
-      chainId: 84532,
-    };
-    const pasteOrder: string[] = [];
-    const pastePrep = await preparePassportRecordWrite({
-      account: evmAccount,
-      targetChainId: 84532,
-      evidenceFile: null,
-      signMessageAsync: async () => {
-        pasteOrder.push("sign");
-        return "0x" as `0x${string}`;
-      },
-      ensureSiweSession: async () => {
-        pasteOrder.push("siwe");
-      },
-    });
-    assert.deepEqual(pastePrep, { ok: true, prep: "none_required" });
-    assert.equal(pasteOrder.length, 0);
-
-    const fileOrder: string[] = [];
-    const filePrep = await preparePassportRecordWrite({
-      account: evmAccount,
-      targetChainId: 84532,
-      evidenceFile: new File(["x"], "e.bin"),
-      signMessageAsync: async () => {
-        fileOrder.push("sign");
-        return "0x" as `0x${string}`;
-      },
-      ensureSiweSession: async () => {
-        fileOrder.push("siwe");
-      },
-    });
-    assert.deepEqual(filePrep, { ok: true, prep: "evm_prepared" });
-    assert.deepEqual(fileOrder, ["siwe"]);
-  });
-
-  it("owner + prep are on the VM branch allowlist; panel is not", () => {
+  it("owner + prep are on the VM branch allowlist; panel and hook are not", () => {
     assert.ok(
       (VM_BRANCH_ALLOWLIST as readonly string[]).includes(OWNER_REL),
     );

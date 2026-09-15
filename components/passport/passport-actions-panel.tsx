@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAppendPassportRecord } from "@/hooks/use-append-passport-record";
+import { useReportPassportDiscrepancy } from "@/hooks/use-report-passport-discrepancy";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useNow } from "@/hooks/use-now";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
@@ -133,6 +134,10 @@ export function PassportActionsPanel({
     appendPassportRecord,
     isPending: appendPending,
   } = useAppendPassportRecord();
+  const {
+    reportPassportDiscrepancy,
+    isPending: reportPending,
+  } = useReportPassportDiscrepancy();
   const writeAvail = txWriteAvailability(account, chainId);
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const [clarificationText, setClarificationText] = useState("");
@@ -348,36 +353,6 @@ export function PassportActionsPanel({
     svmWallet,
   ]);
 
-  const uploadEvidenceFromInput = useCallback(
-    async (file: File | null, paste: string): Promise<string> => {
-      if (file) {
-        if (!address) throw new Error("Connect your wallet to continue");
-        setIsUploadingEvidence(true);
-        try {
-          await ensureSiweSession({
-            address,
-            chainId,
-            signMessageAsync,
-          });
-          return await uploadEvidenceFile(file, {
-            account,
-            evmConnector: connector ?? undefined,
-            svmWallet,
-          });
-        } finally {
-          setIsUploadingEvidence(false);
-        }
-      }
-      return paste.trim();
-    },
-    [account, address, chainId, connector, signMessageAsync, svmWallet],
-  );
-
-  const resolveDiscrepancyEvidence = useCallback(
-    () => uploadEvidenceFromInput(discrepancyEvidenceFile, discrepancyEvidencePaste),
-    [discrepancyEvidenceFile, discrepancyEvidencePaste, uploadEvidenceFromInput],
-  );
-
   const resolveRecordEvidenceCid = useCallback(
     async (file: File | null, paste: string): Promise<string> => {
       if (file) {
@@ -449,16 +424,27 @@ export function PassportActionsPanel({
 
   const submitDiscrepancy = useCallback(async () => {
     const description = discrepancyText.trim();
-    if (!description || !passport) return;
+    if (!description || !writeTargetConfigured) return;
 
     const result = await runTx(async () => {
-      const evidenceCID = await resolveDiscrepancyEvidence();
-      return writeContractAsync({
-        address: passport,
-        abi: KarPassportAbi,
-        functionName: "reportDiscrepancy",
-        args: [tid, description, evidenceCID],
-        chainId: wc,
+      const prep = await preparePassportRecordWrite({
+        account,
+        targetChainId: chainId,
+        evidenceFile: discrepancyEvidenceFile,
+        signMessageAsync,
+      });
+      if (!prep.ok) {
+        throw new Error(passportRecordWritePrepRefusalMessage(prep));
+      }
+      const evidenceCid = await resolveRecordEvidenceCid(
+        discrepancyEvidenceFile,
+        discrepancyEvidencePaste,
+      );
+      return reportPassportDiscrepancy({
+        chainId,
+        tokenId,
+        description,
+        evidenceCid,
       });
     });
     if (result) {
@@ -468,13 +454,17 @@ export function PassportActionsPanel({
       setMessage("Discrepancy reported.");
     }
   }, [
+    account,
+    chainId,
+    discrepancyEvidenceFile,
+    discrepancyEvidencePaste,
     discrepancyText,
-    passport,
-    resolveDiscrepancyEvidence,
+    reportPassportDiscrepancy,
+    resolveRecordEvidenceCid,
     runTx,
-    tid,
-    wc,
-    writeContractAsync,
+    signMessageAsync,
+    tokenId,
+    writeTargetConfigured,
   ]);
 
   const submitClarification = useCallback(async () => {
@@ -554,7 +544,11 @@ export function PassportActionsPanel({
   ]);
 
   const actionsBusy =
-    isPending || appendPending || isUploadingEvidence || phase !== "idle";
+    isPending ||
+    appendPending ||
+    reportPending ||
+    isUploadingEvidence ||
+    phase !== "idle";
 
   const actionsDirty =
     Boolean(
@@ -1026,39 +1020,41 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {passport && evm.ok && isAvailable(actionSurface.reportDiscrepancy) && (
-      <div className="space-y-2 border-t border-border-default pt-4">
-        <Label htmlFor="discrepancy">Report discrepancy</Label>
-        <Textarea
-          id="discrepancy"
-          value={discrepancyText}
-          onChange={(e) => setDiscrepancyText(e.target.value)}
-          rows={2}
-        />
-        <EvidenceInput
-          idPrefix="discrepancy-evidence"
-          value={discrepancyEvidencePaste}
-          onChange={setDiscrepancyEvidencePaste}
-          file={discrepancyEvidenceFile}
-          onFileChange={setDiscrepancyEvidenceFile}
-          disabled={actionsBusy}
-          labels={{
-            evidenceLabel: "Evidence (optional)",
-            evidenceHint: "Paste an ar:// or https:// link, or upload a file.",
-            evidencePlaceholder: "ar://… or https://…",
-            evidenceFileLabel: "Upload file",
-          }}
-        />
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full"
-          disabled={actionsBusy || !discrepancyText.trim()}
-          onClick={() => void submitDiscrepancy()}
-        >
-          Report discrepancy
-        </Button>
-      </div>
+      {writeAvail.available &&
+        writeTargetConfigured &&
+        isAvailable(actionSurface.reportDiscrepancy) && (
+        <div className="space-y-2 border-t border-border-default pt-4">
+          <Label htmlFor="discrepancy">Report discrepancy</Label>
+          <Textarea
+            id="discrepancy"
+            value={discrepancyText}
+            onChange={(e) => setDiscrepancyText(e.target.value)}
+            rows={2}
+          />
+          <EvidenceInput
+            idPrefix="discrepancy-evidence"
+            value={discrepancyEvidencePaste}
+            onChange={setDiscrepancyEvidencePaste}
+            file={discrepancyEvidenceFile}
+            onFileChange={setDiscrepancyEvidenceFile}
+            disabled={actionsBusy}
+            labels={{
+              evidenceLabel: "Evidence (optional)",
+              evidenceHint: "Paste an ar:// or https:// link, or upload a file.",
+              evidencePlaceholder: "ar://… or https://…",
+              evidenceFileLabel: "Upload file",
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            disabled={actionsBusy || !discrepancyText.trim()}
+            onClick={() => void submitDiscrepancy()}
+          >
+            Report discrepancy
+          </Button>
+        </div>
       )}
 
       {(error ?? message) && (

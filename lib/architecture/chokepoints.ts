@@ -81,6 +81,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["append-passport-record-policy.test.ts"],
   },
   {
+    id: "passport-report-discrepancy",
+    owner:
+      "lib/passport/report-passport-discrepancy.ts · hooks/use-report-passport-discrepancy.ts · lib/passport/prepare-passport-record-write.ts · lib/svm/decode-account-state.ts · components/shell/tx-write-refusal.tsx",
+    rule: "Dual-VM ReportDiscrepancy: sole owner plans EVM reportDiscrepancy (three args) / SVM ReportDiscrepancy with fresh PassportState read → record PDA at recordCount; seven metas processor order with reporter signer + asset READONLY; no shared assembler with AppendRecord; panel migrates via txWriteAvailability + TxWriteRefusal; action-surface holder withhold unchanged",
+    guardTests: ["report-passport-discrepancy-policy.test.ts"],
+  },
+  {
     id: "kar-pro-set-verification-fee",
     owner:
       "lib/verifier/set-verification-fee.ts · lib/verifier/verification-fee-composition.ts · lib/verifier/verification-fee-surface.ts · hooks/use-set-verification-fee.ts · lib/kar-pro/kar-pro-hub-admit.ts",

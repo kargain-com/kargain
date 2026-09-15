@@ -1,11 +1,12 @@
 /**
- * Preparation before passport AppendRecord / clarification evidence upload (U6.3).
- * EVM + evidence file → ensureSiweSession (behaviour unchanged from the prior
- * panel helper). SVM → named nothing-required. Paste-only / no file → named
- * none_required (SIWE skipped, same as before).
+ * Preparation before passport AppendRecord / clarification / ReportDiscrepancy
+ * evidence upload (U6.3 / U6.4). EVM + evidence file → ensureSiweSession
+ * (behaviour unchanged from the prior panel helper). SVM → named
+ * nothing-required. Paste-only / no file → named none_required (SIWE skipped,
+ * same as before).
  *
- * Panel never calls ensureSiweSession for these two actions; attestation and
- * discrepancy keep their own inline SIWE paths.
+ * Panel never calls ensureSiweSession for append, clarification, or
+ * discrepancy; attestation keeps its own inline SIWE path.
  */
 
 import { ensureSiweSession as defaultEnsureSiweSession } from "@/lib/auth/ensure-siwe-session";
