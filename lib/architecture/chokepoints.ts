@@ -94,6 +94,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-write-census-policy.test.ts"],
   },
   {
+    id: "policy-suite-scanned-tree-mutation",
+    owner: "test/policy-suite-scanned-tree-mutation-policy.test.ts",
+    rule: "Policy suites must not writeFileSync/mkdirSync/rmSync/… into live scanned roots (app|components|hooks|lib|src|scripts); plants use in-memory or mkdtemp outside the repository",
+    guardTests: ["policy-suite-scanned-tree-mutation-policy.test.ts"],
+  },
+  {
     id: "ponder-tagged-read",
     owner: "lib/web3/ponder-tagged-read.ts",
     rule: "Mutable Ponder projections read only through tagged use cache (T3)",

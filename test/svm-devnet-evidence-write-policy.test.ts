@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import {
-  existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -600,24 +600,23 @@ describe("svm-devnet-evidence-write owner", () => {
       `unexpected evidence writers: ${JSON.stringify(live)}`,
     );
 
-    // Plant under scripts/ (not the three deploy shells) — proves the scan is not path-bound.
-    // Keep writeFile* away from evidence-dir path literals in this test file
-    // (see deployments-mutation-policy).
+    // Plant under a temp scripts/ tree — proves the scan is not path-bound to
+    // the three deploy shells, without mutating the live repository.
     const plantedRel = "scripts/_planted-svm-evidence-writer.ts";
-    const plantedAbs = join(ROOT, plantedRel);
-    assert.equal(existsSync(plantedAbs), false, "planted file must not pre-exist");
-    writeFileSync(
-      plantedAbs,
-      [
-        `// planted violation for svm-devnet-evidence-write-policy`,
-        `export function plant() {`,
-        `  writeSvmDevnetEvidence("tmp-evidence.json", {} as never);`,
-        `}`,
-        ``,
-      ].join("\n"),
-    );
+    const plantedRoot = mkdtempSync(join(tmpdir(), "kargain-evidence-plant-"));
     try {
-      const plantedHits = findSvmEvidenceWriteViolations(ROOT);
+      mkdirSync(join(plantedRoot, "scripts"), { recursive: true });
+      writeFileSync(
+        join(plantedRoot, plantedRel),
+        [
+          `// planted violation for svm-devnet-evidence-write-policy`,
+          `export function plant() {`,
+          `  writeSvmDevnetEvidence("tmp-evidence.json", {} as never);`,
+          `}`,
+          ``,
+        ].join("\n"),
+      );
+      const plantedHits = findSvmEvidenceWriteViolations(plantedRoot);
       assert.ok(
         plantedHits.some((h) => h.path === plantedRel),
         `expected planted hit at ${plantedRel}, got ${JSON.stringify(plantedHits)}`,
@@ -627,7 +626,7 @@ describe("svm-devnet-evidence-write owner", () => {
         /writeSvmDevnetEvidence/,
       );
     } finally {
-      rmSync(plantedAbs, { force: true });
+      rmSync(plantedRoot, { recursive: true, force: true });
     }
 
     assert.deepEqual(findSvmEvidenceWriteViolations(ROOT), []);

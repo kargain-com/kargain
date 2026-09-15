@@ -3,7 +3,7 @@
  * Ingest getBlock is JSON-RPC + wire mapper — ban Connection.getBlock (web3.js rejects version 1).
  */
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, it } from "node:test";
 
@@ -22,6 +22,8 @@ const SVM_RPC_REL = "lib/web3/svm-rpc.ts";
 
 const LITERAL_CEILING_RE =
   /maxSupportedTransactionVersion\s*:\s*0\b/;
+
+const GET_BLOCK_RE = /connection\.getBlock\s*\(/;
 
 const SCAN_ROOTS = [
   "lib",
@@ -72,7 +74,7 @@ describe("svm-rpc-transaction-version-policy", () => {
     assert.match(rpcClient, /solanaGetBlockRequestConfig/);
     assert.match(rpcClient, /mapGetBlockResultToFetchedTransactions/);
     assert.match(rpcClient, /postSolanaJsonRpc/);
-    assert.doesNotMatch(rpcClient, /connection\.getBlock\s*\(/);
+    assert.doesNotMatch(rpcClient, GET_BLOCK_RE);
     assert.match(
       readFileSync(join(ROOT, MAPPER_REL), "utf8"),
       /mapGetBlockResultToFetchedTransactions/,
@@ -91,24 +93,15 @@ describe("svm-rpc-transaction-version-policy", () => {
     assert.doesNotMatch(svmRpc, /async function postJsonRpc/);
   });
 
-  it("planted Connection.getBlock in rpc-client source is red then green", () => {
-    const abs = join(ROOT, RPC_CLIENT_REL);
-    const original = readFileSync(abs, "utf8");
-    assert.doesNotMatch(original, /connection\.getBlock\s*\(/);
-    try {
-      writeFileSync(
-        abs,
-        `${original}\nvoid (null as unknown as { getBlock: () => void }).getBlock;\nconnection.getBlock(0 as never);\n`,
-        "utf8",
-      );
-      const dirty = readFileSync(abs, "utf8");
-      assert.match(dirty, /connection\.getBlock\s*\(/);
-    } finally {
-      writeFileSync(abs, original, "utf8");
-    }
+  it("planted Connection.getBlock in rpc-client source is red then green (in-memory; never mutate src/)", () => {
+    const original = readFileSync(join(ROOT, RPC_CLIENT_REL), "utf8");
+    assert.doesNotMatch(original, GET_BLOCK_RE);
+    const dirty = `${original}\nvoid (null as unknown as { getBlock: () => void }).getBlock;\nconnection.getBlock(0 as never);\n`;
+    assert.match(dirty, GET_BLOCK_RE);
+    assert.doesNotMatch(original, GET_BLOCK_RE);
     assert.doesNotMatch(
-      readFileSync(abs, "utf8"),
-      /connection\.getBlock\s*\(/,
+      readFileSync(join(ROOT, RPC_CLIENT_REL), "utf8"),
+      GET_BLOCK_RE,
     );
   });
 });

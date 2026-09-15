@@ -11,6 +11,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -120,15 +121,57 @@ describe("ponder optional-contract registration policy", () => {
   });
 
   it("mismatched event name vs args type fails tsc; matching pair passes", () => {
-    const probe = path.join(ROOT, "src/lib/__d1-close-event-bind-probe.ts");
-    const runIndexerTsc = () =>
+    const tmp = fs.mkdtempSync(
+      path.join(os.tmpdir(), "kargain-d1-close-event-bind-"),
+    );
+    const probe = path.join(tmp, "probe.ts");
+    const tsconfigPath = path.join(tmp, "tsconfig.json");
+    const eventsAbs = path.join(
+      ROOT,
+      "src/lib/ponder-optional-contract-events.ts",
+    );
+    let eventsImport = path.relative(tmp, eventsAbs).replace(/\\/g, "/");
+    if (!eventsImport.startsWith(".")) {
+      eventsImport = `./${eventsImport}`;
+    }
+
+    const runProbeTsc = () =>
       spawnSync(
         "pnpm",
-        ["exec", "tsc", "--noEmit", "-p", "tsconfig.indexer.json"],
+        ["exec", "tsc", "--noEmit", "-p", tsconfigPath],
         { cwd: ROOT, encoding: "utf8" },
       );
 
-    const redSource = `import type { OptionalContractEventArgs } from "./ponder-optional-contract-events";
+    fs.writeFileSync(
+      tsconfigPath,
+      `${JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            lib: ["ES2022"],
+            skipLibCheck: true,
+            strict: true,
+            noEmit: true,
+            esModuleInterop: true,
+            module: "ESNext",
+            moduleResolution: "bundler",
+            resolveJsonModule: true,
+            isolatedModules: true,
+            allowImportingTsExtensions: true,
+            typeRoots: [path.join(ROOT, "node_modules/@types")],
+            paths: {
+              "@/*": [path.join(ROOT, "*")],
+            },
+            baseUrl: ROOT,
+          },
+          files: [probe],
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const redSource = `import type { OptionalContractEventArgs } from ${JSON.stringify(eventsImport)};
 
 declare const opened: OptionalContractEventArgs<"FixedPriceConsignment:ConsignmentOpened">;
 const bad: OptionalContractEventArgs<"FixedPriceConsignment:ConsignmentFloorLowered"> =
@@ -136,7 +179,7 @@ const bad: OptionalContractEventArgs<"FixedPriceConsignment:ConsignmentFloorLowe
 void bad;
 `;
 
-    const greenSource = `import type { OptionalContractEventArgs } from "./ponder-optional-contract-events";
+    const greenSource = `import type { OptionalContractEventArgs } from ${JSON.stringify(eventsImport)};
 
 declare const opened: OptionalContractEventArgs<"FixedPriceConsignment:ConsignmentOpened">;
 const ok: OptionalContractEventArgs<"FixedPriceConsignment:ConsignmentOpened"> =
@@ -146,7 +189,7 @@ void ok;
 
     try {
       fs.writeFileSync(probe, redSource);
-      const red = runIndexerTsc();
+      const red = runProbeTsc();
       assert.notEqual(
         red.status,
         0,
@@ -154,18 +197,18 @@ void ok;
       );
       assert.match(
         `${red.stdout}\n${red.stderr}`,
-        /__d1-close-event-bind-probe|not assignable/i,
+        /probe|not assignable/i,
       );
 
       fs.writeFileSync(probe, greenSource);
-      const green = runIndexerTsc();
+      const green = runProbeTsc();
       assert.equal(
         green.status,
         0,
         `expected matching pair to pass tsc; stdout:\n${green.stdout}\nstderr:\n${green.stderr}`,
       );
     } finally {
-      fs.rmSync(probe, { force: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
 
