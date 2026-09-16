@@ -55,7 +55,7 @@ export const MINT_PASSPORT_VARIANT = "MintPassport" as const;
 
 const PASSPORT_CONFIG_DISCRIMINATOR = Buffer.from("kp_cfg\0\0", "utf8");
 /** After disc(8)+authority(32)+namespace(16)+eid(4)+endpoint(32)+deposit(8)+staking(32)+gateway(32)+forfeit(32). */
-const NEXT_TOKEN_ID_OFFSET = 196;
+export const NEXT_TOKEN_ID_OFFSET = 196;
 const MIN_CONFIG_LEN_FOR_NEXT_TOKEN_ID = 228;
 
 export type MintPassportRefusalCause =
