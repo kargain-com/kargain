@@ -39,6 +39,14 @@ import {
   vmBranchViolationInSource,
   VM_BRANCH_ALLOWLIST,
 } from "./network-vm-component-policy.test.ts";
+import {
+  assertBindingIsSigner,
+  assertBindingOrder as assertBindingsEqual,
+  extractNextAccountBindings,
+  locateEntrypointFnBody,
+  readEntrypointFnBody,
+  saveStateTargets,
+} from "./svm-entrypoint-account-bindings.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OWNER_REL = "lib/passport/verify-passport.ts";
@@ -71,79 +79,23 @@ function panelSource(): string {
   return readFileSync(path.join(ROOT, PANEL_REL), "utf8");
 }
 
-/**
- * Locate `fn verify_passport` and return its brace-closed body.
- * Local to this suite — measures processor account order from program source.
- * Refuses by named cause when the function cannot be located or the body is empty.
- */
+/** Suite-local wrappers — identities preserved; body from shared extraction. */
 function locateVerifyPassportBody(source: string): string {
-  const sigIdx = source.indexOf("fn verify_passport");
-  if (sigIdx < 0) {
-    throw new Error("verify_passport_not_found");
-  }
-
-  const afterSig = source.slice(sigIdx);
-  const bodyOpen = afterSig.indexOf("{");
-  if (bodyOpen < 0) {
-    throw new Error("verify_passport_body_missing");
-  }
-
-  let depth = 0;
-  let end = -1;
-  for (let i = bodyOpen; i < afterSig.length; i++) {
-    const ch = afterSig[i]!;
-    if (ch === "{") depth += 1;
-    else if (ch === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        end = i;
-        break;
-      }
-    }
-  }
-  if (end < 0) {
-    throw new Error("verify_passport_body_unclosed");
-  }
-
-  const body = afterSig.slice(bodyOpen, end + 1);
-  if (body.trim().length <= 2) {
-    throw new Error("verify_passport_body_empty");
-  }
-  return body;
+  return locateEntrypointFnBody(source, "verify_passport");
 }
 
 function readVerifyPassportProcessorBody(): string {
-  const abs = path.join(ROOT, ENTRYPOINT_REL);
-  let source: string;
-  try {
-    source = readFileSync(abs, "utf8");
-  } catch (err) {
-    throw new Error(
-      `entrypoint_unreadable:${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-  return locateVerifyPassportBody(source);
+  return readEntrypointFnBody(ROOT, ENTRYPOINT_REL, "verify_passport");
 }
 
-function extractNextAccountBindings(body: string): string[] {
-  const names: string[] = [];
-  const re = /let\s+(\w+)\s*=\s*next_account_info\s*\(\s*iter\s*\)\s*\?/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(body)) !== null) {
-    names.push(m[1]!);
-  }
-  if (names.length < 5) {
-    throw new Error(
-      `binding_count_below_five:got_${names.length}:${names.join(",")}`,
-    );
-  }
-  return names;
+function extractVerifyBindings(body: string): string[] {
+  return extractNextAccountBindings(body, 5);
 }
 
 function assertBindingOrder(bindings: readonly string[]): void {
-  assert.deepEqual(
-    [...bindings],
-    [...EXPECTED_VERIFY_BINDINGS],
+  assertBindingsEqual(
+    bindings,
+    EXPECTED_VERIFY_BINDINGS,
     "verify_passport next_account_info order",
   );
 }
@@ -153,22 +105,11 @@ function assertLastBindingIsSigner(
   bindings: readonly string[],
 ): void {
   const last = bindings[bindings.length - 1]!;
-  const signerRe = new RegExp(`\\b${last}\\.is_signer\\b`);
-  assert.match(
+  assertBindingIsSigner(
     body,
-    signerRe,
+    last,
     `verify_passport requires last binding (${last}) to be a signer`,
   );
-}
-
-function saveStateTargets(body: string): string[] {
-  const targets: string[] = [];
-  const re = /save_state\s*\(\s*(\w+)\s*,/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(body)) !== null) {
-    targets.push(m[1]!);
-  }
-  return targets;
 }
 
 function assertPersistStateOnly(body: string): void {
@@ -216,7 +157,7 @@ function assertVerifyPassportProcessorFacts(body: string): {
   bindings: string[];
   persistTarget: string;
 } {
-  const bindings = extractNextAccountBindings(body);
+  const bindings = extractVerifyBindings(body);
   assert.equal(bindings.length, 5, "verify_passport must bind exactly five accounts");
   assertBindingOrder(bindings);
   assertLastBindingIsSigner(body, bindings);
@@ -552,7 +493,7 @@ describe("verifyPassport SVM metas order", () => {
 
   it("extraction refuses when verify_passport is missing or under-bound", () => {
     assert.throws(
-      () => extractNextAccountBindings("fn other() { Ok(()) }"),
+      () => extractVerifyBindings("fn other() { Ok(()) }"),
       (err: unknown) => {
         assert.ok(err instanceof Error);
         assert.match(err.message, /binding_count_below_five/);
@@ -573,7 +514,7 @@ describe("verifyPassport SVM metas order", () => {
     );
 
     // Live entrypoint locates and yields five bindings.
-    const live = extractNextAccountBindings(readVerifyPassportProcessorBody());
+    const live = extractVerifyBindings(readVerifyPassportProcessorBody());
     assert.deepEqual(live, [...EXPECTED_VERIFY_BINDINGS]);
   });
 
@@ -763,7 +704,7 @@ describe("verifyPassport ownership + panel surface + neighbours", () => {
     assert.doesNotMatch(src, /@solana\/web3\.js/);
   });
 
-  it("panel migrates verify via writeAvail + owner; leaves open/judge on evm.ok; no if(vm)", () => {
+  it("panel migrates verify via writeAvail + owner; leaves judge on evm.ok; no if(vm)", () => {
     const src = panelSource();
     assert.match(src, /useVerifyPassport|verifyPassport/);
     assert.match(src, /useActiveVerifierFact/);
@@ -788,17 +729,27 @@ describe("verifyPassport ownership + panel surface + neighbours", () => {
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.verify\)/,
     );
 
-    // Neighbours untouched — still gate on evm.ok.
-    assert.match(
+    // Open migrated by U6.7.1 — no longer gated on evm.ok (open-challenge-policy owns that pin).
+    assert.doesNotMatch(
       src,
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.open\)/,
     );
+    // Remaining challenge neighbours untouched — still gate on evm.ok.
     assert.match(
       src,
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.judge\)/,
     );
-    assert.match(src, /functionName:\s*"open"/);
+    assert.match(
+      src,
+      /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.withdraw\)/,
+    );
+    assert.match(
+      src,
+      /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.conclude\)/,
+    );
     assert.match(src, /functionName:\s*"judge"/);
+    assert.match(src, /functionName:\s*"withdraw"/);
+    assert.match(src, /functionName:\s*"conclude"/);
 
     assert.equal(vmBranchViolationInSource(src), false);
 
@@ -813,14 +764,6 @@ describe("verifyPassport ownership + panel surface + neighbours", () => {
     });
 
     // Planted neighbour migration off evm.ok — red against neighbour pin.
-    const plantedOpenMigrated =
-      "writeAvail.available && writeTargetConfigured && isAvailable(actionSurface.open)";
-    assert.throws(() => {
-      assert.match(
-        plantedOpenMigrated,
-        /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.open\)/,
-      );
-    });
     const plantedJudgeMigrated =
       "writeAvail.available && writeTargetConfigured && isAvailable(actionSurface.judge)";
     assert.throws(() => {

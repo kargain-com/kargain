@@ -49,6 +49,9 @@ export const VM_BRANCH_ALLOWLIST = [
   "lib/verifier/active-verifier-fact.ts",
   // U6.6 VerifyPassport write owner — derive-only five metas; panels stay blind.
   "lib/passport/verify-passport.ts",
+  // U6.7.1 OpenChallenge write owner + bond disclosure — panels stay blind.
+  "lib/passport/open-challenge.ts",
+  "lib/passport/challenge-bond-disclosure.ts",
   // U6.2 verification-fee write owner + surface/hub admit — panels stay blind.
   "lib/verifier/set-verification-fee.ts",
   "lib/verifier/verification-fee-surface.ts",

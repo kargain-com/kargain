@@ -19,6 +19,7 @@ import { useAppendPassportAttestation } from "@/hooks/use-append-passport-attest
 import { useAppendPassportRecord } from "@/hooks/use-append-passport-record";
 import { useReportPassportDiscrepancy } from "@/hooks/use-report-passport-discrepancy";
 import { useVerifyPassport } from "@/hooks/use-verify-passport";
+import { useOpenChallenge } from "@/hooks/use-open-challenge";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useNow } from "@/hooks/use-now";
 import {
@@ -43,6 +44,7 @@ import {
   derivePassportActionSurface,
   isAvailable,
 } from "@/lib/passport/action-surface";
+import { challengeBondDisclosure } from "@/lib/passport/challenge-bond-disclosure";
 import {
   preparePassportRecordWrite,
   passportRecordWritePrepRefusalMessage,
@@ -142,8 +144,13 @@ export function PassportActionsPanel({
     verifyPassport,
     isPending: verifyPending,
   } = useVerifyPassport();
+  const {
+    openChallenge,
+    isPending: openChallengePending,
+  } = useOpenChallenge();
   const { isActiveVerifier } = useActiveVerifierFact({ chainId });
   const writeAvail = txWriteAvailability(account, chainId);
+  const bondDisclosure = challengeBondDisclosure(chainId);
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const [clarificationText, setClarificationText] = useState("");
   const [discrepancyText, setDiscrepancyText] = useState("");
@@ -516,12 +523,30 @@ export function PassportActionsPanel({
     }
   }, [chainId, runTx, tokenId, verifyPassport, writeTargetConfigured]);
 
+  const submitOpen = useCallback(async () => {
+    if (!writeTargetConfigured) return;
+    const result = await runTx(() =>
+      openChallenge({ chainId, tokenId, disputeDeposit }),
+    );
+    if (result) {
+      setMessage("Dispute opened.");
+    }
+  }, [
+    chainId,
+    disputeDeposit,
+    openChallenge,
+    runTx,
+    tokenId,
+    writeTargetConfigured,
+  ]);
+
   const actionsBusy =
     isPending ||
     appendPending ||
     reportPending ||
     attestationPending ||
     verifyPending ||
+    openChallengePending ||
     isUploadingEvidence ||
     phase !== "idle";
 
@@ -624,46 +649,42 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {passport && evm.ok && isAvailable(actionSurface.open) && (
+      {writeAvail.available &&
+        writeTargetConfigured &&
+        bondDisclosure.configured &&
+        isAvailable(actionSurface.open) && (
         <div className="space-y-2">
-          {disputeDepositLoading ? (
+          {bondDisclosure.requiresAmountKnownBeforeSubmit &&
+          disputeDepositLoading ? (
             <p className="text-xs text-text-secondary">Loading deposit requirement…</p>
-          ) : disputeDeposit != null ? (
+          ) : (
             <p className="text-xs text-text-secondary">
-              Opening locks a{" "}
-              {formatNativeAmountLabeled(
-                disputeDeposit,
-                nativeUnitOf(commercialActive(chainId)!),
-              )}{" "}
-              deposit for the challenge
-              window. Withdraw before the window ends returns it to you. Uphold returns it to
-              the opener. Reject or expiry sends it to the platform. If a return cannot be
-              delivered, it waits under Claims.
+              {bondDisclosure.amountSource.status === "readable" &&
+              disputeDeposit != null ? (
+                <>
+                  Opening locks a{" "}
+                  {formatNativeAmountLabeled(
+                    disputeDeposit,
+                    nativeUnitOf(commercialActive(chainId)!),
+                  )}{" "}
+                  deposit for the challenge window.{" "}
+                </>
+              ) : bondDisclosure.amountSource.status === "unread" ? (
+                <>{bondDisclosure.amountSource.message} </>
+              ) : null}
+              {bondDisclosure.deliverySentence}
             </p>
-          ) : null}
+          )}
           <Button
             type="button"
             variant="outline"
             className="w-full border-status-error text-status-error"
             disabled={
               actionsBusy ||
-              disputeDepositLoading ||
-              disputeDeposit === undefined
+              (bondDisclosure.requiresAmountKnownBeforeSubmit &&
+                (disputeDepositLoading || disputeDeposit === undefined))
             }
-            onClick={() =>
-              void run(
-                () =>
-                  writeContractAsync({
-                    address: passport!,
-                    abi: KarPassportAbi,
-                    functionName: "open",
-                    args: [tid],
-                    value: disputeDeposit,
-                    chainId: wc,
-                  }),
-                "Dispute opened.",
-              )
-            }
+            onClick={() => void submitOpen()}
           >
             Open challenge
           </Button>

@@ -611,7 +611,9 @@ describe("reportPassportDiscrepancy ownership + panel surface", () => {
     // U6.6 moved verifyPassport off writeContractAsync.
     assert.doesNotMatch(src, /functionName:\s*"verifyPassport"/);
     assert.match(src, /useVerifyPassport|verifyPassport/);
-    assert.match(src, /functionName:\s*"open"/);
+    // U6.7.1 moved open off writeContractAsync; remaining challenge terminals stay.
+    assert.doesNotMatch(src, /functionName:\s*"open"/);
+    assert.match(src, /useOpenChallenge|openChallenge/);
     assert.match(src, /functionName:\s*"judge"/);
     assert.equal(vmBranchViolationInSource(src), false);
 

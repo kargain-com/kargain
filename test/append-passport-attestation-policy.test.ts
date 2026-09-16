@@ -634,11 +634,14 @@ describe("appendPassportAttestation ownership + panel surface", () => {
     assert.match(src, /TxWriteRefusal/);
     assert.match(src, /txWriteAvailability/);
     assert.doesNotMatch(src, /functionName:\s*"appendAttestation"/);
-    // U6.6 moved verifyPassport off writeContractAsync; challenge remains.
+    // U6.6 moved verifyPassport off writeContractAsync; U6.7.1 moved open.
     assert.doesNotMatch(src, /functionName:\s*"verifyPassport"/);
     assert.match(src, /useVerifyPassport|verifyPassport/);
-    assert.match(src, /functionName:\s*"open"/);
+    assert.doesNotMatch(src, /functionName:\s*"open"/);
+    assert.match(src, /useOpenChallenge|openChallenge/);
     assert.match(src, /functionName:\s*"judge"/);
+    assert.match(src, /functionName:\s*"withdraw"/);
+    assert.match(src, /functionName:\s*"conclude"/);
     assert.equal(vmBranchViolationInSource(src), false);
 
     const attSubmit = src.match(
