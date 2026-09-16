@@ -598,7 +598,7 @@ describe("reportPassportDiscrepancy ownership + panel surface", () => {
     assert.doesNotMatch(src, /mplCoreProgramId/);
   });
 
-  it("panel migrates discrepancy; leaves challenge; verify + attestation via dual-VM owners; no if(vm)", () => {
+  it("panel migrates discrepancy; verify + challenge owners; conclude stays; no if(vm)", () => {
     const src = panelSource();
     assert.match(src, /useReportPassportDiscrepancy|reportPassportDiscrepancy/);
     assert.match(src, /preparePassportRecordWrite/);
@@ -611,10 +611,12 @@ describe("reportPassportDiscrepancy ownership + panel surface", () => {
     // U6.6 moved verifyPassport off writeContractAsync.
     assert.doesNotMatch(src, /functionName:\s*"verifyPassport"/);
     assert.match(src, /useVerifyPassport|verifyPassport/);
-    // U6.7.1 moved open off writeContractAsync; remaining challenge terminals stay.
+    // U6.7.1 moved open; U6.7.4 moved judge; conclude remains.
     assert.doesNotMatch(src, /functionName:\s*"open"/);
     assert.match(src, /useOpenChallenge|openChallenge/);
-    assert.match(src, /functionName:\s*"judge"/);
+    assert.doesNotMatch(src, /functionName:\s*"judge"/);
+    assert.match(src, /useJudgeChallenge|judgeChallenge/);
+    assert.match(src, /functionName:\s*"conclude"/);
     assert.equal(vmBranchViolationInSource(src), false);
 
     const discSubmit = src.match(

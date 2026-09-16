@@ -675,7 +675,7 @@ function assertAllBondDisclosureAdmissions(src: string): string[] {
 }
 
 describe("withdrawChallenge panel + ownership", () => {
-  it("panel migrates withdraw via writeAvail + disclosure + owner; judge/conclude stay on evm.ok + run", () => {
+  it("panel migrates withdraw via writeAvail + disclosure + owner; conclude stays on evm.ok + run", () => {
     const src = panelSource();
     assert.match(src, /useWithdrawChallenge|withdrawChallenge/);
     assert.match(src, /undeliverableBondOutcome/);
@@ -692,16 +692,17 @@ describe("withdrawChallenge panel + ownership", () => {
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.withdraw\)/,
     );
 
-    // Judge / conclude remain on legacy run + evm.ok.
-    assert.match(
+    // Judge migrated by U6.7.4 — no longer gated on evm.ok.
+    assert.doesNotMatch(
       src,
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.judge\)/,
     );
+    assert.doesNotMatch(src, /functionName:\s*"judge"/);
+    assert.match(src, /useJudgeChallenge|judgeChallenge/);
     assert.match(
       src,
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.conclude\)/,
     );
-    assert.match(src, /functionName:\s*"judge"/);
     assert.match(src, /functionName:\s*"conclude"/);
     assert.match(src, /const run = useCallback/);
 
@@ -726,12 +727,12 @@ describe("withdrawChallenge panel + ownership", () => {
       );
     });
 
-    const plantedJudgeMigrated =
-      "writeAvail.available && writeTargetConfigured && isAvailable(actionSurface.judge)";
+    const plantedConcludeMigrated =
+      "writeAvail.available && writeTargetConfigured && isAvailable(actionSurface.conclude)";
     assert.throws(() => {
       assert.match(
-        plantedJudgeMigrated,
-        /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.judge\)/,
+        plantedConcludeMigrated,
+        /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.conclude\)/,
       );
     });
   });
@@ -741,7 +742,7 @@ describe("withdrawChallenge panel + ownership", () => {
     const derived = assertAllBondDisclosureAdmissions(src);
     assert.deepEqual(
       derived,
-      ["open", "withdraw"],
+      ["judge", "open", "withdraw"],
       "live panel writeAvail challenge gates",
     );
 
@@ -765,6 +766,7 @@ describe("withdrawChallenge panel + ownership", () => {
       "planted withdraw gate without bondDisclosure.configured must be red",
     );
     assertBondDisclosureAdmission(plantedWithdraw, "open");
+    assertBondDisclosureAdmission(plantedWithdraw, "judge");
 
     // Plant 2: strip disclosure from open — open red; withdraw stays green.
     const plantedOpen = src.replace(
@@ -786,12 +788,13 @@ describe("withdrawChallenge panel + ownership", () => {
       "planted open gate without bondDisclosure.configured must be red",
     );
     assertBondDisclosureAdmission(plantedOpen, "withdraw");
+    assertBondDisclosureAdmission(plantedOpen, "judge");
 
-    // Plant 3: third migrated challenge gate (judge) without disclosure —
-    // must go red with no suite list change (derived sweep finds it).
-    const plantedJudge =
-      src +
-      "\n{writeAvail.available &&\n  writeTargetConfigured &&\n  isAvailable(actionSurface.judge) && (\n";
+    // Plant 3: strip disclosure from live judge — judge red; open/withdraw stay green.
+    const plantedJudge = src.replace(
+      /writeAvail\.available\s*&&\s*writeTargetConfigured\s*&&\s*bondDisclosure\.configured\s*&&\s*isAvailable\(actionSurface\.judge\)/,
+      "writeAvail.available && writeTargetConfigured && isAvailable(actionSurface.judge)",
+    );
     assert.throws(
       () => {
         assertAllBondDisclosureAdmissions(plantedJudge);
@@ -806,6 +809,8 @@ describe("withdrawChallenge panel + ownership", () => {
       },
       "planted judge writeAvail gate without bondDisclosure.configured must be red",
     );
+    assertBondDisclosureAdmission(plantedJudge, "open");
+    assertBondDisclosureAdmission(plantedJudge, "withdraw");
     // Live still green after plants on copies.
     assertAllBondDisclosureAdmissions(src);
   });

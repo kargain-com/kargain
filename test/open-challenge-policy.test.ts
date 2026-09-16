@@ -501,17 +501,19 @@ describe("openChallenge panel + ownership", () => {
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.open\)/,
     );
 
-    // Withdraw migrated by U6.7.2 — no longer gated on evm.ok.
+    // Withdraw / judge migrated — no longer gated on evm.ok.
     assert.doesNotMatch(
       src,
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.withdraw\)/,
     );
     assert.doesNotMatch(src, /functionName:\s*"withdraw"/);
     assert.match(src, /useWithdrawChallenge|withdrawChallenge/);
-    assert.match(
+    assert.doesNotMatch(
       src,
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.judge\)/,
     );
+    assert.doesNotMatch(src, /functionName:\s*"judge"/);
+    assert.match(src, /useJudgeChallenge|judgeChallenge/);
     assert.match(
       src,
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.conclude\)/,
@@ -536,12 +538,12 @@ describe("openChallenge panel + ownership", () => {
       );
     });
 
-    const plantedJudgeMigrated =
-      "writeAvail.available && writeTargetConfigured && isAvailable(actionSurface.judge)";
+    const plantedConcludeMigrated =
+      "writeAvail.available && writeTargetConfigured && isAvailable(actionSurface.conclude)";
     assert.throws(() => {
       assert.match(
-        plantedJudgeMigrated,
-        /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.judge\)/,
+        plantedConcludeMigrated,
+        /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.conclude\)/,
       );
     });
   });

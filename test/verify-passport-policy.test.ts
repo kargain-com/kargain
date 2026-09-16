@@ -704,7 +704,7 @@ describe("verifyPassport ownership + panel surface + neighbours", () => {
     assert.doesNotMatch(src, /@solana\/web3\.js/);
   });
 
-  it("panel migrates verify via writeAvail + owner; leaves judge on evm.ok; no if(vm)", () => {
+  it("panel migrates verify via writeAvail + owner; conclude stays on evm.ok; no if(vm)", () => {
     const src = panelSource();
     assert.match(src, /useVerifyPassport|verifyPassport/);
     assert.match(src, /useActiveVerifierFact/);
@@ -740,16 +740,17 @@ describe("verifyPassport ownership + panel surface + neighbours", () => {
     );
     assert.doesNotMatch(src, /functionName:\s*"withdraw"/);
     assert.match(src, /useWithdrawChallenge|withdrawChallenge/);
-    // Judge / conclude remain on evm.ok + run until their units.
-    assert.match(
+    // Judge migrated by U6.7.4; conclude remains on evm.ok + run until its unit.
+    assert.doesNotMatch(
       src,
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.judge\)/,
     );
+    assert.doesNotMatch(src, /functionName:\s*"judge"/);
+    assert.match(src, /useJudgeChallenge|judgeChallenge/);
     assert.match(
       src,
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.conclude\)/,
     );
-    assert.match(src, /functionName:\s*"judge"/);
     assert.match(src, /functionName:\s*"conclude"/);
 
     assert.equal(vmBranchViolationInSource(src), false);
@@ -764,13 +765,13 @@ describe("verifyPassport ownership + panel surface + neighbours", () => {
       );
     });
 
-    // Planted neighbour migration off evm.ok — red against neighbour pin.
-    const plantedJudgeMigrated =
-      "writeAvail.available && writeTargetConfigured && isAvailable(actionSurface.judge)";
+    // Planted conclude migration off evm.ok — red against conclude pin.
+    const plantedConcludeMigrated =
+      "writeAvail.available && writeTargetConfigured && isAvailable(actionSurface.conclude)";
     assert.throws(() => {
       assert.match(
-        plantedJudgeMigrated,
-        /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.judge\)/,
+        plantedConcludeMigrated,
+        /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.conclude\)/,
       );
     });
   });

@@ -626,7 +626,7 @@ describe("appendPassportAttestation ownership + panel surface", () => {
     assert.doesNotMatch(src, /mplCoreProgramId/);
   });
 
-  it("panel migrates attestation via writeAvail + prep; verify via dual-VM owner; leaves challenge; no if(vm)", () => {
+  it("panel migrates attestation via writeAvail + prep; verify + challenge owners; conclude stays; no if(vm)", () => {
     const src = panelSource();
     assert.match(src, /useAppendPassportAttestation|appendPassportAttestation/);
     assert.match(src, /useActiveVerifierFact/);
@@ -639,7 +639,9 @@ describe("appendPassportAttestation ownership + panel surface", () => {
     assert.match(src, /useVerifyPassport|verifyPassport/);
     assert.doesNotMatch(src, /functionName:\s*"open"/);
     assert.match(src, /useOpenChallenge|openChallenge/);
-    assert.match(src, /functionName:\s*"judge"/);
+    // U6.7.4 moved judge; conclude remains on ABI until its unit.
+    assert.doesNotMatch(src, /functionName:\s*"judge"/);
+    assert.match(src, /useJudgeChallenge|judgeChallenge/);
     assert.doesNotMatch(src, /functionName:\s*"withdraw"/);
     assert.match(src, /useWithdrawChallenge|withdrawChallenge/);
     assert.match(src, /functionName:\s*"conclude"/);

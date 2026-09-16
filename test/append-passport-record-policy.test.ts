@@ -588,10 +588,12 @@ describe("appendPassportRecord ownership + panel surface", () => {
     // Attestation migrated in U6.5.
     assert.doesNotMatch(src, /functionName:\s*"appendAttestation"/);
     assert.match(src, /useAppendPassportAttestation|appendPassportAttestation/);
-    // U6.7.1 moved open; remaining challenge terminals stay.
+    // U6.7.1 moved open; U6.7.4 moved judge; conclude remains.
     assert.doesNotMatch(src, /functionName:\s*"open"/);
     assert.match(src, /useOpenChallenge|openChallenge/);
-    assert.match(src, /functionName:\s*"judge"/);
+    assert.doesNotMatch(src, /functionName:\s*"judge"/);
+    assert.match(src, /useJudgeChallenge|judgeChallenge/);
+    assert.match(src, /functionName:\s*"conclude"/);
     assert.equal(vmBranchViolationInSource(src), false);
 
 

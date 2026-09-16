@@ -21,6 +21,7 @@ import { useReportPassportDiscrepancy } from "@/hooks/use-report-passport-discre
 import { useVerifyPassport } from "@/hooks/use-verify-passport";
 import { useChallengeBondAmount } from "@/hooks/use-challenge-bond-amount";
 import { useOpenChallenge } from "@/hooks/use-open-challenge";
+import { useJudgeChallenge } from "@/hooks/use-judge-challenge";
 import { useWithdrawChallenge } from "@/hooks/use-withdraw-challenge";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useNow } from "@/hooks/use-now";
@@ -150,6 +151,10 @@ export function PassportActionsPanel({
     openChallenge,
     isPending: openChallengePending,
   } = useOpenChallenge();
+  const {
+    judgeChallenge,
+    isPending: judgeChallengePending,
+  } = useJudgeChallenge();
   const {
     withdrawChallenge,
     isPending: withdrawChallengePending,
@@ -567,6 +572,26 @@ export function PassportActionsPanel({
     writeTargetConfigured,
   ]);
 
+  const submitJudge = useCallback(
+    async (outcome: 0 | 1, successMessage: string) => {
+      if (!writeTargetConfigured || !bondDisclosure.configured) return;
+      const result = await runTx(() =>
+        judgeChallenge({ chainId, tokenId, outcome }),
+      );
+      if (result) {
+        setMessage(successMessage);
+      }
+    },
+    [
+      bondDisclosure.configured,
+      chainId,
+      judgeChallenge,
+      runTx,
+      tokenId,
+      writeTargetConfigured,
+    ],
+  );
+
   const actionsBusy =
     isPending ||
     appendPending ||
@@ -574,6 +599,7 @@ export function PassportActionsPanel({
     attestationPending ||
     verifyPending ||
     openChallengePending ||
+    judgeChallengePending ||
     withdrawChallengePending ||
     isUploadingEvidence ||
     phase !== "idle";
@@ -754,7 +780,10 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {passport && evm.ok && isAvailable(actionSurface.judge) && (
+      {writeAvail.available &&
+        writeTargetConfigured &&
+        bondDisclosure.configured &&
+        isAvailable(actionSurface.judge) && (
         <div className="flex flex-col gap-2">
           <div className="space-y-2 rounded-md border border-border-default bg-bg-primary/80 p-3">
             <p className="text-xs text-text-secondary">
@@ -764,15 +793,8 @@ export function PassportActionsPanel({
               type="button"
               disabled={actionsBusy}
               onClick={() =>
-                void run(
-                  () =>
-                    writeContractAsync({
-                      address: passport!,
-                      abi: KarPassportAbi,
-                      functionName: "judge",
-                      args: [tid, 0],
-                      chainId: wc,
-                    }),
+                void submitJudge(
+                  0,
                   "Challenge upheld. Passport is now unverified.",
                 )
               }
@@ -789,15 +811,8 @@ export function PassportActionsPanel({
               variant="outline"
               disabled={actionsBusy}
               onClick={() =>
-                void run(
-                  () =>
-                    writeContractAsync({
-                      address: passport!,
-                      abi: KarPassportAbi,
-                      functionName: "judge",
-                      args: [tid, 1],
-                      chainId: wc,
-                    }),
+                void submitJudge(
+                  1,
                   "Challenge rejected. Verification stands.",
                 )
               }
