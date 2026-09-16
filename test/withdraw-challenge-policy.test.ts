@@ -236,7 +236,7 @@ describe("withdrawChallenge EVM pin", () => {
 });
 
 describe("withdrawChallenge SVM freshness", () => {
-  it("every assembly re-reads state; plant cached fetch count is red", async () => {
+  it("every assembly re-reads state (fetchCount === 2)", async () => {
     const namespaces = commercialSvmNamespaceIds();
     assert.ok(namespaces.length > 0, "live SVM commercial row required");
     const ns = namespaces[0]!;
@@ -266,14 +266,6 @@ describe("withdrawChallenge SVM freshness", () => {
     if (!first.ok || first.vm !== "svm") throw new Error("expected svm");
     if (!second.ok || second.vm !== "svm") throw new Error("expected svm");
     assert.equal(first.plan.recordCount, second.plan.recordCount);
-
-    assert.throws(() => {
-      assert.equal(
-        fetchCount,
-        1,
-        "planted single-fetch across two assemblies",
-      );
-    });
   });
 
   it("count move yields distinct record PDAs; planted constant index is red", async () => {
@@ -596,6 +588,43 @@ describe("withdrawChallenge claim-outcome disclosure", () => {
   });
 });
 
+/**
+ * Challenge dual-VM actions that consume challengeBondDisclosure for chrome
+ * or success outcome. Admit must include bondDisclosure.configured — same
+ * fact the submit/chrome path needs. Extend when judge/conclude migrate onto
+ * disclosure (U6.7.4 / U6.7.5).
+ */
+const BOND_DISCLOSURE_CHALLENGE_ACTIONS = ["open", "withdraw"] as const;
+
+/**
+ * Extract the writeAvail…isAvailable(actionSurface.<action>) conjunction.
+ * Requires bondDisclosure.configured inside that gate (not a later block).
+ */
+function assertBondDisclosureAdmission(
+  src: string,
+  action: (typeof BOND_DISCLOSURE_CHALLENGE_ACTIONS)[number],
+): void {
+  const gateRe = new RegExp(
+    String.raw`writeAvail\.available\s*&&\s*writeTargetConfigured\s*&&\s*((?:bondDisclosure\.configured\s*&&\s*)?)isAvailable\(actionSurface\.${action}\)`,
+  );
+  const m = src.match(gateRe);
+  assert.ok(
+    m,
+    `missing writeAvail gate for actionSurface.${action}`,
+  );
+  assert.match(
+    m[0]!,
+    /bondDisclosure\.configured/,
+    `actionSurface.${action} admit must include bondDisclosure.configured`,
+  );
+}
+
+function assertAllBondDisclosureAdmissions(src: string): void {
+  for (const action of BOND_DISCLOSURE_CHALLENGE_ACTIONS) {
+    assertBondDisclosureAdmission(src, action);
+  }
+}
+
 describe("withdrawChallenge panel + ownership", () => {
   it("panel migrates withdraw via writeAvail + disclosure + owner; judge/conclude stay on evm.ok + run", () => {
     const src = panelSource();
@@ -656,6 +685,25 @@ describe("withdrawChallenge panel + ownership", () => {
         /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.judge\)/,
       );
     });
+  });
+
+  it("every disclosure-consuming challenge block admits on bondDisclosure.configured", () => {
+    const src = panelSource();
+    assertAllBondDisclosureAdmissions(src);
+
+    // Plant: strip disclosure from withdraw gate only — withdraw red, open still green.
+    const planted = src.replace(
+      /writeAvail\.available\s*&&\s*writeTargetConfigured\s*&&\s*bondDisclosure\.configured\s*&&\s*isAvailable\(actionSurface\.withdraw\)/,
+      "writeAvail.available && writeTargetConfigured && isAvailable(actionSurface.withdraw)",
+    );
+    assert.throws(
+      () => {
+        assertBondDisclosureAdmission(planted, "withdraw");
+      },
+      (err: unknown) => err instanceof assert.AssertionError,
+      "planted withdraw gate without bondDisclosure.configured must be red",
+    );
+    assertBondDisclosureAdmission(planted, "open");
   });
 
   it("owner source has freshness decode + no PassportConfig / ChallengeAccount decode", () => {

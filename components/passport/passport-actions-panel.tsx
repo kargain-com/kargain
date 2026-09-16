@@ -816,6 +816,7 @@ export function PassportActionsPanel({
 
       {writeAvail.available &&
         writeTargetConfigured &&
+        bondDisclosure.configured &&
         isAvailable(actionSurface.withdraw) && (
         <div className="space-y-2">
           <p className="text-xs text-text-secondary">
