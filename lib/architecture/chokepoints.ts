@@ -491,7 +491,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "svm-money-model",
     owner:
       "svm/crates/kargain-claimable-payouts · svm/crates/kargain-bonded-challenge · svm/crates/kargain-agented-split",
-    rule: "SPL claim PDAs + per-subject bond PDAs; no push_ok/transfer_ok; no global pending maps; S32 split one Rust owner",
+    rule: "SPL claim PDAs + per-subject bond PDAs; no push_ok/transfer_ok; no global pending maps; S32 split one Rust owner; SPEC verification challenge bond names EVM msg.value vs SVM dispute_deposit→challenge PDA with no native-push→claim fallback (D-01)",
     guardTests: ["svm-money-model-policy.test.ts"],
   },
   {

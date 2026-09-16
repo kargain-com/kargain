@@ -115,6 +115,14 @@ UNVERIFIED ──verifyPassport──► VERIFIED
 
 **Exit from DISPUTED:** `withdraw` (opener, **before** window) **or** `judge` (independent active verifier — not opener, owner, or recorded verifier — **before** window) **or** `conclude` (anyone, **after** window). Challenge state lives in `BondedChallenge`; the passport supplies eligibility, exclusion, qualification, bond amount, and domain terminals only. Owner cannot `setPassportURI` while DISPUTED.
 
+**Verification challenge bond — VM-named payment and delivery.** The bond is an exact amount in the commercial network's **native base units**.
+
+**EVM:** the opener pays it as `msg.value` equal to `disputeDeposit`; a mismatch reverts `WrongValue`. Accounting uses the challenge record's captured `bondAmount` and contract ETH / `totalLockedBonds`. A failed native push on a terminal route credits a ClaimablePayouts claim and the terminal still completes.
+
+**SVM:** the client passes **no amount**. The program transfers `PassportConfig.dispute_deposit` lamports from the challenger to the **challenge PDA** (D-04), so there is no wrong-client-amount class on this VM. Terminals move those PDA lamports directly to the disposition recipient; there is **no native-push→claim fallback** for this bond (D-01 — a native lamport credit from a program-owned account cannot fail on this substrate). Product UI must not offer Claims for a verification challenge bond on SVM.
+
+The amount captured at open is what terminals pay on both VMs; re-reading today's deposit knob does not change an already-open challenge. The verification forfeit sink is the passport's `platformRecipient` / config `forfeit_recipient` — distinct from Ascending's settlement forfeit.
+
 ### tokenId encoding
 
 Constructor sets `tokenIdOffset = block.chainid << 128` and `_nextTokenId = tokenIdOffset`.

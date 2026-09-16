@@ -132,4 +132,58 @@ describe("svm-money-model-policy", () => {
       "detector must catch the forbidden pattern",
     );
   });
+
+  /**
+   * SPEC verification challenge bond — VM-named payment and delivery.
+   *
+   * Trade: match distinctive normative tokens (co-occurrence), not whole sentences
+   * or line positions. Survives comma polish; goes red when the SVM delivery /
+   * no-claim-fallback rule is deleted. The opposite trade (verbatim paragraph)
+   * is the `:NNN` defect in another costume.
+   */
+  it("SPEC states verification challenge bond EVM exact-value, SVM challenge-PDA delivery, and no SVM claim fallback", () => {
+    const SPEC_PATH = path.join(ROOT, "docs/contracts/SPEC.md");
+    const live = fs.readFileSync(SPEC_PATH, "utf8");
+
+    const heading =
+      /\*\*Verification challenge bond — VM-named payment and delivery\.\*\*/;
+    const evmExact =
+      /\*\*EVM:\*\*[\s\S]{0,400}?msg\.value[\s\S]{0,200}?disputeDeposit[\s\S]{0,200}?WrongValue/;
+    const svmDelivery =
+      /\*\*SVM:\*\*[\s\S]{0,500}?dispute_deposit[\s\S]{0,300}?challenge PDA/;
+    const svmNoClaim =
+      /\*\*SVM:\*\*[\s\S]{0,800}?no native-push→claim fallback/;
+
+    function assertsVerificationChallengeBondVmNamed(text: string): void {
+      assert.ok(heading.test(text), "SPEC must name the verification challenge bond VM-named paragraph");
+      assert.ok(
+        evmExact.test(text),
+        "SPEC bond paragraph must state EVM exact msg.value equal to disputeDeposit (WrongValue)",
+      );
+      assert.ok(
+        svmDelivery.test(text),
+        "SPEC bond paragraph must state SVM dispute_deposit moves to the challenge PDA",
+      );
+      assert.ok(
+        svmNoClaim.test(text),
+        "SPEC bond paragraph must state no native-push→claim fallback on SVM",
+      );
+    }
+
+    assertsVerificationChallengeBondVmNamed(live);
+
+    // Plant: in-memory copy with the SVM delivery sentence removed — must go red.
+    const plant = live.replace(
+      /The program transfers `PassportConfig\.dispute_deposit` lamports from the challenger to the \*\*challenge PDA\*\* \(D-04\), so there is no wrong-client-amount class on this VM\. /,
+      "",
+    );
+    assert.notEqual(plant, live, "plant must differ from live SPEC");
+    assert.throws(
+      () => assertsVerificationChallengeBondVmNamed(plant),
+      (err: unknown) =>
+        err instanceof assert.AssertionError &&
+        /dispute_deposit moves to the challenge PDA/.test(String(err.message)),
+      "plant without SVM challenge-PDA delivery must fail that assertion",
+    );
+  });
 });
