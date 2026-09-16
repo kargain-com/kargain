@@ -682,6 +682,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-devnet-mint-passport-policy.test.ts"],
   },
   {
+    id: "svm-devnet-product-send",
+    owner: "scripts/svm-devnet-product-send.ts",
+    rule: "Sole Devnet product-owner send door: executeSetPassportUri only; node SvmSignAndSendPort with named wrong_wallet_standard_chain; no encode/derive/send/TransactionInstruction in the harness",
+    guardTests: ["svm-devnet-product-send-policy.test.ts"],
+  },
+  {
     id: "svm-startup-retention",
     owner: "lib/svm/startup-retention.ts",
     rule: "RPC retention of required ingest start slot is one predicate; ingest loop and upgrade dry-run consume it",
