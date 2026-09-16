@@ -589,29 +589,62 @@ describe("withdrawChallenge claim-outcome disclosure", () => {
 });
 
 /**
- * Challenge dual-VM actions that consume challengeBondDisclosure for chrome
- * or success outcome. Admit must include bondDisclosure.configured — same
- * fact the submit/chrome path needs. Extend when judge/conclude migrate onto
- * disclosure (U6.7.4 / U6.7.5).
+ * Floor only — the derived writeAvail challenge-action set must include these.
+ * Not the sweep source of truth (that comes from the panel ∩ challenge surface).
  */
-const BOND_DISCLOSURE_CHALLENGE_ACTIONS = ["open", "withdraw"] as const;
+const BOND_DISCLOSURE_ADMISSION_FLOOR = ["open", "withdraw"] as const;
+
+/**
+ * Challenge write action names from the challenge-surface owner
+ * (`ActionGate` fields). Filters writeAvail panel gates to the disclosure
+ * class so verify/append/… are not forced onto bond chrome.
+ */
+function challengeWriteActionNames(): string[] {
+  const surface = readFileSync(
+    path.join(ROOT, "lib/challenge/surface.ts"),
+    "utf8",
+  );
+  const names = [
+    ...surface.matchAll(/readonly\s+(\w+)\s*:\s*ActionGate\s*</g),
+  ].map((m) => m[1]!);
+  assert.ok(
+    names.length >= 4,
+    `challenge surface must declare ActionGate writes; got ${names.join(",") || "(none)"}`,
+  );
+  return names;
+}
+
+/**
+ * Migrated dual-VM gate shape: writeAvail.available && writeTargetConfigured
+ * … isAvailable(actionSurface.<action>). Optional middle conjuncts allowed.
+ */
+const MIGRATED_WRITE_AVAIL_GATE_RE =
+  /writeAvail\.available\s*&&\s*writeTargetConfigured\s*&&\s*((?:[\w.]+\s*&&\s*)*)isAvailable\(actionSurface\.(\w+)\)/g;
+
+/**
+ * Derive challenge actions that appear in the migrated writeAvail shape on
+ * the panel. Empty derivation is a failure — regex drift must not green.
+ */
+function deriveBondDisclosureAdmissionActions(panelSrc: string): string[] {
+  const challenge = new Set(challengeWriteActionNames());
+  const found = new Set<string>();
+  for (const m of panelSrc.matchAll(MIGRATED_WRITE_AVAIL_GATE_RE)) {
+    const action = m[2]!;
+    if (challenge.has(action)) found.add(action);
+  }
+  return [...found].sort();
+}
 
 /**
  * Extract the writeAvail…isAvailable(actionSurface.<action>) conjunction.
  * Requires bondDisclosure.configured inside that gate (not a later block).
  */
-function assertBondDisclosureAdmission(
-  src: string,
-  action: (typeof BOND_DISCLOSURE_CHALLENGE_ACTIONS)[number],
-): void {
+function assertBondDisclosureAdmission(src: string, action: string): void {
   const gateRe = new RegExp(
     String.raw`writeAvail\.available\s*&&\s*writeTargetConfigured\s*&&\s*((?:bondDisclosure\.configured\s*&&\s*)?)isAvailable\(actionSurface\.${action}\)`,
   );
   const m = src.match(gateRe);
-  assert.ok(
-    m,
-    `missing writeAvail gate for actionSurface.${action}`,
-  );
+  assert.ok(m, `missing writeAvail gate for actionSurface.${action}`);
   assert.match(
     m[0]!,
     /bondDisclosure\.configured/,
@@ -619,10 +652,26 @@ function assertBondDisclosureAdmission(
   );
 }
 
-function assertAllBondDisclosureAdmissions(src: string): void {
-  for (const action of BOND_DISCLOSURE_CHALLENGE_ACTIONS) {
+/**
+ * Sweep every derived migrated challenge gate. Returns the derived set for
+ * callers that need to quote it.
+ */
+function assertAllBondDisclosureAdmissions(src: string): string[] {
+  const derived = deriveBondDisclosureAdmissionActions(src);
+  assert.ok(
+    derived.length > 0,
+    "derived migrated writeAvail challenge-action set must be non-empty",
+  );
+  for (const floor of BOND_DISCLOSURE_ADMISSION_FLOOR) {
+    assert.ok(
+      derived.includes(floor),
+      `derived set must include floor action "${floor}"; got [${derived.join(", ")}]`,
+    );
+  }
+  for (const action of derived) {
     assertBondDisclosureAdmission(src, action);
   }
+  return derived;
 }
 
 describe("withdrawChallenge panel + ownership", () => {
@@ -687,23 +736,78 @@ describe("withdrawChallenge panel + ownership", () => {
     });
   });
 
-  it("every disclosure-consuming challenge block admits on bondDisclosure.configured", () => {
+  it("every migrated writeAvail challenge gate admits on bondDisclosure.configured (derived)", () => {
     const src = panelSource();
-    assertAllBondDisclosureAdmissions(src);
+    const derived = assertAllBondDisclosureAdmissions(src);
+    assert.deepEqual(
+      derived,
+      ["open", "withdraw"],
+      "live panel writeAvail challenge gates",
+    );
 
-    // Plant: strip disclosure from withdraw gate only — withdraw red, open still green.
-    const planted = src.replace(
+    // Plant 1: strip disclosure from withdraw — withdraw red; open stays green.
+    const plantedWithdraw = src.replace(
       /writeAvail\.available\s*&&\s*writeTargetConfigured\s*&&\s*bondDisclosure\.configured\s*&&\s*isAvailable\(actionSurface\.withdraw\)/,
       "writeAvail.available && writeTargetConfigured && isAvailable(actionSurface.withdraw)",
     );
     assert.throws(
       () => {
-        assertBondDisclosureAdmission(planted, "withdraw");
+        assertAllBondDisclosureAdmissions(plantedWithdraw);
       },
-      (err: unknown) => err instanceof assert.AssertionError,
+      (err: unknown) => {
+        assert.ok(err instanceof assert.AssertionError);
+        assert.match(
+          err.message,
+          /actionSurface\.withdraw admit must include bondDisclosure\.configured/,
+        );
+        return true;
+      },
       "planted withdraw gate without bondDisclosure.configured must be red",
     );
-    assertBondDisclosureAdmission(planted, "open");
+    assertBondDisclosureAdmission(plantedWithdraw, "open");
+
+    // Plant 2: strip disclosure from open — open red; withdraw stays green.
+    const plantedOpen = src.replace(
+      /writeAvail\.available\s*&&\s*writeTargetConfigured\s*&&\s*bondDisclosure\.configured\s*&&\s*isAvailable\(actionSurface\.open\)/,
+      "writeAvail.available && writeTargetConfigured && isAvailable(actionSurface.open)",
+    );
+    assert.throws(
+      () => {
+        assertAllBondDisclosureAdmissions(plantedOpen);
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof assert.AssertionError);
+        assert.match(
+          err.message,
+          /actionSurface\.open admit must include bondDisclosure\.configured/,
+        );
+        return true;
+      },
+      "planted open gate without bondDisclosure.configured must be red",
+    );
+    assertBondDisclosureAdmission(plantedOpen, "withdraw");
+
+    // Plant 3: third migrated challenge gate (judge) without disclosure —
+    // must go red with no suite list change (derived sweep finds it).
+    const plantedJudge =
+      src +
+      "\n{writeAvail.available &&\n  writeTargetConfigured &&\n  isAvailable(actionSurface.judge) && (\n";
+    assert.throws(
+      () => {
+        assertAllBondDisclosureAdmissions(plantedJudge);
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof assert.AssertionError);
+        assert.match(
+          err.message,
+          /actionSurface\.judge admit must include bondDisclosure\.configured/,
+        );
+        return true;
+      },
+      "planted judge writeAvail gate without bondDisclosure.configured must be red",
+    );
+    // Live still green after plants on copies.
+    assertAllBondDisclosureAdmissions(src);
   });
 
   it("owner source has freshness decode + no PassportConfig / ChallengeAccount decode", () => {
