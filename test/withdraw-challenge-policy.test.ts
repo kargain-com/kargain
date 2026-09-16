@@ -639,7 +639,7 @@ function deriveBondDisclosureAdmissionActions(panelSrc: string): string[] {
  * Extract the writeAvail…isAvailable(actionSurface.<action>) conjunction.
  * Requires bondDisclosure.configured inside that gate (not a later block).
  */
-function assertBondDisclosureAdmission(src: string, action: string): void {
+export function assertBondDisclosureAdmission(src: string, action: string): void {
   const gateRe = new RegExp(
     String.raw`writeAvail\.available\s*&&\s*writeTargetConfigured\s*&&\s*((?:bondDisclosure\.configured\s*&&\s*)?)isAvailable\(actionSurface\.${action}\)`,
   );
@@ -656,7 +656,7 @@ function assertBondDisclosureAdmission(src: string, action: string): void {
  * Sweep every derived migrated challenge gate. Returns the derived set for
  * callers that need to quote it.
  */
-function assertAllBondDisclosureAdmissions(src: string): string[] {
+export function assertAllBondDisclosureAdmissions(src: string): string[] {
   const derived = deriveBondDisclosureAdmissionActions(src);
   assert.ok(
     derived.length > 0,
@@ -675,7 +675,7 @@ function assertAllBondDisclosureAdmissions(src: string): string[] {
 }
 
 describe("withdrawChallenge panel + ownership", () => {
-  it("panel migrates withdraw via writeAvail + disclosure + owner; conclude stays on evm.ok + run", () => {
+  it("panel migrates withdraw via writeAvail + disclosure + owner; conclude via dual-VM owner", () => {
     const src = panelSource();
     assert.match(src, /useWithdrawChallenge|withdrawChallenge/);
     assert.match(src, /undeliverableBondOutcome/);
@@ -699,12 +699,14 @@ describe("withdrawChallenge panel + ownership", () => {
     );
     assert.doesNotMatch(src, /functionName:\s*"judge"/);
     assert.match(src, /useJudgeChallenge|judgeChallenge/);
-    assert.match(
+    // U6.7.5 moved conclude; legacy run helper deleted.
+    assert.doesNotMatch(
       src,
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.conclude\)/,
     );
-    assert.match(src, /functionName:\s*"conclude"/);
-    assert.match(src, /const run = useCallback/);
+    assert.doesNotMatch(src, /functionName:\s*"conclude"/);
+    assert.match(src, /useConcludeChallenge|concludeChallenge/);
+    assert.doesNotMatch(src, /const run = useCallback/);
 
     const withdrawSubmit = src.match(
       /const submitWithdraw = useCallback\(async \(\) => \{[\s\S]*?\}, \[/,
@@ -726,15 +728,6 @@ describe("withdrawChallenge panel + ownership", () => {
         /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.withdraw\)/,
       );
     });
-
-    const plantedConcludeMigrated =
-      "writeAvail.available && writeTargetConfigured && isAvailable(actionSurface.conclude)";
-    assert.throws(() => {
-      assert.match(
-        plantedConcludeMigrated,
-        /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.conclude\)/,
-      );
-    });
   });
 
   it("every migrated writeAvail challenge gate admits on bondDisclosure.configured (derived)", () => {
@@ -742,7 +735,7 @@ describe("withdrawChallenge panel + ownership", () => {
     const derived = assertAllBondDisclosureAdmissions(src);
     assert.deepEqual(
       derived,
-      ["judge", "open", "withdraw"],
+      ["conclude", "judge", "open", "withdraw"],
       "live panel writeAvail challenge gates",
     );
 
@@ -767,6 +760,7 @@ describe("withdrawChallenge panel + ownership", () => {
     );
     assertBondDisclosureAdmission(plantedWithdraw, "open");
     assertBondDisclosureAdmission(plantedWithdraw, "judge");
+    assertBondDisclosureAdmission(plantedWithdraw, "conclude");
 
     // Plant 2: strip disclosure from open — open red; withdraw stays green.
     const plantedOpen = src.replace(
@@ -789,6 +783,7 @@ describe("withdrawChallenge panel + ownership", () => {
     );
     assertBondDisclosureAdmission(plantedOpen, "withdraw");
     assertBondDisclosureAdmission(plantedOpen, "judge");
+    assertBondDisclosureAdmission(plantedOpen, "conclude");
 
     // Plant 3: strip disclosure from live judge — judge red; open/withdraw stay green.
     const plantedJudge = src.replace(
@@ -811,6 +806,31 @@ describe("withdrawChallenge panel + ownership", () => {
     );
     assertBondDisclosureAdmission(plantedJudge, "open");
     assertBondDisclosureAdmission(plantedJudge, "withdraw");
+    assertBondDisclosureAdmission(plantedJudge, "conclude");
+
+    // Plant 4: strip disclosure from conclude — conclude red; others stay green.
+    const plantedConclude = src.replace(
+      /writeAvail\.available\s*&&\s*writeTargetConfigured\s*&&\s*bondDisclosure\.configured\s*&&\s*isAvailable\(actionSurface\.conclude\)/,
+      "writeAvail.available && writeTargetConfigured && isAvailable(actionSurface.conclude)",
+    );
+    assert.throws(
+      () => {
+        assertAllBondDisclosureAdmissions(plantedConclude);
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof assert.AssertionError);
+        assert.match(
+          err.message,
+          /actionSurface\.conclude admit must include bondDisclosure\.configured/,
+        );
+        return true;
+      },
+      "planted conclude writeAvail gate without bondDisclosure.configured must be red",
+    );
+    assertBondDisclosureAdmission(plantedConclude, "open");
+    assertBondDisclosureAdmission(plantedConclude, "withdraw");
+    assertBondDisclosureAdmission(plantedConclude, "judge");
+
     // Live still green after plants on copies.
     assertAllBondDisclosureAdmissions(src);
   });

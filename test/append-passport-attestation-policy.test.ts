@@ -639,12 +639,13 @@ describe("appendPassportAttestation ownership + panel surface", () => {
     assert.match(src, /useVerifyPassport|verifyPassport/);
     assert.doesNotMatch(src, /functionName:\s*"open"/);
     assert.match(src, /useOpenChallenge|openChallenge/);
-    // U6.7.4 moved judge; conclude remains on ABI until its unit.
+    // U6.7.4 moved judge; U6.7.5 moved conclude.
     assert.doesNotMatch(src, /functionName:\s*"judge"/);
     assert.match(src, /useJudgeChallenge|judgeChallenge/);
     assert.doesNotMatch(src, /functionName:\s*"withdraw"/);
     assert.match(src, /useWithdrawChallenge|withdrawChallenge/);
-    assert.match(src, /functionName:\s*"conclude"/);
+    assert.doesNotMatch(src, /functionName:\s*"conclude"/);
+    assert.match(src, /useConcludeChallenge|concludeChallenge/);
     assert.equal(vmBranchViolationInSource(src), false);
 
     const attSubmit = src.match(

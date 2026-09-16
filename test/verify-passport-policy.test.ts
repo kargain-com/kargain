@@ -740,18 +740,20 @@ describe("verifyPassport ownership + panel surface + neighbours", () => {
     );
     assert.doesNotMatch(src, /functionName:\s*"withdraw"/);
     assert.match(src, /useWithdrawChallenge|withdrawChallenge/);
-    // Judge migrated by U6.7.4; conclude remains on evm.ok + run until its unit.
+    // Judge + conclude migrated; no legacy run helper.
     assert.doesNotMatch(
       src,
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.judge\)/,
     );
     assert.doesNotMatch(src, /functionName:\s*"judge"/);
     assert.match(src, /useJudgeChallenge|judgeChallenge/);
-    assert.match(
+    assert.doesNotMatch(
       src,
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.conclude\)/,
     );
-    assert.match(src, /functionName:\s*"conclude"/);
+    assert.doesNotMatch(src, /functionName:\s*"conclude"/);
+    assert.match(src, /useConcludeChallenge|concludeChallenge/);
+    assert.doesNotMatch(src, /const run = useCallback/);
 
     assert.equal(vmBranchViolationInSource(src), false);
 
@@ -762,16 +764,6 @@ describe("verifyPassport ownership + panel surface + neighbours", () => {
       assert.doesNotMatch(
         plantedVerifyEvmOk,
         /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.verify\)/,
-      );
-    });
-
-    // Planted conclude migration off evm.ok — red against conclude pin.
-    const plantedConcludeMigrated =
-      "writeAvail.available && writeTargetConfigured && isAvailable(actionSurface.conclude)";
-    assert.throws(() => {
-      assert.match(
-        plantedConcludeMigrated,
-        /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.conclude\)/,
       );
     });
   });

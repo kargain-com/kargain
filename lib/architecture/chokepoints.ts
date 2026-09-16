@@ -98,29 +98,36 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "passport-verify",
     owner:
       "lib/passport/verify-passport.ts · hooks/use-verify-passport.ts · components/shell/tx-write-refusal.tsx",
-    rule: "Dual-VM VerifyPassport: sole owner plans EVM verifyPassport (one arg) / SVM VerifyPassport with five metas (config, asset, state, stake, verifier) derive-only — no PassportState freshness, no stake-data decode; no shared assembler with record-writing owners; panel migrates verify via txWriteAvailability + TxWriteRefusal; conclude keeps evm.ok until its unit",
+    rule: "Dual-VM VerifyPassport: sole owner plans EVM verifyPassport (one arg) / SVM VerifyPassport with five metas (config, asset, state, stake, verifier) derive-only — no PassportState freshness, no stake-data decode; no shared assembler with record-writing owners; panel migrates verify via txWriteAvailability + TxWriteRefusal; challenge family (open/withdraw/judge/conclude) also migrated",
     guardTests: ["verify-passport-policy.test.ts"],
   },
   {
     id: "passport-open-challenge",
     owner:
       "lib/passport/open-challenge.ts · lib/passport/challenge-bond-disclosure.ts · hooks/use-open-challenge.ts · components/shell/tx-write-refusal.tsx",
-    rule: "Dual-VM OpenChallenge: sole owner plans EVM open+[tid]+value / SVM OpenChallenge seven metas derive-only (challenger=payer one wallet); bond disclosure answers amountSource/requiresAmountKnownBeforeSubmit/deliverySentence without VM identity; SVM amount readable via PassportConfig keyed decode (no named-unread); SVM delivery must not promise Claims; panel migrates open (judge/withdraw also migrated)",
+    rule: "Dual-VM OpenChallenge: sole owner plans EVM open+[tid]+value / SVM OpenChallenge seven metas derive-only (challenger=payer one wallet); bond disclosure answers amountSource/requiresAmountKnownBeforeSubmit/deliverySentence without VM identity; SVM amount readable via PassportConfig keyed decode (no named-unread); SVM delivery must not promise Claims; panel migrates open (withdraw/judge/conclude also migrated)",
     guardTests: ["open-challenge-policy.test.ts"],
   },
   {
     id: "passport-withdraw-challenge",
     owner:
       "lib/passport/withdraw-challenge.ts · lib/passport/challenge-bond-disclosure.ts · hooks/use-withdraw-challenge.ts · components/shell/tx-write-refusal.tsx",
-    rule: "Dual-VM WithdrawChallenge: sole owner plans EVM withdraw+[tid] (no value) / SVM WithdrawChallenge eight metas with fresh PassportState→record PDA at recordCount (challenger=payer); undeliverableBondOutcome claimPossible true+Claims copy on EVM / false on SVM; panel migrates withdraw only — conclude keeps run+evm.ok",
+    rule: "Dual-VM WithdrawChallenge: sole owner plans EVM withdraw+[tid] (no value) / SVM WithdrawChallenge eight metas with fresh PassportState→record PDA at recordCount (challenger=payer); undeliverableBondOutcome claimPossible true+Claims copy on EVM / false on SVM; panel migrates withdraw via writeAvail+bondDisclosure.configured (challenge family complete)",
     guardTests: ["withdraw-challenge-policy.test.ts"],
   },
   {
     id: "passport-judge-challenge",
     owner:
       "lib/passport/judge-challenge.ts · hooks/use-judge-challenge.ts · components/shell/tx-write-refusal.tsx",
-    rule: "Dual-VM JudgeChallenge: sole owner plans EVM judge+[tid,outcome 0|1] (no value) / SVM JudgeChallenge nine metas with chain-resolved bond_recipient (Upheld→challenger decode, Rejected→forfeit decode — one arm); stake derive-only no decodeStakeAccount; unresolved recipient refuses by name; panel migrates judge via writeAvail+bondDisclosure.configured; conclude keeps run+evm.ok",
+    rule: "Dual-VM JudgeChallenge: sole owner plans EVM judge+[tid,outcome 0|1] (no value) / SVM JudgeChallenge nine metas with chain-resolved bond_recipient (Upheld→challenger decode, Rejected→forfeit decode — one arm); stake derive-only no decodeStakeAccount; unresolved recipient refuses by name; panel migrates judge via writeAvail+bondDisclosure.configured (challenge family complete)",
     guardTests: ["judge-challenge-policy.test.ts"],
+  },
+  {
+    id: "passport-conclude-challenge",
+    owner:
+      "lib/passport/conclude-challenge.ts · hooks/use-conclude-challenge.ts · components/shell/tx-write-refusal.tsx",
+    rule: "Dual-VM ConcludeChallenge: sole owner plans EVM conclude+[tid] (no value) / SVM ConcludeChallenge six metas with forfeit-only bond_recipient from PassportConfig decode; permissionless (payer READONLY_SIGNER only — no judge/stake); unresolved recipient refuses by name; panel migrates conclude via writeAvail+bondDisclosure.configured; legacy panel run helper deleted",
+    guardTests: ["conclude-challenge-policy.test.ts"],
   },
   {
     id: "active-verifier-fact",

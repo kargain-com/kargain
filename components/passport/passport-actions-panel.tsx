@@ -22,6 +22,7 @@ import { useVerifyPassport } from "@/hooks/use-verify-passport";
 import { useChallengeBondAmount } from "@/hooks/use-challenge-bond-amount";
 import { useOpenChallenge } from "@/hooks/use-open-challenge";
 import { useJudgeChallenge } from "@/hooks/use-judge-challenge";
+import { useConcludeChallenge } from "@/hooks/use-conclude-challenge";
 import { useWithdrawChallenge } from "@/hooks/use-withdraw-challenge";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useNow } from "@/hooks/use-now";
@@ -70,7 +71,6 @@ import { writeOutcomeHasClaimRecipient } from "@/lib/web3/write-outcome";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { usePassportCommerceFacts } from "@/hooks/use-passport-commerce-facts";
-import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 import { txWriteAvailability } from "@/lib/web3/tx-write-availability";
 
 type Props = {
@@ -130,7 +130,6 @@ export function PassportActionsPanel({
     account.status === "connected" ? account.address : undefined;
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const { signMessageAsync } = useSignMessage();
-  const { writeContractAsync, isPending } = useEvmWriteContract();
   const {
     appendPassportRecord,
     isPending: appendPending,
@@ -155,6 +154,10 @@ export function PassportActionsPanel({
     judgeChallenge,
     isPending: judgeChallengePending,
   } = useJudgeChallenge();
+  const {
+    concludeChallenge,
+    isPending: concludeChallengePending,
+  } = useConcludeChallenge();
   const {
     withdrawChallenge,
     isPending: withdrawChallengePending,
@@ -295,24 +298,6 @@ export function PassportActionsPanel({
     listingActive: Boolean(listingActive),
   });
   const exclusionCopy = actionSurface.challenge.exclusionCopy;
-
-  const run = useCallback(
-    async (
-      fn: () => Promise<`0x${string}`>,
-      success: string,
-      claimSuccess?: string,
-    ) => {
-      if (!passport) return;
-      const result = await runTx(fn);
-      if (!result) return;
-      if (claimSuccess && address && writeOutcomeHasClaimRecipient(result, address)) {
-        setMessage(claimSuccess);
-      } else {
-        setMessage(success);
-      }
-    },
-    [address, passport, runTx],
-  );
 
   const resolveRecordEvidenceCid = useCallback(
     async (file: File | null, paste: string): Promise<string> => {
@@ -592,14 +577,33 @@ export function PassportActionsPanel({
     ],
   );
 
+  const submitConclude = useCallback(async () => {
+    if (!writeTargetConfigured || !bondDisclosure.configured) return;
+    const result = await runTx(() =>
+      concludeChallenge({ chainId, tokenId }),
+    );
+    if (result) {
+      setMessage(
+        "Challenge concluded. Verification lapsed — a fresh inspection restores it.",
+      );
+    }
+  }, [
+    bondDisclosure.configured,
+    chainId,
+    concludeChallenge,
+    runTx,
+    tokenId,
+    writeTargetConfigured,
+  ]);
+
   const actionsBusy =
-    isPending ||
     appendPending ||
     reportPending ||
     attestationPending ||
     verifyPending ||
     openChallengePending ||
     judgeChallengePending ||
+    concludeChallengePending ||
     withdrawChallengePending ||
     isUploadingEvidence ||
     phase !== "idle";
@@ -843,7 +847,10 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {passport && evm.ok && isAvailable(actionSurface.conclude) && (
+      {writeAvail.available &&
+        writeTargetConfigured &&
+        bondDisclosure.configured &&
+        isAvailable(actionSurface.conclude) && (
         <div className="space-y-2">
           <p className="text-xs text-text-secondary">
             {actionSurface.challenge.terminals.expired.concludeCopy}
@@ -853,19 +860,7 @@ export function PassportActionsPanel({
             variant="outline"
             className="w-full"
             disabled={actionsBusy}
-            onClick={() =>
-              void run(
-                () =>
-                  writeContractAsync({
-                    address: passport!,
-                    abi: KarPassportAbi,
-                    functionName: "conclude",
-                    args: [tid],
-                    chainId: wc,
-                  }),
-                "Challenge concluded. Verification lapsed — a fresh inspection restores it.",
-              )
-            }
+            onClick={() => void submitConclude()}
           >
             Conclude challenge
           </Button>

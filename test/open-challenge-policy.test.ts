@@ -514,10 +514,14 @@ describe("openChallenge panel + ownership", () => {
     );
     assert.doesNotMatch(src, /functionName:\s*"judge"/);
     assert.match(src, /useJudgeChallenge|judgeChallenge/);
-    assert.match(
+    // U6.7.5 moved conclude off evm.ok + run.
+    assert.doesNotMatch(
       src,
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.conclude\)/,
     );
+    assert.doesNotMatch(src, /functionName:\s*"conclude"/);
+    assert.match(src, /useConcludeChallenge|concludeChallenge/);
+    assert.doesNotMatch(src, /const run = useCallback/);
 
     // Open chrome must not hardcode Claims — delivery comes from disclosure.
     const openBlock = src.match(
@@ -535,15 +539,6 @@ describe("openChallenge panel + ownership", () => {
       assert.doesNotMatch(
         plantedOpenEvmOk,
         /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.open\)/,
-      );
-    });
-
-    const plantedConcludeMigrated =
-      "writeAvail.available && writeTargetConfigured && isAvailable(actionSurface.conclude)";
-    assert.throws(() => {
-      assert.match(
-        plantedConcludeMigrated,
-        /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.conclude\)/,
       );
     });
   });

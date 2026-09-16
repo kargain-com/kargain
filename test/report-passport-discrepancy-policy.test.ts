@@ -611,12 +611,13 @@ describe("reportPassportDiscrepancy ownership + panel surface", () => {
     // U6.6 moved verifyPassport off writeContractAsync.
     assert.doesNotMatch(src, /functionName:\s*"verifyPassport"/);
     assert.match(src, /useVerifyPassport|verifyPassport/);
-    // U6.7.1 moved open; U6.7.4 moved judge; conclude remains.
+    // U6.7.1 moved open; U6.7.4 moved judge; U6.7.5 moved conclude.
     assert.doesNotMatch(src, /functionName:\s*"open"/);
     assert.match(src, /useOpenChallenge|openChallenge/);
     assert.doesNotMatch(src, /functionName:\s*"judge"/);
     assert.match(src, /useJudgeChallenge|judgeChallenge/);
-    assert.match(src, /functionName:\s*"conclude"/);
+    assert.doesNotMatch(src, /functionName:\s*"conclude"/);
+    assert.match(src, /useConcludeChallenge|concludeChallenge/);
     assert.equal(vmBranchViolationInSource(src), false);
 
     const discSubmit = src.match(

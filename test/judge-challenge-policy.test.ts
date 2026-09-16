@@ -647,7 +647,7 @@ describe("judgeChallenge stake + ownership", () => {
 });
 
 describe("judgeChallenge panel + ownership", () => {
-  it("panel migrates judge via writeAvail + disclosure + owner; conclude stays on evm.ok + run", () => {
+  it("panel migrates judge via writeAvail + disclosure + owner; conclude via dual-VM owner", () => {
     const src = panelSource();
     assert.match(src, /useJudgeChallenge|judgeChallenge/);
     assert.doesNotMatch(src, /functionName:\s*"judge"/);
@@ -661,12 +661,14 @@ describe("judgeChallenge panel + ownership", () => {
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.judge\)/,
     );
 
-    assert.match(
+    // U6.7.5 moved conclude; legacy run deleted.
+    assert.doesNotMatch(
       src,
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.conclude\)/,
     );
-    assert.match(src, /functionName:\s*"conclude"/);
-    assert.match(src, /const run = useCallback/);
+    assert.doesNotMatch(src, /functionName:\s*"conclude"/);
+    assert.match(src, /useConcludeChallenge|concludeChallenge/);
+    assert.doesNotMatch(src, /const run = useCallback/);
 
     assert.match(src, /submitJudge/);
     assert.match(src, /outcome:\s*0|submitJudge\(\s*0/);

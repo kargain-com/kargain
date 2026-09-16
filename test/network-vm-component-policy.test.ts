@@ -56,6 +56,8 @@ export const VM_BRANCH_ALLOWLIST = [
   "lib/passport/withdraw-challenge.ts",
   // U6.7.4 JudgeChallenge write owner — chain-resolved bond recipient; panels stay blind.
   "lib/passport/judge-challenge.ts",
+  // U6.7.5 ConcludeChallenge write owner — forfeit-only recipient; panels stay blind.
+  "lib/passport/conclude-challenge.ts",
   // U6.2 verification-fee write owner + surface/hub admit — panels stay blind.
   "lib/verifier/set-verification-fee.ts",
   "lib/verifier/verification-fee-surface.ts",
