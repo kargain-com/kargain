@@ -598,7 +598,7 @@ describe("reportPassportDiscrepancy ownership + panel surface", () => {
     assert.doesNotMatch(src, /mplCoreProgramId/);
   });
 
-  it("panel migrates discrepancy; leaves challenge; attestation via dual-VM owner; no if(vm)", () => {
+  it("panel migrates discrepancy; leaves challenge; verify + attestation via dual-VM owners; no if(vm)", () => {
     const src = panelSource();
     assert.match(src, /useReportPassportDiscrepancy|reportPassportDiscrepancy/);
     assert.match(src, /preparePassportRecordWrite/);
@@ -608,7 +608,11 @@ describe("reportPassportDiscrepancy ownership + panel surface", () => {
     // Attestation migrated in U6.5 — no inline appendAttestation ABI path.
     assert.doesNotMatch(src, /functionName:\s*"appendAttestation"/);
     assert.match(src, /useAppendPassportAttestation|appendPassportAttestation/);
-    assert.match(src, /functionName:\s*"verifyPassport"/);
+    // U6.6 moved verifyPassport off writeContractAsync.
+    assert.doesNotMatch(src, /functionName:\s*"verifyPassport"/);
+    assert.match(src, /useVerifyPassport|verifyPassport/);
+    assert.match(src, /functionName:\s*"open"/);
+    assert.match(src, /functionName:\s*"judge"/);
     assert.equal(vmBranchViolationInSource(src), false);
 
     const discSubmit = src.match(

@@ -18,6 +18,7 @@ import { useActiveVerifierFact } from "@/hooks/use-active-verifier-fact";
 import { useAppendPassportAttestation } from "@/hooks/use-append-passport-attestation";
 import { useAppendPassportRecord } from "@/hooks/use-append-passport-record";
 import { useReportPassportDiscrepancy } from "@/hooks/use-report-passport-discrepancy";
+import { useVerifyPassport } from "@/hooks/use-verify-passport";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useNow } from "@/hooks/use-now";
 import {
@@ -137,6 +138,10 @@ export function PassportActionsPanel({
     appendPassportAttestation,
     isPending: attestationPending,
   } = useAppendPassportAttestation();
+  const {
+    verifyPassport,
+    isPending: verifyPending,
+  } = useVerifyPassport();
   const { isActiveVerifier } = useActiveVerifierFact({ chainId });
   const writeAvail = txWriteAvailability(account, chainId);
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
@@ -501,11 +506,22 @@ export function PassportActionsPanel({
     writeTargetConfigured,
   ]);
 
+  const submitVerify = useCallback(async () => {
+    if (!writeTargetConfigured) return;
+    const result = await runTx(() =>
+      verifyPassport({ chainId, tokenId }),
+    );
+    if (result) {
+      setMessage("Passport verified.");
+    }
+  }, [chainId, runTx, tokenId, verifyPassport, writeTargetConfigured]);
+
   const actionsBusy =
     isPending ||
     appendPending ||
     reportPending ||
     attestationPending ||
+    verifyPending ||
     isUploadingEvidence ||
     phase !== "idle";
 
@@ -585,7 +601,9 @@ export function PassportActionsPanel({
         </p>
       )}
 
-      {passport && evm.ok && isAvailable(actionSurface.verify) && (
+      {writeAvail.available &&
+        writeTargetConfigured &&
+        isAvailable(actionSurface.verify) && (
         <div className="space-y-3">
           <MetadataDiffPanel
             chainId={chainId}
@@ -599,19 +617,7 @@ export function PassportActionsPanel({
             type="button"
             className="w-full"
             disabled={actionsBusy}
-            onClick={() =>
-              void run(
-                () =>
-                  writeContractAsync({
-                    address: passport,
-                    abi: KarPassportAbi,
-                    functionName: "verifyPassport",
-                    args: [tid],
-                    chainId: wc,
-                  }),
-                "Passport verified.",
-              )
-            }
+            onClick={() => void submitVerify()}
           >
             Verify passport
           </Button>

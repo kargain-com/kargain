@@ -95,6 +95,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["append-passport-attestation-policy.test.ts"],
   },
   {
+    id: "passport-verify",
+    owner:
+      "lib/passport/verify-passport.ts · hooks/use-verify-passport.ts · components/shell/tx-write-refusal.tsx",
+    rule: "Dual-VM VerifyPassport: sole owner plans EVM verifyPassport (one arg) / SVM VerifyPassport with five metas (config, asset, state, stake, verifier) derive-only — no PassportState freshness, no stake-data decode; no shared assembler with record-writing owners; panel migrates verify only via txWriteAvailability + TxWriteRefusal; challenge open/judge keep evm.ok",
+    guardTests: ["verify-passport-policy.test.ts"],
+  },
+  {
     id: "active-verifier-fact",
     owner:
       "lib/verifier/active-verifier-fact.ts · hooks/use-active-verifier-fact.ts · lib/svm/decode-account-state.ts",

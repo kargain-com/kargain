@@ -626,7 +626,7 @@ describe("appendPassportAttestation ownership + panel surface", () => {
     assert.doesNotMatch(src, /mplCoreProgramId/);
   });
 
-  it("panel migrates attestation via writeAvail + prep; leaves challenge; no if(vm)", () => {
+  it("panel migrates attestation via writeAvail + prep; verify via dual-VM owner; leaves challenge; no if(vm)", () => {
     const src = panelSource();
     assert.match(src, /useAppendPassportAttestation|appendPassportAttestation/);
     assert.match(src, /useActiveVerifierFact/);
@@ -634,8 +634,11 @@ describe("appendPassportAttestation ownership + panel surface", () => {
     assert.match(src, /TxWriteRefusal/);
     assert.match(src, /txWriteAvailability/);
     assert.doesNotMatch(src, /functionName:\s*"appendAttestation"/);
-    // Challenge / verify still use writeContractAsync.
-    assert.match(src, /functionName:\s*"verifyPassport"/);
+    // U6.6 moved verifyPassport off writeContractAsync; challenge remains.
+    assert.doesNotMatch(src, /functionName:\s*"verifyPassport"/);
+    assert.match(src, /useVerifyPassport|verifyPassport/);
+    assert.match(src, /functionName:\s*"open"/);
+    assert.match(src, /functionName:\s*"judge"/);
     assert.equal(vmBranchViolationInSource(src), false);
 
     const attSubmit = src.match(

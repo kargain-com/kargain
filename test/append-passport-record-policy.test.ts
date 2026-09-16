@@ -580,12 +580,16 @@ describe("appendPassportRecord ownership + panel surface", () => {
     assert.match(src, /TxWriteRefusal/);
     assert.match(src, /txWriteAvailability/);
     assert.doesNotMatch(src, /functionName:\s*"appendRecord"/);
-    // U6.4 moved reportDiscrepancy off writeContractAsync; attestation/challenge remain.
+    // U6.4 moved reportDiscrepancy off writeContractAsync; challenge remains.
     assert.doesNotMatch(src, /functionName:\s*"reportDiscrepancy"/);
-    assert.match(src, /functionName:\s*"verifyPassport"/);
+    // U6.6 moved verifyPassport off writeContractAsync.
+    assert.doesNotMatch(src, /functionName:\s*"verifyPassport"/);
+    assert.match(src, /useVerifyPassport|verifyPassport/);
     // Attestation migrated in U6.5.
     assert.doesNotMatch(src, /functionName:\s*"appendAttestation"/);
     assert.match(src, /useAppendPassportAttestation|appendPassportAttestation/);
+    assert.match(src, /functionName:\s*"open"/);
+    assert.match(src, /functionName:\s*"judge"/);
     assert.equal(vmBranchViolationInSource(src), false);
 
 
