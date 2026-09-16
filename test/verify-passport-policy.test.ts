@@ -50,6 +50,15 @@ const HOOK_REL = "hooks/use-verify-passport.ts";
 
 const MOCK_BLOCKHASH = getBase58Decoder().decode(new Uint8Array(32).fill(7));
 
+const ENTRYPOINT_REL = "svm/programs/kar-passport/src/entrypoint.rs";
+const EXPECTED_VERIFY_BINDINGS = [
+  "config",
+  "asset",
+  "state",
+  "stake",
+  "verifier",
+] as const;
+
 function ownerSource(): string {
   return readFileSync(path.join(ROOT, OWNER_REL), "utf8");
 }
@@ -60,6 +69,161 @@ function siblingSource(rel: string): string {
 
 function panelSource(): string {
   return readFileSync(path.join(ROOT, PANEL_REL), "utf8");
+}
+
+/**
+ * Locate `fn verify_passport` and return its brace-closed body.
+ * Local to this suite — measures processor account order from program source.
+ * Refuses by named cause when the function cannot be located or the body is empty.
+ */
+function locateVerifyPassportBody(source: string): string {
+  const sigIdx = source.indexOf("fn verify_passport");
+  if (sigIdx < 0) {
+    throw new Error("verify_passport_not_found");
+  }
+
+  const afterSig = source.slice(sigIdx);
+  const bodyOpen = afterSig.indexOf("{");
+  if (bodyOpen < 0) {
+    throw new Error("verify_passport_body_missing");
+  }
+
+  let depth = 0;
+  let end = -1;
+  for (let i = bodyOpen; i < afterSig.length; i++) {
+    const ch = afterSig[i]!;
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        end = i;
+        break;
+      }
+    }
+  }
+  if (end < 0) {
+    throw new Error("verify_passport_body_unclosed");
+  }
+
+  const body = afterSig.slice(bodyOpen, end + 1);
+  if (body.trim().length <= 2) {
+    throw new Error("verify_passport_body_empty");
+  }
+  return body;
+}
+
+function readVerifyPassportProcessorBody(): string {
+  const abs = path.join(ROOT, ENTRYPOINT_REL);
+  let source: string;
+  try {
+    source = readFileSync(abs, "utf8");
+  } catch (err) {
+    throw new Error(
+      `entrypoint_unreadable:${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  return locateVerifyPassportBody(source);
+}
+
+function extractNextAccountBindings(body: string): string[] {
+  const names: string[] = [];
+  const re = /let\s+(\w+)\s*=\s*next_account_info\s*\(\s*iter\s*\)\s*\?/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    names.push(m[1]!);
+  }
+  if (names.length < 5) {
+    throw new Error(
+      `binding_count_below_five:got_${names.length}:${names.join(",")}`,
+    );
+  }
+  return names;
+}
+
+function assertBindingOrder(bindings: readonly string[]): void {
+  assert.deepEqual(
+    [...bindings],
+    [...EXPECTED_VERIFY_BINDINGS],
+    "verify_passport next_account_info order",
+  );
+}
+
+function assertLastBindingIsSigner(
+  body: string,
+  bindings: readonly string[],
+): void {
+  const last = bindings[bindings.length - 1]!;
+  const signerRe = new RegExp(`\\b${last}\\.is_signer\\b`);
+  assert.match(
+    body,
+    signerRe,
+    `verify_passport requires last binding (${last}) to be a signer`,
+  );
+}
+
+function saveStateTargets(body: string): string[] {
+  const targets: string[] = [];
+  const re = /save_state\s*\(\s*(\w+)\s*,/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    targets.push(m[1]!);
+  }
+  return targets;
+}
+
+function assertPersistStateOnly(body: string): void {
+  const targets = saveStateTargets(body);
+  assert.ok(
+    targets.length >= 1,
+    "verify_passport must persist via save_state",
+  );
+  assert.ok(
+    targets.every((t) => t === "state"),
+    `verify_passport save_state must target state only; got ${targets.join(",")}`,
+  );
+  assert.doesNotMatch(
+    body,
+    /save_state\s*\(\s*(?:config|asset|stake)\s*,/,
+    "verify_passport must not persist config/asset/stake",
+  );
+}
+
+function assertNoAccountCreation(body: string): void {
+  assert.doesNotMatch(
+    body,
+    /\bsystem_program\b/,
+    "verify_passport must not invoke system_program",
+  );
+  assert.doesNotMatch(
+    body,
+    /\bcreate_account\b/,
+    "verify_passport must not create_account",
+  );
+  assert.doesNotMatch(
+    body,
+    /\binvoke\s*\(/,
+    "verify_passport must not CPI-create accounts",
+  );
+  assert.doesNotMatch(
+    body,
+    /\bpayer\b/,
+    "verify_passport must not take a payer",
+  );
+}
+
+/** Processor facts measured from `fn verify_passport` body text. */
+function assertVerifyPassportProcessorFacts(body: string): {
+  bindings: string[];
+  persistTarget: string;
+} {
+  const bindings = extractNextAccountBindings(body);
+  assert.equal(bindings.length, 5, "verify_passport must bind exactly five accounts");
+  assertBindingOrder(bindings);
+  assertLastBindingIsSigner(body, bindings);
+  assertPersistStateOnly(body);
+  assertNoAccountCreation(body);
+  const targets = saveStateTargets(body);
+  return { bindings, persistTarget: targets[0]! };
 }
 
 function assertEvmCallPin(
@@ -259,11 +423,57 @@ describe("verifyPassport SVM no stake-data decode", () => {
 });
 
 describe("verifyPassport SVM metas order", () => {
-  // Processor: entrypoint.rs verify_passport
-  // :317 config (READONLY — load_config :330), :318 asset (READONLY :332–337),
-  // :319 state (WRITABLE :331 load, :358–361 save), :320 stake (READONLY :339–345),
-  // :321 verifier (READONLY_SIGNER :325).
-  it("five accounts in processor order; state writable; verifier read-only signer", async () => {
+  // Processor facts measured from entrypoint.rs `fn verify_passport` — not line cites.
+  it("processor body binds five accounts; plan metas match roles; plants go through extraction", async () => {
+    const body = readVerifyPassportProcessorBody();
+    const liveFacts = assertVerifyPassportProcessorFacts(body);
+    assert.deepEqual(liveFacts.bindings, [...EXPECTED_VERIFY_BINDINGS]);
+    assert.equal(liveFacts.persistTarget, "state");
+
+    // Plant: transpose state ↔ stake bindings — order assertion red.
+    const plantedOrderBody = body
+      .replace(
+        /let\s+state\s*=\s*next_account_info\s*\(\s*iter\s*\)\s*\?/,
+        "let __tmp_state_binding = next_account_info(iter)?",
+      )
+      .replace(
+        /let\s+stake\s*=\s*next_account_info\s*\(\s*iter\s*\)\s*\?/,
+        "let state = next_account_info(iter)?",
+      )
+      .replace(
+        /let\s+__tmp_state_binding\s*=\s*next_account_info\s*\(\s*iter\s*\)\s*\?/,
+        "let stake = next_account_info(iter)?",
+      );
+    assert.throws(
+      () => {
+        assertVerifyPassportProcessorFacts(plantedOrderBody);
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof assert.AssertionError);
+        return true;
+      },
+      "planted transposed bindings must turn order assertion red",
+    );
+    // Live green after plant red.
+    assertVerifyPassportProcessorFacts(body);
+
+    // Plant: save_state targets stake — writable-set assertion red.
+    const plantedPersistBody = body.replace(
+      /save_state\s*\(\s*state\s*,/,
+      "save_state(stake,",
+    );
+    assert.throws(
+      () => {
+        assertVerifyPassportProcessorFacts(plantedPersistBody);
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof assert.AssertionError);
+        return true;
+      },
+      "planted save_state(stake) must turn persist assertion red",
+    );
+    assertVerifyPassportProcessorFacts(body);
+
     const namespaces = commercialSvmNamespaceIds();
     assert.ok(namespaces.length > 0);
     const ns = namespaces[0]!;
@@ -282,11 +492,12 @@ describe("verifyPassport SVM metas order", () => {
 
     const accounts = planned.plan.accounts;
     assert.equal(accounts.length, 5);
-    assert.equal(accounts[0]!.role, AccountRole.READONLY); // config :317/:330
-    assert.equal(accounts[1]!.role, AccountRole.READONLY); // asset :318/:332
-    assert.equal(accounts[2]!.role, AccountRole.WRITABLE); // state :319/:331
-    assert.equal(accounts[3]!.role, AccountRole.READONLY); // stake :320/:339
-    assert.equal(accounts[4]!.role, AccountRole.READONLY_SIGNER); // verifier :321/:325
+    // Same five positions the processor binds: config, asset, state, stake, verifier.
+    assert.equal(accounts[0]!.role, AccountRole.READONLY);
+    assert.equal(accounts[1]!.role, AccountRole.READONLY);
+    assert.equal(accounts[2]!.role, AccountRole.WRITABLE);
+    assert.equal(accounts[3]!.role, AccountRole.READONLY);
+    assert.equal(accounts[4]!.role, AccountRole.READONLY_SIGNER);
     assert.equal(accounts[4]!.address, verifier);
     assert.equal(planned.plan.programId, stack.karPassport);
     assert.equal(planned.plan.feePayer, verifier);
@@ -327,32 +538,6 @@ describe("verifyPassport SVM metas order", () => {
     assert.equal(accounts[2]!.address, expectedState.address);
     assert.equal(accounts[3]!.address, expectedStake.address);
 
-    const plantedWritableStake = {
-      ...accounts[3]!,
-      role: AccountRole.WRITABLE,
-    };
-    assert.throws(() => {
-      assert.equal(
-        plantedWritableStake.role,
-        AccountRole.READONLY,
-        "planted writable stake role",
-      );
-    });
-    assert.equal(accounts[3]!.role, AccountRole.READONLY);
-
-    const plantedWritableVerifier = {
-      ...accounts[4]!,
-      role: AccountRole.WRITABLE_SIGNER,
-    };
-    assert.throws(() => {
-      assert.equal(
-        plantedWritableVerifier.role,
-        AccountRole.READONLY_SIGNER,
-        "planted writable verifier signer",
-      );
-    });
-    assert.equal(accounts[4]!.role, AccountRole.READONLY_SIGNER);
-
     const plantedConstant = assembleVerifyPassportAccounts({
       config: accounts[0]!.address,
       asset: accounts[1]!.address,
@@ -363,6 +548,33 @@ describe("verifyPassport SVM metas order", () => {
     assert.throws(() => {
       assert.equal(plantedConstant[2]!.address, expectedState.address);
     });
+  });
+
+  it("extraction refuses when verify_passport is missing or under-bound", () => {
+    assert.throws(
+      () => extractNextAccountBindings("fn other() { Ok(()) }"),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.match(err.message, /binding_count_below_five/);
+        return true;
+      },
+    );
+
+    assert.throws(
+      () =>
+        locateVerifyPassportBody(
+          "pub fn something_else() -> ProgramResult { Ok(()) }\n",
+        ),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.equal(err.message, "verify_passport_not_found");
+        return true;
+      },
+    );
+
+    // Live entrypoint locates and yields five bindings.
+    const live = extractNextAccountBindings(readVerifyPassportProcessorBody());
+    assert.deepEqual(live, [...EXPECTED_VERIFY_BINDINGS]);
   });
 
   it("executeVerifyPassport SVM sends assembled metas via sendSvmInstruction", async () => {
