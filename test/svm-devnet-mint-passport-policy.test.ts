@@ -20,14 +20,6 @@ const ROOT = POLICY_SCAN_ROOT;
 const DOOR_REL = "scripts/svm-devnet-mint-passport.ts";
 const STATE_RS_REL = "svm/programs/kar-passport/src/state.rs";
 
-/**
- * Falsifiable objects before U9.0-fix (inert token-presence causes stripped): 7.
- * After: 10 — six non-refusal pins (data-provenance replaces hand-roll spelling)
- * + two refusal directions + offset pin.
- */
-export const FALSIFIABLE_DERIVATION_BEFORE = 7;
-export const FALSIFIABLE_DERIVATION_FLOOR = 10;
-
 const THROW_CAUSE_RE =
   /new\s+MintPassportRefusal\(\s*["']([a-z_]+)["']/g;
 
@@ -173,24 +165,6 @@ export function assertMintPassportDoorClass(
   );
 }
 
-/** Count falsifiable derivation objects (U9.0-fix floor vocabulary). */
-export function falsifiableDerivationCount(
-  facts: MintPassportDoorDerivation,
-): number {
-  return (
-    1 + // transactionInstructionNews
-    1 + // encodeSvmInstructionCalls
-    1 + // mintPassportVariantPins
-    1 + // deriveSvmPdaCalls
-    1 + // refusal declared→thrown
-    1 + // refusal thrown→declared
-    1 + // importsEvidenceWriter
-    1 + // importsOrNamesStaking
-    1 + // instructionDataFromEncode
-    1 // offset pin (asserted separately; counted in floor)
-  );
-}
-
 const FIXED_SIZE_VOCAB: Record<string, number> = {
   u8: 1,
   u16: 2,
@@ -292,21 +266,10 @@ describe("svm-devnet-mint-passport door policy", () => {
     assert.equal(MINT_PASSPORT_VARIANT, "MintPassport");
   });
 
-  it("live door derives a clean class with falsifiable floor 10", () => {
+  it("live door derives a clean class", () => {
     const source = readFileSync(join(ROOT, DOOR_REL), "utf8");
     const facts = deriveMintPassportDoorFacts(source);
     assertMintPassportDoorClass(facts);
-    const compared = falsifiableDerivationCount(facts);
-    assert.equal(
-      FALSIFIABLE_DERIVATION_BEFORE,
-      7,
-      "before U9.0-fix falsifiable count stays documented as 7",
-    );
-    assert.ok(
-      compared >= FALSIFIABLE_DERIVATION_FLOOR,
-      `falsifiable derivation compared ${compared}; floor is ${FALSIFIABLE_DERIVATION_FLOOR}`,
-    );
-    assert.equal(compared, FALSIFIABLE_DERIVATION_FLOOR);
   });
 
   it("empty derivation is red on one-instruction", () => {
