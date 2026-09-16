@@ -729,26 +729,27 @@ describe("verifyPassport ownership + panel surface + neighbours", () => {
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.verify\)/,
     );
 
-    // Open migrated by U6.7.1 — no longer gated on evm.ok (open-challenge-policy owns that pin).
+    // Open + withdraw migrated — no longer gated on evm.ok.
     assert.doesNotMatch(
       src,
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.open\)/,
     );
-    // Remaining challenge neighbours untouched — still gate on evm.ok.
+    assert.doesNotMatch(
+      src,
+      /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.withdraw\)/,
+    );
+    assert.doesNotMatch(src, /functionName:\s*"withdraw"/);
+    assert.match(src, /useWithdrawChallenge|withdrawChallenge/);
+    // Judge / conclude remain on evm.ok + run until their units.
     assert.match(
       src,
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.judge\)/,
     );
     assert.match(
       src,
-      /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.withdraw\)/,
-    );
-    assert.match(
-      src,
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.conclude\)/,
     );
     assert.match(src, /functionName:\s*"judge"/);
-    assert.match(src, /functionName:\s*"withdraw"/);
     assert.match(src, /functionName:\s*"conclude"/);
 
     assert.equal(vmBranchViolationInSource(src), false);

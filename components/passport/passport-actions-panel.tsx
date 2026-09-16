@@ -20,6 +20,7 @@ import { useAppendPassportRecord } from "@/hooks/use-append-passport-record";
 import { useReportPassportDiscrepancy } from "@/hooks/use-report-passport-discrepancy";
 import { useVerifyPassport } from "@/hooks/use-verify-passport";
 import { useOpenChallenge } from "@/hooks/use-open-challenge";
+import { useWithdrawChallenge } from "@/hooks/use-withdraw-challenge";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useNow } from "@/hooks/use-now";
 import {
@@ -148,6 +149,10 @@ export function PassportActionsPanel({
     openChallenge,
     isPending: openChallengePending,
   } = useOpenChallenge();
+  const {
+    withdrawChallenge,
+    isPending: withdrawChallengePending,
+  } = useWithdrawChallenge();
   const { isActiveVerifier } = useActiveVerifierFact({ chainId });
   const writeAvail = txWriteAvailability(account, chainId);
   const bondDisclosure = challengeBondDisclosure(chainId);
@@ -540,6 +545,32 @@ export function PassportActionsPanel({
     writeTargetConfigured,
   ]);
 
+  const submitWithdraw = useCallback(async () => {
+    if (!writeTargetConfigured || !bondDisclosure.configured) return;
+    const result = await runTx(() =>
+      withdrawChallenge({ chainId, tokenId }),
+    );
+    if (!result) return;
+    const undeliverable = bondDisclosure.undeliverableBondOutcome;
+    if (
+      undeliverable.claimPossible &&
+      sessionAddress &&
+      writeOutcomeHasClaimRecipient(result, sessionAddress)
+    ) {
+      setMessage(undeliverable.claimSuccessCopy);
+    } else {
+      setMessage(bondDisclosure.releasedSuccessCopy);
+    }
+  }, [
+    bondDisclosure,
+    chainId,
+    runTx,
+    sessionAddress,
+    tokenId,
+    withdrawChallenge,
+    writeTargetConfigured,
+  ]);
+
   const actionsBusy =
     isPending ||
     appendPending ||
@@ -547,6 +578,7 @@ export function PassportActionsPanel({
     attestationPending ||
     verifyPending ||
     openChallengePending ||
+    withdrawChallengePending ||
     isUploadingEvidence ||
     phase !== "idle";
 
@@ -782,7 +814,9 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {passport && evm.ok && isAvailable(actionSurface.withdraw) && (
+      {writeAvail.available &&
+        writeTargetConfigured &&
+        isAvailable(actionSurface.withdraw) && (
         <div className="space-y-2">
           <p className="text-xs text-text-secondary">
             {actionSurface.challenge.terminals.withdrawn.withdrawCopy}
@@ -792,20 +826,7 @@ export function PassportActionsPanel({
             variant="secondary"
             className="w-full"
             disabled={actionsBusy}
-            onClick={() =>
-              void run(
-                () =>
-                  writeContractAsync({
-                    address: passport!,
-                    abi: KarPassportAbi,
-                    functionName: "withdraw",
-                    args: [tid],
-                    chainId: wc,
-                  }),
-                "Challenge withdrawn. Your deposit was released.",
-                "Challenge withdrawn. Your deposit could not be delivered and is waiting under Claims.",
-              )
-            }
+            onClick={() => void submitWithdraw()}
           >
             Withdraw my challenge
           </Button>

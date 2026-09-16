@@ -640,7 +640,8 @@ describe("appendPassportAttestation ownership + panel surface", () => {
     assert.doesNotMatch(src, /functionName:\s*"open"/);
     assert.match(src, /useOpenChallenge|openChallenge/);
     assert.match(src, /functionName:\s*"judge"/);
-    assert.match(src, /functionName:\s*"withdraw"/);
+    assert.doesNotMatch(src, /functionName:\s*"withdraw"/);
+    assert.match(src, /useWithdrawChallenge|withdrawChallenge/);
     assert.match(src, /functionName:\s*"conclude"/);
     assert.equal(vmBranchViolationInSource(src), false);
 

@@ -98,7 +98,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "passport-verify",
     owner:
       "lib/passport/verify-passport.ts · hooks/use-verify-passport.ts · components/shell/tx-write-refusal.tsx",
-    rule: "Dual-VM VerifyPassport: sole owner plans EVM verifyPassport (one arg) / SVM VerifyPassport with five metas (config, asset, state, stake, verifier) derive-only — no PassportState freshness, no stake-data decode; no shared assembler with record-writing owners; panel migrates verify via txWriteAvailability + TxWriteRefusal; challenge withdraw/judge/conclude keep evm.ok until their units",
+    rule: "Dual-VM VerifyPassport: sole owner plans EVM verifyPassport (one arg) / SVM VerifyPassport with five metas (config, asset, state, stake, verifier) derive-only — no PassportState freshness, no stake-data decode; no shared assembler with record-writing owners; panel migrates verify via txWriteAvailability + TxWriteRefusal; challenge judge/conclude keep evm.ok until their units",
     guardTests: ["verify-passport-policy.test.ts"],
   },
   {
@@ -107,6 +107,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "lib/passport/open-challenge.ts · lib/passport/challenge-bond-disclosure.ts · hooks/use-open-challenge.ts · components/shell/tx-write-refusal.tsx",
     rule: "Dual-VM OpenChallenge: sole owner plans EVM open+[tid]+value / SVM OpenChallenge seven metas derive-only (challenger=payer one wallet); bond disclosure answers amountSource/requiresAmountKnownBeforeSubmit/deliverySentence without VM identity; SVM amount named unread until PassportConfig; SVM delivery must not promise Claims; panel migrates open only",
     guardTests: ["open-challenge-policy.test.ts"],
+  },
+  {
+    id: "passport-withdraw-challenge",
+    owner:
+      "lib/passport/withdraw-challenge.ts · lib/passport/challenge-bond-disclosure.ts · hooks/use-withdraw-challenge.ts · components/shell/tx-write-refusal.tsx",
+    rule: "Dual-VM WithdrawChallenge: sole owner plans EVM withdraw+[tid] (no value) / SVM WithdrawChallenge eight metas with fresh PassportState→record PDA at recordCount (challenger=payer); undeliverableBondOutcome claimPossible true+Claims copy on EVM / false on SVM; panel migrates withdraw only — judge/conclude keep run+evm.ok",
+    guardTests: ["withdraw-challenge-policy.test.ts"],
   },
   {
     id: "active-verifier-fact",

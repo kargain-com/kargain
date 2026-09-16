@@ -495,10 +495,13 @@ describe("openChallenge panel + ownership", () => {
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.open\)/,
     );
 
-    assert.match(
+    // Withdraw migrated by U6.7.2 — no longer gated on evm.ok.
+    assert.doesNotMatch(
       src,
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.withdraw\)/,
     );
+    assert.doesNotMatch(src, /functionName:\s*"withdraw"/);
+    assert.match(src, /useWithdrawChallenge|withdrawChallenge/);
     assert.match(
       src,
       /passport\s*&&\s*evm\.ok\s*&&\s*isAvailable\(actionSurface\.judge\)/,

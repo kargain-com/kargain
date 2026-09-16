@@ -52,6 +52,8 @@ export const VM_BRANCH_ALLOWLIST = [
   // U6.7.1 OpenChallenge write owner + bond disclosure — panels stay blind.
   "lib/passport/open-challenge.ts",
   "lib/passport/challenge-bond-disclosure.ts",
+  // U6.7.2 WithdrawChallenge write owner — panels stay blind (disclosure shared).
+  "lib/passport/withdraw-challenge.ts",
   // U6.2 verification-fee write owner + surface/hub admit — panels stay blind.
   "lib/verifier/set-verification-fee.ts",
   "lib/verifier/verification-fee-surface.ts",
