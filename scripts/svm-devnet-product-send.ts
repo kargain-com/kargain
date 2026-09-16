@@ -1,5 +1,5 @@
 /**
- * U9.1 — headless product SetPassportUri send on Devnet.
+ * U9.1 / U9.1-fix — headless product SetPassportUri send on Devnet.
  *
  * Drives {@link executeSetPassportUri} only. Does not encode, derive PDAs,
  * assemble TransactionInstruction, or call sendSvmInstruction. A node
@@ -44,6 +44,7 @@ const require = createRequire(path.resolve(__dirname, "../svm/lab/package.json")
 const {
   Connection,
   Keypair,
+  PublicKey,
   VersionedTransaction,
 } = require("@solana/web3.js") as typeof import("@solana/web3.js");
 
@@ -58,6 +59,8 @@ const SVM_DEVNET_NAMESPACE = 2_000_040_168;
 export const EVM_ARM_UNREACHABLE = "evm_arm_unreachable" as const;
 export const WRONG_WALLET_STANDARD_CHAIN =
   "wrong_wallet_standard_chain" as const;
+export const CONFIRMED_SLOT_ABSENT = "confirmed_slot_absent" as const;
+export const WIRE_PLAN_MISMATCH = "wire_plan_mismatch" as const;
 
 /** Projection lag observer — not a send failure when timed out. */
 export const PROJECTION_POLL_TIMEOUT_MS = 120_000;
@@ -74,6 +77,18 @@ export type ProductSendProjectionOutcome =
       kind: "projection_not_observed_within_timeout";
       elapsedSeconds: number;
     };
+
+export type ProductSendPlanSlice = {
+  programId: string;
+  data: Uint8Array;
+  accounts: readonly { address: string; role: AccountRole }[];
+  feePayer: string;
+};
+
+/** Port that satisfies {@link SvmSignAndSendPort} and records handed wire bytes. */
+export type NodeSvmSignAndSendPort = SvmSignAndSendPort & {
+  lastSignedTransaction: Uint8Array | null;
+};
 
 function arg(name: string): string {
   const i = process.argv.indexOf(name);
@@ -101,23 +116,85 @@ function roleLabel(role: AccountRole): string {
   return typeof name === "string" ? name : String(role);
 }
 
+function bytesContain(haystack: Uint8Array, needle: Uint8Array): boolean {
+  if (needle.byteLength === 0) return true;
+  if (needle.byteLength > haystack.byteLength) return false;
+  outer: for (let i = 0; i <= haystack.byteLength - needle.byteLength; i++) {
+    for (let j = 0; j < needle.byteLength; j++) {
+      if (haystack[i + j] !== needle[j]) continue outer;
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Confirmed status must carry a real slot — never invent 0 for absence.
+ */
+export function requireConfirmedSlot(
+  slot: number | bigint | null | undefined,
+): bigint {
+  if (slot == null) {
+    throw new Error(
+      `${CONFIRMED_SLOT_ABSENT}: confirmed signature has no slot`,
+    );
+  }
+  if (typeof slot === "bigint") return slot;
+  if (typeof slot === "number" && Number.isFinite(slot)) return BigInt(slot);
+  throw new Error(
+    `${CONFIRMED_SLOT_ABSENT}: confirmed signature has no slot`,
+  );
+}
+
+/**
+ * Containment proof: planned instruction data + pubkey encodings appear in
+ * the wire the port was handed. No message decompiler.
+ */
+export function assertWireContainsPlan(
+  wire: Uint8Array,
+  plan: ProductSendPlanSlice,
+): void {
+  if (!bytesContain(wire, plan.data)) {
+    throw new Error(
+      `${WIRE_PLAN_MISMATCH}: planned instruction data not found in wire`,
+    );
+  }
+  const programBytes = new PublicKey(plan.programId).toBytes();
+  if (!bytesContain(wire, programBytes)) {
+    throw new Error(
+      `${WIRE_PLAN_MISMATCH}: programId ${plan.programId} not found in wire`,
+    );
+  }
+  for (const meta of plan.accounts) {
+    const addrBytes = new PublicKey(meta.address).toBytes();
+    if (!bytesContain(wire, addrBytes)) {
+      throw new Error(
+        `${WIRE_PLAN_MISMATCH}: account ${meta.address} not found in wire`,
+      );
+    }
+  }
+}
+
 /**
  * Node implementation of {@link SvmSignAndSendPort}.
  * Refuses by name when Wallet Standard chain ≠ stack expectation.
+ * Records the transaction bytes handed in (unmodified) on the port object.
  */
 export function createNodeSvmSignAndSendPort(opts: {
   owner: InstanceType<typeof Keypair>;
   rpcUrl: string;
   expectedChain: WalletStandardChain;
-}): SvmSignAndSendPort {
+}): NodeSvmSignAndSendPort {
   const connection = new Connection(opts.rpcUrl, "confirmed");
-  return {
+  const port: NodeSvmSignAndSendPort = {
+    lastSignedTransaction: null,
     async signAndSendTransaction({ transaction, chain }) {
       if (chain !== opts.expectedChain) {
         throw new Error(
           `${WRONG_WALLET_STANDARD_CHAIN}: expected ${opts.expectedChain}, received ${chain}`,
         );
       }
+      port.lastSignedTransaction = new Uint8Array(transaction);
       const tx = VersionedTransaction.deserialize(Buffer.from(transaction));
       tx.sign([opts.owner]);
       const signature = await connection.sendRawTransaction(tx.serialize(), {
@@ -128,9 +205,10 @@ export function createNodeSvmSignAndSendPort(opts: {
       return new Uint8Array(bytes);
     },
   };
+  return port;
 }
 
-async function confirmSignatureSlot(
+export async function confirmSignatureSlot(
   rpcUrl: string,
   signature: string,
 ): Promise<bigint> {
@@ -144,7 +222,7 @@ async function confirmSignatureSlot(
     }
     const status = row?.confirmationStatus;
     if (status === "confirmed" || status === "finalized") {
-      return BigInt(row?.slot ?? 0);
+      return requireConfirmedSlot(row?.slot);
     }
     await new Promise((r) => setTimeout(r, CONFIRM_POLL_INTERVAL_MS));
   }
@@ -188,12 +266,7 @@ export async function pollProjectionTokenUri(opts: {
   };
 }
 
-function printSvmPlan(plan: {
-  programId: string;
-  data: Uint8Array;
-  accounts: readonly { address: string; role: AccountRole }[];
-  feePayer: string;
-}): void {
+function printSvmPlan(plan: ProductSendPlanSlice): void {
   console.log(`programId ${plan.programId}`);
   console.log(`instruction_data_hex ${toHex(plan.data)}`);
   for (let i = 0; i < plan.accounts.length; i++) {
@@ -270,6 +343,15 @@ async function main(): Promise<void> {
     svmPort,
     // fetchBlockhash omitted — product default (NEXT_PUBLIC_SOLANA_RPC_URL)
   });
+
+  const wire = svmPort.lastSignedTransaction;
+  if (wire == null) {
+    throw new Error(
+      `${WIRE_PLAN_MISMATCH}: port recorded no transaction bytes`,
+    );
+  }
+  assertWireContainsPlan(wire, planned.plan);
+  console.log("wire_matches_plan ok");
 
   const slot = await confirmSignatureSlot(rpc, signature);
   console.log(`signature ${signature}`);
