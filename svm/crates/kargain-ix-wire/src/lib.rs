@@ -145,6 +145,16 @@ pub(crate) fn field_fixed(name: &str, len: usize) -> FieldDecl {
     }
 }
 
+/// Terminal layout marker: remaining account bytes are structured but unmodelled.
+/// Must be last. Distinct from trailing-zero padding (PassportState / StakeAccount).
+pub(crate) fn field_remainder_unmodelled() -> FieldDecl {
+    FieldDecl {
+        name: "remainder".into(),
+        ty: "remainder_unmodelled".into(),
+        len: None,
+    }
+}
+
 pub(crate) fn b32(fill: u8) -> [u8; 32] {
     [fill; 32]
 }

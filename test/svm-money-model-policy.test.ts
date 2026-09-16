@@ -185,5 +185,23 @@ describe("svm-money-model-policy", () => {
         /dispute_deposit moves to the challenge PDA/.test(String(err.message)),
       "plant without SVM challenge-PDA delivery must fail that assertion",
     );
+
+    // Plant: strip only the no-claim-fallback clause — delivery can remain; no-claim must go red.
+    const noClaimPlant = live.replace(
+      /no native-push→claim fallback/,
+      "native-push may fall back to claim",
+    );
+    assert.notEqual(noClaimPlant, live, "no-claim plant must differ from live SPEC");
+    assert.ok(
+      svmDelivery.test(noClaimPlant),
+      "no-claim plant must leave challenge-PDA delivery intact",
+    );
+    assert.throws(
+      () => assertsVerificationChallengeBondVmNamed(noClaimPlant),
+      (err: unknown) =>
+        err instanceof assert.AssertionError &&
+        /no native-push→claim fallback/.test(String(err.message)),
+      "plant that strips no-claim-fallback must fail that assertion only",
+    );
   });
 });

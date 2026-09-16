@@ -56,7 +56,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-account-state-decode",
     owner: "lib/svm/decode-account-state.ts · svm/crates/kargain-ix-wire",
-    rule: "Commercial SVM account-state decode (PassportState + StakeAccount) only via decode-account-state; layout+goldens from Rust BorshSerialize padded to account space (committed state.manifest.json); cursor decode ignores trailing padding; StakeAccount product exposes active only; no hand offsets; no chrome amounts",
+    rule: "Commercial SVM account-state decode (PassportState + StakeAccount + ChallengeAccount + partial PassportConfig) only via decode-account-state; layout+goldens from Rust BorshSerialize (committed state.manifest.json); cursor decode; u128; remainder_unmodelled terminal (not padding); ChallengeAccount fully-consumed meaningful; PassportConfig deliberately partial (populated-vec golden); product surfaces base58 via encodeSvmPubkeyBytes; no hand offsets; no chrome amounts from StakeAccount",
     guardTests: ["svm-account-state-decode-policy.test.ts"],
   },
   {
@@ -105,7 +105,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "passport-open-challenge",
     owner:
       "lib/passport/open-challenge.ts · lib/passport/challenge-bond-disclosure.ts · hooks/use-open-challenge.ts · components/shell/tx-write-refusal.tsx",
-    rule: "Dual-VM OpenChallenge: sole owner plans EVM open+[tid]+value / SVM OpenChallenge seven metas derive-only (challenger=payer one wallet); bond disclosure answers amountSource/requiresAmountKnownBeforeSubmit/deliverySentence without VM identity; SVM amount named unread until PassportConfig; SVM delivery must not promise Claims; panel migrates open only",
+    rule: "Dual-VM OpenChallenge: sole owner plans EVM open+[tid]+value / SVM OpenChallenge seven metas derive-only (challenger=payer one wallet); bond disclosure answers amountSource/requiresAmountKnownBeforeSubmit/deliverySentence without VM identity; SVM amount readable via PassportConfig keyed decode (no named-unread); SVM delivery must not promise Claims; panel migrates open only",
     guardTests: ["open-challenge-policy.test.ts"],
   },
   {

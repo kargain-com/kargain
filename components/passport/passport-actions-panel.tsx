@@ -5,7 +5,7 @@ import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account"
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { useReadContract, useSignMessage } from "wagmi";
+import { useSignMessage } from "wagmi";
 
 import { EvidenceInput } from "@/components/passport/evidence-input";
 import { MetadataDiffPanel } from "@/components/passport/metadata-diff-panel";
@@ -19,6 +19,7 @@ import { useAppendPassportAttestation } from "@/hooks/use-append-passport-attest
 import { useAppendPassportRecord } from "@/hooks/use-append-passport-record";
 import { useReportPassportDiscrepancy } from "@/hooks/use-report-passport-discrepancy";
 import { useVerifyPassport } from "@/hooks/use-verify-passport";
+import { useChallengeBondAmount } from "@/hooks/use-challenge-bond-amount";
 import { useOpenChallenge } from "@/hooks/use-open-challenge";
 import { useWithdrawChallenge } from "@/hooks/use-withdraw-challenge";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
@@ -209,15 +210,10 @@ export function PassportActionsPanel({
       : [],
   });
 
-  const { data: disputeDepositRaw, isLoading: disputeDepositLoading } = useReadContract({
-    address: passport ?? undefined,
-    abi: KarPassportAbi,
-    functionName: "disputeDeposit",
-    chainId: wc,
-    query: { enabled: Boolean(passport) },
+  const { disputeDeposit, disputeDepositLoading } = useChallengeBondAmount({
+    chainId,
+    enabled: bondDisclosure.configured,
   });
-  const disputeDeposit =
-    disputeDepositRaw != null ? BigInt(disputeDepositRaw) : undefined;
 
   const { onChainOwner } = usePassportOnChainOwner(chainId, tokenId);
   const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, passportOwner);
@@ -701,8 +697,6 @@ export function PassportActionsPanel({
                   )}{" "}
                   deposit for the challenge window.{" "}
                 </>
-              ) : bondDisclosure.amountSource.status === "unread" ? (
-                <>{bondDisclosure.amountSource.message} </>
               ) : null}
               {bondDisclosure.deliverySentence}
             </p>

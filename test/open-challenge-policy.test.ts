@@ -13,7 +13,6 @@ import { AccountRole, getBase58Decoder } from "@solana/kit";
 
 import {
   challengeBondDisclosure,
-  CHALLENGE_BOND_SVM_DEPOSIT_UNREAD,
 } from "@/lib/passport/challenge-bond-disclosure";
 import {
   assembleOpenChallengeAccounts,
@@ -434,12 +433,13 @@ describe("openChallenge SVM metas order", () => {
 });
 
 describe("challenge bond disclosure", () => {
-  it("EVM requires amount known; SVM named unread and no Claims in delivery", () => {
+  it("EVM requires amount known; SVM amount readable via keyed config; no Claims in delivery", () => {
     const evm = challengeBondDisclosure(84532);
     assert.equal(evm.configured, true);
     if (!evm.configured) throw new Error("expected configured");
     assert.equal(evm.requiresAmountKnownBeforeSubmit, true);
     assert.equal(evm.amountSource.status, "readable");
+    assert.ok("passportAddress" in evm.amountSource);
     assert.match(evm.deliverySentence, /Claims/);
 
     const namespaces = commercialSvmNamespaceIds();
@@ -448,17 +448,19 @@ describe("challenge bond disclosure", () => {
     assert.equal(svm.configured, true);
     if (!svm.configured) throw new Error("expected configured");
     assert.equal(svm.requiresAmountKnownBeforeSubmit, false);
-    assert.equal(svm.amountSource.status, "unread");
-    if (svm.amountSource.status !== "unread") throw new Error("expected unread");
-    assert.equal(svm.amountSource.message, CHALLENGE_BOND_SVM_DEPOSIT_UNREAD);
-    assert.doesNotMatch(CHALLENGE_BOND_SVM_DEPOSIT_UNREAD, /^0$/);
+    assert.equal(svm.amountSource.status, "readable");
+    assert.ok(
+      "keyedConfig" in svm.amountSource,
+      "SVM amountSource must be config-backed readable",
+    );
     assert.doesNotMatch(svm.deliverySentence, /Claims/i);
-    assert.match(svm.deliverySentence, /directly/i);
+    assert.match(svm.deliverySentence, /your bond/i);
+    assert.doesNotMatch(svm.deliverySentence, /undeliverable native push/i);
   });
 
   it("planted Claims in SVM delivery is red; live disclosure source is green", () => {
     const src = disclosureSource();
-    assert.match(src, /CHALLENGE_BOND_SVM_DEPOSIT_UNREAD/);
+    assert.doesNotMatch(src, /CHALLENGE_BOND_SVM_DEPOSIT_UNREAD/);
     // Live SVM_DELIVERY constant must not mention Claims.
     const svmConst = src.match(
       /const SVM_DELIVERY\s*=\s*"([^"]+)"/,
@@ -485,6 +487,10 @@ describe("openChallenge panel + ownership", () => {
     assert.match(src, /challengeBondDisclosure/);
     assert.match(src, /requiresAmountKnownBeforeSubmit/);
     assert.doesNotMatch(src, /functionName:\s*"open"/);
+
+    assert.match(src, /useChallengeBondAmount/);
+    assert.doesNotMatch(src, /functionName:\s*"disputeDeposit"/);
+    assert.doesNotMatch(src, /amountSource\.status === "unread"/);
 
     assert.match(
       src,
