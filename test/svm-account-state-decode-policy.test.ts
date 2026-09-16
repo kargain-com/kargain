@@ -1,5 +1,5 @@
 /**
- * SVM account-state decode — TS cursor decoder vs committed Rust goldens (U7).
+ * SVM account-state decode — TS cursor decoder vs committed Rust goldens (U7 / U6.5).
  *
  * Goldens are authored solely by Rust BorshSerialize (`kargain-ix-wire` state
  * manifest). This suite never repairs or regenerates them.
@@ -14,8 +14,11 @@ import {
   bytesEqual,
   decodePassportState,
   decodePassportStateStrictFullyConsumedForTests,
+  decodeStakeAccount,
+  decodeStakeAccountStrictFullyConsumedForTests,
   hexToBytes,
   passportStateLayout,
+  stakeAccountLayout,
   stateManifestLayouts,
   type StateManifest,
 } from "@/lib/svm/decode-account-state";
@@ -29,12 +32,17 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MANIFEST_REL = "svm/crates/kargain-ix-wire/state.manifest.json";
 const DECODER_REL = "lib/svm/decode-account-state.ts";
 
-/** Running count of decodePassportState calls in this suite (report). */
+/** Running count of decodePassportState / decodeStakeAccount calls in this suite. */
 let DECODE_EXERCISED = 0;
 
-function decodeCounted(data: Uint8Array) {
+function decodePassportCounted(data: Uint8Array) {
   DECODE_EXERCISED += 1;
   return decodePassportState(data);
+}
+
+function decodeStakeCounted(data: Uint8Array) {
+  DECODE_EXERCISED += 1;
+  return decodeStakeAccount(data);
 }
 
 function loadManifest(): StateManifest {
@@ -44,17 +52,22 @@ function loadManifest(): StateManifest {
 }
 
 describe("svm account-state decode policy", () => {
-  it("manifest has PassportState only and matches module layout reader", () => {
+  it("manifest has PassportState + StakeAccount and matches module layout readers", () => {
     const committed = loadManifest();
-    assert.equal(committed.layouts.length, 1);
+    assert.equal(committed.layouts.length, 2);
     assert.equal(committed.layouts[0]!.id, "kar-passport/PassportState");
     assert.equal(committed.layouts[0]!.accountSpace, 256);
     assert.ok(committed.layouts[0]!.payloadLen < 256);
+    assert.equal(committed.layouts[1]!.id, "kar-pro-staking/StakeAccount");
+    assert.equal(committed.layouts[1]!.accountSpace, 128);
+    assert.ok(committed.layouts[1]!.payloadLen < 128);
 
     const layouts = stateManifestLayouts();
-    assert.equal(layouts.length, 1);
+    assert.equal(layouts.length, 2);
     assert.deepEqual(layouts[0], passportStateLayout());
+    assert.deepEqual(layouts[1], stakeAccountLayout());
     assert.equal(layouts[0]!.goldenHex.length, 512);
+    assert.equal(layouts[1]!.goldenHex.length, 256);
   });
 
   it("padded golden PassportState decodes; record_count matches sample", () => {
@@ -62,7 +75,7 @@ describe("svm account-state decode policy", () => {
     const golden = hexToBytes(layout.goldenHex);
     assert.equal(golden.length, layout.accountSpace);
 
-    const decoded = decodeCounted(golden);
+    const decoded = decodePassportCounted(golden);
     assert.equal(decoded.ok, true);
     if (!decoded.ok) return;
     assert.equal(decoded.bytesRead, layout.payloadLen);
@@ -84,10 +97,36 @@ describe("svm account-state decode policy", () => {
     );
   });
 
-  it("planted strict fully-consumed decoder refuses the padded golden (RED control)", () => {
+  it("padded golden StakeAccount decodes; product value is active only", () => {
+    const layout = stakeAccountLayout();
+    const golden = hexToBytes(layout.goldenHex);
+    assert.equal(golden.length, layout.accountSpace);
+
+    const decoded = decodeStakeCounted(golden);
+    assert.equal(decoded.ok, true);
+    if (!decoded.ok) return;
+    assert.equal(decoded.bytesRead, layout.payloadLen);
+    assert.ok(decoded.bytesRead < golden.length, "padding remains unread");
+    assert.equal(decoded.value.active, true);
+    // Product surface must not expose chrome amounts.
+    assert.equal(
+      Object.keys(decoded.value).sort().join(","),
+      "active",
+      "StakeAccountDecoded must expose only active",
+    );
+    assert.equal(
+      "amount" in decoded.value,
+      false,
+      "amount must not be on product decode",
+    );
+    assert.equal("unlock_at" in decoded.value, false);
+    assert.equal("verification_fee" in decoded.value, false);
+  });
+
+  it("planted strict fully-consumed decoder refuses the padded PassportState golden (RED control)", () => {
     const layout = passportStateLayout();
     const golden = hexToBytes(layout.goldenHex);
-    const cursor = decodeCounted(golden);
+    const cursor = decodePassportCounted(golden);
     assert.equal(cursor.ok, true, "cursor decode must accept padded account");
 
     const strict = decodePassportStateStrictFullyConsumedForTests(golden);
@@ -96,9 +135,25 @@ describe("svm account-state decode policy", () => {
     assert.equal(strict.cause, "malformed_field");
     assert.match(strict.detail, /trailing_bytes:/);
 
-    // Unpadded payload alone: strict succeeds (proves the plant targets padding).
     const payloadOnly = golden.subarray(0, layout.payloadLen);
     const strictPayload = decodePassportStateStrictFullyConsumedForTests(payloadOnly);
+    assert.equal(strictPayload.ok, true);
+  });
+
+  it("planted strict fully-consumed decoder refuses the padded StakeAccount golden (RED control)", () => {
+    const layout = stakeAccountLayout();
+    const golden = hexToBytes(layout.goldenHex);
+    const cursor = decodeStakeCounted(golden);
+    assert.equal(cursor.ok, true, "cursor decode must accept padded stake");
+
+    const strict = decodeStakeAccountStrictFullyConsumedForTests(golden);
+    assert.equal(strict.ok, false, "strict decoder must refuse trailing padding");
+    if (strict.ok) return;
+    assert.equal(strict.cause, "malformed_field");
+    assert.match(strict.detail, /trailing_bytes:/);
+
+    const payloadOnly = golden.subarray(0, layout.payloadLen);
+    const strictPayload = decodeStakeAccountStrictFullyConsumedForTests(payloadOnly);
     assert.equal(strictPayload.ok, true);
   });
 
@@ -107,7 +162,7 @@ describe("svm account-state decode policy", () => {
     const golden = hexToBytes(layout.goldenHex);
     const flipped = new Uint8Array(golden);
     flipped[0] = (flipped[0]! ^ 0xff) & 0xff;
-    const decoded = decodeCounted(flipped);
+    const decoded = decodePassportCounted(flipped);
     assert.equal(decoded.ok, false);
     if (decoded.ok) return;
     assert.equal(decoded.cause, "discriminator_mismatch");
@@ -117,7 +172,7 @@ describe("svm account-state decode policy", () => {
     const layout = passportStateLayout();
     const golden = hexToBytes(layout.goldenHex);
     const short = golden.subarray(0, 8);
-    const decoded = decodeCounted(short);
+    const decoded = decodePassportCounted(short);
     assert.equal(decoded.ok, false);
     if (decoded.ok) return;
     assert.equal(decoded.cause, "truncated");
@@ -140,7 +195,7 @@ describe("svm account-state decode policy", () => {
         rel.startsWith("hooks/")
       ) {
         if (
-          /decodePassportState|decode-account-state|getAccountInfo|fetchProductSvmAccountData/.test(
+          /decodePassportState|decodeStakeAccount|decode-account-state|getAccountInfo|fetchProductSvmAccountData/.test(
             text,
           )
         ) {
@@ -155,10 +210,9 @@ describe("svm account-state decode policy", () => {
 
   it("reports decode exercise count for the ship report", () => {
     assert.ok(
-      DECODE_EXERCISED >= 4,
-      `expected ≥4 decodePassportState exercises, got ${DECODE_EXERCISED}`,
+      DECODE_EXERCISED >= 6,
+      `expected ≥6 decode exercises, got ${DECODE_EXERCISED}`,
     );
-    // Visible in test output for the U7 report.
     console.log(`U7_DECODE_EXERCISED=${DECODE_EXERCISED}`);
   });
 });

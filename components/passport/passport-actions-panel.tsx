@@ -14,19 +14,17 @@ import { TxWriteRefusal } from "@/components/shell/tx-write-refusal";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useActiveVerifierFact } from "@/hooks/use-active-verifier-fact";
+import { useAppendPassportAttestation } from "@/hooks/use-append-passport-attestation";
 import { useAppendPassportRecord } from "@/hooks/use-append-passport-record";
 import { useReportPassportDiscrepancy } from "@/hooks/use-report-passport-discrepancy";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useNow } from "@/hooks/use-now";
-import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
 import {
   elevatedAdvisoryPanel,
   elevatedAdvisoryText,
 } from "@/lib/design/instrument-classes";
-import {
-  KarPassportAbi,
-  KarProStakingAbi,
-} from "@/lib/contracts/abis.generated";
+import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import { formatReturnCountdown } from "@/lib/marketplace/return-cooldown";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import { usePassportOnChainOwner } from "@/hooks/use-passport-on-chain-owner";
@@ -56,10 +54,7 @@ import { revealPassportRecordsTab } from "@/lib/passport/passport-tab-url";
 import { uploadEvidenceFile } from "@/lib/passport/upload-evidence";
 import type { PassportStatus, PonderUriHistoryEntry } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
-import {
-  karPassportAddress,
-  karProStakingAddress,
-} from "@/lib/web3/deployment-addresses";
+import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import {
   commercialActive,
   nativeUnitOf,
@@ -138,6 +133,11 @@ export function PassportActionsPanel({
     reportPassportDiscrepancy,
     isPending: reportPending,
   } = useReportPassportDiscrepancy();
+  const {
+    appendPassportAttestation,
+    isPending: attestationPending,
+  } = useAppendPassportAttestation();
+  const { isActiveVerifier } = useActiveVerifierFact({ chainId });
   const writeAvail = txWriteAvailability(account, chainId);
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const [clarificationText, setClarificationText] = useState("");
@@ -167,25 +167,8 @@ export function PassportActionsPanel({
   /** EVM hex address or any commercial stack (SVM program id) — no VM fork. */
   const writeTargetConfigured =
     passport != null || commercialActive(chainId) != null;
-  const staking = karProStakingAddress(chainId);
   const wc = wagmiChainId(chainId);
   const tid = BigInt(tokenId);
-
-  const verifierReads = useKeyedReadContracts({
-    contracts:
-      passport && staking && address
-        ? [
-            {
-              key: "isActiveVerifier" as const,
-              address: staking,
-              abi: KarProStakingAbi,
-              functionName: "isActiveVerifier",
-              args: [address],
-              chainId: wc,
-            },
-          ]
-        : [],
-  });
 
   const disputeReads = useKeyedReadContracts({
     contracts: passport
@@ -221,14 +204,6 @@ export function PassportActionsPanel({
 
   const { onChainOwner } = usePassportOnChainOwner(chainId, tokenId);
   const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, passportOwner);
-
-  const verifierEntry = verifierReads.entry("isActiveVerifier");
-  const isActiveVerifier: boolean | undefined =
-    verifierEntry?.status === "success"
-      ? verifierEntry.result === true
-      : address
-        ? undefined
-        : false;
 
   const isOwner = isOnChainNftOwner(sessionAddress, effectiveOwner);
   const holder = isPassportHolder({
@@ -320,38 +295,6 @@ export function PassportActionsPanel({
     },
     [address, passport, runTx],
   );
-
-  const resolveAttestationEvidence = useCallback(async (): Promise<string> => {
-    if (attestationEvidenceFile) {
-      if (!address) throw new Error("Connect your wallet to continue");
-      setIsUploadingEvidence(true);
-      try {
-        await ensureSiweSession({
-          address,
-          chainId,
-          signMessageAsync,
-        });
-        const providerArgs = {
-          account,
-          evmConnector: connector ?? undefined,
-          svmWallet,
-        };
-        return await uploadEvidenceFile(attestationEvidenceFile, providerArgs);
-      } finally {
-        setIsUploadingEvidence(false);
-      }
-    }
-    return attestationEvidencePaste.trim();
-  }, [
-    account,
-    address,
-    attestationEvidenceFile,
-    attestationEvidencePaste,
-    chainId,
-    connector,
-    signMessageAsync,
-    svmWallet,
-  ]);
 
   const resolveRecordEvidenceCid = useCallback(
     async (file: File | null, paste: string): Promise<string> => {
@@ -515,16 +458,27 @@ export function PassportActionsPanel({
 
   const submitAttestation = useCallback(async () => {
     const description = attestationText.trim();
-    if (!description || !passport) return;
+    if (!description || !writeTargetConfigured) return;
 
     const result = await runTx(async () => {
-      const evidenceCID = await resolveAttestationEvidence();
-      return writeContractAsync({
-        address: passport,
-        abi: KarPassportAbi,
-        functionName: "appendAttestation",
-        args: [tid, description, evidenceCID],
-        chainId: wc,
+      const prep = await preparePassportRecordWrite({
+        account,
+        targetChainId: chainId,
+        evidenceFile: attestationEvidenceFile,
+        signMessageAsync,
+      });
+      if (!prep.ok) {
+        throw new Error(passportRecordWritePrepRefusalMessage(prep));
+      }
+      const evidenceCid = await resolveRecordEvidenceCid(
+        attestationEvidenceFile,
+        attestationEvidencePaste,
+      );
+      return appendPassportAttestation({
+        chainId,
+        tokenId,
+        description,
+        evidenceCid,
       });
     });
     if (result) {
@@ -534,19 +488,24 @@ export function PassportActionsPanel({
       setMessage("Attestation appended.");
     }
   }, [
+    account,
+    appendPassportAttestation,
+    attestationEvidenceFile,
+    attestationEvidencePaste,
     attestationText,
-    passport,
-    resolveAttestationEvidence,
+    chainId,
+    resolveRecordEvidenceCid,
     runTx,
-    tid,
-    wc,
-    writeContractAsync,
+    signMessageAsync,
+    tokenId,
+    writeTargetConfigured,
   ]);
 
   const actionsBusy =
     isPending ||
     appendPending ||
     reportPending ||
+    attestationPending ||
     isUploadingEvidence ||
     phase !== "idle";
 
@@ -981,7 +940,9 @@ export function PassportActionsPanel({
         </div>
       )}
 
-      {passport && evm.ok && isAvailable(actionSurface.appendAttestation) && (
+      {writeAvail.available &&
+        writeTargetConfigured &&
+        isAvailable(actionSurface.appendAttestation) && (
         <div className="space-y-2 border-t border-border-default pt-4">
           <Label htmlFor="attestation-text">Verifier attestation</Label>
           <p className="text-xs text-text-secondary">

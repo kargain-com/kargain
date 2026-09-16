@@ -582,9 +582,12 @@ describe("appendPassportRecord ownership + panel surface", () => {
     assert.doesNotMatch(src, /functionName:\s*"appendRecord"/);
     // U6.4 moved reportDiscrepancy off writeContractAsync; attestation/challenge remain.
     assert.doesNotMatch(src, /functionName:\s*"reportDiscrepancy"/);
-    assert.match(src, /functionName:\s*"appendAttestation"/);
     assert.match(src, /functionName:\s*"verifyPassport"/);
+    // Attestation migrated in U6.5.
+    assert.doesNotMatch(src, /functionName:\s*"appendAttestation"/);
+    assert.match(src, /useAppendPassportAttestation|appendPassportAttestation/);
     assert.equal(vmBranchViolationInSource(src), false);
+
 
     // Append/clarification paths must not call ensureSiweSession inline.
     // Safer: submitOwnerRecord / submitClarification blocks lack ensureSiweSession.
@@ -599,8 +602,8 @@ describe("appendPassportRecord ownership + panel surface", () => {
     assert.doesNotMatch(ownerSubmit![0]!, /\bensureSiweSession\b/);
     assert.doesNotMatch(clarSubmit![0]!, /\bensureSiweSession\b/);
     assert.match(prepSource(), /\bensureSiweSession\b/);
-    // Attestation still has inline SIWE.
-    assert.match(src, /resolveAttestationEvidence[\s\S]*?ensureSiweSession/);
+    // Attestation also uses prep (U6.5) — no inline SIWE.
+    assert.doesNotMatch(src, /resolveAttestationEvidence/);
   });
 
   it("prep: SVM named none-required; EVM+file runs SIWE; paste skips SIWE", async () => {

@@ -1,14 +1,14 @@
 /**
  * Sole product decoder for commercial SVM account-state layouts needed to
- * assemble instructions (U7 scope law).
+ * assemble instructions or admission facts (U7 / U6.5).
  *
  * Layout + goldens come from Rust `BorshSerialize` via the committed
  * `svm/crates/kargain-ix-wire/state.manifest.json`. This module never authors
  * goldens. Cursor decode: leading borsh payload only — trailing account padding
  * is ignored (matches on-chain `deserialize(&mut cursor)`, not `try_from_slice`).
  *
- * Today: PassportState only (`record_count` seeds AppendRecord / ReportDiscrepancy /
- * AppendAttestation record PDAs). No chrome amounts.
+ * Layouts: PassportState (`record_count` for record PDAs) and StakeAccount
+ * (product exposes `active` only — no chrome amounts).
  */
 
 import stateManifest from "../../svm/crates/kargain-ix-wire/state.manifest.json" with {
@@ -74,6 +74,32 @@ export type DecodePassportStateResult =
   | DecodePassportStateOk
   | DecodePassportStateErr;
 
+/**
+ * Product StakeAccount decode — only `active` is exposed.
+ * amount / unlock_at / verification_fee stay undecoded for chrome.
+ */
+export type StakeAccountDecoded = {
+  active: boolean;
+};
+
+export type DecodeStakeAccountOk = {
+  ok: true;
+  value: StakeAccountDecoded;
+  layout: StateLayoutEntry;
+  /** Bytes consumed from the leading borsh payload (padding ignored). */
+  bytesRead: number;
+};
+
+export type DecodeStakeAccountErr = {
+  ok: false;
+  cause: DecodeAccountStateCause;
+  detail: string;
+};
+
+export type DecodeStakeAccountResult =
+  | DecodeStakeAccountOk
+  | DecodeStakeAccountErr;
+
 const MANIFEST = stateManifest as StateManifest;
 
 const LAYOUTS = new Map<string, StateLayoutEntry>(
@@ -81,6 +107,7 @@ const LAYOUTS = new Map<string, StateLayoutEntry>(
 );
 
 const PASSPORT_STATE_ID = "kar-passport/PassportState";
+const STAKE_ACCOUNT_ID = "kar-pro-staking/StakeAccount";
 
 export function stateManifestLayouts(): readonly StateLayoutEntry[] {
   return MANIFEST.layouts;
@@ -90,6 +117,14 @@ export function passportStateLayout(): StateLayoutEntry {
   const layout = LAYOUTS.get(PASSPORT_STATE_ID);
   if (!layout) {
     throw new Error(`state_manifest_missing:${PASSPORT_STATE_ID}`);
+  }
+  return layout;
+}
+
+export function stakeAccountLayout(): StateLayoutEntry {
+  const layout = LAYOUTS.get(STAKE_ACCOUNT_ID);
+  if (!layout) {
+    throw new Error(`state_manifest_missing:${STAKE_ACCOUNT_ID}`);
   }
   return layout;
 }
@@ -182,6 +217,75 @@ export function decodePassportStateStrictFullyConsumedForTests(
   data: Uint8Array,
 ): DecodePassportStateResult {
   const cursor = decodePassportState(data);
+  if (!cursor.ok) return cursor;
+  if (cursor.bytesRead !== data.length) {
+    return {
+      ok: false,
+      cause: "malformed_field",
+      detail: `trailing_bytes:${data.length - cursor.bytesRead}`,
+    };
+  }
+  return cursor;
+}
+
+/**
+ * Decode a StakeAccount for the active-verifier admission fact.
+ * Cursor decode ignores trailing padding. Product value is `{ active }` only.
+ */
+export function decodeStakeAccount(data: Uint8Array): DecodeStakeAccountResult {
+  const layout = LAYOUTS.get(STAKE_ACCOUNT_ID);
+  if (!layout) {
+    return {
+      ok: false,
+      cause: "unknown_layout",
+      detail: STAKE_ACCOUNT_ID,
+    };
+  }
+
+  const expectedDisc = hexToBytes(layout.discriminatorHex);
+  let offset = 0;
+  const fields: Record<string, unknown> = {};
+
+  for (const decl of layout.fields) {
+    const decoded = decodeField(data, offset, decl);
+    if (!decoded.ok) {
+      return {
+        ok: false,
+        cause: decoded.cause,
+        detail: `${decoded.cause}:${decl.name}:${decoded.detail}`,
+      };
+    }
+    fields[decl.name] = decoded.value;
+    offset = decoded.nextOffset;
+  }
+
+  const disc = fields.discriminator as Uint8Array;
+  if (!bytesEqual(disc, expectedDisc)) {
+    return {
+      ok: false,
+      cause: "discriminator_mismatch",
+      detail: `got:${bytesToHex(disc)} expected:${layout.discriminatorHex}`,
+    };
+  }
+
+  return {
+    ok: true,
+    value: {
+      active: fields.active as boolean,
+    },
+    layout,
+    bytesRead: offset,
+  };
+}
+
+/**
+ * Strict StakeAccount decoder for the padding negative control only.
+ * Not a product path.
+ */
+export function decodeStakeAccountStrictFullyConsumedForTests(
+  data: Uint8Array,
+): DecodeStakeAccountResult {
+  const cursor = decodeStakeAccount(data);
   if (!cursor.ok) return cursor;
   if (cursor.bytesRead !== data.length) {
     return {

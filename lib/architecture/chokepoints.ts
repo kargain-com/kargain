@@ -56,7 +56,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-account-state-decode",
     owner: "lib/svm/decode-account-state.ts · svm/crates/kargain-ix-wire",
-    rule: "Commercial SVM account-state decode (PassportState) only via decode-account-state; layout+goldens from Rust BorshSerialize padded to PASSPORT_STATE_SPACE (committed state.manifest.json); cursor decode ignores trailing padding; no hand offsets; no chrome amounts",
+    rule: "Commercial SVM account-state decode (PassportState + StakeAccount) only via decode-account-state; layout+goldens from Rust BorshSerialize padded to account space (committed state.manifest.json); cursor decode ignores trailing padding; StakeAccount product exposes active only; no hand offsets; no chrome amounts",
     guardTests: ["svm-account-state-decode-policy.test.ts"],
   },
   {
@@ -86,6 +86,20 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "lib/passport/report-passport-discrepancy.ts · hooks/use-report-passport-discrepancy.ts · lib/passport/prepare-passport-record-write.ts · lib/svm/decode-account-state.ts · components/shell/tx-write-refusal.tsx",
     rule: "Dual-VM ReportDiscrepancy: sole owner plans EVM reportDiscrepancy (three args) / SVM ReportDiscrepancy with fresh PassportState read → record PDA at recordCount; seven metas processor order with reporter signer + asset READONLY; no shared assembler with AppendRecord; panel migrates via txWriteAvailability + TxWriteRefusal; action-surface holder withhold unchanged",
     guardTests: ["report-passport-discrepancy-policy.test.ts"],
+  },
+  {
+    id: "passport-append-attestation",
+    owner:
+      "lib/passport/append-passport-attestation.ts · hooks/use-append-passport-attestation.ts · lib/passport/prepare-passport-record-write.ts · lib/svm/decode-account-state.ts · components/shell/tx-write-refusal.tsx",
+    rule: "Dual-VM AppendAttestation: sole owner plans EVM appendAttestation (three args) / SVM AppendAttestation with fresh PassportState read → record PDA at recordCount + stake PDA derive-only; eight metas processor order; asset READONLY; no shared assembler with AppendRecord/ReportDiscrepancy; panel migrates via txWriteAvailability + TxWriteRefusal",
+    guardTests: ["append-passport-attestation-policy.test.ts"],
+  },
+  {
+    id: "active-verifier-fact",
+    owner:
+      "lib/verifier/active-verifier-fact.ts · hooks/use-active-verifier-fact.ts · lib/svm/decode-account-state.ts",
+    rule: "Dual-VM active-verifier admission fact: EVM isActiveVerifier read; SVM stake PDA keyed-read + StakeAccount.active only; tri-state active|inactive|unresolved mapped to boolean|undefined for action-surface/obligations; never collapse unresolved to false",
+    guardTests: ["active-verifier-fact-policy.test.ts"],
   },
   {
     id: "kar-pro-set-verification-fee",

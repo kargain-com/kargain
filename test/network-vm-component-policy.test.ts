@@ -44,6 +44,9 @@ export const VM_BRANCH_ALLOWLIST = [
   "lib/passport/prepare-passport-record-write.ts",
   // U6.4 ReportDiscrepancy write owner — separate assembler; panels stay blind.
   "lib/passport/report-passport-discrepancy.ts",
+  // U6.5 AppendAttestation write owner + active-verifier admission fact.
+  "lib/passport/append-passport-attestation.ts",
+  "lib/verifier/active-verifier-fact.ts",
   // U6.2 verification-fee write owner + surface/hub admit — panels stay blind.
   "lib/verifier/set-verification-fee.ts",
   "lib/verifier/verification-fee-surface.ts",
