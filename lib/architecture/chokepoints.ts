@@ -676,6 +676,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-devnet-evidence-write-policy.test.ts"],
   },
   {
+    id: "svm-devnet-mint-passport",
+    owner: "scripts/svm-devnet-mint-passport.ts",
+    rule: "Sole Devnet MintPassport ops door: exactly one instruction via encodeSvmInstruction+deriveSvmPda; named config refusals; no evidence write, no staking, no hand-rolled MintPassport tag",
+    guardTests: ["svm-devnet-mint-passport-policy.test.ts"],
+  },
+  {
     id: "svm-startup-retention",
     owner: "lib/svm/startup-retention.ts",
     rule: "RPC retention of required ingest start slot is one predicate; ingest loop and upgrade dry-run consume it",
