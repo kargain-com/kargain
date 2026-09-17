@@ -113,8 +113,10 @@ export function PassportDetailView(props: Props) {
   const showG2Banner = showFixedAfterDisputeBanner(passport);
   const custody = resolvePassportCustody({
     chainId,
-    passportOwner: passport.owner as `0x${string}`,
-    listing,
+    passportOwner: passport.owner,
+    listing: listing
+      ? { active: listing.active, seller: listing.seller }
+      : listing,
   });
   const statusSublabel = sealSublabel(passport.status, passport.verifier);
 
@@ -127,7 +129,7 @@ export function PassportDetailView(props: Props) {
         tokenId={tokenId}
         listing={listing}
         initialAuction={auction}
-        passportOwner={passport.owner as `0x${string}`}
+        passportOwner={passport.owner}
         passportStatus={passport.status}
         custodyUnresolved={passport.custodyUnresolved}
         duplicateVin={passport.duplicateVin}
@@ -140,7 +142,7 @@ export function PassportDetailView(props: Props) {
         tokenId={tokenId}
         listing={listing}
         initialAuction={auction}
-        passportOwner={passport.owner as `0x${string}`}
+        passportOwner={passport.owner}
         passportStatus={passport.status}
         custodyUnresolved={passport.custodyUnresolved}
         duplicateVin={passport.duplicateVin}
@@ -191,7 +193,7 @@ export function PassportDetailView(props: Props) {
       chainId={chainId}
       ponderCustodyChain={chainId}
       custodyUnresolved={passport.custodyUnresolved}
-      passportOwner={passport.owner as `0x${string}`}
+      passportOwner={passport.owner}
       status={passport.status}
       lastDisputer={passport.lastDisputer}
       recordedVerifier={passport.verifier}
@@ -309,7 +311,7 @@ export function PassportDetailView(props: Props) {
 
             <PassportDetailTabs
               status={passport.status}
-              passportOwner={passport.owner as `0x${string}`}
+              passportOwner={passport.owner}
               chainId={chainId}
               tokenId={tokenId}
               overview={overview}

@@ -23,7 +23,7 @@ type Props = {
   verifier: string;
   verifiedAt: string;
   custody: PassportCustody;
-  passportOwner: `0x${string}`;
+  passportOwner: string;
   verificationResetCount: number;
   hadDispute: boolean;
   lastDisputeTerminal?: string;

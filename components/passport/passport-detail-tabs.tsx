@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   status: PassportStatus;
-  passportOwner: `0x${string}`;
+  passportOwner: string;
   chainId: number;
   tokenId: string;
   overview: ReactNode;
@@ -52,7 +52,7 @@ export function PassportDetailTabs({
   const address = evm.ok ? evm.address : undefined;
   const { onChainOwner } = usePassportOnChainOwner(chainId, tokenId);
   const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, passportOwner);
-  const isOwner = isOnChainNftOwner(address, effectiveOwner);
+  const isOwner = isOnChainNftOwner(address, effectiveOwner, chainId);
   const isDisputed = status === "DISPUTED";
   const showActionsDot = isDisputed && isOwner;
 

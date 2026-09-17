@@ -39,7 +39,7 @@ type AuctionDetailController = ReturnType<typeof useAuctionDetail>;
 type Props = {
   chainId: number;
   tokenId: string;
-  passportOwner: `0x${string}`;
+  passportOwner: string;
   /** `may(tokenId, OpenConsignment)` — fail closed while unresolved. */
   canOpenConsignment: boolean;
   /**

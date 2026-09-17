@@ -24,7 +24,7 @@ type CommonProps = {
   tokenId: string;
   listing: FixedPriceListingDetailProp | null;
   initialAuction: AuctionRow | null;
-  passportOwner: `0x${string}`;
+  passportOwner: string;
   passportStatus: PassportStatus;
   custodyUnresolved?: string | null;
   duplicateVin: boolean;

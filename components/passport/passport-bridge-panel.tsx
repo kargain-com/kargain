@@ -64,7 +64,7 @@ function nextHopWrongVmCopyForRoute(
 type Props = {
   chainId: number;
   tokenId: string;
-  passportOwner: `0x${string}`;
+  passportOwner: string;
   passportStatus: PassportStatus;
   /** Fold incomplete cause — answered by bridge-surface (§4.21). */
   custodyUnresolved?: string | null;
@@ -131,13 +131,12 @@ export function PassportBridgePanel({
   });
 
   const effectiveOwner = resolveEffectiveOnChainOwner(
-    ownerStatus === "success"
-      ? (onChainOwner as `0x${string}`)
-      : undefined,
+    ownerStatus === "success" ? (onChainOwner as string) : undefined,
     passportOwner,
   );
   const isOwner =
-    ownerStatus === "success" && isOnChainNftOwner(address, effectiveOwner);
+    ownerStatus === "success" &&
+    isOnChainNftOwner(address, effectiveOwner, chainId);
 
   const surface = deriveBridgeSurface({
     isOwner: Boolean(isOwner),

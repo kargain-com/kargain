@@ -79,7 +79,7 @@ type Props = {
   ponderCustodyChain?: number;
   /** Fold incomplete cause from indexer. */
   custodyUnresolved?: string | null;
-  passportOwner: `0x${string}`;
+  passportOwner: string;
   status: PassportStatus;
   lastDisputer: string;
   /** Recorded verifier while disputed (passport.verifier). */
@@ -211,13 +211,14 @@ export function PassportActionsPanel({
   const { onChainOwner } = usePassportOnChainOwner(chainId, tokenId);
   const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, passportOwner);
 
-  const isOwner = isOnChainNftOwner(sessionAddress, effectiveOwner);
+  const isOwner = isOnChainNftOwner(sessionAddress, effectiveOwner, chainId);
   const holder = isPassportHolder({
     address: sessionAddress,
     onChainOwner,
     ponderOwner: passportOwner,
     listingActive,
     listingSeller,
+    namespace: chainId,
   });
 
   const disputeWindowEntry = disputeReads.entry("disputeWindow");

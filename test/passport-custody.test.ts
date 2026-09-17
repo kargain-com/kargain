@@ -14,6 +14,9 @@ process.env.NEXT_PUBLIC_FIXED_PRICE_CONSIGNMENT_BY_CHAIN = JSON.stringify({
 
 const SELLER = "0xcfe194fea9727bD04dA8F78c2362680986e02dF1" as const;
 const OWNER = "0x1111111111111111111111111111111111111111" as const;
+/** Devnet-shaped base58 — must not throw through getAddress. */
+const SVM_OWNER = "D87okZNVcTr7AAb9mnH6mBTwS9HRryhaq7XNLzUwxKCb";
+const SVM_NS = 2000040168;
 
 describe("resolvePassportCustody", () => {
   it("returns seller as profile address when held by a commerce mode contract", () => {
@@ -49,5 +52,16 @@ describe("resolvePassportCustody", () => {
     });
     assert.equal(result.isEscrowed, false);
     assert.equal(result.profileAddress.toLowerCase(), OWNER.toLowerCase());
+  });
+
+  it("accepts an SVM base58 owner without throwing (no getAddress on entity)", () => {
+    const result = resolvePassportCustody({
+      chainId: SVM_NS,
+      passportOwner: SVM_OWNER,
+      listing: null,
+    });
+    assert.equal(result.isEscrowed, false);
+    assert.equal(result.profileAddress, SVM_OWNER);
+    assert.equal(result.custodyAddress, undefined);
   });
 });

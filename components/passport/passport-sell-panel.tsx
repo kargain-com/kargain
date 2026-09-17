@@ -67,7 +67,7 @@ function ascendingMandateAsAuth(mandate: MandateSnapshot): AuctionAgentAuth {
 type Props = {
   chainId: number;
   tokenId: string;
-  passportOwner: `0x${string}`;
+  passportOwner: string;
   passportStatus: PassportStatus;
   /** Ponder usable-copy location — presence input. Defaults to `chainId`. */
   ponderCustodyChain?: number;
@@ -133,10 +133,11 @@ export function PassportSellPanel({
   });
 
   const effectiveOwner = resolveEffectiveOnChainOwner(
-    onChainOwner as `0x${string}` | undefined,
+    onChainOwner as string | undefined,
     passportOwner,
   );
-  const isOwner = address != null && isOnChainNftOwner(address, effectiveOwner);
+  const isOwner =
+    address != null && isOnChainNftOwner(address, effectiveOwner, chainId);
 
   const { presence, presenceCopy } = usePassportPresence({
     chainId,

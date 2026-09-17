@@ -648,8 +648,8 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "passport-detail-svm-chrome",
     owner:
-      "components/passport/passport-actions-panel.tsx · lib/web3/supported-chains.ts · lib/passport/passport-commerce-facts.ts",
-    rule: "Marketplace passport detail route: no component/hook in the import graph calls wagmiChainId during render; actions panel session chrome is txWriteAvailability + TxWriteRefusal only (no EvmSessionRefusal)",
+      "components/passport/passport-detail-view.tsx · components/passport/passport-actions-panel.tsx · lib/marketplace/passport-custody.ts · lib/passport/passport-owner.ts · lib/web3/supported-chains.ts · lib/passport/passport-commerce-facts.ts",
+    rule: "Marketplace passport detail route: no wagmiChainId in the import-graph components/hooks; no passport.owner as 0x and no getAddress(passportOwner|passport.owner) on entity-sourced owners; escrow custody (marketplace) is namespace-scoped via protocol-address; actions session chrome is txWriteAvailability + TxWriteRefusal only",
     guardTests: ["passport-detail-svm-chrome-policy.test.ts"],
   },
   {

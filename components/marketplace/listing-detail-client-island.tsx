@@ -35,6 +35,7 @@ import { hasListingAgent } from "@/lib/marketplace/listing-agent";
 import { attestedPubkeyForAddress } from "@/lib/nostr/resolve-attested-profile";
 import { getNostrPool } from "@/lib/nostr/nostr-client";
 import {
+  isEvmHexAddress,
   isOnChainNftOwner,
   isPassportHolder,
   resolveEffectiveOnChainOwner,
@@ -55,8 +56,8 @@ type Props = {
   chainId: number;
   tokenId: string;
   listing: FixedPriceListingDetailProp | null;
-  /** Ponder passport owner (fallback while chain loads). */
-  passportOwner: `0x${string}`;
+  /** Ponder / entity passport owner (hex or base58). */
+  passportOwner: string;
   passportStatus: PassportStatus;
   ponderCustodyChain?: number;
   custodyUnresolved?: string | null;
@@ -152,9 +153,11 @@ export function ListingDetailClientIsland({
       String(listing.externalPaymentConfirmedAt) !== "0",
   );
 
-  const contactPeer: `0x${string}` | undefined = listingActive
-    ? listingSeller
-    : effectiveOwner;
+  const contactPeer: `0x${string}` | undefined = (() => {
+    const peer = listingActive ? listingSeller : effectiveOwner;
+    if (peer == null || !isEvmHexAddress(peer)) return undefined;
+    return peer;
+  })();
 
   const isSeller = Boolean(
     listingActive &&
@@ -172,7 +175,7 @@ export function ListingDetailClientIsland({
       address.toLowerCase() === agentAddress!.toLowerCase(),
   );
 
-  const isOwner = isOnChainNftOwner(address, effectiveOwner);
+  const isOwner = isOnChainNftOwner(address, effectiveOwner, chainId);
 
   useEffect(() => {
     if (!listingSeller) {
@@ -194,6 +197,7 @@ export function ListingDetailClientIsland({
     ponderOwner: passportOwner,
     listingActive,
     listingSeller,
+    namespace: chainId,
   });
 
   const canManageListing = Boolean(
