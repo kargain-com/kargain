@@ -163,41 +163,24 @@ export type FetchSvmAccountDataResult =
       detail: string;
     };
 
-/**
- * Account data bytes for product SVM keyed reads — same transport as blockhash.
- * Absent accounts are named (`account_not_found`); never an empty buffer.
- */
-export async function fetchProductSvmAccountData(
-  account: string,
-): Promise<FetchSvmAccountDataResult> {
-  const rpcUrl = productSvmRpcUrl();
-  if (!rpcUrl) {
-    return {
-      ok: false,
-      cause: "rpc_unavailable",
-      detail: productSvmRpcUrlRefusalCopy(),
+/** Per-account result from {@link fetchProductSvmAccountsData} (order matches input). */
+export type FetchSvmAccountsDataResult =
+  | { ok: true; values: FetchSvmAccountDataResult[] }
+  | {
+      ok: false;
+      cause: "rpc_unavailable";
+      detail: string;
     };
-  }
-  let value: GetAccountInfoRpcValue;
-  try {
-    const result = await postSolanaJsonRpc<{ value: GetAccountInfoRpcValue }>(
-      rpcUrl,
-      "getAccountInfo",
-      [account, { encoding: "base64", commitment: "confirmed" }],
-    );
-    value = result.value;
-  } catch (err) {
-    return {
-      ok: false,
-      cause: "rpc_unavailable",
-      detail: err instanceof Error ? err.message : String(err),
-    };
-  }
+
+function decodeAccountInfoValue(
+  value: GetAccountInfoRpcValue,
+  accountLabel: string,
+): FetchSvmAccountDataResult {
   if (value == null) {
     return {
       ok: false,
       cause: "account_not_found",
-      detail: `getAccountInfo returned null for ${account}`,
+      detail: `account read returned null for ${accountLabel}`,
     };
   }
   const data = value.data;
@@ -205,7 +188,7 @@ export async function fetchProductSvmAccountData(
     return {
       ok: false,
       cause: "malformed_response",
-      detail: "getAccountInfo data is not a base64 tuple",
+      detail: "account data is not a base64 tuple",
     };
   }
   const [b64, encoding] = data;
@@ -213,7 +196,7 @@ export async function fetchProductSvmAccountData(
     return {
       ok: false,
       cause: "malformed_response",
-      detail: `getAccountInfo unexpected encoding: ${String(encoding)}`,
+      detail: `account unexpected encoding: ${String(encoding)}`,
     };
   }
   try {
@@ -232,16 +215,112 @@ export async function fetchProductSvmAccountData(
 }
 
 /**
- * Product {@link SvmKeyedAccountSource}: live getAccountInfo via svm-rpc.
- * Not-found → null (keyed-read names the miss). Other refusals throw by cause name.
+ * Batch account data for product SVM keyed reads — one `getMultipleAccounts`.
+ * Absent accounts are named per slot (`account_not_found`); never empty buffers.
+ * Deduplicates the wire list; results are remapped to the caller's order.
+ */
+export async function fetchProductSvmAccountsData(
+  accounts: readonly string[],
+): Promise<FetchSvmAccountsDataResult> {
+  const rpcUrl = productSvmRpcUrl();
+  if (!rpcUrl) {
+    return {
+      ok: false,
+      cause: "rpc_unavailable",
+      detail: productSvmRpcUrlRefusalCopy(),
+    };
+  }
+  if (accounts.length === 0) {
+    return { ok: true, values: [] };
+  }
+
+  const unique: string[] = [];
+  const firstIndex = new Map<string, number>();
+  for (const account of accounts) {
+    if (!firstIndex.has(account)) {
+      firstIndex.set(account, unique.length);
+      unique.push(account);
+    }
+  }
+
+  let wireValues: GetAccountInfoRpcValue[];
+  try {
+    const result = await postSolanaJsonRpc<{
+      value: GetAccountInfoRpcValue[];
+    }>(rpcUrl, "getMultipleAccounts", [
+      unique,
+      { encoding: "base64", commitment: "confirmed" },
+    ]);
+    if (!Array.isArray(result.value) || result.value.length !== unique.length) {
+      return {
+        ok: false,
+        cause: "rpc_unavailable",
+        detail: "getMultipleAccounts returned malformed value array",
+      };
+    }
+    wireValues = result.value;
+  } catch (err) {
+    return {
+      ok: false,
+      cause: "rpc_unavailable",
+      detail: err instanceof Error ? err.message : String(err),
+    };
+  }
+
+  const decodedUnique = unique.map((account, i) =>
+    decodeAccountInfoValue(wireValues[i] ?? null, account),
+  );
+  return {
+    ok: true,
+    values: accounts.map((account) => {
+      const idx = firstIndex.get(account);
+      return idx == null
+        ? {
+            ok: false as const,
+            cause: "malformed_response" as const,
+            detail: `missing unique index for ${account}`,
+          }
+        : decodedUnique[idx]!;
+    }),
+  };
+}
+
+/**
+ * Single-account convenience — same decode path as the batch door (length-1).
+ * Write-path freshness (AppendRecord etc.) uses this; keyed batches use the multi door.
+ */
+export async function fetchProductSvmAccountData(
+  account: string,
+): Promise<FetchSvmAccountDataResult> {
+  const batch = await fetchProductSvmAccountsData([account]);
+  if (!batch.ok) {
+    return { ok: false, cause: batch.cause, detail: batch.detail };
+  }
+  return (
+    batch.values[0] ?? {
+      ok: false,
+      cause: "malformed_response",
+      detail: "empty batch result for single account",
+    }
+  );
+}
+
+/**
+ * Product {@link SvmKeyedAccountSource}: one `getMultipleAccounts` per batch.
+ * Not-found → null slot (keyed-read names the miss). Other refusals throw by cause name.
  */
 export function createProductSvmKeyedAccountSource(): SvmKeyedAccountSource {
   return {
-    getAccountData: async (account: string) => {
-      const result = await fetchProductSvmAccountData(account);
-      if (result.ok) return result.value;
-      if (result.cause === "account_not_found") return null;
-      throw new Error(`${result.cause}: ${result.detail}`);
+    getAccountsData: async (accounts: readonly string[]) => {
+      const batch = await fetchProductSvmAccountsData(accounts);
+      if (!batch.ok) {
+        throw new Error(`${batch.cause}: ${batch.detail}`);
+      }
+      return batch.values.map((result) => {
+        if (result.ok) return result.value;
+        if (result.cause === "account_not_found") return null;
+        throw new Error(`${result.cause}: ${result.detail}`);
+      });
     },
   };
 }

@@ -59,4 +59,22 @@ describe("keyed multicall policy", () => {
       "keyed-multicall.ts must import useReadContracts from wagmi",
     );
   });
+
+  it("SVM arm imports useQuery and exports svmKeyedReadQueryKey", () => {
+    const text = fs.readFileSync(OWNER, "utf8");
+    assert.match(
+      text,
+      /import\s*\{[^}]*useQuery[^}]*\}\s*from\s*["']@tanstack\/react-query["']/,
+    );
+    assert.ok(text.includes("export function svmKeyedReadQueryKey"));
+    assert.ok(text.includes("staleTime: query?.staleTime"));
+    const planted = text.replace(
+      /staleTime: query\?\.staleTime,/,
+      "// planted: staleTime dropped",
+    );
+    assert.ok(
+      !planted.includes("staleTime: query?.staleTime"),
+      "plant must clear staleTime wiring",
+    );
+  });
 });

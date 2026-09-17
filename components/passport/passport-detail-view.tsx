@@ -223,7 +223,7 @@ export function PassportDetailView(props: Props) {
 
       <ListingCommentsProvider tokenId={tokenId}>
         <div className="mt-8 grid grid-cols-1 gap-8 md:grid-cols-[1fr_22rem] md:items-start">
-          <div className="min-w-0">
+          <div className="min-w-0 md:col-start-1">
             <div className="flex items-start justify-between gap-4">
               <h1 className="min-w-0 max-w-[min(100%,32rem)] font-display text-fluid-display font-medium tracking-[-0.02em] leading-[1.1] text-text-primary">
                 {title}
@@ -295,10 +295,22 @@ export function PassportDetailView(props: Props) {
                 </p>
               )}
             </div>
+          </div>
 
-            <div className="order-1 mt-6 md:hidden">{commerce}</div>
+          {/*
+            One PassportCommerce fiber: after banners on mobile (document order),
+            sticky aside on md+ (grid column 2, row span). Dual md:hidden/md:block
+            copies deleted — they doubled SVM keyed reads before shared RQ.
+          */}
+          <aside className="space-y-6 md:col-start-2 md:row-span-2 md:row-start-1 md:sticky md:top-24">
+            {commerce}
+            <div className="hidden md:block">
+              <PassportDiscussionRail tokenId={tokenId} />
+            </div>
+          </aside>
 
-            <div className="mt-6">
+          <div className="min-w-0 md:col-start-1">
+            <div className="mt-0">
               <PassportPresenceGallery
                 tokenId={tokenId}
                 chainId={chainId}
@@ -319,11 +331,6 @@ export function PassportDetailView(props: Props) {
               actions={actions}
             />
           </div>
-
-          <aside className="hidden space-y-6 md:sticky md:top-24 md:block">
-            {commerce}
-            <PassportDiscussionRail tokenId={tokenId} />
-          </aside>
         </div>
       </ListingCommentsProvider>
     </div>

@@ -3,10 +3,12 @@
 /**
  * Sole owner of wagmi `useReadContracts` and the SVM batch-read sibling (S8-3 / U7).
  * Consumers address results by named key — never by ordinal position.
+ * SVM arm shares TanStack Query cache across mounts (EVM parity); honors enabled/staleTime.
  * Import ban: `test/keyed-multicall-policy.test.ts`.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useCallback, useMemo } from "react";
 import type { Abi, Address } from "viem";
 import { useReadContracts } from "wagmi";
 
@@ -140,12 +142,21 @@ function mapSvmEntries(
   );
 }
 
+/** Stable RQ key: sorted unique accounts so identical PassportState mounts share one fetch. */
+export function svmKeyedReadQueryKey(
+  accounts: readonly string[],
+): readonly ["svm-keyed-reads", ...string[]] {
+  const unique = [...new Set(accounts)].sort();
+  return ["svm-keyed-reads", ...unique];
+}
+
 /**
  * One multicall per batch. Conditional membership = omit named entries;
  * repeated groups = composite keys — never index or stride arithmetic.
  *
  * EVM batches use wagmi. SVM batches use {@link resolveSvmKeyedReads}
- * (product default = live svm-rpc source; explicit `null` → unresolved_namespace).
+ * via TanStack Query (product default = live svm-rpc source; explicit `null` →
+ * unresolved_namespace). Same account set → one in-flight / cached network trip.
  */
 export function useKeyedReadContracts<const T extends readonly KeyedContract[]>(opts: {
   contracts: T;
@@ -186,7 +197,13 @@ export function useKeyedReadContracts<const T extends readonly KeyedContract[]>(
 
   const enabled = (query?.enabled ?? true) && !isSvmBatch;
 
-  const { data, isPending, isFetching, isLoading, refetch } = useReadContracts({
+  const {
+    data,
+    isPending,
+    isFetching,
+    isLoading,
+    refetch,
+  } = useReadContracts({
     contracts: wagmiContracts,
     allowFailure,
     query: { ...query, enabled },
@@ -210,43 +227,71 @@ export function useKeyedReadContracts<const T extends readonly KeyedContract[]>(
     }));
   }, [contracts, isSvmBatch]);
 
-  const svmRequestKey = useMemo(
-    () => (svmRequests == null ? null : JSON.stringify(svmRequests)),
+  const svmAccounts = useMemo(
+    () => (svmRequests == null ? [] : svmRequests.map((r) => r.account)),
     [svmRequests],
   );
 
-  const [svmSnapshot, setSvmSnapshot] = useState<{
-    key: string;
-    entries: KeyedEntry[];
-  } | null>(null);
-  const [svmFetchEpoch, setSvmFetchEpoch] = useState(0);
+  const svmQueryKey = useMemo(
+    () => svmKeyedReadQueryKey(svmAccounts),
+    [svmAccounts],
+  );
 
-  useEffect(() => {
-    if (!isSvmBatch || svmRequests == null || svmRequestKey == null) {
-      return;
-    }
-    let cancelled = false;
-    const key = svmRequestKey;
-    void resolveSvmKeyedReads(svmRequests, effectiveSource).then((resolved) => {
-      if (cancelled) return;
-      setSvmSnapshot({ key, entries: mapSvmEntries(resolved) });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [isSvmBatch, svmRequests, svmRequestKey, effectiveSource, svmFetchEpoch]);
+  const svmQueryEnabled =
+    isSvmBatch && (query?.enabled ?? true) && svmRequests != null;
+
+  const {
+    data: svmByAccount,
+    isPending: svmIsPending,
+    isFetching: svmIsFetching,
+    isLoading: svmIsLoading,
+    refetch: refetchSvmQuery,
+  } = useQuery({
+    queryKey: svmQueryKey,
+    queryFn: async (): Promise<Record<string, KeyedEntry>> => {
+      const unique = [...new Set(svmAccounts)].sort();
+      const resolved = await resolveSvmKeyedReads(
+        unique.map((account) => ({ key: account, account })),
+        effectiveSource,
+      );
+      const mapped = mapSvmEntries(resolved);
+      const byAccount: Record<string, KeyedEntry> = {};
+      for (let i = 0; i < unique.length; i++) {
+        byAccount[unique[i]!] = mapped[i]!;
+      }
+      return byAccount;
+    },
+    enabled: svmQueryEnabled,
+    staleTime: query?.staleTime,
+    gcTime: query?.gcTime,
+  });
+
+  const entriesFromAccountMap = useCallback(
+    (byAccount: Record<string, KeyedEntry> | undefined): KeyedEntry[] => {
+      const pendingEntry = {
+        status: "failure" as const,
+        error: new Error("svm_keyed_read_pending"),
+      };
+      return (contracts as readonly KeyedSvmContract<K>[]).map((c) => {
+        if (byAccount == null) return pendingEntry;
+        return byAccount[c.account] ?? {
+          status: "failure" as const,
+          error: new Error(`account_not_found: ${c.account}`),
+        };
+      });
+    },
+    [contracts],
+  );
 
   const refetchSvm = useCallback(async () => {
-    if (!isSvmBatch || svmRequests == null || svmRequestKey == null) {
+    if (!isSvmBatch || svmRequests == null) {
       return {
         get: (_key: K) => undefined as unknown | undefined,
         entry: (_key: K) => undefined as KeyedEntry | undefined,
       };
     }
-    const again = await resolveSvmKeyedReads(svmRequests, effectiveSource);
-    const fresh = mapSvmEntries(again);
-    setSvmSnapshot({ key: svmRequestKey, entries: fresh });
-    setSvmFetchEpoch((n) => n + 1);
+    const result = await refetchSvmQuery();
+    const fresh = entriesFromAccountMap(result.data);
     const map = buildKeyMap(
       contracts as readonly KeyedContract<K>[],
       fresh,
@@ -258,32 +303,32 @@ export function useKeyedReadContracts<const T extends readonly KeyedContract[]>(
       },
       entry: (key: K) => map.get(key),
     };
-  }, [isSvmBatch, svmRequests, svmRequestKey, effectiveSource, contracts]);
+  }, [
+    isSvmBatch,
+    svmRequests,
+    refetchSvmQuery,
+    contracts,
+    entriesFromAccountMap,
+  ]);
 
   if (isSvmBatch) {
-    const matched =
-      svmSnapshot != null &&
-      svmRequestKey != null &&
-      svmSnapshot.key === svmRequestKey;
-    const keyedEntries: KeyedEntry[] = matched
-      ? svmSnapshot.entries
-      : (contracts as readonly KeyedSvmContract<K>[]).map(
-          () =>
-            ({
-              status: "failure",
-              error: new Error("svm_keyed_read_pending"),
-            }) satisfies KeyedEntry,
-        );
+    const keyedEntries = entriesFromAccountMap(svmByAccount);
     const byKey = buildKeyMap(
       contracts as readonly KeyedContract<K>[],
       keyedEntries,
     );
-    const pending = !matched;
+    const pending = svmQueryEnabled
+      ? svmIsPending || svmByAccount == null
+      : false;
     return resultApi(
       contracts as readonly KeyedContract<K>[],
       byKey,
       keyedEntries,
-      { isPending: pending, isFetching: pending, isLoading: pending },
+      {
+        isPending: pending,
+        isFetching: svmQueryEnabled ? svmIsFetching : false,
+        isLoading: svmQueryEnabled ? svmIsLoading || pending : false,
+      },
       refetchSvm,
     );
   }

@@ -183,7 +183,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "keyed-multicall",
     owner:
       "lib/web3/keyed-multicall.ts · lib/web3/svm-keyed-read.ts · lib/web3/svm-rpc.ts",
-    rule: "useReadContracts + async SVM batch sibling only inside keyed-multicall; product default account source = createProductSvmKeyedAccountSource (svm-rpc getAccountInfo); explicit null → unresolved_namespace; refuse mixed EVM/SVM batches by name; EVM entry shape unchanged",
+    rule: "useReadContracts + async SVM batch sibling only inside keyed-multicall; SVM arm = TanStack useQuery keyed by sorted unique accounts (shared cache, honors enabled/staleTime); product default = createProductSvmKeyedAccountSource (svm-rpc getMultipleAccounts); explicit null → unresolved_namespace; refuse mixed EVM/SVM batches by name; EVM entry shape unchanged; passport-detail-view mounts PassportCommerce once",
     guardTests: [
       "keyed-multicall-policy.test.ts",
       "s8-3-write-path.test.ts",

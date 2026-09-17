@@ -137,7 +137,10 @@ describe("resolveSvmKeyedReads", () => {
     const bytes = new Uint8Array([1, 2, 3]);
     const { entries, cause } = await resolveSvmKeyedReads(
       [{ key: "a", account: "acct" }],
-      { getAccountData: async (a) => (a === "acct" ? bytes : null) },
+      {
+        getAccountsData: async (accounts) =>
+          accounts.map((a) => (a === "acct" ? bytes : null)),
+      },
     );
     assert.equal(cause, null);
     assert.deepEqual(entries[0], { status: "success", result: bytes });
