@@ -15,7 +15,7 @@ import {
 import { indexerQueryKey } from "@/lib/web3/indexer-query-keys";
 
 export const openableTermsQueryKey = (
-  chainId: number,
+  chainId: number | string,
   mode: CommerceMode,
 ) => indexerQueryKey("commerce-open-options", chainId, mode);
 
@@ -48,7 +48,7 @@ export function useOpenableTerms(
   const enabled = chainId != null && Number.isFinite(chainId);
   const pairing = enabled ? nativePairing(chainId!) : null;
   const query = useQuery({
-    queryKey: openableTermsQueryKey(chainId ?? 0, mode),
+    queryKey: openableTermsQueryKey(chainId ?? "unresolved", mode),
     queryFn: () => getOpenableTerms(chainId!, mode),
     enabled: enabled && pairing != null,
     staleTime: 30_000,

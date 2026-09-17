@@ -613,7 +613,7 @@ export function ProfilePage({
                       <ProfilePassportCard
                         tokenId={l.tokenId}
                         status={l.passportStatus}
-                        chainId={l.originChainId ?? l.custodyChain ?? 0}
+                        chainId={l.originChainId ?? l.custodyChain ?? null}
                         custodyChain={l.custodyChain}
                         custodyUnresolved={l.custodyUnresolved}
                         make={l.make}

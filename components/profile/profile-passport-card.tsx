@@ -16,6 +16,7 @@ import { resolvePassportPresence } from "@/lib/passport/action-surface";
 import {
   derivePassportTrustDisplay,
   passportAwayActionCopy,
+  type PassportPresence,
 } from "@/lib/passport/presence";
 import { buildProfilePassportTitle } from "@/lib/passport/vehicle-label";
 import type { PassportStatus } from "@/lib/types/ponder";
@@ -25,8 +26,8 @@ import { shortChainName } from "@/lib/web3/supported-chains";
 export type ProfilePassportCardProps = {
   tokenId: string;
   status: PassportStatus;
-  /** Origin chain for id label. */
-  chainId: number;
+  /** Origin chain for id label — null when origin is absent (named, never invent 0). */
+  chainId: number | null;
   /** Custody chain for detail link + bridged-away badge; null when unresolved. */
   custodyChain: number | null;
   custodyUnresolved?: string | null;
@@ -49,6 +50,8 @@ const TITLE_SLOT =
 /** Fixed mono meta lines under the title (state + VIN). */
 const META_SLOT = "h-4 truncate font-mono text-xs tabular-nums text-text-tertiary";
 
+const ORIGIN_ABSENT_PRESENCE: PassportPresence = { status: "location_unread" };
+
 export function ProfilePassportCard({
   tokenId,
   status,
@@ -67,23 +70,29 @@ export function ProfilePassportCard({
   const priority =
     index !== undefined ? isListingCardFirstViewport(index) : false;
   const bridgedAway =
+    chainId != null &&
     custodyChain != null &&
     !transitBadge &&
     isProfilePassportBridgedAway(chainId, custodyChain);
   // Inventory presence from indexer location — not escrow custody.
   // Lock omitted when fold/unresolved custody — honest “not read”, never false.
-  const presence = resolvePassportPresence({
-    viewChainId: chainId,
-    custodyLocked:
-      custodyUnresolved || custodyChain == null
-        ? undefined
-        : bridgedAway || Boolean(transitBadge)
-          ? true
-          : false,
-    ponderCustodyChain: custodyChain,
-    custodyUnresolved: custodyUnresolved ?? null,
-    locationChainId: custodyChain,
-  });
+  // No origin and no custody → named unread (never invent viewChainId 0).
+  const viewChainId = chainId ?? custodyChain;
+  const presence: PassportPresence =
+    viewChainId == null
+      ? ORIGIN_ABSENT_PRESENCE
+      : resolvePassportPresence({
+          viewChainId,
+          custodyLocked:
+            custodyUnresolved || custodyChain == null
+              ? undefined
+              : bridgedAway || Boolean(transitBadge)
+                ? true
+                : false,
+          ponderCustodyChain: custodyChain,
+          custodyUnresolved: custodyUnresolved ?? null,
+          locationChainId: custodyChain,
+        });
   const trustDisplay = derivePassportTrustDisplay(presence, status);
   const linkChain = hrefChainId ?? custodyChain ?? chainId;
   const title = buildProfilePassportTitle({
@@ -91,7 +100,7 @@ export function ProfilePassportCard({
     make,
     model,
     tokenId,
-    chainId,
+    chainId: chainId ?? undefined,
   });
   const stateText = transitBadge
     ? transitBadge
@@ -103,17 +112,16 @@ export function ProfilePassportCard({
         : "";
   const vinText = vin?.trim() ?? "";
 
-  return (
-    <Link
-      href={`/marketplace/${tokenId}?chain=${linkChain}`}
-      className={cn(
-        "group flex h-full flex-col overflow-hidden rounded-md border bg-bg-card transition-colors duration-150",
-        "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
-        trustDisplay.showVerifiedAccent
-          ? "border-accent-warm group-focus-visible:border-accent-warm"
-          : "border-border-default hover:border-border-hover group-focus-visible:border-border-hover",
-      )}
-    >
+  const cardClass = cn(
+    "group flex h-full flex-col overflow-hidden rounded-md border bg-bg-card transition-colors duration-150",
+    "focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]",
+    trustDisplay.showVerifiedAccent
+      ? "border-accent-warm group-focus-visible:border-accent-warm"
+      : "border-border-default hover:border-border-hover group-focus-visible:border-border-hover",
+  );
+
+  const body = (
+    <>
       <div className={LISTING_CARD_IMAGE_FRAME}>
         {imageUrl ? (
           <ContentImage
@@ -137,22 +145,36 @@ export function ProfilePassportCard({
           ) : null}
           <PassportIdLabel
             tokenId={tokenId}
-            chainId={chainId}
+            chainId={chainId ?? undefined}
             prefix="none"
             variant="mono"
             className="min-w-0 truncate text-text-secondary"
           />
         </div>
-        <p
-          className={META_SLOT}
-          title={stateText || undefined}
-        >
+        <p className={META_SLOT} title={stateText || undefined}>
           {stateText || "\u00a0"}
         </p>
         <p className={META_SLOT} title={vinText || undefined}>
           {vinText || "\u00a0"}
         </p>
       </div>
+    </>
+  );
+
+  if (linkChain == null) {
+    return (
+      <div className={cardClass} aria-label={`${title} — network unknown`}>
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <Link
+      href={`/marketplace/${tokenId}?chain=${linkChain}`}
+      className={cardClass}
+    >
+      {body}
     </Link>
   );
 }

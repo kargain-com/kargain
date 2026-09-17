@@ -3,13 +3,13 @@
 import {
   useActiveAccount,
   requireEvmSession,
-  evmSessionRefusalCopy,
 } from "@/hooks/use-active-account";
 
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { UserRejectedRequestError, type Hash } from "viem";
 import { useSignMessage } from "wagmi";
+import type { Connector } from "wagmi";
 
 import { KarProNetworkPrompt } from "@/components/kar-pro/kar-pro-network-prompt";
 import { PassportMetadataFields } from "@/components/passport/passport-metadata-fields";
@@ -40,6 +40,7 @@ import {
 } from "@/lib/passport/upload-passport-metadata";
 import { reorderArrayItem } from "@/lib/reorder-array";
 import { resetIrysUploaderCache } from "@/lib/storage/irys-client";
+import type { ActiveAccount } from "@/lib/web3/active-account";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
@@ -61,19 +62,70 @@ function isWalletRejection(err: unknown): boolean {
 const MINT_PARSE_ERROR_MESSAGE =
   "Mint succeeded but token ID could not be read. Check your wallet for the NFT.";
 
+/**
+ * Gate: session + commercial target. Write/sync body mounts only when chain is known.
+ */
 export function CreatePassportWizard() {
-  const router = useRouter();
   const { account, signingBinding, svmWallet } = useActiveAccount();
   const evm = requireEvmSession(account);
-  const address = evm.ok ? evm.address : undefined;
-  const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const walletChain = evm.ok ? evm.chainId : undefined;
+  const chainId = resolveKarProTargetChainId(walletChain);
+
+  if (!evm.ok) {
+    return (
+      <div className="mx-auto max-w-lg space-y-6 px-4 py-16 text-center">
+        <h1 className="text-2xl font-medium text-text-primary">Create passport</h1>
+        <p className="text-sm text-text-secondary">
+          Mint a KarPassport NFT with basic vehicle details and photos stored on Arweave.
+        </p>
+        <EvmSessionRefusal cause={evm.cause} />
+      </div>
+    );
+  }
+
+  if (chainId == null) {
+    return (
+      <div className="mx-auto max-w-lg space-y-6 px-4 py-16">
+        <h1 className="text-2xl font-medium text-text-primary">Create passport</h1>
+        <KarProNetworkPrompt title="Switch to a Kargain network to mint a passport." />
+      </div>
+    );
+  }
+
+  const connector = signingBinding.ok ? signingBinding.connector : undefined;
+
+  return (
+    <CreatePassportWizardBody
+      chainId={chainId}
+      address={evm.address}
+      account={account}
+      connector={connector}
+      svmWallet={svmWallet}
+    />
+  );
+}
+
+type BodyProps = {
+  chainId: number;
+  address: `0x${string}`;
+  account: ActiveAccount;
+  connector: Connector | undefined;
+  /** Opaque wallet handle from useActiveAccount — typed at the Irys upload door. */
+  svmWallet: Parameters<typeof uploadPassportToIrys>[0]["svmWallet"];
+};
+
+function CreatePassportWizardBody({
+  chainId,
+  address,
+  account,
+  connector,
+  svmWallet,
+}: BodyProps) {
+  const router = useRouter();
   const { signMessageAsync } = useSignMessage();
   const { writeContractAsync, isPending: isWritePending, reset: resetWrite } =
     useEvmWriteContract();
-
-  const chainId = resolveKarProTargetChainId(walletChain);
-  const wc = chainId != null ? wagmiChainId(chainId) : undefined;
+  const wc = wagmiChainId(chainId);
   const { kind: accountKind, isLoading: isLoadingAccountKind } = useWalletAccountKind(
     address,
     connector,
@@ -83,7 +135,7 @@ export function CreatePassportWizard() {
     phase: txPhase,
     error: txError,
     syncLagged,
-  } = useTxSync(chainId ?? walletChain ?? 84532);
+  } = useTxSync(chainId);
 
   const [step, setStep] = useState<Step>(1);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -131,15 +183,6 @@ export function CreatePassportWizard() {
 
   const startMint = useCallback(
     async (uri: string) => {
-      if (!address) {
-        setFormError("Connect your wallet to create a passport.");
-        return;
-      }
-      if (chainId == null || wc == null) {
-        setFormError("Switch to a Kargain network to mint.");
-        return;
-      }
-
       const contractAddress = karPassportAddress(chainId);
       if (!contractAddress) {
         setFormError("Passport contract not available on this network");
@@ -214,14 +257,6 @@ export function CreatePassportWizard() {
     setFormError(null);
     setErrors({});
 
-    if (!evm.ok || !address) {
-      setFormError(evmSessionRefusalCopy(evm.ok ? "disconnected" : evm.cause));
-      return;
-    }
-    if (chainId == null) {
-      setFormError("Switch to a Kargain network to mint.");
-      return;
-    }
     if (photos.length < 1) {
       setErrors({ photos: "Add at least one photo." });
       return;
@@ -286,28 +321,6 @@ export function CreatePassportWizard() {
     txPhase !== "idle";
 
   const displayError = formError ?? txError;
-
-  if (!evm.ok) {
-    return (
-      <div className="mx-auto max-w-lg space-y-6 px-4 py-16 text-center">
-        <h1 className="text-2xl font-medium text-text-primary">Create passport</h1>
-        <p className="text-sm text-text-secondary">
-          Mint a KarPassport NFT with basic vehicle details and photos stored on Arweave.
-        </p>
-        <EvmSessionRefusal cause={evm.cause} />
-      </div>
-    );
-  }
-
-  if (chainId == null) {
-    return (
-      <div className="mx-auto max-w-lg space-y-6 px-4 py-16">
-        <h1 className="text-2xl font-medium text-text-primary">Create passport</h1>
-        <KarProNetworkPrompt title="Switch to a Kargain network to mint a passport." />
-      </div>
-    );
-  }
-
   const networkName = shortChainName(chainId);
 
   return (

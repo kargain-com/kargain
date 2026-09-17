@@ -24,9 +24,9 @@ export function buildProfilePassportTitle(input: {
   make?: string | null;
   model?: string | null;
   tokenId: string;
-  chainId: number;
+  chainId?: number | null;
 }): string {
   const label = buildVehicleLabel(input.year, input.make, input.model);
   if (label) return label;
-  return `Vehicle ${formatPassportShortLabel(input.tokenId, input.chainId)}`;
+  return `Vehicle ${formatPassportShortLabel(input.tokenId, input.chainId ?? undefined)}`;
 }

@@ -36,7 +36,7 @@ export function useKarProVerifierProfile(
   const failureCount = pollKey === trackedPollKey ? nullFetchCount : 0;
 
   const ponderQuery = useQuery({
-    queryKey: indexerQueryKey("kar-pro-verifier", chainId ?? 0, address),
+    queryKey: indexerQueryKey("kar-pro-verifier", chainId ?? "unresolved", address),
     queryFn: async () => {
       const profile = await fetchKarProVerifierProfile(
         address!,

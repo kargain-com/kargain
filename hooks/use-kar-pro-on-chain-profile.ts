@@ -92,7 +92,11 @@ export function useKarProOnChainProfile(
     readsEnabled && !reads.isPending && hasPass && stakeActive;
 
   const { data: slug, isPending: slugPending } = useQuery({
-    queryKey: indexerQueryKey("kar-pro-slug", chainId ?? 0, metadataURI),
+    queryKey: indexerQueryKey(
+      "kar-pro-slug",
+      chainId ?? "unresolved",
+      metadataURI,
+    ),
     queryFn: () => resolveKarProSlugFromMetadataUri(metadataURI!),
     enabled: chainFieldsReady && Boolean(metadataURI?.trim()),
     staleTime: 60_000,

@@ -94,6 +94,12 @@ type VerificationPaymentModalProps = {
   membershipChainId?: number;
 };
 
+type VerificationPaymentModalReadyProps = VerificationPaymentModalProps & {
+  /** Commercial chain already resolved — never invent. */
+  chainId: number;
+  address: `0x${string}`;
+};
+
 function passportLabel(row: PassportRow): string {
   const id = row.id != null ? String(row.id) : "";
   const title = id ? formatPassportTitle(id) : "Passport";
@@ -123,41 +129,29 @@ function TrustDisclaimer({ lightning }: { lightning?: boolean }) {
   );
 }
 
-export function VerificationPaymentModal({
+function VerificationPaymentModalReady({
   open,
   onOpenChange,
   verifierAddress,
   feeWei,
   verifierName,
-  membershipChainId,
-}: VerificationPaymentModalProps) {
-  const { account } = useActiveAccount();
-  const evm = requireEvmSession(account);
-  const address = evm.ok ? evm.address : undefined;
-  const walletChainId = evm.ok ? evm.chainId : undefined;
-
-  const chainId =
-    membershipChainId != null && Number.isFinite(membershipChainId)
-      ? membershipChainId
-      : resolveKarProTargetChainId(walletChainId);
-  const commercialReady =
-    chainId != null &&
-    (membershipChainId == null || walletChainId === membershipChainId);
-  const syncChainId = chainId ?? walletChainId ?? 84532;
-  const wc = eip155WagmiChainId(syncChainId);
+  chainId,
+  address,
+}: VerificationPaymentModalReadyProps) {
   const { sendTransactionAsync, isPending: isEthPending } = useEvmSendTransaction();
   const { writeContractAsync, isPending: isWritePending } = useEvmWriteContract();
-  const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(syncChainId);
+  const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
+  const wc = eip155WagmiChainId(chainId);
   const { ethUsd, btcUsd, isLoading: ratesLoading } = useMarketRates({ enabled: open });
   const { profile: verifierProfile } = useNostrProfile(verifierAddress, undefined, {
     enabled: open,
   });
 
-  const usdc = chainId != null ? usdcAddress(chainId) : undefined;
-  const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
+  const usdc = usdcAddress(chainId);
+  const staking = karProStakingAddress(chainId);
   const isPending = isEthPending || isWritePending || txPhase !== "idle";
 
-  const feeStack = chainId != null ? commercialActive(chainId) : undefined;
+  const feeStack = commercialActive(chainId);
   const feeNativeUnit = feeStack ? nativeUnitOf(feeStack) : null;
 
   const { data: chainFeeWei } = useReadContract({
@@ -165,7 +159,7 @@ export function VerificationPaymentModal({
     abi: KarProStakingAbi,
     functionName: "verificationFee",
     args: [verifierAddress],
-    query: { enabled: Boolean(open && commercialReady && staking) },
+    query: { enabled: Boolean(open && staking) },
   });
 
   const effectiveFeeWei = chainFeeWei ?? feeWei;
@@ -289,7 +283,7 @@ export function VerificationPaymentModal({
   );
 
   useEffect(() => {
-    if (!open || !evm.ok || !address) return;
+    if (!open) return;
     let cancelled = false;
     setPassportsLoading(true);
     void (async () => {
@@ -311,7 +305,7 @@ export function VerificationPaymentModal({
     return () => {
       cancelled = true;
     };
-  }, [open, evm.ok, address]);
+  }, [open, address]);
 
   useEffect(() => {
     if (phase !== "success" || !open) return;
@@ -485,7 +479,7 @@ export function VerificationPaymentModal({
   }, [lightningInvoice]);
 
   const payDisabled = useMemo(() => {
-    if (!commercialReady || !hasTokenId || isPending) return true;
+    if (!hasTokenId || isPending || wc == null) return true;
     if (paymentMethod === "ETH") {
       return insufficientEthBalance;
     }
@@ -494,13 +488,13 @@ export function VerificationPaymentModal({
     }
     return true;
   }, [
-    commercialReady,
     hasTokenId,
     insufficientEthBalance,
     insufficientUsdcBalance,
     isPending,
     paymentMethod,
     usdcOptionDisabled,
+    wc,
   ]);
 
   const title = verifierName?.trim()
@@ -555,16 +549,6 @@ export function VerificationPaymentModal({
               </DialogDescription>
             </DialogHeader>
 
-            {!evm.ok ? (
-              <EvmSessionRefusal
-                cause={evm.cause}
-                disconnectedTitle="Connect your wallet to pay the verification fee."
-              />
-            ) : !commercialReady ? (
-              <p className="font-sans text-sm text-text-secondary">
-                Switch to a Kargain network to pay the verification fee.
-              </p>
-            ) : (
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="verification-passport-select">Passport</Label>
@@ -867,8 +851,73 @@ export function VerificationPaymentModal({
                 </>
               )}
             </div>
-            )}
           </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Gate: EVM session + commercial target. Write/sync body mounts only when chain is known.
+ */
+export function VerificationPaymentModal({
+  open,
+  onOpenChange,
+  verifierAddress,
+  feeWei,
+  verifierName,
+  membershipChainId,
+}: VerificationPaymentModalProps) {
+  const { account } = useActiveAccount();
+  const evm = requireEvmSession(account);
+  const walletChainId = evm.ok ? evm.chainId : undefined;
+  const address = evm.ok ? evm.address : undefined;
+
+  const chainId =
+    membershipChainId != null && Number.isFinite(membershipChainId)
+      ? membershipChainId
+      : resolveKarProTargetChainId(walletChainId);
+  const commercialReady =
+    chainId != null &&
+    (membershipChainId == null || walletChainId === membershipChainId);
+
+  if (open && evm.ok && address != null && commercialReady && chainId != null) {
+    return (
+      <VerificationPaymentModalReady
+        open={open}
+        onOpenChange={onOpenChange}
+        verifierAddress={verifierAddress}
+        feeWei={feeWei}
+        verifierName={verifierName}
+        chainId={chainId}
+        address={address}
+      />
+    );
+  }
+
+  const title = verifierName?.trim()
+    ? `Pay for inspection — ${verifierName.trim()}`
+    : "Pay for inspection";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent showClose className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>
+            Send the verification fee directly to the verifier. Kargain does not custody funds.
+          </DialogDescription>
+        </DialogHeader>
+        {!evm.ok ? (
+          <EvmSessionRefusal
+            cause={evm.cause}
+            disconnectedTitle="Connect your wallet to pay the verification fee."
+          />
+        ) : (
+          <p className="font-sans text-sm text-text-secondary">
+            Switch to a Kargain network to pay the verification fee.
+          </p>
         )}
       </DialogContent>
     </Dialog>

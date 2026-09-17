@@ -69,15 +69,14 @@ export function ChainSelector({
     return Number.isFinite(n) ? n : null;
   }, [sp]);
 
-  const displayNamespace =
-    syncSearchParam
-      ? (urlChain ?? sessionNamespace ?? 0)
-      : (sessionNamespace ?? 0);
+  const displayNamespace: number | null = syncSearchParam
+    ? (urlChain ?? sessionNamespace ?? null)
+    : (sessionNamespace ?? null);
   const wrong = selectorState !== "ok";
   const stateCopy = chainSelectorStateCopy(selectorState, expectedNamespace);
   const chainName =
     stateCopy ??
-    (displayNamespace !== 0
+    (displayNamespace != null
       ? commercialNetworkLabel(displayNamespace)
       : "Unknown network");
   const switchTargets = chainSelectorSwitchTargets(

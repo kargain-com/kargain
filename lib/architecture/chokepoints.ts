@@ -489,7 +489,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "commercial-active-hub-literal",
     owner: "lib/web3/commercial-active.ts (registry) · parent-injected nativeUnit",
-    rule: "app|components|hooks must not index COMMERCIAL_ACTIVE with a numeric literal (no hub invent)",
+    rule: "app|components|hooks must not invent a commercial namespace: no COMMERCIAL_ACTIVE[<literal>], no ??/|| commercial id fallback (registry-derived), no indexerQueryKey/openableTermsQueryKey namespace via ??/|| 0",
     guardTests: ["commercial-active-hub-literal-policy.test.ts"],
   },
   {
