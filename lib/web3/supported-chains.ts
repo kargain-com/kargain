@@ -32,6 +32,18 @@ export function wagmiChainId(chainId: number): KargainChainId {
   return eip155 as KargainChainId;
 }
 
+/**
+ * Product chrome door for EIP-155 wagmi reads. Commercial SVM namespaces
+ * return `undefined` (never throw). Call sites skip enabled reads when absent —
+ * no invented chain id. Throwing {@link wagmiChainId} remains for EVM write owners.
+ */
+export function eip155WagmiChainId(chainId: number): KargainChainId | undefined {
+  if (isCommercialNamespace(chainId) && !isCommercialEip155Id(chainId)) {
+    return undefined;
+  }
+  return wagmiChainId(chainId);
+}
+
 export function getViemChain(chainId: number): Chain | undefined {
   return byId.get(chainId);
 }

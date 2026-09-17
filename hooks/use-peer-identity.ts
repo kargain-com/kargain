@@ -12,7 +12,7 @@ import {
 import { isCommercialEip155Id } from "@/lib/web3/commercial-active";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
 export type PeerIdentity = {
@@ -58,7 +58,7 @@ export function usePeerIdentity(
       ? karProStakingAddress(membershipChainId)
       : undefined;
   const wc =
-    membershipChainId != null ? wagmiChainId(membershipChainId) : undefined;
+    membershipChainId != null ? eip155WagmiChainId(membershipChainId) : undefined;
 
   const { data: chainActive, isPending: chainActivePending } = useReadContract({
     address: staking,

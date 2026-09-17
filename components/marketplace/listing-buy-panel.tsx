@@ -30,7 +30,7 @@ import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { needsBuyRiskAck } from "@/lib/passport/trust-signals";
 import type { PassportStatus } from "@/lib/types/ponder";
-import { wagmiChainId, shortChainName } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId, shortChainName } from "@/lib/web3/supported-chains";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { cn } from "@/lib/utils";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
@@ -96,7 +96,7 @@ export function ListingBuyPanel({
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
 
   const market = commerceModeAddress("fixedPrice", chainId);
-  const wc = wagmiChainId(chainId);
+  const wc = eip155WagmiChainId(chainId);
   const wrongChain = evm.ok && walletChain !== chainId;
   const tid = BigInt(tokenId);
   const requiresRiskAck = needsBuyRiskAck({ passportStatus, duplicateVin });
@@ -112,7 +112,7 @@ export function ListingBuyPanel({
     args: [tid],
     chainId: wc,
     query: {
-      enabled: Boolean(market) && directPaymentNoteProp === undefined,
+      enabled: Boolean(market && wc != null) && directPaymentNoteProp === undefined,
     },
   });
 
@@ -120,26 +120,27 @@ export function ListingBuyPanel({
     directPaymentNoteProp ?? decodeSettlementNote(settlementNoteRaw).trim();
 
   const saleReads = useKeyedReadContracts({
-    contracts: market
-      ? [
-          {
-            key: "quoteBuy" as const,
-            address: market,
-            abi: FixedPriceConsignmentAbi,
-            functionName: "quoteBuy",
-            args: [tid],
-            chainId: wc,
-          },
-          {
-            key: "consignmentAssetOf" as const,
-            address: market,
-            abi: FixedPriceConsignmentAbi,
-            functionName: "consignmentAssetOf",
-            args: [tid],
-            chainId: wc,
-          },
-        ]
-      : [],
+    contracts:
+      market && wc != null
+        ? [
+            {
+              key: "quoteBuy" as const,
+              address: market,
+              abi: FixedPriceConsignmentAbi,
+              functionName: "quoteBuy",
+              args: [tid],
+              chainId: wc,
+            },
+            {
+              key: "consignmentAssetOf" as const,
+              address: market,
+              abi: FixedPriceConsignmentAbi,
+              functionName: "consignmentAssetOf",
+              args: [tid],
+              chainId: wc,
+            },
+          ]
+        : [],
   });
   const isQuoteLoading = saleReads.isLoading;
 
@@ -159,7 +160,7 @@ export function ListingBuyPanel({
     quoteEntry?.status === "failure" || (!isQuoteLoading && quote == null);
   const isNative = asset != null && isAddressEqual(asset, zeroAddress);
   const assetMeta = useClaimAssetMeta({
-    chainId: wc,
+    chainId,
     asset: asset ?? zeroAddress,
     isNative: asset == null || isNative,
   });
@@ -174,7 +175,9 @@ export function ListingBuyPanel({
     functionName: "allowance",
     args: address && market ? [address, market] : undefined,
     chainId: wc,
-    query: { enabled: Boolean(asset && !isNative && address && market) },
+    query: {
+      enabled: Boolean(asset && !isNative && address && market && wc != null),
+    },
   });
 
   const { data: erc20Balance } = useReadContract({
@@ -183,13 +186,15 @@ export function ListingBuyPanel({
     functionName: "balanceOf",
     args: address ? [address] : undefined,
     chainId: wc,
-    query: { enabled: Boolean(asset && !isNative && address) },
+    query: {
+      enabled: Boolean(asset && !isNative && address && wc != null),
+    },
   });
 
   const { data: nativeBalance } = useBalance({
     address,
     chainId: wc,
-    query: { enabled: Boolean(address && isNative) },
+    query: { enabled: Boolean(address && isNative && wc != null) },
   });
 
   const { convertPrice, ethUsd } = useDisplayCurrency();
@@ -250,7 +255,7 @@ export function ListingBuyPanel({
     args: [tid],
     value: isNative ? quote : 0n,
     chainId: wc,
-    query: { enabled: canSimulate },
+    query: { enabled: canSimulate && wc != null },
   });
 
   const executeBuy = useCallback(async () => {
@@ -259,7 +264,8 @@ export function ListingBuyPanel({
     try {
       if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
-        await switchChain(wc );
+        if (wc == null) throw new Error('switchChain unavailable: unresolved_namespace');
+        await switchChain(wc);
       }
 
       if (!isNative && asset && (allowance ?? 0n) < quote) {
@@ -422,7 +428,8 @@ export function ListingBuyPanel({
             type="button"
             onClick={() => {
               if (!switchAvail.available) return;
-              void switchChain(wc );
+              if (wc == null) return;
+              void switchChain(wc);
             }}
           >
             Switch network

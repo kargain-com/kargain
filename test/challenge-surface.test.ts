@@ -456,10 +456,19 @@ describe("verification challenge window — chain only (S19)", () => {
 
   it("Actions reads DISPUTE_WINDOW from chain", () => {
     const panel = fs.readFileSync(PASSPORT_ACTIONS, "utf8");
+    const disputeOwner = fs.readFileSync(
+      path.join(process.cwd(), "lib/passport/passport-commerce-facts.ts"),
+      "utf8",
+    );
     assert.match(
       panel,
+      /planPassportDisputeReads/,
+      "passport-actions-panel must consume planPassportDisputeReads",
+    );
+    assert.match(
+      disputeOwner,
       /functionName:\s*"DISPUTE_WINDOW"/,
-      "passport-actions-panel must read KarPassport.DISPUTE_WINDOW",
+      "planPassportDisputeReads must read KarPassport.DISPUTE_WINDOW",
     );
     assert.doesNotMatch(
       panel,

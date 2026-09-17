@@ -9,7 +9,7 @@ import {
   type CommerceMode,
 } from "@/lib/commerce/mode";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 const MANDATE_FUNCTIONS = [
   "mandateActive",
@@ -41,7 +41,7 @@ export function useMandate(input: {
   const { mode, chainId, tokenId, enabled = true } = input;
   const address = commerceModeAddress(mode, chainId);
   const abi = commerceModeAbi(mode);
-  const wc = wagmiChainId(chainId);
+  const wc = eip155WagmiChainId(chainId);
 
   const tid = useMemo(() => {
     try {
@@ -52,7 +52,7 @@ export function useMandate(input: {
   }, [tokenId]);
 
   const contracts = useMemo(() => {
-    if (!enabled || !address) return [];
+    if (!enabled || !address || wc == null) return [];
     return [
       ...MANDATE_FUNCTIONS.map((functionName) => ({
         key: functionName,

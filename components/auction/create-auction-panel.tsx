@@ -40,7 +40,7 @@ import {
   elevatedAdvisoryText,
   monoTimestamp,
 } from "@/lib/design/instrument-classes";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
@@ -78,7 +78,7 @@ export function CreateAuctionPanel({
   const [formError, setFormError] = useState<string | null>(null);
 
   const mode = commerceModeAddress("ascending", chainId);
-  const wrongChain = evm.ok && walletChainId !== wagmiChainId(chainId);
+  const wrongChain = evm.ok && (() => { const _wc = eip155WagmiChainId(chainId); return _wc != null && walletChainId !== _wc; })();
   const busy = phase !== "idle";
   const { paused: modePaused } = useCommerceModePaused({
     mode: "ascending",
@@ -137,7 +137,7 @@ export function CreateAuctionPanel({
     abi: AscendingConsignmentAbi,
     functionName: "hasUnresolvedSettlement",
     args: [BigInt(tokenId)],
-    chainId: wagmiChainId(chainId),
+    chainId: eip155WagmiChainId(chainId),
     query: { enabled: Boolean(mode && tokenId) },
   });
 
@@ -146,7 +146,7 @@ export function CreateAuctionPanel({
     abi: AscendingConsignmentAbi,
     functionName: "holdProtectionEndsAt",
     args: [BigInt(tokenId)],
-    chainId: wagmiChainId(chainId),
+    chainId: eip155WagmiChainId(chainId),
     query: { enabled: Boolean(mode && unresolvedSettlement === true) },
   });
 
@@ -267,7 +267,7 @@ export function CreateAuctionPanel({
           durationSec,
           protectionSec,
         ],
-        chainId: wagmiChainId(chainId),
+        chainId: eip155WagmiChainId(chainId),
       });
     });
   }

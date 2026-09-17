@@ -8,7 +8,7 @@ import {
 import { commercialChainIds } from "@/lib/web3/chain-context";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 /**
  * Live per-chain `isActiveVerifier` roster for the connected wallet.
@@ -24,8 +24,8 @@ export function useKarProMembershipRoster(
   const contracts = enabled
     ? chainIds.flatMap((chainId) => {
         const staking = karProStakingAddress(chainId);
-        const wc = wagmiChainId(chainId);
-        if (!staking || address == null) return [];
+        const wc = eip155WagmiChainId(chainId);
+        if (!staking || address == null || wc == null) return [];
         return [
           {
             key: `isActiveVerifier-${chainId}` as const,

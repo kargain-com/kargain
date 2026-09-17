@@ -31,7 +31,7 @@ import {
   commercialActive,
   nativeUnitOf,
 } from "@/lib/web3/commercial-active";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
@@ -117,7 +117,7 @@ export function AuctionBidPanel({
 
   const { data: ethBalance } = useBalance({
     address,
-    chainId: wagmiChainId(chainId),
+    chainId: eip155WagmiChainId(chainId),
     query: { enabled: Boolean(address && mode && !isUsdcAuction) },
   });
 
@@ -126,7 +126,7 @@ export function AuctionBidPanel({
     abi: ERC20_ABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
-    chainId: wagmiChainId(chainId),
+    chainId: eip155WagmiChainId(chainId),
     query: { enabled: Boolean(address && usdc && isUsdcAuction) },
   });
 
@@ -135,7 +135,7 @@ export function AuctionBidPanel({
     abi: ERC20_ABI,
     functionName: "allowance",
     args: address && mode ? [address, mode] : undefined,
-    chainId: wagmiChainId(chainId),
+    chainId: eip155WagmiChainId(chainId),
     query: { enabled: Boolean(address && usdc && mode && isUsdcAuction) },
   });
 
@@ -156,7 +156,7 @@ export function AuctionBidPanel({
     Boolean(address && auction.highestBidder) &&
     address!.toLowerCase() === auction.highestBidder!.toLowerCase();
 
-  const wrongChain = evm.ok && walletChainId !== wagmiChainId(chainId);
+  const wrongChain = evm.ok && (() => { const _wc = eip155WagmiChainId(chainId); return _wc != null && walletChainId !== _wc; })();
 
   const minNext = minNextBid(auction.highestBid, minIncrementBps, auction.reserve);
   const minLabel = formatAuctionAmount(minNext, assetLabel, nativeUnit);
@@ -242,7 +242,7 @@ export function AuctionBidPanel({
               abi: ERC20_ABI,
               functionName: "approve",
               args: [mode, amount],
-              chainId: wagmiChainId(chainId),
+              chainId: eip155WagmiChainId(chainId),
             });
             await awaitReceipt(approveHash, { mapError: mapBidError });
             await refetchUsdcAllowance();
@@ -258,7 +258,7 @@ export function AuctionBidPanel({
               functionName: "bid",
               args: [BigInt(tokenId), amount],
               value: isUsdcAuction ? 0n : amount,
-              chainId: wagmiChainId(chainId),
+              chainId: eip155WagmiChainId(chainId),
             }),
           { mapError: mapBidError },
         );

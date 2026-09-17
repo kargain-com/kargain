@@ -52,7 +52,7 @@ import {
   nativeUnitOf,
 } from "@/lib/web3/commercial-active";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
@@ -106,14 +106,14 @@ export function AuctionSettlementPanel({
   const [txError, setTxError] = useState<string | null>(null);
 
   const mode = commerceModeAddress("ascending", chainId);
-  const wrongChain = evm.ok && walletChainId !== wagmiChainId(chainId);
+  const wrongChain = evm.ok && (() => { const _wc = eip155WagmiChainId(chainId); return _wc != null && walletChainId !== _wc; })();
   const tid = BigInt(tokenId);
   const staking = karProStakingAddress(chainId);
-  const wc = wagmiChainId(chainId);
+  const wc = eip155WagmiChainId(chainId);
 
   const verifierReads = useKeyedReadContracts({
     contracts:
-      address && staking
+      address && staking && wc != null
         ? [
             {
               key: "isActiveVerifier" as const,
@@ -205,7 +205,7 @@ export function AuctionSettlementPanel({
           abi: AscendingConsignmentAbi,
           functionName,
           args: [tid],
-          chainId: wagmiChainId(chainId),
+          chainId: eip155WagmiChainId(chainId),
         }),
       );
     } catch (err) {
@@ -228,7 +228,7 @@ export function AuctionSettlementPanel({
           abi: AscendingConsignmentAbi,
           functionName: "completeReversal",
           args: [tid],
-          chainId: wagmiChainId(chainId),
+          chainId: eip155WagmiChainId(chainId),
         });
       });
     } catch (err) {
@@ -254,7 +254,7 @@ export function AuctionSettlementPanel({
           functionName: "open",
           args: [tid],
           value: challengeBond,
-          chainId: wagmiChainId(chainId),
+          chainId: eip155WagmiChainId(chainId),
         }),
       );
     } catch (err) {
@@ -276,7 +276,7 @@ export function AuctionSettlementPanel({
           abi: AscendingConsignmentAbi,
           functionName: "judge",
           args: [tid, outcome],
-          chainId: wagmiChainId(chainId),
+          chainId: eip155WagmiChainId(chainId),
         }),
       );
     } catch (err) {

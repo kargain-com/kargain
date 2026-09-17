@@ -9,7 +9,7 @@ import {
   type AuctionRulesTuple,
 } from "@/lib/commerce/parse-ascending";
 import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 const STALE_MS = 300_000;
 
@@ -26,14 +26,15 @@ export function useAscendingAuctionRules(args: {
 } {
   const { chainId, enabled = true } = args;
   const mode = commerceModeAddress("ascending", chainId);
+  const wc = eip155WagmiChainId(chainId);
 
   const { data, isPending } = useReadContract({
     address: mode,
     abi: AscendingConsignmentAbi,
     functionName: "auctionRules",
-    chainId: wagmiChainId(chainId),
+    chainId: wc,
     query: {
-      enabled: Boolean(enabled && mode),
+      enabled: Boolean(enabled && mode && wc != null),
       staleTime: STALE_MS,
     },
   });

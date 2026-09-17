@@ -40,7 +40,7 @@ import {
 } from "@/lib/web3/commercial-active";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { formatNativeAmountLabeled } from "@/lib/web3/native-amount";
-import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
+import { shortChainName, eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 import type { ActiveAccount } from "@/hooks/use-active-account";
 
@@ -118,13 +118,16 @@ export function PassportBridgePanel({
       ponderCustodyChain: chainId,
     });
 
+  const wc = eip155WagmiChainId(chainId);
   const { data: onChainOwner, status: ownerStatus } = useReadContract({
     address: passport,
     abi: KarPassportAbi,
     functionName: "ownerOf",
     args: [tid],
-    chainId: wagmiChainId(chainId),
-    query: { enabled: Boolean(passport) && !transitActive },
+    chainId: wc,
+    query: {
+      enabled: Boolean(passport && wc != null) && !transitActive,
+    },
   });
 
   const effectiveOwner = resolveEffectiveOnChainOwner(

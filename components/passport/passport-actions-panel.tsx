@@ -1,15 +1,14 @@
 "use client";
 
-import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import { useActiveAccount } from "@/hooks/use-active-account";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSignMessage } from "wagmi";
 
 import { EvidenceInput } from "@/components/passport/evidence-input";
 import { MetadataDiffPanel } from "@/components/passport/metadata-diff-panel";
-import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { TxWriteRefusal } from "@/components/shell/tx-write-refusal";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -30,7 +29,6 @@ import {
   elevatedAdvisoryPanel,
   elevatedAdvisoryText,
 } from "@/lib/design/instrument-classes";
-import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import { formatReturnCountdown } from "@/lib/marketplace/return-cooldown";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import { usePassportOnChainOwner } from "@/hooks/use-passport-on-chain-owner";
@@ -49,6 +47,7 @@ import {
   isAvailable,
 } from "@/lib/passport/action-surface";
 import { challengeBondDisclosure } from "@/lib/passport/challenge-bond-disclosure";
+import { planPassportDisputeReads } from "@/lib/passport/passport-commerce-facts";
 import {
   preparePassportRecordWrite,
   passportRecordWritePrepRefusalMessage,
@@ -68,7 +67,6 @@ import {
 } from "@/lib/web3/commercial-active";
 import { formatNativeAmountLabeled } from "@/lib/web3/native-amount";
 import { writeOutcomeHasClaimRecipient } from "@/lib/web3/write-outcome";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { usePassportCommerceFacts } from "@/hooks/use-passport-commerce-facts";
 import { txWriteAvailability } from "@/lib/web3/tx-write-availability";
@@ -124,8 +122,6 @@ export function PassportActionsPanel({
 }: Props) {
   const pathname = usePathname();
   const { account, signingBinding, svmWallet } = useActiveAccount();
-  const evm = requireEvmSession(account);
-  const address = evm.ok ? evm.address : undefined;
   const sessionAddress =
     account.status === "connected" ? account.address : undefined;
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
@@ -193,29 +189,18 @@ export function PassportActionsPanel({
   /** EVM hex address or any commercial stack (SVM program id) — no VM fork. */
   const writeTargetConfigured =
     passport != null || commercialActive(chainId) != null;
-  const wc = wagmiChainId(chainId);
-  const tid = BigInt(tokenId);
+
+  const disputeContracts = useMemo(
+    () =>
+      planPassportDisputeReads({
+        chainId,
+        tokenId,
+      }),
+    [chainId, tokenId],
+  );
 
   const disputeReads = useKeyedReadContracts({
-    contracts: passport
-      ? [
-          {
-            key: "disputeWindow" as const,
-            address: passport,
-            abi: KarPassportAbi,
-            functionName: "DISPUTE_WINDOW",
-            chainId: wc,
-          },
-          {
-            key: "challengeOpenedAt" as const,
-            address: passport,
-            abi: KarPassportAbi,
-            functionName: "challengeOpenedAt",
-            args: [tid],
-            chainId: wc,
-          },
-        ]
-      : [],
+    contracts: disputeContracts,
   });
 
   const { disputeDeposit, disputeDepositLoading } = useChallengeBondAmount({
@@ -267,7 +252,7 @@ export function PassportActionsPanel({
   const nowSec = useNow(status === "DISPUTED" ? 1_000 : 60_000);
   const challengeSurface = deriveChallengeSurface(VERIFICATION_INSTANCE, {
     challenge,
-    wallet: address,
+    wallet: sessionAddress,
     isActiveVerifier,
     passportStatus: status,
     owner: passportOwner,
@@ -280,7 +265,7 @@ export function PassportActionsPanel({
   const commerceFacts = usePassportCommerceFacts({
     chainId,
     tokenId,
-    enabled: Boolean(passport),
+    enabled: writeTargetConfigured,
   });
   const actionSurface = derivePassportActionSurface({
     presenceFacts: {
@@ -642,18 +627,11 @@ export function PassportActionsPanel({
         />
       )}
 
-      {!evm.ok && (
-        <EvmSessionRefusal
-          cause={evm.cause}
-          disconnectedTitle="Connect your wallet to verify, dispute, or interact with this passport."
-        />
-      )}
-
-      {evm.ok && !passport && (
+      {writeAvail.available && !writeTargetConfigured && (
         <p className="text-sm text-text-secondary">Passport contract not configured.</p>
       )}
 
-      {(writeTargetConfigured || (passport && evm.ok)) && (
+      {writeTargetConfigured && (
     <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-6">
       {!embeddedInSheet && (
         <h2 className="font-sans text-base font-medium text-text-primary">Actions</h2>
@@ -672,13 +650,18 @@ export function PassportActionsPanel({
         </p>
       ) : null}
 
-      {passport && evm.ok && isAvailable(actionSurface.editMetadata) && (
+      {passport &&
+        writeAvail.available &&
+        isAvailable(actionSurface.editMetadata) && (
         <Button asChild variant="secondary" className="w-full">
           <Link href={`/passport/${tokenId}/edit?chain=${chainId}`}>Edit metadata</Link>
         </Button>
       )}
 
-      {passport && evm.ok && isAvailable(actionSurface.editMetadata) && status === "VERIFIED" && (
+      {passport &&
+        writeAvail.available &&
+        isAvailable(actionSurface.editMetadata) &&
+        status === "VERIFIED" && (
         <p className="text-xs text-text-secondary">
           Editing anchor fields while verified will reset verification status.
         </p>
@@ -748,7 +731,7 @@ export function PassportActionsPanel({
       )}
 
       {passport &&
-        evm.ok &&
+        writeAvail.available &&
         status === "DISPUTED" &&
         actionSurface.presence.status === "here" && (
         <div className="space-y-3 rounded-md border border-border-default bg-bg-primary/80 p-3">

@@ -16,14 +16,14 @@ import {
 } from "@/lib/web3/deployment-addresses";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { indexerQueryKey } from "@/lib/web3/indexer-query-keys";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 export function useKarProOnChainProfile(
   address: `0x${string}` | undefined,
   enabled: boolean,
   chainId: number | undefined,
 ): { profile: KarProVerifierProfile | null; isLoading: boolean } {
-  const wc = chainId != null ? wagmiChainId(chainId) : undefined;
+  const wc = chainId != null ? eip155WagmiChainId(chainId) : undefined;
   const proPass = chainId != null ? karProPassAddress(chainId) : undefined;
   const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
   const readsEnabled = Boolean(

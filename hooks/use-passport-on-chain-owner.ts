@@ -4,11 +4,11 @@ import { useReadContract } from "wagmi";
 
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 export function usePassportOnChainOwner(chainId: number, tokenId: string) {
   const passport = karPassportAddress(chainId);
-  const wc = wagmiChainId(chainId);
+  const wc = eip155WagmiChainId(chainId);
 
   const { data, isLoading } = useReadContract({
     address: passport,
@@ -17,7 +17,7 @@ export function usePassportOnChainOwner(chainId: number, tokenId: string) {
     args: [BigInt(tokenId)],
     chainId: wc,
     query: {
-      enabled: Boolean(passport && tokenId),
+      enabled: Boolean(wc != null && passport && tokenId),
     },
   });
 

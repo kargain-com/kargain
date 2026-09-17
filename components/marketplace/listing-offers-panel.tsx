@@ -16,7 +16,7 @@ import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { commerceConfirmedLabel } from "@/lib/design/instrument-classes";
 import type { ListingOffer } from "@/lib/nostr/listing-offers";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { shortAddress } from "@/lib/web3/wallet-display";
 import { formatRelativeTime } from "@/lib/format/relative-time";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
@@ -140,7 +140,7 @@ export function ListingOffersPanel({
   const walletChain = evm.ok ? evm.chainId : undefined;
   const switchAvail = evmSwitchChainAvailability(account);
 
-  const wc = wagmiChainId(chainId);
+  const wc = eip155WagmiChainId(chainId);
       const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
@@ -160,7 +160,8 @@ export function ListingOffersPanel({
       if (!market || !hasDirectPayment) return;
       if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
-        await switchChain(wc );
+        if (wc == null) throw new Error('switchChain unavailable: unresolved_namespace');
+        await switchChain(wc);
       }
       setTxError(null);
       try {

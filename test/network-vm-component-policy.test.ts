@@ -58,6 +58,8 @@ export const VM_BRANCH_ALLOWLIST = [
   "lib/passport/judge-challenge.ts",
   // U6.7.5 ConcludeChallenge write owner — forfeit-only recipient; panels stay blind.
   "lib/passport/conclude-challenge.ts",
+  // U9.2a passport commerce chrome reads — EVM batch vs SVM PassportState; panels stay blind.
+  "lib/passport/passport-commerce-facts.ts",
   // U6.2 verification-fee write owner + surface/hub admit — panels stay blind.
   "lib/verifier/set-verification-fee.ts",
   "lib/verifier/verification-fee-surface.ts",

@@ -18,7 +18,7 @@ import { addressesMatch } from "@/lib/commerce/consignment";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 export type PassportApprovalStep = "idle" | "approving" | "ready";
 
@@ -45,7 +45,7 @@ export function usePassportApproval({
   const [approvalBusy, setApprovalBusy] = useState(false);
 
   const passport = karPassportAddress(chainId);
-  const wc = wagmiChainId(chainId);
+  const wc = eip155WagmiChainId(chainId);
   const tokenIdBig = useMemo(() => {
     try {
       return BigInt(tokenId);
@@ -55,11 +55,11 @@ export function usePassportApproval({
   }, [tokenId]);
 
   const readsEnabled = Boolean(
-    enabled && passport && spender && address && tokenId,
+    enabled && passport && spender && address && tokenId && wc != null,
   );
 
   const contracts = useMemo(() => {
-    if (!readsEnabled || !passport || !spender || !address) return [];
+    if (!readsEnabled || !passport || !spender || !address || wc == null) return [];
     return [
       {
         key: "getApproved" as const,

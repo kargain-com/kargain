@@ -155,13 +155,13 @@ describe("encumbrance permission consume policy", () => {
 
   it("commerce facts expose gates not booleans", () => {
     const src = readFileSync(
-      join(process.cwd(), "hooks/use-passport-commerce-facts.ts"),
+      join(process.cwd(), "lib/passport/passport-commerce-facts.ts"),
       "utf8",
     );
     assert.match(src, /openConsignmentPermission/);
     assert.match(src, /leaveChainPermission/);
     assert.match(src, /deriveEncumbrancePermission/);
-    assert.match(src, /reads\.entry\("mayOpen"\)/);
+    assert.match(src, /entry\("mayOpen"\)/);
     assert.doesNotMatch(src, /mayOpenConsignment:/);
     assert.doesNotMatch(src, /mayLeaveChain:/);
   });

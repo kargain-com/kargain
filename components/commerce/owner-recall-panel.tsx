@@ -15,7 +15,7 @@ import { formatWindowDurationLabel } from "@/lib/commerce/format-window-duration
 import { commerceModeAbi, commerceModeAddress } from "@/lib/commerce/mode";
 import type { CommerceMode } from "@/lib/commerce/mode";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
@@ -60,7 +60,7 @@ export function OwnerRecallPanel({
   const walletChain = evm.ok ? evm.chainId : undefined;
   const switchAvail = evmSwitchChainAvailability(account);
 
-  const wc = wagmiChainId(chainId);
+  const wc = eip155WagmiChainId(chainId);
       const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const [txError, setTxError] = useState<string | null>(null);
@@ -97,7 +97,8 @@ export function OwnerRecallPanel({
       try {
         if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
-        await switchChain(wc );
+        if (wc == null) throw new Error('switchChain unavailable: unresolved_namespace');
+        await switchChain(wc);
       }
         const succeeded = await runTx(() =>
           writeContractAsync({

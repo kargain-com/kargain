@@ -45,7 +45,7 @@ import {
   nativeUnitOf,
 } from "@/lib/web3/commercial-active";
 import { karProStakingAddress, usdcAddress } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 import { useEvmWriteContract, useEvmSendTransaction } from "@/lib/web3/evm-write-adapter";
 
@@ -144,7 +144,7 @@ export function VerificationPaymentModal({
     chainId != null &&
     (membershipChainId == null || walletChainId === membershipChainId);
   const syncChainId = chainId ?? walletChainId ?? 84532;
-  const wc = wagmiChainId(syncChainId);
+  const wc = eip155WagmiChainId(syncChainId);
   const { sendTransactionAsync, isPending: isEthPending } = useEvmSendTransaction();
   const { writeContractAsync, isPending: isWritePending } = useEvmWriteContract();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(syncChainId);

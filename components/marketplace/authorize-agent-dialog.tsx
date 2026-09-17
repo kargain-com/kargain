@@ -52,7 +52,7 @@ import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Step = "approval" | "agent" | "terms";
@@ -100,7 +100,7 @@ export function AuthorizeAgentDialog({
   const walletChain = evm.ok ? evm.chainId : undefined;
   const switchAvail = evmSwitchChainAvailability(account);
 
-  const wc = wagmiChainId(chainId);
+  const wc = eip155WagmiChainId(chainId);
         const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
@@ -238,7 +238,8 @@ export function AuthorizeAgentDialog({
     if (!market) return;
     if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
-        await switchChain(wc );
+        if (wc == null) throw new Error('switchChain unavailable: unresolved_namespace');
+        await switchChain(wc);
       }
     setTxError(null);
     try {
@@ -253,7 +254,8 @@ export function AuthorizeAgentDialog({
     if (!market) return;
     if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
-        await switchChain(wc );
+        if (wc == null) throw new Error('switchChain unavailable: unresolved_namespace');
+        await switchChain(wc);
       }
     setTxError(null);
     try {
@@ -337,7 +339,8 @@ export function AuthorizeAgentDialog({
     }
     if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
-        await switchChain(wc );
+        if (wc == null) throw new Error('switchChain unavailable: unresolved_namespace');
+        await switchChain(wc);
       }
     setTxError(null);
     try {

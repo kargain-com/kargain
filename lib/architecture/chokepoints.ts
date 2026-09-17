@@ -639,13 +639,28 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     ],
   },
   {
+    id: "passport-commerce-facts",
+    owner:
+      "lib/passport/passport-commerce-facts.ts · hooks/use-passport-commerce-facts.ts · lib/web3/supported-chains.ts",
+    rule: "Dual-VM passport commerce chrome reads: EVM batched may/custodyLocked/encumbrance/modes; SVM PassportState keyed-read → custodyLocked only; wagmiChainId only inside the EVM plan arm; eip155WagmiChainId is the product chrome door that returns undefined for commercial SVM (never throw); presence must not treat missing karPassportAddress as location_unread",
+    guardTests: ["passport-detail-svm-chrome-policy.test.ts"],
+  },
+  {
+    id: "passport-detail-svm-chrome",
+    owner:
+      "components/passport/passport-actions-panel.tsx · lib/web3/supported-chains.ts · lib/passport/passport-commerce-facts.ts",
+    rule: "Marketplace passport detail route: no component/hook in the import graph calls wagmiChainId during render; actions panel session chrome is txWriteAvailability + TxWriteRefusal only (no EvmSessionRefusal)",
+    guardTests: ["passport-detail-svm-chrome-policy.test.ts"],
+  },
+  {
     id: "passport-presence-deriver",
     owner:
-      "lib/passport/presence.ts · lib/passport/action-surface.ts · lib/passport/bridge-surface.ts · hooks/use-passport-presence.ts",
-    rule: "derivePassportPresence only in named owners; components/routes consume answers",
+      "lib/passport/presence.ts · lib/passport/action-surface.ts · lib/passport/bridge-surface.ts · hooks/use-passport-presence.ts · lib/passport/passport-commerce-facts.ts",
+    rule: "derivePassportPresence only in named owners; components/routes consume answers; custodyLocked on SVM from PassportState decode via commerce-facts — never invent unlocked or treat missing EVM address as unread",
     guardTests: [
       "passport-presence-owner-policy.test.ts",
       "passport-action-surface.test.ts",
+      "passport-detail-svm-chrome-policy.test.ts",
     ],
   },
   {

@@ -27,7 +27,7 @@ import {
 } from "@/lib/contracts/abis.generated";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 const STALE_MS = 30_000;
 const CONFIG_STALE_MS = 300_000;
@@ -81,7 +81,7 @@ export function useAuctionChainReads({
 }: UseAuctionChainReadsArgs) {
   const mode = commerceModeAddress("ascending", chainId);
   const passport = karPassportAddress(chainId);
-  const wc = wagmiChainId(chainId);
+  const wc = eip155WagmiChainId(chainId);
   const tokenIdBig = useMemo(() => {
     try {
       return BigInt(tokenId);
@@ -90,10 +90,10 @@ export function useAuctionChainReads({
     }
   }, [tokenId]);
 
-  const readsEnabled = Boolean(enabled && mode && tokenId);
+  const readsEnabled = Boolean(enabled && mode && tokenId && wc != null);
 
   const contracts = useMemo(() => {
-    if (!readsEnabled || !mode) return [];
+    if (!readsEnabled || !mode || wc == null) return [];
     const modeReads = [
       ...PER_TOKEN.map((functionName) => ({
         key: functionName,

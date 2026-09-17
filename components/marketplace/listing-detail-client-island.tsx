@@ -49,7 +49,7 @@ import { DELIST_BEFORE_AUCTION_HINT } from "@/lib/auction/sale-form-copy";
 import type { FixedPriceListingDetailProp } from "@/lib/passport/fetch-passport-detail";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 type Props = {
   chainId: number;
@@ -98,22 +98,23 @@ export function ListingDetailClientIsland({
   const locationBlocksWrites = presenceBlocksWrites(presence);
 
   const passport = karPassportAddress(chainId);
-  const wc = wagmiChainId(chainId);
+  const wc = eip155WagmiChainId(chainId);
   const tid = BigInt(tokenId);
 
   const ownerReads = useKeyedReadContracts({
-    contracts: passport
-      ? [
-          {
-            key: "ownerOf" as const,
-            address: passport,
-            abi: KarPassportAbi,
-            functionName: "ownerOf",
-            args: [tid],
-            chainId: wc,
-          },
-        ]
-      : [],
+    contracts:
+      passport && wc != null
+        ? [
+            {
+              key: "ownerOf" as const,
+              address: passport,
+              abi: KarPassportAbi,
+              functionName: "ownerOf",
+              args: [tid],
+              chainId: wc,
+            },
+          ]
+        : [],
   });
   const refetchOwner = ownerReads.refetch;
 
@@ -214,7 +215,7 @@ export function ListingDetailClientIsland({
     address: commerce.asset,
     abi: erc20Abi,
     functionName: "decimals",
-    chainId: wagmiChainId(chainId),
+    chainId: eip155WagmiChainId(chainId),
     query: { enabled: needsErc20Decimals },
   });
   const stack = commercialActive(chainId);

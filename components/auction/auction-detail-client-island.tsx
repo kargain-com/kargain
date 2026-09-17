@@ -32,7 +32,7 @@ import {
   commercialActive,
   nativeUnitOf,
 } from "@/lib/web3/commercial-active";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 type AuctionDetailController = ReturnType<typeof useAuctionDetail>;
 
@@ -159,8 +159,10 @@ export function AuctionDetailClientIsland({
     address: assetAddr as `0x${string}`,
     abi: erc20Abi,
     functionName: "decimals",
-    chainId: wagmiChainId(chainId),
-    query: { enabled: Boolean(needsErc20Decimals) },
+    chainId: eip155WagmiChainId(chainId),
+    query: {
+      enabled: Boolean(needsErc20Decimals && eip155WagmiChainId(chainId) != null),
+    },
   });
   const stack = commercialActive(chainId);
   const floorUnits = floorDisplayUnits({

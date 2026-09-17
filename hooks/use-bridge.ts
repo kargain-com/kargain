@@ -44,7 +44,7 @@ import {
   type BridgeSendParam,
 } from "@/lib/web3/bridge";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
-import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
+import { shortChainName, eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 export type BridgePhase =
@@ -117,7 +117,12 @@ export function useBridge(
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const publicClient = usePublicClient({ chainId: wagmiChainId(srcChainId) });
+  const publicClient = usePublicClient(
+    (() => {
+      const wc = eip155WagmiChainId(srcChainId);
+      return wc != null ? { chainId: wc } : {};
+    })(),
+  );
   const { writeContractAsync } = useEvmWriteContract();
   const { runTx, awaitReceipt, runFlow, busy: syncBusy, error: syncError } =
     useTxSync(srcChainId);
@@ -248,7 +253,7 @@ export function useBridge(
                 functionName: "send",
                 args: [...sendArgs(sendParam, fee, recipient)],
                 value: fee.nativeFee,
-                chainId: wagmiChainId(srcChainId),
+                chainId: eip155WagmiChainId(srcChainId),
               }),
             { mapError: mapBridgeError },
           );

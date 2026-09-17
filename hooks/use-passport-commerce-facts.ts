@@ -1,307 +1,110 @@
+/**
+ * React port wiring for dual-VM passport commerce chrome facts (U9.2a).
+ * No VM fork — the lib owner plans contracts and resolves the surface.
+ */
+
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 
 import {
-  CONSIGNMENT_PHASE,
-  ENCUMBRANCE_INTENT,
-  isLiveConsignmentPhase,
-  parseConsignmentPhase,
-} from "@/lib/commerce/consignment";
-import { parseMandate, type MandateSnapshot } from "@/lib/commerce/mandate";
-import { commerceModeAddress, type CommerceMode } from "@/lib/commerce/mode";
-import {
-  AscendingConsignmentAbi,
-  FixedPriceConsignmentAbi,
-  KarPassportAbi,
-} from "@/lib/contracts/abis.generated";
-import {
-  deriveEncumbrancePermission,
-  type EncumbrancePermissionGate,
-} from "@/lib/passport/encumbrance-permission";
-import {
-  deriveEncumbranceRegistry,
-  MAX_ENCUMBRANCE_SOURCES,
-  type EncumbranceRegistry,
-} from "@/lib/passport/encumbrance-registry";
-import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+  planPassportCommerceReads,
+  resolvePassportCommerceFacts,
+  type PassportCommerceFacts,
+  type PassportCommerceReadPlan,
+} from "@/lib/passport/passport-commerce-facts";
+import type { CommercialRegistry } from "@/lib/web3/commercial-active";
 import {
   useKeyedReadContracts,
   type KeyedContract,
 } from "@/lib/web3/keyed-multicall";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 
-const MANDATE_FUNCTIONS = [
-  "mandateActive",
-  "mandateAgent",
-  "mandateExpiry",
-  "mandateAsset",
-  "mandateDenominationKind",
-  "mandateCurrencyCode",
-  "mandateFloor",
-  "mandateCompensationForm",
-  "mandateCommissionBps",
-] as const;
+export type {
+  CommerceModeFacts,
+  PassportCommerceFacts,
+} from "@/lib/passport/passport-commerce-facts";
 
-type ModePrefix = "fp" | "asc";
-
-export type CommerceModeFacts = {
-  /** `false` when the mode is not deployed on this chain. */
-  configured: boolean;
-  /** `undefined` while the phase read is unresolved. */
-  live: boolean | undefined;
-  /** `undefined` while the mandate reads are unresolved. */
-  mandate: MandateSnapshot | null | undefined;
-};
-
-export type PassportCommerceFacts = {
-  fixedPrice: CommerceModeFacts;
-  ascending: CommerceModeFacts;
-  /** `may(tokenId, OpenConsignment)` — available | blocked with named cause. */
-  openConsignmentPermission: EncumbrancePermissionGate;
-  /** `may(tokenId, LeaveChain)` — available | blocked with named cause. */
-  leaveChainPermission: EncumbrancePermissionGate;
-  /**
-   * On-chain encumbrance registry membership for this custody-chain passport
-   * contract (not token-scoped).
-   */
-  encumbranceRegistry: EncumbranceRegistry;
-  /**
-   * On-chain `custodyLocked(tokenId)` — usable copy not on this chain when true.
-   * `undefined` while unread (fail closed for presence).
-   */
-  custodyLocked: boolean | undefined;
-  /** Bonded verification challenge open on the passport itself. */
-  challengeOpen: boolean | undefined;
-  /** Mode holding a live consignment, when exactly one does. */
-  liveConsignmentMode: CommerceMode | null;
-  /** `undefined` until every mode phase read resolves. */
-  hasLiveConsignment: boolean | undefined;
-  isPending: boolean;
+export type PassportCommerceFactsResult = PassportCommerceFacts & {
   refetch: () => void;
 };
 
+export { CONSIGNMENT_PHASE } from "@/lib/commerce/consignment";
+
+type PlannedOk = Extract<PassportCommerceReadPlan, { ok: true }>;
+
 /**
- * One batched read of every commerce fact the passport surfaces need:
- * `may` intents, per-mode consignment phase, and per-mode mandate.
+ * One batched read of every commerce fact the passport surfaces need.
  * Missing mode addresses fail closed (not configured, never "free").
+ * SVM answers custodyLocked from PassportState; other facts stay unread.
  */
 export function usePassportCommerceFacts(input: {
   chainId: number;
   tokenId: string;
   enabled?: boolean;
-}): PassportCommerceFacts {
-  const { chainId, tokenId, enabled = true } = input;
-  const passport = karPassportAddress(chainId);
-  const fixedPrice = commerceModeAddress("fixedPrice", chainId);
-  const ascending = commerceModeAddress("ascending", chainId);
-  const wc = wagmiChainId(chainId);
+  registry?: CommercialRegistry;
+}): PassportCommerceFactsResult {
+  const { chainId, tokenId, enabled = true, registry } = input;
+  const depsKey = `${chainId}:${tokenId}:${enabled ? "1" : "0"}`;
+  const [snapshot, setSnapshot] = useState<{
+    key: string;
+    plan: PlannedOk | null;
+  } | null>(null);
 
-  const tid = useMemo(() => {
-    try {
-      return BigInt(tokenId);
-    } catch {
-      return 0n;
-    }
-  }, [tokenId]);
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    void planPassportCommerceReads({
+      chainId,
+      tokenId,
+      registry,
+    }).then((result) => {
+      if (cancelled) return;
+      if (!result.ok) {
+        setSnapshot({
+          key: depsKey,
+          plan: {
+            ok: true,
+            vm: null,
+            contracts: [],
+            tokenId,
+          },
+        });
+        return;
+      }
+      setSnapshot({ key: depsKey, plan: result });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [chainId, tokenId, registry, depsKey, enabled]);
 
-  const contracts = useMemo((): KeyedContract[] => {
-    if (!enabled || !passport) return [];
-    const calls: KeyedContract[] = [
-      {
-        key: "mayOpen",
-        address: passport,
-        abi: KarPassportAbi,
-        functionName: "may",
-        args: [tid, ENCUMBRANCE_INTENT.OpenConsignment],
-        chainId: wc,
-      },
-      {
-        key: "mayLeave",
-        address: passport,
-        abi: KarPassportAbi,
-        functionName: "may",
-        args: [tid, ENCUMBRANCE_INTENT.LeaveChain],
-        chainId: wc,
-      },
-      {
-        key: "challengeOpenedAt",
-        address: passport,
-        abi: KarPassportAbi,
-        functionName: "challengeOpenedAt",
-        args: [tid],
-        chainId: wc,
-      },
-      {
-        key: "custodyLocked",
-        address: passport,
-        abi: KarPassportAbi,
-        functionName: "custodyLocked",
-        args: [tid],
-        chainId: wc,
-      },
-      {
-        key: "encumbranceSourceCount",
-        address: passport,
-        abi: KarPassportAbi,
-        functionName: "encumbranceSourceCount",
-        chainId: wc,
-      },
-    ];
-    for (let i = 0; i < MAX_ENCUMBRANCE_SOURCES; i++) {
-      calls.push({
-        key: `encumbranceSourceAt.${i}`,
-        address: passport,
-        abi: KarPassportAbi,
-        functionName: "encumbranceSourceAt",
-        args: [BigInt(i)],
-        chainId: wc,
-      });
-    }
-    if (fixedPrice) {
-      calls.push({
-        key: "fp.phase",
-        address: fixedPrice,
-        abi: FixedPriceConsignmentAbi,
-        functionName: "consignmentPhase",
-        args: [tid],
-        chainId: wc,
-      });
-      for (const functionName of MANDATE_FUNCTIONS) {
-        calls.push({
-          key: `fp.${functionName}`,
-          address: fixedPrice,
-          abi: FixedPriceConsignmentAbi,
-          functionName,
-          args: [tid],
-          chainId: wc,
-        });
-      }
-    }
-    if (ascending) {
-      calls.push({
-        key: "asc.phase",
-        address: ascending,
-        abi: AscendingConsignmentAbi,
-        functionName: "consignmentPhase",
-        args: [tid],
-        chainId: wc,
-      });
-      for (const functionName of MANDATE_FUNCTIONS) {
-        calls.push({
-          key: `asc.${functionName}`,
-          address: ascending,
-          abi: AscendingConsignmentAbi,
-          functionName,
-          args: [tid],
-          chainId: wc,
-        });
-      }
-    }
-    return calls;
-  }, [enabled, passport, fixedPrice, ascending, tid, wc]);
+  const plan =
+    enabled && snapshot?.key === depsKey ? snapshot.plan : null;
+  const planning =
+    enabled && (snapshot == null || snapshot.key !== depsKey);
+
+  const contracts: readonly KeyedContract[] = plan?.contracts ?? [];
 
   const reads = useKeyedReadContracts({
     contracts,
-    query: { enabled: contracts.length > 0, staleTime: 15_000 },
+    query: {
+      enabled: enabled && plan != null && contracts.length > 0,
+      staleTime: 15_000,
+    },
   });
 
-  const readModeFacts = (
-    mode: CommerceMode,
-    prefix: ModePrefix,
-    configured: boolean,
-  ): CommerceModeFacts => {
-    if (!configured) {
-      return { configured: false, live: false, mandate: null };
-    }
-    const rawPhase = reads.get(`${prefix}.phase`);
-    const phase =
-      rawPhase == null ? null : parseConsignmentPhase(Number(rawPhase));
-    const activeRead = reads.get(`${prefix}.mandateActive`);
-    const mandate =
-      activeRead == null
-        ? undefined
-        : parseMandate(mode, tokenId, {
-            active: activeRead === true,
-            agent: reads.get(`${prefix}.mandateAgent`) as string | undefined,
-            expiry: reads.get(`${prefix}.mandateExpiry`) as bigint | undefined,
-            asset: reads.get(`${prefix}.mandateAsset`) as string | undefined,
-            denominationKind: (() => {
-              const v = reads.get(`${prefix}.mandateDenominationKind`);
-              return v == null ? undefined : Number(v);
-            })(),
-            currencyCode: reads.get(`${prefix}.mandateCurrencyCode`) as
-              | string
-              | undefined,
-            floor: reads.get(`${prefix}.mandateFloor`) as bigint | undefined,
-            compensationForm: (() => {
-              const v = reads.get(`${prefix}.mandateCompensationForm`);
-              return v == null ? undefined : Number(v);
-            })(),
-            commissionBps: (() => {
-              const v = reads.get(`${prefix}.mandateCommissionBps`);
-              return v == null ? undefined : Number(v);
-            })(),
-          });
-    return {
-      configured: true,
-      live: rawPhase == null ? undefined : isLiveConsignmentPhase(phase),
-      mandate: mandate === undefined ? undefined : mandate,
-    };
-  };
-
-  const fixedPriceFacts = readModeFacts(
-    "fixedPrice",
-    "fp",
-    Boolean(fixedPrice),
-  );
-  const ascendingFacts = readModeFacts("ascending", "asc", Boolean(ascending));
-
-  const mayOpenEntry = reads.entry("mayOpen");
-  const mayLeaveEntry = reads.entry("mayLeave");
-  const challengeOpenedAt = reads.get("challengeOpenedAt");
-  const custodyLockedRaw = reads.get("custodyLocked");
-
-  const openConsignmentPermission = deriveEncumbrancePermission(mayOpenEntry);
-  const leaveChainPermission = deriveEncumbrancePermission(mayLeaveEntry);
-  const encumbranceRegistry = deriveEncumbranceRegistry({
-    countEntry: reads.entry("encumbranceSourceCount"),
-    atEntries: Array.from({ length: MAX_ENCUMBRANCE_SOURCES }, (_, i) =>
-      reads.entry(`encumbranceSourceAt.${i}`),
-    ),
+  const facts = resolvePassportCommerceFacts({
+    plan,
+    planning,
+    entry: reads.entry,
+    get: reads.get,
+    isPending: reads.isPending,
   });
-
-  const anyUnresolved =
-    fixedPriceFacts.live === undefined || ascendingFacts.live === undefined;
-  const hasLiveConsignment = anyUnresolved
-    ? undefined
-    : Boolean(fixedPriceFacts.live) || Boolean(ascendingFacts.live);
-
-  const liveConsignmentMode: CommerceMode | null = fixedPriceFacts.live
-    ? "fixedPrice"
-    : ascendingFacts.live
-      ? "ascending"
-      : null;
 
   return {
-    fixedPrice: fixedPriceFacts,
-    ascending: ascendingFacts,
-    openConsignmentPermission,
-    leaveChainPermission,
-    encumbranceRegistry,
-    custodyLocked:
-      custodyLockedRaw == null ? undefined : custodyLockedRaw === true,
-    challengeOpen:
-      challengeOpenedAt == null
-        ? undefined
-        : BigInt(String(challengeOpenedAt)) > 0n,
-    liveConsignmentMode,
-    hasLiveConsignment,
-    isPending: contracts.length > 0 && reads.isPending,
+    ...facts,
     refetch: () => {
       void reads.refetch();
     },
   };
 }
-
-export { CONSIGNMENT_PHASE };

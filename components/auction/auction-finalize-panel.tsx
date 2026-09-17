@@ -14,7 +14,7 @@ import {
   commercialActive,
   nativeUnitOf,
 } from "@/lib/web3/commercial-active";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
@@ -61,7 +61,7 @@ export function AuctionFinalizePanel({
         abi: AscendingConsignmentAbi,
         functionName: "settle",
         args: [BigInt(tokenId)],
-        chainId: wagmiChainId(chainId),
+        chainId: eip155WagmiChainId(chainId),
       }),
     );
   }

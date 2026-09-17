@@ -35,7 +35,7 @@ import { shouldIdleWarmXmtp } from "@/lib/messaging/snapshot-ui";
 import { getMessagingXmtpEnv } from "@/lib/messaging/xmtp-env";
 import { useNostrKey } from "@/hooks/use-nostr-key";
 import { resolveWalletCommercialChainId } from "@/lib/web3/chain-context";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 type SessionRefs = {
   address: Address;
@@ -205,7 +205,7 @@ export function MessagingSessionProvider({ children }: { children: ReactNode }) 
 
       const commercialChainId = resolveWalletCommercialChainId(walletChainId);
   const { data: walletClient } = useWalletClient(
-    commercialChainId != null ? { chainId: wagmiChainId(commercialChainId) } : {},
+    commercialChainId != null ? { chainId: eip155WagmiChainId(commercialChainId) } : {},
   );
   const {
     nostrPrivateKey,

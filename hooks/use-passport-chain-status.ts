@@ -7,7 +7,7 @@ import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import { chainStatusFromGetPassportStatusResult } from "@/lib/passport/confirm-listing-status";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 export function usePassportChainStatus(
   chainId: number,
@@ -15,7 +15,7 @@ export function usePassportChainStatus(
   ponderStatus: PassportStatus,
 ) {
   const address = karPassportAddress(chainId);
-  const wc = wagmiChainId(chainId);
+  const wc = eip155WagmiChainId(chainId);
 
   const { data, isLoading, isFetching, isError, refetch } = useReadContract({
     address,
@@ -23,7 +23,7 @@ export function usePassportChainStatus(
     functionName: "getPassportStatus",
     args: [BigInt(tokenId)],
     chainId: wc,
-    query: { enabled: Boolean(address) },
+    query: { enabled: Boolean(wc != null && address) },
   });
 
   useEffect(() => {

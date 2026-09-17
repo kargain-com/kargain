@@ -17,7 +17,7 @@ import {
 } from "@/lib/marketplace/parse-on-chain-listing";
 import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 const STALE_MS = 15_000;
 
@@ -33,7 +33,7 @@ export function useListingChainReads(input: {
 }) {
   const { chainId, tokenId, enabled = true } = input;
   const market = commerceModeAddress("fixedPrice", chainId);
-  const wc = wagmiChainId(chainId);
+  const wc = eip155WagmiChainId(chainId);
 
   const tid = useMemo(() => {
     try {
@@ -43,10 +43,10 @@ export function useListingChainReads(input: {
     }
   }, [tokenId]);
 
-  const readsEnabled = Boolean(enabled && market && tokenId);
+  const readsEnabled = Boolean(enabled && market && tokenId && wc != null);
 
   const contracts = useMemo(() => {
-    if (!readsEnabled || !market) return [];
+    if (!readsEnabled || !market || wc == null) return [];
     const perToken = (
       [
         "consignmentPhase",

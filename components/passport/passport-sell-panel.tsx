@@ -14,7 +14,7 @@ import { AgentAuthorizationStatus } from "@/components/marketplace/agent-authori
 import { AuthorizeAgentDialog } from "@/components/marketplace/authorize-agent-dialog";
 import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
-import type { PassportCommerceFacts } from "@/hooks/use-passport-commerce-facts";
+import type { PassportCommerceFactsResult } from "@/hooks/use-passport-commerce-facts";
 import { useCommerceModePaused } from "@/hooks/use-commerce-mode-paused";
 import { usePassportPresence } from "@/hooks/use-passport-presence";
 import {
@@ -52,7 +52,7 @@ import {
   karPassportAddress,
   karProStakingAddress,
 } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 function ascendingMandateAsAuth(mandate: MandateSnapshot): AuctionAgentAuth {
   return {
@@ -73,7 +73,7 @@ type Props = {
   ponderCustodyChain?: number;
   /** Fold incomplete cause from the indexer. */
   custodyUnresolved?: string | null;
-  facts: PassportCommerceFacts;
+  facts: PassportCommerceFactsResult;
   now: number;
 };
 
@@ -103,7 +103,7 @@ export function PassportSellPanel({
 
   const passport = karPassportAddress(chainId);
   const staking = karProStakingAddress(chainId);
-  const wc = wagmiChainId(chainId);
+  const wc = eip155WagmiChainId(chainId);
   const tid = BigInt(tokenId);
   const { paused: fixedPricePaused } = useCommerceModePaused({
     mode: "fixedPrice",
@@ -120,7 +120,7 @@ export function PassportSellPanel({
     functionName: "ownerOf",
     args: [tid],
     chainId: wc,
-    query: { enabled: Boolean(passport) },
+    query: { enabled: Boolean(passport && wc != null) },
   });
 
   const { data: isActiveVerifier, refetch: refetchVerifier } = useReadContract({
@@ -129,7 +129,7 @@ export function PassportSellPanel({
     functionName: "isActiveVerifier",
     args: address ? [address] : undefined,
     chainId: wc,
-    query: { enabled: Boolean(staking && address) },
+    query: { enabled: Boolean(staking && address && wc != null) },
   });
 
   const effectiveOwner = resolveEffectiveOnChainOwner(

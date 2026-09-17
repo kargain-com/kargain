@@ -16,7 +16,7 @@ import { categoryLabel } from "@/lib/design/instrument-classes";
 import { formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 import type { ListingCurrencyCode } from "@/lib/marketplace/currency-code";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
@@ -51,7 +51,7 @@ export function AgentAuthorizationStatus({
   const walletChain = evm.ok ? evm.chainId : undefined;
   const switchAvail = evmSwitchChainAvailability(account);
 
-  const wc = wagmiChainId(chainId);
+  const wc = eip155WagmiChainId(chainId);
       const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
@@ -71,7 +71,8 @@ export function AgentAuthorizationStatus({
     if (!market || listingActive) return;
     if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
-        await switchChain(wc );
+        if (wc == null) throw new Error('switchChain unavailable: unresolved_namespace');
+        await switchChain(wc);
       }
     setTxError(null);
     try {
