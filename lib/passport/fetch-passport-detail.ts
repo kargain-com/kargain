@@ -28,6 +28,10 @@ import type {
 } from "@/lib/types/ponder";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import {
+  mintProtocolOwner,
+  type ProtocolOwner,
+} from "@/lib/web3/protocol-address";
+import {
   buildVerifierDetailUrl,
   fetchConsignmentByToken,
   fetchPassportByToken,
@@ -109,7 +113,7 @@ export function parsePonderPassport(raw: unknown): PonderPassportDetail | null {
   const obj = raw as Record<string, unknown>;
 
   const id = typeof obj.id === "string" ? obj.id : "";
-  const owner = typeof obj.owner === "string" ? obj.owner : "";
+  const ownerRaw = typeof obj.owner === "string" ? obj.owner : "";
   const statusRaw = typeof obj.status === "string" ? obj.status : "";
   let entityOrigin;
   try {
@@ -164,13 +168,16 @@ export function parsePonderPassport(raw: unknown): PonderPassportDetail | null {
 
   if (
     !id ||
-    !owner ||
+    !ownerRaw ||
     !isPassportStatus(statusRaw) ||
     chainId == null ||
     (!hasResolvedCustody && !hasUnresolvedCustody)
   ) {
     return null;
   }
+
+  const owner = mintProtocolOwner(chainId, ownerRaw);
+  if (owner == null) return null;
 
   const recordsRaw = Array.isArray(obj.records) ? obj.records : [];
   const records = recordsRaw
@@ -267,8 +274,8 @@ async function confirmStatusOnChain(
 async function confirmOwnerOnChain(
   tokenId: string,
   chainId: number,
-  ponderOwner: string,
-): Promise<string> {
+  ponderOwner: ProtocolOwner,
+): Promise<ProtocolOwner> {
   const address = karPassportAddress(chainId);
   if (!address) return ponderOwner;
 
@@ -285,7 +292,9 @@ async function confirmOwnerOnChain(
       typeof chainOwner === "string" &&
       chainOwner.toLowerCase() !== ponderOwner.toLowerCase()
     ) {
-      return chainOwner;
+      const minted = mintProtocolOwner(chainId, chainOwner);
+      if (minted == null) return ponderOwner;
+      return minted;
     }
   } catch {
     /* keep ponder owner */

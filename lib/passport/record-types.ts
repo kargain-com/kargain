@@ -3,6 +3,7 @@ import {
   DISPUTE_WITHDRAWN_PREFIX,
   isDisputeWithdrawnRecord,
 } from "@/lib/passport/index-passport-metadata";
+import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 import type { PonderPassportRecord } from "@/lib/types/ponder";
 
 export type RecordSeverity = "neutral" | "info" | "warn" | "success";
@@ -49,7 +50,7 @@ export const DEFAULT_RECORD_LABELS: RecordDisplayLabels = {
 };
 
 export type RecordDisplayContext = {
-  passportOwner: string;
+  passportOwner: ProtocolOwner;
   lastDisputer: string;
   disputeReason: string;
 };

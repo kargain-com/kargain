@@ -65,6 +65,7 @@ import {
   commercialActive,
   nativeUnitOf,
 } from "@/lib/web3/commercial-active";
+import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 import { formatNativeAmountLabeled } from "@/lib/web3/native-amount";
 import { writeOutcomeHasClaimRecipient } from "@/lib/web3/write-outcome";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
@@ -79,7 +80,7 @@ type Props = {
   ponderCustodyChain?: number;
   /** Fold incomplete cause from indexer. */
   custodyUnresolved?: string | null;
-  passportOwner: string;
+  passportOwner: ProtocolOwner;
   status: PassportStatus;
   lastDisputer: string;
   /** Recorded verifier while disputed (passport.verifier). */

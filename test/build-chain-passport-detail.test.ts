@@ -3,9 +3,14 @@ import { describe, it } from "node:test";
 
 import { buildChainPassportStub } from "../lib/passport/build-chain-passport-detail.ts";
 import type { PassportMetadata } from "../lib/passport/fetch-arweave-metadata.ts";
+import { mintProtocolOwner } from "../lib/web3/protocol-address.ts";
 
 const TOKEN_ID = "28764749040560770193485982315422230450798592";
-const OWNER = "0x1111111111111111111111111111111111111111";
+const OWNER = mintProtocolOwner(
+  84532,
+  "0x1111111111111111111111111111111111111111",
+);
+if (OWNER == null) throw new Error("fixture owner mint refused");
 const TOKEN_URI = "ar://abc123";
 const CHAIN_ID = 84532;
 

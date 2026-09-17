@@ -53,6 +53,7 @@ import {
   karProStakingAddress,
 } from "@/lib/web3/deployment-addresses";
 import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
+import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 
 function ascendingMandateAsAuth(mandate: MandateSnapshot): AuctionAgentAuth {
   return {
@@ -67,7 +68,7 @@ function ascendingMandateAsAuth(mandate: MandateSnapshot): AuctionAgentAuth {
 type Props = {
   chainId: number;
   tokenId: string;
-  passportOwner: string;
+  passportOwner: ProtocolOwner;
   passportStatus: PassportStatus;
   /** Ponder usable-copy location — presence input. Defaults to `chainId`. */
   ponderCustodyChain?: number;

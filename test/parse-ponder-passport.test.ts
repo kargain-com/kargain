@@ -89,4 +89,23 @@ describe("parsePonderPassport custody", () => {
     const { chainId: _, ...rest } = BASE;
     assert.equal(parsePonderPassport(rest), null);
   });
+
+  it("refuses owner that cannot normalize for the namespace", () => {
+    assert.equal(
+      parsePonderPassport({
+        ...BASE,
+        owner: "not-a-protocol-address!!!",
+      }),
+      null,
+    );
+  });
+
+  it("mints checksummed EVM owner on parse", () => {
+    const parsed = parsePonderPassport({
+      ...BASE,
+      owner: "0x1111111111111111111111111111111111111111",
+    });
+    assert.ok(parsed);
+    assert.equal(parsed!.owner, "0x1111111111111111111111111111111111111111");
+  });
 });

@@ -11,6 +11,7 @@ import {
   isOnChainNftOwner,
   resolveEffectiveOnChainOwner,
 } from "@/lib/passport/passport-owner";
+import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 import {
   PASSPORT_TAB_CHANGE_EVENT,
   parsePassportTab,
@@ -22,7 +23,7 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   status: PassportStatus;
-  passportOwner: string;
+  passportOwner: ProtocolOwner;
   chainId: number;
   tokenId: string;
   overview: ReactNode;

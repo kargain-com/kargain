@@ -1,6 +1,7 @@
 import {
   normalizeProtocolAddressForVm,
   protocolAddressesEqual,
+  type ProtocolOwner,
 } from "@/lib/web3/protocol-address";
 
 /**
@@ -20,11 +21,11 @@ export function isSameWallet(
 
 /**
  * Prefer a live EIP-155 `ownerOf` when present; otherwise the entity/ponder
- * owner string (hex or base58). Never invent an address.
+ * owner (hex or base58). Never invent an address.
  */
 export function resolveEffectiveOnChainOwner(
   onChainOwner?: string | null,
-  ponderOwner?: string | null,
+  ponderOwner?: ProtocolOwner | string | null,
 ): string | undefined {
   return onChainOwner ?? ponderOwner ?? undefined;
 }
@@ -40,7 +41,7 @@ export function isOnChainNftOwner(
 type PassportHolderInput = {
   address?: string | null;
   onChainOwner?: string | null;
-  ponderOwner?: string | null;
+  ponderOwner?: ProtocolOwner | string | null;
   listingActive?: boolean;
   listingSeller?: string | null;
   /** Commercial namespace for protocol compare when known. */

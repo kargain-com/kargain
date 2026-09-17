@@ -13,6 +13,7 @@ import {
 } from "@/lib/challenge";
 import type { PonderPassportRecord } from "@/lib/types/ponder";
 import { navShortAddress } from "@/lib/web3/wallet-display";
+import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 
 import {
   PassportLogSection,
@@ -21,7 +22,7 @@ import {
 
 type Props = {
   records: PonderPassportRecord[];
-  passportOwner: string;
+  passportOwner: ProtocolOwner;
   lastDisputer: string;
   disputeReason: string;
   lastDisputeTerminal?: string;

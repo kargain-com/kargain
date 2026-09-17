@@ -14,6 +14,7 @@ import {
 import type { PassportCustody } from "@/lib/marketplace/passport-custody";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { commercialExplorerAddressUrl } from "@/lib/web3/network-explorer";
+import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -23,7 +24,7 @@ type Props = {
   verifier: string;
   verifiedAt: string;
   custody: PassportCustody;
-  passportOwner: string;
+  passportOwner: ProtocolOwner;
   verificationResetCount: number;
   hadDispute: boolean;
   lastDisputeTerminal?: string;

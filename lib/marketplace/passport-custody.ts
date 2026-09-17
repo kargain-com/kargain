@@ -11,6 +11,7 @@ import { commercialActive } from "@/lib/web3/commercial-active";
 import {
   normalizeProtocolAddress,
   protocolAddressesEqual,
+  type ProtocolOwner,
 } from "@/lib/web3/protocol-address";
 
 export type PassportCustody = {
@@ -21,7 +22,7 @@ export type PassportCustody = {
 
 type ResolvePassportCustodyInput = {
   chainId: number;
-  passportOwner: string;
+  passportOwner: ProtocolOwner | string;
   listing?: {
     active: boolean;
     seller: string;

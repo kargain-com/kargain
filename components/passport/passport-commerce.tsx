@@ -1,4 +1,5 @@
 "use client";
+import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 
 import { AuctionDetailClientIsland } from "@/components/auction/auction-detail-client-island";
 import { ListingDetailClientIsland } from "@/components/marketplace/listing-detail-client-island";
@@ -24,7 +25,7 @@ type CommonProps = {
   tokenId: string;
   listing: FixedPriceListingDetailProp | null;
   initialAuction: AuctionRow | null;
-  passportOwner: string;
+  passportOwner: ProtocolOwner;
   passportStatus: PassportStatus;
   custodyUnresolved?: string | null;
   duplicateVin: boolean;

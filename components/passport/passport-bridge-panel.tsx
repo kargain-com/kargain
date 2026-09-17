@@ -41,6 +41,7 @@ import {
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { formatNativeAmountLabeled } from "@/lib/web3/native-amount";
 import { shortChainName, eip155WagmiChainId } from "@/lib/web3/supported-chains";
+import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 import { cn } from "@/lib/utils";
 import type { ActiveAccount } from "@/hooks/use-active-account";
 
@@ -64,7 +65,7 @@ function nextHopWrongVmCopyForRoute(
 type Props = {
   chainId: number;
   tokenId: string;
-  passportOwner: string;
+  passportOwner: ProtocolOwner;
   passportStatus: PassportStatus;
   /** Fold incomplete cause — answered by bridge-surface (§4.21). */
   custodyUnresolved?: string | null;

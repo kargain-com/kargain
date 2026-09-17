@@ -384,8 +384,11 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "protocol-address-compare",
     owner: "lib/web3/protocol-address.ts",
-    rule: "Protocol address normalize/compare by namespace; no dual toLowerCase match",
-    guardTests: ["network-class-policy.test.ts"],
+    rule: "Protocol address normalize/compare by namespace; ProtocolOwner brand minted only via mintProtocolOwner at entity ingress — not assignable to 0x without isEvmHexAddress; no dual toLowerCase match",
+    guardTests: [
+      "network-class-policy.test.ts",
+      "protocol-owner-policy.test.ts",
+    ],
   },
   {
     id: "explorer-origin",
@@ -648,9 +651,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "passport-detail-svm-chrome",
     owner:
-      "components/passport/passport-detail-view.tsx · components/passport/passport-actions-panel.tsx · lib/marketplace/passport-custody.ts · lib/passport/passport-owner.ts · lib/web3/supported-chains.ts · lib/passport/passport-commerce-facts.ts",
-    rule: "Marketplace passport detail route: no wagmiChainId in the import-graph components/hooks; no passport.owner as 0x and no getAddress(passportOwner|passport.owner) on entity-sourced owners; escrow custody (marketplace) is namespace-scoped via protocol-address; actions session chrome is txWriteAvailability + TxWriteRefusal only",
-    guardTests: ["passport-detail-svm-chrome-policy.test.ts"],
+      "components/passport/passport-detail-view.tsx · components/passport/passport-actions-panel.tsx · lib/marketplace/passport-custody.ts · lib/passport/passport-owner.ts · lib/web3/protocol-address.ts · lib/web3/supported-chains.ts · lib/passport/passport-commerce-facts.ts",
+    rule: "Marketplace passport detail route: no wagmiChainId in the import-graph components/hooks; entity owner is ProtocolOwner (type wall — not text scanners for as 0x / getAddress); escrow custody is namespace-scoped via protocol-address; actions session chrome is txWriteAvailability + TxWriteRefusal only",
+    guardTests: [
+      "passport-detail-svm-chrome-policy.test.ts",
+      "protocol-owner-policy.test.ts",
+    ],
   },
   {
     id: "passport-presence-deriver",

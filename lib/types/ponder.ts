@@ -2,6 +2,7 @@ export type PassportStatus = "UNVERIFIED" | "VERIFIED" | "DISPUTED";
 
 export type { CustodyUnresolvedCause } from "@/lib/custody/normalized-event";
 import type { CustodyUnresolvedCause } from "@/lib/custody/normalized-event";
+import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 
 export type ListingStatus = "active" | "sold";
 
@@ -144,7 +145,8 @@ export type PonderPassportDetail = {
   custodyChain: number | null;
   /** Present when custody fold is incomplete — never invent a chain id. */
   custodyUnresolved?: CustodyUnresolvedCause | null;
-  owner: string;
+  /** Entity owner — minted at parse; dual-VM (hex or base58). */
+  owner: ProtocolOwner;
   status: PassportStatus;
   verifier: string;
   verifiedAt: string;

@@ -8,10 +8,26 @@ import {
   isOpeningDisputeRecord,
 } from "../lib/passport/record-types.ts";
 import type { PonderPassportRecord } from "../lib/types/ponder.ts";
+import { mintProtocolOwner } from "../lib/web3/protocol-address.ts";
 
-const owner = "0xOwner000000000000000000000000000000000001";
-const disputer = "0xDisputer000000000000000000000000000000001";
-const thirdParty = "0xOther00000000000000000000000000000000001";
+const ownerRaw = mintProtocolOwner(
+  84532,
+  "0x1111111111111111111111111111111111111111",
+);
+const disputerRaw = mintProtocolOwner(
+  84532,
+  "0x2222222222222222222222222222222222222222",
+);
+const thirdPartyRaw = mintProtocolOwner(
+  84532,
+  "0x3333333333333333333333333333333333333333",
+);
+if (ownerRaw == null || disputerRaw == null || thirdPartyRaw == null) {
+  throw new Error("fixture owner mint refused");
+}
+const owner = ownerRaw;
+const disputer = disputerRaw;
+const thirdParty = thirdPartyRaw;
 
 function record(
   partial: Partial<PonderPassportRecord> & Pick<PonderPassportRecord, "recordType">,

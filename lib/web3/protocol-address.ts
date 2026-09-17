@@ -14,6 +14,30 @@ import { isReservedNonEvmNamespace } from "@/lib/web3/kargain-namespace";
 
 export type ProtocolVm = "evm" | "svm";
 
+declare const protocolOwnerBrand: unique symbol;
+
+/**
+ * Passport entity owner at the indexer→product boundary — namespace-normalized
+ * string that cannot be assigned to an EIP-155 `` `0x${string}` `` without a
+ * proven narrow ({@link isEvmHexAddress} in passport-owner).
+ */
+export type ProtocolOwner = string & {
+  readonly [protocolOwnerBrand]: void;
+};
+
+/**
+ * Ingress mint for entity owners. Returns null when the address cannot be
+ * normalized for `namespace` — never invents a value.
+ */
+export function mintProtocolOwner(
+  namespace: number,
+  address: string,
+): ProtocolOwner | null {
+  const normalized = normalizeProtocolAddress(namespace, address);
+  if (normalized == null) return null;
+  return normalized as ProtocolOwner;
+}
+
 /** Bitcoin / Solana base58 alphabet (no 0/O/I/l). */
 const BASE58_ALPHABET =
   "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";

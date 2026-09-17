@@ -4,6 +4,10 @@ import { fetchArweaveMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import { passportStatusFromChainIndex } from "@/lib/passport/passport-status-chain";
 import type { PassportStatus, PonderPassportDetail } from "@/lib/types/ponder";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import {
+  mintProtocolOwner,
+  type ProtocolOwner,
+} from "@/lib/web3/protocol-address";
 import { getPublicClient } from "@/lib/web3/public-client";
 
 export type ChainPassportDetailResult =
@@ -17,7 +21,7 @@ export type ChainPassportDetailResult =
 
 export function buildChainPassportStub(
   tokenId: string,
-  owner: string,
+  owner: ProtocolOwner,
   tokenUri: string,
   status: PassportStatus,
   metadata: PassportMetadata | null,
@@ -90,7 +94,7 @@ export async function fetchChainPassportDetail(
   const client = getPublicClient(chainId);
   const tokenIdBigInt = BigInt(tokenId);
 
-  let owner: string;
+  let ownerRaw: string;
   try {
     const chainOwner = await client.readContract({
       address,
@@ -99,10 +103,13 @@ export async function fetchChainPassportDetail(
       args: [tokenIdBigInt],
     });
     if (typeof chainOwner !== "string") return { ok: false };
-    owner = chainOwner;
+    ownerRaw = chainOwner;
   } catch {
     return { ok: false };
   }
+
+  const owner = mintProtocolOwner(chainId, ownerRaw);
+  if (owner == null) return { ok: false };
 
   let tokenUri = "";
   let status: PassportStatus = "UNVERIFIED";

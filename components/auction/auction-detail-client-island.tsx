@@ -33,13 +33,14 @@ import {
   nativeUnitOf,
 } from "@/lib/web3/commercial-active";
 import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
+import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 
 type AuctionDetailController = ReturnType<typeof useAuctionDetail>;
 
 type Props = {
   chainId: number;
   tokenId: string;
-  passportOwner: string;
+  passportOwner: ProtocolOwner;
   /** `may(tokenId, OpenConsignment)` — fail closed while unresolved. */
   canOpenConsignment: boolean;
   /**

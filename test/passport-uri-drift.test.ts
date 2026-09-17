@@ -8,6 +8,7 @@ import {
   overlayPassportFromMetadata,
 } from "../lib/passport/passport-uri-drift.ts";
 import type { PonderPassportDetail } from "../lib/types/ponder.ts";
+import { mintProtocolOwner } from "../lib/web3/protocol-address.ts";
 
 const PONDER_URI = "ar://ponder-old";
 const CHAIN_URI = "ar://chain-new";
@@ -25,12 +26,18 @@ const sampleMetadata: PassportMetadata = {
   transmission: "CVT",
 };
 
+const OWNER = mintProtocolOwner(
+  84532,
+  "0x1111111111111111111111111111111111111111",
+);
+if (OWNER == null) throw new Error("fixture owner mint refused");
+
 const ponderPassport: PonderPassportDetail = {
   id: "28764749040560770193485982315422230450798592",
   chainId: 84532,
   entityOrigin: "minted",
   custodyChain: 84532,
-  owner: "0x1111111111111111111111111111111111111111",
+  owner: OWNER,
   status: "VERIFIED",
   verifier: "0x2222222222222222222222222222222222222222",
   verifiedAt: "100",

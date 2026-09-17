@@ -51,13 +51,14 @@ import type { FixedPriceListingDetailProp } from "@/lib/passport/fetch-passport-
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
+import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 
 type Props = {
   chainId: number;
   tokenId: string;
   listing: FixedPriceListingDetailProp | null;
   /** Ponder / entity passport owner (hex or base58). */
-  passportOwner: string;
+  passportOwner: ProtocolOwner;
   passportStatus: PassportStatus;
   ponderCustodyChain?: number;
   custodyUnresolved?: string | null;
