@@ -1,10 +1,10 @@
 # Nuclear #5 — S3.5 (84532 + 11155111)
 
-**Status: DEPLOYED ON CHAIN — NOT CUT OVER** (August 29, 2026). Parallel stack live beside Nuclear #4. **Do not** edit `COMMERCIAL_ACTIVE`, reindex Ponder, or merge for app cutover until **S9**. App / indexer still serve Nuclear #4.
+**Status: HISTORICAL / NEVER CUT OVER** (deployed August 29, 2026). Parallel stack beside then-live Nuclear #4; **superseded by Nuclear #7 / S9-A**. Do **not** edit `COMMERCIAL_ACTIVE` toward N5. App / indexer serve Nuclear #7 + Solana. See [nuclear-7.md](./nuclear-7.md).
 
 **Local only.** Empty-testnet full redeploy (same class as Nuclear #4). Manifests: `deployments/84532.json` · `deployments/11155111.json` (gitignored).
 
-**Register:** no PENDING until S9 cutover planning.  
+**Register:** never cut over — superseded by Nuclear #7. No PENDING.  
 **Tooling:** `deploy:nuclear:dry-run`, `deploy:sepolia`, `deploy:sepolia:eth`, `verify:*`, `smoke:*`, `bridge:wire*`, `lz:snapshot`, `ponder:config`.  
 **Keys:** hardhat/dotenv only — never log secrets.
 
@@ -78,7 +78,7 @@ Three **distinct** addresses. Fee/forfeit cold; guardian hot (pause). Deployer E
 | Wire 40245↔40168 (Solana) | **S4** against hub gateway `0x66aF522A…888b` | Pending |
 | `COMMERCIAL_ACTIVE` + SPEC I.9 + VPS reindex + Vercel + merge | **S9 once** | Not started |
 
-**Do not** run `bridge:wire:read-only` against N4 pathway as a N5 gate — that pathway is intentionally left for the live app until S9.
+**Do not** run `bridge:wire:read-only` against N4 pathway as a N5 gate — N4/N5 are historical; live pathway is Nuclear #7.
 
 ### Post-deploy gates (N7 template — every nuclear)
 

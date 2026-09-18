@@ -65,7 +65,7 @@ Browse: `GET /consignments?chainId=84532` (optional). Passport detail returns `r
 
 Consignment commerce lives entirely in [`src/api/commerce-routes.ts`](../../src/api/commerce-routes.ts): **`GET /consignments*`** browse, **`GET /agents|owners/.../mandates`** portfolio, **`GET /challenges`** (BondedChallenge feed), and commerce claims. The legacy `MarketplaceEscrow` / `AuctionEscrow` schema and HTTP surface (`marketplace_listing`, `auction`, `GET /listings`, `GET /auctions*`, …) have been removed — there is no dual-write path.
 
-**Production state:** Live VPS until S9-A Merge remains Nuclear #4 (`44957457` / `11404204`). Branch / post-Merge: Nuclear #7 start blocks hub **46119704** / Eth **11591966**. Legacy `/listings` is gone.
+**Production state:** Nuclear #7 on `master` / VPS — hub **46119704** / Eth **11591966**; Solana Devnet **2000040168** via `svm-ingest`. Nuclear #4 is historical. Legacy `/listings` is gone.
 
 | Identity | Format |
 |----------|--------|

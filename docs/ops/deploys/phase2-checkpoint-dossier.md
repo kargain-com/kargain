@@ -96,4 +96,4 @@ From SPEC §7.6 (e):
 | Snapshot ref | — |
 | Notes | — |
 
-Until this section is filled and HANDOFF marks mainnet bridge active, the product remains **testnet-scope**.
+Until this section is filled and mainnet bridge is marked active in the maintainer queue, the product remains **testnet-scope**.

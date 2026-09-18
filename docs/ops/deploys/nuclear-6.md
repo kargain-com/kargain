@@ -4,13 +4,13 @@
 >
 > N6 treated explorer verify as deferrable: between deploy and verify there was neither a recompile ban nor retained compile input. That is why explorers stay red and Nuclear #7 exists.
 
-**Status: DEPLOYED ON CHAIN — NOT CUT OVER** (August 29, 2026). Parallel stack live beside Nuclear #4 (and Nuclear #5). **Do not** edit `COMMERCIAL_ACTIVE`, reindex Ponder, or merge for app cutover until **S9**. App / indexer still serve Nuclear #4.
+**Status: HISTORICAL / NEVER CUT OVER** (August 29, 2026). Parallel stack beside then-live Nuclear #4 (and Nuclear #5); **superseded by Nuclear #7 / S9-A**. Do **not** edit `COMMERCIAL_ACTIVE` toward N6. App / indexer serve Nuclear #7 + Solana. See [nuclear-7.md](./nuclear-7.md).
 
 **Local only.** Empty-testnet full redeploy (same class as Nuclear #5). Manifests: `deployments/84532.json` · `deployments/11155111.json` (gitignored). N5 manifests preserved under `docs/ops/deploys/archive/nuclear-5-*.manifest.json` (local).
 
 **Reason:** declare and enforce passport metadata URI ceiling **160** UTF-8 bytes on-chain (write + leave) so SVM over-ceiling inbound cannot become a permanently unexecutable destination tx (>1232). See SPEC §I.13 + D-20; headroom S4a-2 h=3 (production 18-meta computed **1208**/1232).
 
-**Register:** no PENDING until S9 cutover planning.  
+**Register:** never cut over — superseded by Nuclear #7. No PENDING.  
 **Tooling:** `deploy:nuclear:dry-run`, `deploy:sepolia`, `deploy:sepolia:eth`, `verify:*`, `smoke:*`, `bridge:wire*`, `lz:snapshot`, `ponder:config`.  
 **Keys:** hardhat/dotenv only — never log secrets.
 
@@ -287,4 +287,4 @@ SVM mirrors the same ceiling (write / send); receive never length-rejects.
 | Wire 40245↔40168 (Solana) | **S4b** against **Nuclear #7** hub only | Blocked until N7 explorer-green |
 | `COMMERCIAL_ACTIVE` + SPEC I.9 + VPS reindex + Vercel + merge | **S9 once** | Not started |
 
-**Do not** wire any pathway against N6 hub `0xFA4FcEf7…DB29`. **Do not** run `bridge:wire:read-only` against N4 pathway as an N6 gate — that pathway stays for the live app until S9.
+**Do not** wire any pathway against N6 hub `0xFA4FcEf7…DB29`. **Do not** run `bridge:wire:read-only` against N4 pathway as an N6 gate — live pathway is Nuclear #7.

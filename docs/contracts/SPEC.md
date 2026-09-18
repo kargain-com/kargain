@@ -35,7 +35,7 @@
 
 **Rule:** Use **generation v2** for stack/migration. Use **`X.Y.Z-rc.N`** for on-chain compatibility.
 
-**Amend-in-place while shipping a VERSION:** Source `VERSION` strings in `CONTRACT_VERSIONS` must match Solidity. **Nuclear #7** ship VERSIONS are committed on I.9 (S9-A branch, September 2026); production `master` stays Nuclear #4 until Merge. Further pre-deploy changes to an unshipped VERSION amend that string in place.
+**Amend-in-place while shipping a VERSION:** Source `VERSION` strings in `CONTRACT_VERSIONS` must match Solidity. **Nuclear #7** VERSIONS and Solana Devnet commercial row are committed on `master` (S9 closed in code, September 2026). Nuclear #4 is historical only.
 
 ---
 
@@ -49,7 +49,7 @@
 |----------|------------------|---------------|------|
 | KarPassport | `1.10.0-rc.1` | Immutable | Vehicle passport ERC-721, verification lifecycle, BondedChallenge verification challenges, encumbrance `may`, claim payouts, bridge mint/burn/lock hooks |
 | KarProPass | `1.1.0-rc.1` | Immutable | Soulbound verifier credential (one per wallet) |
-| KarProStaking | `2.1.0-rc.1` live · **`2.2.0-rc.1` N5 source** | Immutable | Verifier stake + `isActiveVerifier` + claim payouts on leave (N5 source: native-only join) |
+| KarProStaking | **`2.2.0-rc.1`** (Nuclear #7) | Immutable | Verifier stake + `isActiveVerifier` + claim payouts on leave (native-only join) |
 | Timelock48h | `1.0.0-rc.1` | Immutable | 48h governance for UUPS commerce mode proxies |
 | KarPassportBridgeGateway | `1.3.0-rc.1` | Immutable | Symmetric hub↔spoke LayerZero gateway (Nuclear Model X); leave via `may(LeaveChain)` |
 | FixedPriceConsignment | `2.4.0-rc.1` | UUPS proxy | **Commerce surface** — fixed-price consignment (Mandate / Recall / ConsignmentBase / BondedChallenge) |
@@ -194,11 +194,11 @@ A state transition a party can be held to must leave a log complete enough to re
 
 `CloseReason`: `Returned` · `Sold` · `ExternalConfirmed` · `HoldReleased` · `Recalled` · `ReversalCompleted` · `ReversalAbandoned`.
 
-FixedPriceConsignment `VERSION` **`2.4.0-rc.1`**. AscendingConsignment **`2.4.0-rc.1` live (Nuclear #4 I.9)** · **`2.5.0-rc.1` N5 source** (S3.5 prep on `feat/solana-svm-port`, not cut over).
+FixedPriceConsignment `VERSION` **`2.4.0-rc.1`**. AscendingConsignment **`2.5.0-rc.1`** (Nuclear #7 / S9-A live). Historical Nuclear #4 Ascending was **`2.4.0-rc.1`**.
 
-**Ascending admin surface (live Nuclear #4):** auction bounds (`minDuration` … `abandonmentWindow`) plus challenge bond are read via `auctionRules()` and replaced atomically with `setAuctionRules` → `AuctionRulesSet` (full set).
+**Ascending admin surface (Nuclear #7 live):** the seven auction bounds are **`public constant`** in bytecode; `auctionRules()` still returns eight fields (constants + stored bond); `initialize` emits `AuctionRulesSet` with those constants + init bond; Timelock may rotate **only** the settlement challenge bond via `setChallengeBond(uint256)` → `AuctionRulesSet` (constants + new bond). `setAuctionRules` is removed.
 
-**Ascending admin surface (N5 source — ships at next cutover):** the seven auction bounds are **`public constant`** in bytecode (same numeric values as today’s deploy defaults); `auctionRules()` still returns eight fields (constants + stored bond); `initialize` emits `AuctionRulesSet` with those constants + init bond; Timelock may rotate **only** the settlement challenge bond via `setChallengeBond(uint256)` → `AuctionRulesSet` (constants + new bond). `setAuctionRules` is removed.
+**Historical (Nuclear #4 only):** auction bounds (`minDuration` … `abandonmentWindow`) plus challenge bond were read via `auctionRules()` and replaced atomically with `setAuctionRules` → `AuctionRulesSet` (full set).
 
 **Both generations:** protection fields are opener **bounds** only — lot hold length is chosen at `openAscendingDirect` / `openAscendingFromMandate` (`duration` + `protectionWindow_` args; `ProtectionOutOfBounds` outside min/max) and snapshotted in `AscendingTermsSnapshotted` / `auctionProtectionWindow(tokenId)`. Mandate path does not add a mandate floor field for protection — the agent chooses within bounds at open, as with duration. Payment-token approve stays owner-only; revoke is guardian **or** owner (soft-disable). Lot open still emits `ConsignmentOpened` then `AscendingTermsSnapshotted` (two emits; merge rejected after size fit).
 
@@ -212,7 +212,7 @@ FixedPriceConsignment `VERSION` **`2.4.0-rc.1`**. AscendingConsignment **`2.4.0-
 |----|-----------|
 | `pause` | Guardian (`NotGuardian`) |
 | `revokePaymentToken` | Guardian **or** owner (Timelock) — soft-disable; in-flight buy/bid/settle keep stored config (`NotGuardianOrOwner`) |
-| `unpause` / `approvePaymentToken(token, feed, stalenessTolerance)` / `setGuardian` / UUPS / `setAuctionRules` (live) · **`setChallengeBond`** (N5 source) / `setCurrencyFeed(code, feed, stalenessTolerance)` / `setNativeUsdStalenessTolerance` | Owner (Timelock) |
+| `unpause` / `approvePaymentToken(token, feed, stalenessTolerance)` / `setGuardian` / UUPS / **`setChallengeBond`** / `setCurrencyFeed(code, feed, stalenessTolerance)` / `setNativeUsdStalenessTolerance` | Owner (Timelock) |
 | Passport `addEncumbranceSource` / `removeEncumbranceSource` / `setDisputeDeposit` / `rescueExcessEth` | Owner (Timelock); `setBridgeGateway` one-shot |
 
 **Encumbrance:** `may(tokenId, Intent)` answers challenge + governed external sources only. **`OpenConsignment` does not require VERIFIED** — FixedPrice may open while UNVERIFIED when encumbrance allows. Ascending open enforces VERIFIED at the mode (`PassportNotVerified`). **`LeaveChain` readiness** is always true when encumbrance allows (unverified may travel). Registration is owner/timelock (`addEncumbranceSource` / `removeEncumbranceSource`). The passport holds no registry entry for itself.
@@ -243,6 +243,7 @@ FixedPriceConsignment `VERSION` **`2.4.0-rc.1`**. AscendingConsignment **`2.4.0-
 | `setDisputeDeposit` | owner | Update exact bond for next `open` (**≠ 0**); emits `DisputeDepositUpdated` |
 | `rescueExcessEth` | owner | Withdraw ETH not in `totalLockedBonds` or pending claims |
 | `mintPassport` | anyone | Mint UNVERIFIED passport; increment chain-local id |
+| *(SVM counterpart)* | **config authority only** | `MintPassport` requires `authority` signer ≡ `PassportConfig.authority` — **not** permissionless like EVM. Product Create UI cannot mirror EVM “anyone mints” without a program change. Ops door: `scripts/svm-devnet-mint-passport.ts`. |
 | `setPassportURI` | token owner | Metadata URI update; resets verification when status is VERIFIED (see Part III § anchor vs cosmetic) |
 | `verifyPassport` | active verifier | UNVERIFIED → VERIFIED |
 | `open` | anyone + exact ETH | VERIFIED → DISPUTED; BondedChallenge open |
@@ -323,13 +324,12 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 
 ---
 
-### I.4. KarProStaking (`2.1.0-rc.1` live · **`2.2.0-rc.1` N5 source**)
+### I.4. KarProStaking (**`2.2.0-rc.1`** — Nuclear #7)
 
 - **`isActiveVerifier(address)`** — single source of truth (active stake record); **false immediately after `leave`**, including during unbonding.
 - **`becomeVerifierNative`** — permissionless native join; mints KarProPass; reverts `UnbondPending` if a prior leave has not been claimed. **Product UI:** join is **native only** (`KarProJoinForm` → `becomeVerifierNative`).
-- **N5 source (S3.5 prep):** ERC-20 stake path removed — no `stakeToken`, `becomeVerifierToken`, or `setStakeToken`. Native-only join is the shipped model (§13.11). KarProPass + KarProStaking deploy as a **pair**; retargeting `setStaking` on an existing pass without redeploying both traps re-join (`test/kargain.contracts.test.ts` “retarget trap blocks re-join”).
-- **Live Nuclear #4:** bytecode still exposes dormant `becomeVerifierToken` / `setStakeToken` (never enabled; production `StakeTokenSet` count **0** on both commercial chains). UI already withholds token-join (S22). N5 cutover removes the dormant surface.
-- **`Stake.asset`** — always `address(0)` (native ETH) on N5 source; live chains may record ERC-20 only if token join had ever been enabled (never on commercial testnet). Claim refunds the recorded asset. Same native convention as `ClaimablePayouts` / Modes payment asset (`address(0)` = native).
+- **Native-only join (Nuclear #7):** ERC-20 stake path removed — no `stakeToken`, `becomeVerifierToken`, or `setStakeToken`. KarProPass + KarProStaking deploy as a **pair**; retargeting `setStaking` on an existing pass without redeploying both traps re-join (`test/kargain.contracts.test.ts` “retarget trap blocks re-join”). Historical Nuclear #4 bytecode exposed dormant token-join (never enabled; UI withheld — S22).
+- **`Stake.asset`** — always `address(0)` (native ETH) on Nuclear #7. Claim refunds the recorded asset. Same native convention as `ClaimablePayouts` / Modes payment asset (`address(0)` = native).
 - **Two-phase leave:** `leave()` ends the role immediately (`active = false`, burn try/catch), sets `unlockAt = now + UNBONDING_PERIOD` (**14 days**, equal to passport `DISPUTE_WINDOW` by design). `claimStake()` after unlock pays via ClaimablePayouts (failed push → withdrawable claim). **No slashing** in this ship. There is **no** dispute↔leave coupling — a future slash design must use a monotonic “not before” unlock timestamp (bug → early unlock), never a decrementing challenge counter (bug → permanent lock).
 - **`minStakeNative`** — default `0.05 ether`; owner adjustable but **`MIN_STAKE_FLOOR = 0.001 ether`** minimum.
 - **`verificationFee`** — verifier-set amount in the network’s **native base units**; **informational only** (no on-chain payment enforcement on KarProStaking). **Composition is VM-named, not silently unified:** on **EVM**, the Kargain `/kar-pro` UI composes service margin (nav display currency) plus an estimated `verifyPassport` gas cost at save time and writes the sum as a single wei value via `setVerificationFee`. On **SVM**, the UI writes **service margin only** (lamports on Solana commercial stacks); it does **not** fold EVM gas estimates or a CU/rent analogue into the published signal — execution cost on Solana is not the same quantity as EVM gas, and inventing parity would misstate the fee. Accepted off-chain payment methods are signaled in Nostr kind 0 as optional `verifierPaymentMethods` (`eth`, `usdc`, `lightning`; absent = all three). Workflow: verifier sets fee → passport owner may pay the verifier directly (Kargain UI supports native ETH with an on-chain memo, USDC `transfer`, or a Lightning payment resolved from the verifier's Nostr kind 0 `lud16` — none escrowed or enforced by contracts) → verifier calls `verifyPassport` after inspection.
@@ -346,7 +346,7 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 | `isActiveVerifier` | view | Active stake check |
 | `setVerificationFee` | active verifier | Set public fee signal (wei) |
 
-*Live Nuclear #4 only (removed in N5 source):* `becomeVerifierToken`, `setStakeToken`.
+*Historical Nuclear #4 only (removed on Nuclear #7):* `becomeVerifierToken`, `setStakeToken`.
 
 ### KarProStaking — error reference
 
@@ -372,13 +372,13 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 | Mode | VERSION | Role |
 |------|---------|------|
 | FixedPriceConsignment | `2.4.0-rc.1` | Mandate → open → buy / delist / recall; fiat registry + native / ERC-20 checkout; per-feed oracle staleness; agent commission splits |
-| AscendingConsignment | `2.4.0-rc.1` live · **`2.5.0-rc.1` N5 source** | English ascending auction consignment + settlement hold + BondedChallenge on hold paths |
+| AscendingConsignment | **`2.5.0-rc.1`** (Nuclear #7) | English ascending auction consignment + settlement hold + BondedChallenge on hold paths |
 
 **Open refusal:** unregistered mode → `ModeNotEncumbranceSource`. Payment-token admission checked **at open only**; soft-revoked assets block new opens while in-flight sales settle.
 
-**Trust readiness (Nuclear #4):** FixedPrice open/grant ignore `passportStatus` (encumbrance `may(OpenConsignment)` only). Ascending **`openAscendingDirect` / `openAscendingFromMandate`** require `passportStatus == VERIFIED` else `PassportNotVerified`. Mandate **`grant`** stays status-free (agent may verify before open).
+**Trust readiness (Nuclear #7 — same product law as Nuclear #4):** FixedPrice open/grant ignore `passportStatus` (encumbrance `may(OpenConsignment)` only). Ascending **`openAscendingDirect` / `openAscendingFromMandate`** require `passportStatus == VERIFIED` else `PassportNotVerified`. Mandate **`grant`** stays status-free (agent may verify before open).
 
-**Guardian errors:** `pause` → `NotGuardian`; `revokePaymentToken` → `NotGuardianOrOwner` (guardian or Timelock owner). FixedPrice VERSION **`2.4.0-rc.1`**; Ascending VERSION **`2.4.0-rc.1`** (live on Nuclear #4 I.9).
+**Guardian errors:** `pause` → `NotGuardian`; `revokePaymentToken` → `NotGuardianOrOwner` (guardian or Timelock owner). FixedPrice VERSION **`2.4.0-rc.1`**; Ascending VERSION **`2.5.0-rc.1`** (Nuclear #7).
 
 **Denomination invariants** (P3 / M3 / N4 / P4 — this subsection is the git-canonical statement):
 
@@ -401,7 +401,7 @@ Nuclear FixedPrice USDC admit uses the chain’s USDC/USD aggregator from `CHAIN
 
 **Ascending Nuclear initialize defaults** (normative model §11 / §7.3):
 
-| Parameter | Default | Live N4 governance | N5 source |
+| Parameter | Default | Historical N4 governance | Nuclear #7 |
 |-----------|---------|-------------------|-----------|
 | Extension window | **900 seconds** | `setAuctionRules` | **`public constant`** |
 | Minimum increment | **300 bps** | `setAuctionRules` | **`public constant`** |
@@ -411,7 +411,7 @@ Nuclear FixedPrice USDC admit uses the chain’s USDC/USD aggregator from `CHAIN
 | Abandonment window | **30 days** | `setAuctionRules` | **`public constant`** |
 | Challenge bond | **0.01 ETH** | `setAuctionRules` · init | **`setChallengeBond`** · init |
 
-Numeric mirrors: `scripts/lib/verify-constructor-args.ts` (`ASCENDING_*` exports). **Lot-bound auction terms** (duration, extension, min increment, protection, abandonment length) are snapshots at open — on live N4, governance storage is read when a new lot opens; on N5 source, constants are read (model §11, C4, G1; proven by `test/ascending/AscendingConsignment.test.ts` snapshot cases). The settlement **challenge window** is one-shot at Ascending `initialize` (not lot-open); the challenge **bond** is rotatable via `setChallengeBond` on N5 source (or full `setAuctionRules` on live N4) and captured when a challenge opens. **`AuctionRulesSet` at `initialize` on N5 source** gives the indexer first-write with constant seven-tuple + init bond; event and `auctionRules()` eight-field ABI shape unchanged.
+Numeric mirrors: `scripts/lib/verify-constructor-args.ts` (`ASCENDING_*` exports). **Lot-bound auction terms** (duration, extension, min increment, protection, abandonment length) are snapshots at open — on historical N4, governance storage was read when a new lot opened; on Nuclear #7, constants are read (model §11, C4, G1; proven by `test/ascending/AscendingConsignment.test.ts` snapshot cases). The settlement **challenge window** is one-shot at Ascending `initialize` (not lot-open); the challenge **bond** is rotatable via `setChallengeBond` on Nuclear #7 (historical N4 used full `setAuctionRules`) and captured when a challenge opens. **`AuctionRulesSet` at `initialize` on Nuclear #7** gives the indexer first-write with constant seven-tuple + init bond; event and `auctionRules()` eight-field ABI shape unchanged.
 
 #### Parameter provenance — what to read, and from where
 
@@ -503,7 +503,7 @@ EndpointV2 (testnet): `0x6EDCE65403992e310A62460808c4b910D972f10f` (`scripts/lib
 
 **Active pathway (40245 ↔ 40161)** — addresses from committed snapshot `scripts/lib/layerzero-metadata.snapshot.json` (refreshed via `pnpm lz:snapshot`). Metadata API keys: `base-sepolia` / `sepolia-testnet`. Nuclear #7 `pathwayConfigHash` `0x2914d89d…f834` (must stay unchanged when adding 40168). Prior N4 digest `0x7e8c7fd4…983b8` is historical only.
 
-**Devnet pathway (40245 ↔ 40168)** — S4b COMPLETE; **S5-recover-R5** re-closed (August 30, 2026) after Y5-frozen UA lock. Hub OApp = N7 gateway `0x73240468…1827`; spoke OApp = Solana gateway_config PDA (not program id; live PDA in [ops/deploys/s4b-devnet.md](../ops/deploys/s4b-devnet.md)). DVNs **LayerZero Labs + P2P** both directions; confirmations **5**. Solana **receive** budget (not send CU) pinned in `lib/web3/bridge/lz-receive-gas.ts` (`SOLANA_DEVNET_*`; provenance in `svm/lab/RESULTS.md`). Deployer retains upgrade authority on S4–S8 ([§13.8](#138-governance-and-upgradeability)). **No** Solana `COMMERCIAL_ACTIVE` until S9. Library / executor / DVN addresses: **from snapshot** only.
+**Devnet pathway (40245 ↔ 40168)** — S4b COMPLETE; **S5-recover-R5** re-closed (August 30, 2026) after Y5-frozen UA lock. Hub OApp = N7 gateway `0x73240468…1827`; spoke OApp = Solana gateway_config PDA (not program id; live PDA in [ops/deploys/s4b-devnet.md](../ops/deploys/s4b-devnet.md)). DVNs **LayerZero Labs + P2P** both directions; confirmations **5**. Solana **receive** budget (not send CU) pinned in `lib/web3/bridge/lz-receive-gas.ts` (`SOLANA_DEVNET_*`; provenance in `svm/lab/RESULTS.md`). Deployer retains upgrade authority on S4–S8 ([§13.8](#138-governance-and-upgradeability)). Solana namespace **2000040168** is live in `COMMERCIAL_ACTIVE` (S9-B closed). Library / executor / DVN addresses: **from snapshot** only.
 
 **Planned (historical note):** pre-S4b prose called 40168 “planned”; treat the Devnet pathway row above as current for testnet star spokes.
 
@@ -563,7 +563,7 @@ Normative rule for XMTP (or any successor) network fees on commercial mainnet. S
 
 **Third-party gateways allowed.** This rule forbids Kargain funding and Kargain-held payer keys. It does **not** forbid a user paying a third-party gateway operator for signing and forwarding — the same pattern as a user paying an RPC provider. Whether such operators exist is outside this specification; client wiring MAY point at a user-chosen third-party gateway when the fee is not drawn from a Kargain-funded allowance.
 
-**Not in this section.** Whether fees are currently enforced on the live XMTP network, migration timelines, and issue trackers for user-funded / delegated signing are maintainer status (HANDOFF), not SPEC law. This section remains true after fees turn on.
+**Not in this section.** Whether fees are currently enforced on the live XMTP network, migration timelines, and issue trackers for user-funded / delegated signing are maintainer status, not SPEC law. This section remains true after fees turn on.
 
 ---
 
@@ -730,8 +730,8 @@ After step 13, Timelock48h owns expand/restore ops (48h delay); guardian keeps i
 | Contract | Authority |
 |----------|-----------|
 | KarPassport | Timelock: `setDisputeDeposit`, `rescueExcessEth`, `addEncumbranceSource` / `removeEncumbranceSource` (`setBridgeGateway` already consumed one-time) |
-| KarProStaking | Timelock: `setMinStakeNative` (live N4 also: `setStakeToken` — removed N5 source) |
-| FixedPrice / Ascending | **Guardian:** `pause`, `revokePaymentToken`. **Timelock (owner):** `unpause`, `approvePaymentToken(token, feed, stalenessTolerance)`, `setGuardian`, UUPS, `setCurrencyFeed(code, feed, stalenessTolerance)`, `setNativeUsdStalenessTolerance` (FixedPrice only), `setAuctionRules` (Ascending live) · **`setChallengeBond`** (Ascending N5 source) |
+| KarProStaking | Timelock: `setMinStakeNative` (Nuclear #7; historical N4 also had `setStakeToken`) |
+| FixedPrice / Ascending | **Guardian:** `pause`, `revokePaymentToken`. **Timelock (owner):** `unpause`, `approvePaymentToken(token, feed, stalenessTolerance)`, `setGuardian`, UUPS, `setCurrencyFeed(code, feed, stalenessTolerance)`, `setNativeUsdStalenessTolerance` (FixedPrice only), **`setChallengeBond`** (Ascending; Nuclear #7) |
 
 Write `deployments/<chainId>.json` with `generation: "v2"`, `tokenIdOffset` (`chainId << 128`), `contractVersions`, `indexFromBlock`, mode + library + gateway addresses (`fixedPriceConsignment`, `ascendingHoldLib`, `ascendingOpenLib`, `ascendingConsignment`, `bridgeGateway`).
 
@@ -996,7 +996,7 @@ Three **distinct** accounts. Sinks are **immutable by design** (Accepted risk: *
 
 #### 13.10 Protocol parameter model (three tiers)
 
-Protocol-wide (not SVM-specific). **N5 source (S3.5 prep):** seven Ascending bounds + settlement challenge window are **model constants** in bytecode; bond stays weight-derived via `setChallengeBond`. **Live Nuclear #4:** bounds remain Timelock-mutable via `setAuctionRules` until cutover.
+Protocol-wide (not SVM-specific). **Nuclear #7:** seven Ascending bounds + settlement challenge window are **model constants** in bytecode; bond stays weight-derived via `setChallengeBond`. Historical Nuclear #4: bounds were Timelock-mutable via `setAuctionRules`.
 
 | Tier | Examples | Where / how changed |
 |------|----------|---------------------|
@@ -1004,7 +1004,7 @@ Protocol-wide (not SVM-specific). **N5 source (S3.5 prep):** seven Ascending bou
 | **Locally governed** | Payment tokens, feeds, staleness, guardian, encumbrance sources, gateway bind | Each chain’s own Timelock; non-portable |
 | **Weight-derived** | `minStakeNative`, verification `disputeDeposit`, ascending settlement `challengeBond` | Native storage per chain; derived from declared weight |
 
-**Declared economic weight (unit ETH)** — intentional amounts (Nuclear #4 live law):
+**Declared economic weight (unit ETH)** — intentional amounts (live law; unchanged through Nuclear #7):
 
 | Parameter | Weight (ETH) |
 |-----------|--------------|
@@ -1017,7 +1017,7 @@ On ETH-native chains the on-chain wei equals the weight. Elsewhere derive native
 
 #### 13.11 Money vocabulary
 
-On every commercial chain: native gas token carries gas, verifier stake, challenge bonds, and the informational `verificationFee`; price / bid / floor / checkout use that chain’s native token or an admitted stablecoin-class payment token; the verifier credential is a soulbound NFT and not money. Kargain issues **no** fungible token of its own. Wrapping native solely to satisfy a token standard for stake/bonds is forbidden. **Verifier join is native-only** on N5 source (ERC-20 stake path removed). Live Nuclear #4 bytecode still carries a dormant token path that was never enabled and is deleted at N5 cutover.
+On every commercial chain: native gas token carries gas, verifier stake, challenge bonds, and the informational `verificationFee`; price / bid / floor / checkout use that chain’s native token or an admitted stablecoin-class payment token; the verifier credential is a soulbound NFT and not money. Kargain issues **no** fungible token of its own. Wrapping native solely to satisfy a token standard for stake/bonds is forbidden. **Verifier join is native-only** on Nuclear #7 (ERC-20 stake path removed). Historical Nuclear #4 carried a dormant token path that was never enabled.
 
 #### 13.12 Indexer projection rebuild
 
@@ -1359,7 +1359,7 @@ Verbatim from contract headers:
 //     UUPS upgrade = bump MINOR or MAJOR depending on scope
 ```
 
-**Amend-in-place before a Nuclear ship:** Until a `VERSION` exists on a commercial chain, source VERSION strings are amended in place rather than accumulating unused pre-release increments. Storage-layout changes on UUPS contracts in that window ship only via full-stack Nuclear redeploy (not in-place upgrade of prior layouts). **Nuclear #4** (August 2, 2026) is the live ship for current VERSIONS.
+**Amend-in-place before a Nuclear ship:** Until a `VERSION` exists on a commercial chain, source VERSION strings are amended in place rather than accumulating unused pre-release increments. Storage-layout changes on UUPS contracts in that window ship only via full-stack Nuclear redeploy (not in-place upgrade of prior layouts). **Nuclear #7** (September 2026 / S9-A) is the live ship for current VERSIONS. Nuclear #4 is historical.
 
 ---
 
@@ -1388,7 +1388,7 @@ Verbatim from contract headers:
 
 ---
 
-*Last updated: August 2026 — Nuclear #4 live on 84532 / 11155111; address/VERSION tables describe **chain**. Part IV is a historical generation-v2 migration table — BondedChallenge superseded `withdrawDispute` / `DisputeOutcome`.*
+*Last updated: September 2026 — Nuclear #7 live on 84532 / 11155111 + Solana Devnet **2000040168**; address/VERSION tables describe **chain**. Part IV is a historical generation-v2 migration table — BondedChallenge superseded `withdrawDispute` / `DisputeOutcome`.*
 
 ---
 
@@ -1450,7 +1450,7 @@ Run: `pnpm test:e2e` (sets `KARGAIN_E2E_LOCAL=1`) · `pnpm typecheck` · `pnpm h
 
 Contract tests: `pnpm hardhat test` · trust helpers: `pnpm test:trust` · Ponder handler unit tests (indexer): `pnpm test:ponder`
 
-**Deferred (contract / product, Phase 6+):** on-chain evidence requirements for `reportDiscrepancy`. (`buyWithUsdc` UI shipped June 2026 — see AGENTS milestone.)
+**Deferred (contract / product, Phase 6+):** on-chain evidence requirements for `reportDiscrepancy`. (`buyWithUsdc` UI shipped June 2026.)
 
 ---
 

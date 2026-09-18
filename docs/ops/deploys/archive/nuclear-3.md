@@ -6,7 +6,7 @@
 
 **Local only.** Empty testnets: deploy **every** contract fresh. No UUPS-in-place. No stake/passport migration. No 48h wait for mode upgrades.
 
-**Register:** [PENDING-REDEPLOY.md](../../PENDING-REDEPLOY.md) — entries **1–6 closed** by this deploy (open register is empty).  
+**Register:** Redeploy-register entries **1–6 closed** by this deploy (register emptied).  
 **Tooling:** existing `deploy:nuclear:dry-run`, `deploy:sepolia`, `deploy:sepolia:eth`, `verify:*`, `smoke:*`, `bridge:wire*`, `lz:snapshot`, `ponder:config`.  
 **Cursor never signs txs or reads `.env` keys.**
 

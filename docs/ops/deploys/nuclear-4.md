@@ -1,10 +1,10 @@
 # Nuclear #4 — sell UNVERIFIED + ascending-only VERIFIED (84532 + 11155111)
 
-**Status: LIVE** (August 2, 2026). Both commercial chains cut over; PENDING Nuclear #4 closed; **VPS full reindex + app deploy done**.
+**Status: HISTORICAL / DENYLISTED** (was LIVE August 2, 2026; superseded by Nuclear #7 / S9-A). Do not treat as current `COMMERCIAL_ACTIVE`. See [nuclear-7.md](./nuclear-7.md).
 
 **Local only.** Empty-testnet full redeploy of the commercial stack. KarPassport is immutable → not UUPS-in-place. No 48h wait for mode upgrades on this path.
 
-**Register:** [PENDING-REDEPLOY.md](../../PENDING-REDEPLOY.md) — empty (Nuclear #4 closed).  
+**Register:** The redeploy register was emptied by this deploy (Nuclear #4 closed).  
 **Tooling:** existing `deploy:nuclear:dry-run`, `deploy:sepolia`, `deploy:sepolia:eth`, `verify:*`, `smoke:*`, `bridge:wire*`, `lz:snapshot`, `ponder:config`; Phase F spot-check `scripts/nuclear-4-live-proof.ts`.  
 **Keys:** hardhat/dotenv only — never log secrets.
 

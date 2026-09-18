@@ -7,11 +7,11 @@
 | VPS env + contract addresses (June 2026 v2) | ✅ Complete — reindex from **43399242** ([ops/deploys/archive/84532-v2.md](../ops/deploys/archive/84532-v2.md)) — **superseded for production by Nuclear below** |
 | v1 ghost index data | ✅ Cleared after production reindex |
 | Handler + schema for v2 events | ✅ Complete — `src/index.ts`, `ponder.schema.ts` (June 2026) |
-| **Nuclear dual-chain / C3 (July 2026)** | ✅ Schema + handlers + API shipped — current production start blocks = **Nuclear #4** hub **44957457** + Eth **11404204** ([OPERATIONS.md](./OPERATIONS.md); **VPS reindex done**) |
+| **Nuclear dual-chain / C3 (July 2026)** | ✅ Schema + handlers + API shipped — production start blocks = **Nuclear #7** hub **46119704** + Eth **11591966** ([OPERATIONS.md](./OPERATIONS.md); N4 **44957457** / **11404204** historical) |
 | Bridge mint ≠ VerificationReset (July 2026) | ✅ Handler fixed — `PassportBridgeMinted` no longer writes reset count/history; covered by Nuclear full reindex |
 | Trust layer `DisputeExpired` (July 2026) | ✅ Handler + `lastDisputeTerminal` — expire ≠ Confirm for product; covered by Nuclear full reindex |
 | ClaimablePayouts claims surface (July 2026) | ✅ `pending_claim` + `claim_credit` + account API + notifications; covered by Nuclear full reindex |
-| Commerce modes indexing (July 2026) | ✅ Schema + handlers + `/consignments*` / `/challenges` / mandate / `/commerce-*` routes — live Nuclear #4 addresses; production reindex **done** after Nuclear #4 ([OPERATIONS.md](./OPERATIONS.md)) |
+| Commerce modes indexing (July 2026) | ✅ Schema + handlers + `/consignments*` / `/challenges` / mandate / `/commerce-*` routes — Nuclear #7 addresses on `COMMERCIAL_ACTIVE`; Solana via `svm-ingest` ([OPERATIONS.md](./OPERATIONS.md)) |
 | Outstanding obligation party indexes (July 2026) | ✅ Schema indexes + `GET /accounts/:address/obligations` + commerce notification stamps — included in Nuclear full reindex ([OPERATIONS.md](./OPERATIONS.md)) |
 | Passport browse filter indexes (August 2026) | ✅ Expression indexes on `passport` (column + `lower(col)` as in schema). **No index** for `colour` / `search` (`ILIKE '%…%'` — revisit ~50k rows / measured latency; no `pg_trgm` yet). **VPS reindex + B1 done** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)) |
 | **Bridge guid crossings (S7b · September 2026)** | ✅ `KarPassportBridgeGateway` indexed dual-chain; append-only `bridge_crossing` stream (`ONFTSent` / `ONFTReceived`); receive-side correlation with `PassportBridgeMinted` / `CustodyLockSet(unlock)` in same tx. **No HTTP consumer yet** — S7c fold. **Production reindex deferred to S9 cutover** ([OPERATIONS.md §S9 bridge crossings](./OPERATIONS.md)) |
@@ -93,7 +93,7 @@ Generation v2 adds agent consignment fields:
 | `VerificationLapsed` / `VerificationStood` | Domain status after terminals |
 | `DisputeDepositUpdated` | Owner changed global deposit amount |
 
-Handlers in `src/index.ts` listen for `Challenge*` on live Nuclear #4 ABIs; legacy `Dispute*` names are historical only.
+Handlers in `src/index.ts` listen for `Challenge*` on commercial ABIs (Nuclear #7); legacy `Dispute*` names are historical only.
 
 ### KarPassportBridgeGateway (S7b · September 2026)
 
@@ -220,7 +220,7 @@ Generation v2 deployed **June 27, 2026** (`pnpm deploy:sepolia`). **Do not copy 
 
 ## 5. Cutover checklist
 
-**Env + reindex (VPS):** ✅ Complete June 2026 — [ops/deploys/archive/84532-v2.md](../ops/deploys/archive/84532-v2.md). Production: Nuclear #4 [OPERATIONS.md](./OPERATIONS.md) / [nuclear-4.md](../ops/deploys/nuclear-4.md).
+**Env + reindex (VPS):** ✅ Complete June 2026 — [ops/deploys/archive/84532-v2.md](../ops/deploys/archive/84532-v2.md). Production: Nuclear #7 [OPERATIONS.md](./OPERATIONS.md) / [nuclear-7.md](../ops/deploys/nuclear-7.md).
 
 ### Strategy
 
@@ -274,9 +274,9 @@ The `agent_authorization` / `marketplace_listing` agent routes described above (
 
 Accountability events from `ConsignmentBase` / `Mandate` / `Recall` / `BondedChallenge` / mode-specific surfaces feed new tables (`consignment`, `ascending_terms`, `consignment_bid`, `consignment_hold`, `challenge`, `mandate`, `consignment_settlement`, `commerce_claim` + `commerce_claim_credit`, `commerce_mode`, `commerce_payment_token`, `commerce_currency_feed`). Claim reasons come from **same-tx event correlation**, not tx selectors. Floor/commission lowers update the **consignment** snapshot, not the standing mandate.
 
-**FixedPrice oracle projection (July 2026, live Nuclear #4 FixedPrice `2.4.0-rc.1`):** `commerce_mode.nativeUsdStalenessTolerance` from `NativeUsdStalenessToleranceSet` (replaces `MaxFeedStalenessSet`). `commerce_payment_token.stalenessTolerance` and `commerce_currency_feed.stalenessTolerance` from `PaymentTokenApproved` / `CurrencyFeedSet` (third arg). No global `maxFeedStaleness` column. Nuclear #4 VPS reindex **done** ([OPERATIONS.md](./OPERATIONS.md)).
+**FixedPrice oracle projection (July 2026, FixedPrice `2.4.0-rc.1` on Nuclear #7):** `commerce_mode.nativeUsdStalenessTolerance` from `NativeUsdStalenessToleranceSet` (replaces `MaxFeedStalenessSet`). `commerce_payment_token.stalenessTolerance` and `commerce_currency_feed.stalenessTolerance` from `PaymentTokenApproved` / `CurrencyFeedSet` (third arg). No global `maxFeedStaleness` column. Reindex path: [OPERATIONS.md](./OPERATIONS.md).
 
-**Addresses:** FixedPrice + Ascending on `COMMERCIAL_ACTIVE` (84532 + 11155111) after Nuclear #4. Local: `pnpm deploy:local` writes both proxies into `31337.json` and registers encumbrance sources.
+**Addresses:** FixedPrice + Ascending on `COMMERCIAL_ACTIVE` (84532 + 11155111) after Nuclear #7; Solana modes on namespace **2000040168**. Local: `pnpm deploy:local` writes both proxies into `31337.json` and registers encumbrance sources.
 
 **HTTP:** see [indexer/README.md](./README.md#commerce-modes-api-fixedprice--ascending--july-2026). Old escrow tables/handlers/routes untouched — no compatibility projection.
 

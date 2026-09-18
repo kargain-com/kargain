@@ -6,48 +6,49 @@ Without reindex, new columns stay empty on historical passports and trust UX (G2
 
 ---
 
-## Production state (Nuclear #7 / S9-A — branch cutover; VPS until Merge = N4)
+## Production state (Nuclear #7 + Solana Devnet — live on `master`)
 
-**Committed stack (this branch):** Nuclear #7 on **84532** + **11155111** (`COMMERCIAL_ACTIVE` / SPEC I.9). **Live VPS / `master`:** Nuclear #4 until S9-A Merge + one full `ponder-reindex.sql`.
+**Committed stack:** Nuclear #7 on **84532** + **11155111** and Solana Devnet namespace **2000040168** in `COMMERCIAL_ACTIVE` / SPEC I.9 (S9 closed in code). Nuclear #4 is historical only.
 
 | Item | Value |
 |------|--------|
 | Hub contracts | `COMMERCIAL_ACTIVE[84532]` / SPEC I.9.1 — `indexFromBlock` **46119704** |
 | Eth contracts | `COMMERCIAL_ACTIVE[11155111]` / SPEC I.9.2 — `indexFromBlock` **11591966** |
+| Solana | `COMMERCIAL_ACTIVE[2000040168]` — start cursor `min(blocks.*)` (staking floor **490463509**); writer = `svm-ingest` |
 | Hub start block | `PONDER_START_BLOCK_84532=46119704` |
 | Eth start block | `PONDER_START_BLOCK_11155111=11591966` |
 | Hub RPC | `PONDER_RPC_URL_84532` (prefer `https://base-sepolia-rpc.publicnode.com`) |
 | Eth RPC | `PONDER_RPC_URL_11155111` (Alchemy/Infura/QuickNode; PublicNode often 403) · `PONDER_MAX_RPS_11155111` default **5** |
 | Address resolution | Per-chain `COMMERCIAL_ACTIVE` in git (`lib/web3/commercial-active.ts`); optional local `deployments/<chainId>.json` on deploy machine only |
-| Docker | `docker compose build ponder` after code pull + post-build prune |
+| Docker | `docker compose build ponder` / `svm-ingest` after code pull + post-build prune |
 
 **C3 schema (July 2026):** `chainId` on commerce/passport/records/uri-history/verifier; verifier PK `` `${chainId}-${address}` ``. **S7c-3:** stored `passport.custodyChain` removed — fold at read via `custody_determining_event` + `bridge_crossing`.
 
 **Omnichain ordering:** `ponder.config.ts` sets `ordering: "omnichain"`. Cross-chain consistency for owner/status/uri waits on both networks (**consistency > liveness**).
 
-Historical: … Nuclear #4 hub **44957457** / Eth **11404204** — superseded by Nuclear #7 **46119704** / **11591966**. Runbook: [ops/deploys/nuclear-7.md](../ops/deploys/nuclear-7.md).
+Historical: Nuclear #4 hub **44957457** / Eth **11404204** — superseded by Nuclear #7 **46119704** / **11591966**. Runbook: [ops/deploys/nuclear-7.md](../ops/deploys/nuclear-7.md).
 
 **Handlers:** dual-chain event indexing in `src/index.ts` + gateway crossings in `src/bridge-handlers.ts` — deploy + **reindex required** when schema changes.
 
 ---
 
-## S9 reindex obligation — split S9-A (EVM) then S9-B (SVM)
+## S9 cutover — COMPLETE in code (historical checklist)
 
-**September 2026 (form locked):** `bridge_crossing`, **`custody_determining_event`**, and SVM ingest/projection schemas landed on the SVM port branch. Branch registry is Nuclear #7; production VPS stays on Nuclear #4 until **S9-A Merge**. Do **not** fuse EVM reindex with `svm-ingest` enable — raw/projection schemas are **not** dropped by `ponder-reindex.sql`, so Solana activation later does not require a second Ponder wipe.
+**September 2026:** `bridge_crossing`, **`custody_determining_event`**, and SVM ingest/projection landed; S9-A (N7 EVM) and S9-B (Solana commercial + `svm-ingest`) are **closed**. Do **not** read the steps below as open work — they are the completed cutover record. Raw/projection schemas are **not** dropped by `ponder-reindex.sql`.
 
-### S9-A — EVM only (N7 + schema reindex)
+### S9-A — EVM (N7 + schema reindex) — DONE
 
-1. Cut over `COMMERCIAL_ACTIVE` + SPEC I.9 to Nuclear #7 (`indexFromBlock` **46119704** / **11591966**) — **done on branch**; Merge still owed.
-2. Full `ponder-reindex.sql` dual-chain; include gateway start blocks from `COMMERCIAL_ACTIVE[chainId].blocks.bridgeGateway` (N7 hub **46119765** / Eth **11591991**).
-3. Apply **empty** [`projection-schema.sql`](../../src/svm-ingest/db/projection-schema.sql) so UNION HTTP keeps an empty SVM arm.
-4. Smoke **both** readiness classes: Ponder `/ready` for sync state, then `GET /read-path-ready` for the custom EVM+SVM `UNION ALL` read path. A green `/ready` alone is insufficient.
-5. Smoke fold-at-read via [`src/lib/ponder-passport-custody.ts`](../../src/lib/ponder-passport-custody.ts) — `GET /passports/:tokenId` → `custodyChain` or `custodyUnresolved`.
-6. **`svm-ingest` stays down.** No Solana `COMMERCIAL_ACTIVE` row.
+1. Cut over `COMMERCIAL_ACTIVE` + SPEC I.9 to Nuclear #7 (`indexFromBlock` **46119704** / **11591966**) — **done**.
+2. Full `ponder-reindex.sql` dual-chain; gateway start blocks from `COMMERCIAL_ACTIVE[chainId].blocks.bridgeGateway`.
+3. Apply empty [`projection-schema.sql`](../../src/svm-ingest/db/projection-schema.sql) so UNION HTTP had an empty SVM arm before S9-B.
+4. Smoke Ponder `/ready` then `GET /read-path-ready`.
+5. Smoke fold-at-read via [`src/lib/ponder-passport-custody.ts`](../../src/lib/ponder-passport-custody.ts).
+6. *(Historical)* `svm-ingest` stayed down until S9-B — **superseded**.
 7. `pnpm bridge:wire` N7 hub↔eth peers; `bridge:wire:read-only` PASS.
 
-### S9-B — Solana commercial activation
+### S9-B — Solana commercial activation — DONE
 
-Solana Devnet namespace **2000040168** now lives in `COMMERCIAL_ACTIVE`; `svm-ingest` is the separate append-only writer for that network. Apply **`kargain_svm_raw`** (incl. **`metadata_snapshot`**: `content_sha256` NULL iff `status=unavailable`, CHECK-bound, partial unique on captured) + **`kargain_svm_projection`**, smoke `/live` + `/ready`, run **`pnpm svm-projection:replay-digest`** after first raw backfill. **No** second `ponder-reindex.sql` for EVM unless schema changed again. Projection rebuild still reads snapshots from raw only.
+Solana Devnet namespace **2000040168** lives in `COMMERCIAL_ACTIVE`; `svm-ingest` is the append-only writer. Apply **`kargain_svm_raw`** (incl. **`metadata_snapshot`**) + **`kargain_svm_projection`**, smoke `/live` + `/ready`, run **`pnpm svm-projection:replay-digest`** after first raw backfill. Projection rebuild reads snapshots from raw only.
 
 **Physical column casing (Ponder 0.16):** `DATABASE_SCHEMA=kargain` tables use **snake_case** (`chain_id`, not `"chainId"`). Confirm on any instance with:
 
@@ -203,8 +204,8 @@ First deploy after this unit lands: expect either skip-recreate (if the running 
 | Trigger | Example |
 |---------|---------|
 | Schema migration | New columns on `passport`, new tables |
-| **Nuclear #7 / S9-A (September 2026) — branch / post-Merge** | Full commercial redeploy both chains — reindex from hub **46119704** + Eth **11591966** after wire+Merge. Runbook: [ops/deploys/nuclear-7.md](../ops/deploys/nuclear-7.md). `svm-ingest` **off**. |
-| **Nuclear #4 (August 2, 2026) — live VPS until Merge** | Superseded by Nuclear #7 on branch; production until Merge still **44957457** / **11404204**. Runbook: [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md). |
+| **Nuclear #7 / S9-A (September 2026) — LIVE** | Full commercial redeploy both chains — reindex from hub **46119704** + Eth **11591966**. Runbook: [ops/deploys/nuclear-7.md](../ops/deploys/nuclear-7.md). |
+| **Nuclear #4 (August 2, 2026) — HISTORICAL** | Superseded / denylisted. Start blocks were **44957457** / **11404204**. Runbook: [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md). |
 | Older Nuclear / commerce schema triggers | Superseded by Nuclear #4 reindex (same wipe covers modes, claims, challenge terminals, place columns, party indexes, etc.). Local Hardhat: `pnpm deploy:local` then index from block 0. |
 | Outstanding obligation party indexes | Included in Nuclear #4 full reindex — required for `GET /accounts/:address/obligations` + commerce notification stamps |
 | Notifications feed | `disputeOpenedAt` on `passport` (June 2026 notifications stack) |
@@ -576,5 +577,5 @@ Local agent auction lifecycle (chain + Ponder phase polls) is covered by `./scri
 | [contracts/SPEC.md Part II.4](../contracts/SPEC.md#ii4-historical-deployment-base-sepolia-84532) | **Historical** v1.x Sepolia addresses |
 | [MIGRATION-V2.md](./MIGRATION-V2.md) | v2 handler reference + FX extension |
 | [ops/deploys/nuclear-7.md](../ops/deploys/nuclear-7.md) | Nuclear #7 deploy / S9-A wire-before-Merge + reindex |
-| [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md) | Historical Nuclear #4 (live VPS until Merge) |
+| [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md) | Historical Nuclear #4 (denylisted; superseded by N7) |
 | [ops/deploys/archive/84532-v2.md](../ops/deploys/archive/84532-v2.md) | Historical June 2026 generation v2 |

@@ -4,7 +4,7 @@ Decentralized peer-to-peer marketplace for used vehicles.
 Vehicle history as an NFT passport. Community-driven verification.
 Messaging and payments without intermediaries. Including Lightning for verification fees and seller settlement notes.
 
-**Multi-chain platform** — identical Nuclear stacks on Base Sepolia (84532) and Ethereum Sepolia (11155111): KarPassport, KarPro, FixedPrice/Ascending commerce modes, and `KarPassportBridgeGateway`. Commerce follows the passport’s custody chain. Mainnet stays gated on the LayerZero Phase 2 checkpoint in [SPEC §7.6](docs/contracts/SPEC.md#76-layerzero-security-configuration-normative).
+**Multi-chain platform** — Nuclear #7 on Base Sepolia (84532) and Ethereum Sepolia (11155111), plus Solana Devnet commercial namespace **2000040168**: KarPassport, KarPro, FixedPrice/Ascending commerce modes, and bridge gateway (EVM) / SVM programs. Commerce follows the passport’s custody chain. Mainnet stays gated on the LayerZero Phase 2 checkpoint in [SPEC §7.6](docs/contracts/SPEC.md#76-layerzero-security-configuration-normative).
 
 MIT License · Open Source
 
@@ -16,14 +16,14 @@ Kargain combines on-chain vehicle passports, professional verification, and mode
 
 | Layer | Role |
 |-------|------|
-| **KarPassport** | Permissionless NFT mint; metadata on Arweave; UNVERIFIED → VERIFIED → DISPUTED lifecycle |
+| **KarPassport** | NFT passport; metadata on Arweave; UNVERIFIED → VERIFIED → DISPUTED. **EVM:** anyone may `mintPassport`. **SVM:** mint is **config-authority only** (not anyone) — Create UI today is EVM; see [SPEC](docs/contracts/SPEC.md) |
 | **KarPro** | Soulbound verifier credential + refundable stake (`KarProStaking`); verification fees (ETH / USDC / Lightning) |
 | **FixedPriceConsignment** | Fixed-price listings, agent mandates, native/ERC-20 checkout, external payment confirmation |
 | **AscendingConsignment** | English ascending auctions with settlement hold (browse at `/auctions`) |
-| **Bridge** | Symmetric `KarPassportBridgeGateway` hub↔spoke (Base Sepolia ↔ Ethereum Sepolia); trust resets on every crossing |
-| **Off-chain** | [Ponder](https://ponder.kargain.com) indexer, Nostr (profiles, comments, watchlist, notifications), XMTP messaging, Lightning (LNURL-pay + optional NWC) |
+| **Bridge** | Symmetric gateway hub↔spoke (Base Sepolia ↔ Ethereum Sepolia; Solana pathway on Devnet); trust resets on every crossing |
+| **Off-chain** | [Ponder](https://ponder.kargain.com) indexer (+ `svm-ingest` for Solana), Nostr (profiles, comments, watchlist, notifications), XMTP messaging, Lightning (LNURL-pay + optional NWC) |
 
-Contract behavior, metadata rules, and addresses: **[docs/contracts/SPEC.md](docs/contracts/SPEC.md)** ([I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) Base Sepolia · [I.9.2](docs/contracts/SPEC.md#i92-active-deployment-ethereum-sepolia-11155111) Ethereum Sepolia · multichain [§I.12](docs/contracts/SPEC.md#i12-multi-chain-architecture-normative)).
+Contract behavior, metadata rules, and addresses: **[docs/contracts/SPEC.md](docs/contracts/SPEC.md)** ([I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) Base · [I.9.2](docs/contracts/SPEC.md#i92-active-deployment-ethereum-sepolia-11155111) Eth · [I.9.3](docs/contracts/SPEC.md#i93-active-deployment-solana-devnet-2000040168) Solana · multichain [§I.12](docs/contracts/SPEC.md#i12-multi-chain-architecture-normative)).
 UI layout: **[docs/design-spec.md](docs/design-spec.md)**.
 
 ---
@@ -37,8 +37,8 @@ UI layout: **[docs/design-spec.md](docs/design-spec.md)**.
 | Contracts, metadata, deploy addresses | [docs/contracts/SPEC.md](docs/contracts/SPEC.md) |
 | Ponder indexer (API, ops, v2 reference) | [docs/indexer/README.md](docs/indexer/README.md) |
 | VPS reindex runbook | [docs/indexer/OPERATIONS.md](docs/indexer/OPERATIONS.md) |
-| Nuclear #4 commercial stack (84532 + 11155111) | [docs/ops/deploys/nuclear-4.md](docs/ops/deploys/nuclear-4.md) |
-| Addresses (active) | [SPEC I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) · [I.9.2](docs/contracts/SPEC.md#i92-active-deployment-ethereum-sepolia-11155111) |
+| Active commercial stacks | [SPEC I.9](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) (N7 EVM + Solana) · historical [nuclear-4.md](docs/ops/deploys/nuclear-4.md) |
+| Addresses (active) | [SPEC I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) · [I.9.2](docs/contracts/SPEC.md#i92-active-deployment-ethereum-sepolia-11155111) · [I.9.3](docs/contracts/SPEC.md#i93-active-deployment-solana-devnet-2000040168) |
 | Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
 ---
@@ -54,7 +54,7 @@ UI layout: **[docs/design-spec.md](docs/design-spec.md)**.
 | Social / messaging | Nostr (NIP-01, NIP-51, NIP-78), XMTP |
 | Payments | ETH / USDC on-chain; Lightning (LNURL-pay, NWC); seller settlement notes (bank / BTC / Lightning) |
 | Display FX | USD hub + fiat/crypto display currencies (Chainlink + CoinGecko) |
-| Chains (today) | Base Sepolia **84532** + Ethereum Sepolia **11155111** (commerce on custody chain; bridge both ways) |
+| Chains (today) | Base Sepolia **84532** + Ethereum Sepolia **11155111** + Solana Devnet **2000040168** (commerce on custody chain; EVM bridge both ways) |
 
 ---
 
@@ -129,8 +129,8 @@ After compile: `node scripts/export-abis.mjs`
 
 ## Production indexer
 
-- API: https://ponder.kargain.com (dual commercial chains; indexes from hub block **44957457** and Eth **11404204** — see [OPERATIONS.md](docs/indexer/OPERATIONS.md))
-- Stack: `docker compose up -d` · diagnostic: `pnpm ponder:config`
+- API: https://ponder.kargain.com (Nuclear #7 EVM + Solana Devnet; hub **46119704** / Eth **11591966** — see [OPERATIONS.md](docs/indexer/OPERATIONS.md))
+- Stack: `docker compose up -d` (Ponder + `svm-ingest`) · diagnostic: `pnpm ponder:config`
 - Reindex after schema or address cutover: [docs/indexer/OPERATIONS.md](docs/indexer/OPERATIONS.md)
 
 ---
@@ -138,7 +138,8 @@ After compile: `node scripts/export-abis.mjs`
 ## Known limitations
 
 - **Irys uploads** use the connected wallet for Arweave storage deposits. Photos are re-encoded to WebP (up to 100 KB each) in the browser before upload. Smart contract wallets may still fail when multiple photos require a separate Irys ETH deposit; the app shows a preflight warning on the photo step.
-- **Passport bridge** is testnet-scope (84532 ↔ 11155111) until the LayerZero Phase 2 checkpoint in [SPEC §7.6](docs/contracts/SPEC.md#76-layerzero-security-configuration-normative) clears — no mainnet pathway yet.
+- **Create passport** (`/passport/new`) is **EVM-only** today. Solana mint is config-authority ops (`MintPassport`), not a product “anyone mints” path — see [SPEC](docs/contracts/SPEC.md).
+- **Passport bridge** is testnet-scope until the LayerZero Phase 2 checkpoint in [SPEC §7.6](docs/contracts/SPEC.md#76-layerzero-security-configuration-normative) clears — no mainnet pathway yet.
 - **Disputed passports** can still be listed; status is shown in the UI before purchase.
 
 ---

@@ -2,13 +2,13 @@
 
 > **Верификация потребляет улику, которую уничтожает любая пересборка. Она не шаг, который можно отложить, — она шаг, который истекает.**
 
-**Status: DEPLOYED ON CHAIN — S9-A CUTOVER ON BRANCH** (code September 4, 2026; chain August 29, 2026). `COMMERCIAL_ACTIVE` + SPEC I.9 on `feat/solana-svm-port` point at Nuclear #7. Explorers **green**. **Production `master` / VPS** still Nuclear #4 until Merge + one Ponder reindex (`svm-ingest` **off** for S9-A). Solana commercial row = **S9-B** after S9-0 Devnet modes.
+**Status: LIVE on `master` / VPS** (S9-A cutover September 2026; chain August 29, 2026). `COMMERCIAL_ACTIVE` + SPEC I.9 point at Nuclear #7. Explorers **green**. Solana Devnet commercial row (**2000040168**) = S9-B — also live; see [s9-b-solana-cutover.md](./s9-b-solana-cutover.md). Nuclear #4 is historical / denylisted.
 
 **Local only.** Empty-testnet full redeploy. Manifests: `deployments/84532.json` · `deployments/11155111.json` (gitignored). N6 manifests archived: `docs/ops/deploys/archive/nuclear-6-*.manifest.json`.
 
 **Reason:** Nuclear #6 executable bodies matched this repository, and Sourcify accepted Match, but Basescan/Etherscan stayed unverified after deploy-time `build-info` was wiped. Nuclear #7 redeployed **the same source** with V3 evidence retained and verify run **before** any recompile.
 
-**Register:** no PENDING until S9 cutover planning.  
+**Register:** S9 cutover COMPLETE on `master` — no open PENDING for N7.  
 **Tooling:** `deploy:nuclear:dry-run`, `deploy:sepolia`, `deploy:sepolia:eth`, `verify:deploy-evidence`, `verify:bytecode-identity`, `verify:sepolia`, `verify:sepolia:eth`, Sourcify v2, `smoke:*`, `bridge:wire*` (**not run**), `lz:snapshot`, `ponder:config`.  
 **Keys:** hardhat/dotenv only — never log secrets.
 
@@ -138,19 +138,19 @@ Modes / Ascending libs / proxies: verified earlier via Hardhat path (still green
 
 ---
 
-## Ops sequencing (do not collapse)
+## Ops sequencing (S9-A — COMPLETE; historical record)
 
-**S9-A founder cutover order — wire before Merge** (do not invert):
+**S9-A founder cutover order was wire before Merge** (do not invert on a future nuclear):
 
 | Step | What changes | Reversible? | Verify |
 |------|----------------|-------------|--------|
 | 1. Hub↔eth `pnpm bridge:wire` (N7 peers) | On-chain peers / ULN / options / `pathwayConfigHash` | Partial (re-wire / new nuclear) | `bridge:wire:read-only` PASS; hash ≡ SPEC `0x2914d89d…f834` |
-| 2. Merge branch → `master` | Vercel serves N7 `COMMERCIAL_ACTIVE` | Deploy previous commit | App addresses ≡ I.9 |
+| 2. Merge → `master` | Vercel serves N7 `COMMERCIAL_ACTIVE` | Deploy previous commit | App addresses ≡ I.9 |
 | 3. VPS `ponder-reindex.sql` | Wipe+reindex `kargain` from **46119704** / **11591966** | Costly; not silent | `/ready` + `/status`; smoke consignments |
-| 4. Empty `projection-schema.sql` | Empty SVM UNION arm | Re-apply | UNION HTTP 200 |
-| 5. Confirm `svm-ingest` **off** | — | — | compose / process absent |
+| 4. Empty `projection-schema.sql` | Empty SVM UNION arm (before S9-B) | Re-apply | UNION HTTP 200 |
+| 5. *(S9-A window)* `svm-ingest` off | — | — | **Superseded by S9-B** — `svm-ingest` is live for Solana |
 
-**Do not Merge before wire** — otherwise the bridge UI offers send on a pathway with no peers.
+**Do not Merge before wire** on a future cutover — otherwise the bridge UI offers send on a pathway with no peers.
 
 | Operation | When | Status |
 |-----------|------|--------|
@@ -159,9 +159,9 @@ Modes / Ascending libs / proxies: verified earlier via Hardhat path (still green
 | Evidence + bytecode-identity | August 29 | **Done** — green |
 | Explorer visitor green (Passport/Staking/Gateway) | August 29 | **Done (N7-1)** — direct standard-json submit |
 | Sourcify Exact Match ×6 | August 29 | **Done** |
-| Wire 40245↔40168 (Solana) | **S4b** against N7 hub `0x73240468…1827` | Ready for S4b (needs Squads + DVN) |
-| `COMMERCIAL_ACTIVE` + SPEC I.9 (branch) | **S9-A** | **Done on branch** — forfeit sink distinct; N4/N5/N6 denylisted; manifest ≡ registry fail-closed |
-| Hub↔eth `bridge:wire` → Merge → VPS reindex → empty projection → `svm-ingest` off | **S9-A ops** | Founder — **wire first**; start blocks **46119704** / **11591966** |
-| Solana row + `svm-ingest` + three-network walk | **S9-B** | After S9-0 Devnet modes ([s9-0-devnet-modes.md](./s9-0-devnet-modes.md)) |
+| Wire 40245↔40168 (Solana) | S4b against N7 hub `0x73240468…1827` | **Done** (pathway live; see SPEC / s4b) |
+| `COMMERCIAL_ACTIVE` + SPEC I.9 | **S9-A** | **Done on `master`** — forfeit sink distinct; N4/N5/N6 denylisted; manifest ≡ registry fail-closed |
+| Hub↔eth `bridge:wire` → Merge → VPS reindex → empty projection | **S9-A ops** | **Done** — start blocks **46119704** / **11591966** |
+| Solana row + `svm-ingest` + walk | **S9-B** | **Done in code** — see [s9-b-solana-cutover.md](./s9-b-solana-cutover.md); further product SVM UI/write work continues outside this nuclear |
 
-**Do not** wire against Nuclear #6. S4b targets **this** hub gateway only. Nuclear verify = evidence-backed direct submit (`verify:sepolia`), not Hardhat. Do **not** enable `svm-ingest` in the S9-A reindex window.
+**Do not** wire against Nuclear #6. Nuclear verify = evidence-backed direct submit (`verify:sepolia`), not Hardhat. Present-tense law: Nuclear #7 EVM + Solana Devnet commercial — not “svm-ingest off until Merge.”
