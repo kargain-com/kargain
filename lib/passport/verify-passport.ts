@@ -34,7 +34,7 @@ import {
 } from "@/lib/web3/svm-write-adapter";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
-  txWriteAvailability,
+  txWriteAvailabilityForCapability,
   txWriteRefusalMessage,
 } from "@/lib/web3/tx-write-availability";
 
@@ -58,6 +58,9 @@ export type VerifyPassportCause =
   | "disconnected"
   | "wrong_vm"
   | "unresolved_namespace"
+  | "not_in_program"
+  | "product_owner_owed"
+  | "authority_only"
   | "passport_not_configured"
   | "invalid_token_id"
   | "encode_failed"
@@ -127,11 +130,7 @@ export async function planVerifyPassport(input: {
   tokenId: string;
   registry?: CommercialRegistry;
 }): Promise<PlanVerifyPassportResult> {
-  const avail = txWriteAvailability(
-    input.account,
-    input.chainId,
-    input.registry,
-  );
+  const avail = txWriteAvailabilityForCapability(input.account, "verify_passport", input.chainId, input.registry,);
   if (!avail.available) {
     return {
       ok: false,

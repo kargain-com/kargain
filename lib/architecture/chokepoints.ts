@@ -14,8 +14,16 @@
 export type ArchitecturalChokepoint = {
   /** Stable id — do not reuse forms from other axes (e.g. Truth T1–T6). */
   id: string;
-  /** Owning module path(s) from repo root. */
+  /**
+   * Owning module description. When {@link ownerFiles} is set, this is prose only
+   * (no path-like tokens) — paths live solely in ownerFiles.
+   */
   owner: string;
+  /**
+   * Optional: product files that define census primitives (S8-D0). Only mechanism
+   * choke-points. Exclusion set for the census = union of all ownerFiles.
+   */
+  ownerFiles?: readonly string[];
   /** One-line rule the owner enforces. */
   rule: string;
   /** Guarding test files under `test/` (basename). */
@@ -26,7 +34,8 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "tx-sync-writes",
     owner:
-      "hooks/use-tx-sync.ts · lib/web3/write-lifecycle.ts · lib/web3/evm-write-lifecycle.ts · lib/web3/svm-write-lifecycle.ts · lib/web3/write-outcome.ts",
+      "Post-truth write sync: React hook orchestrates; lifecycle modules hold barrier truth",
+    ownerFiles: ["hooks/use-tx-sync.ts"],
     rule:
       "Post-truth invalidate + router.refresh only via syncReads / runTx; neutral write dispatch + barrier truth live in lib/web3 while the hook remains React orchestration only",
     guardTests: [
@@ -37,7 +46,8 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   },
   {
     id: "evm-write-adapter",
-    owner: "lib/web3/evm-write-adapter.ts",
+    owner: "Sole product door for wagmi writeContract and sendTransaction hooks",
+    ownerFiles: ["lib/web3/evm-write-adapter.ts"],
     rule: "wagmi useWriteContract / useSendTransaction only inside the EVM write adapter",
     guardTests: ["evm-write-adapter-policy.test.ts"],
   },
@@ -144,6 +154,19 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["set-verification-fee-policy.test.ts"],
   },
   {
+    id: "surface-support",
+    owner:
+      "Sole capability × commercial-namespace support reader and write-availability composition",
+    ownerFiles: [
+      "lib/web3/surface-support.ts",
+      "lib/web3/tx-write-availability.ts",
+      "lib/web3/write-lifecycle.ts",
+      "lib/web3/evm-write-lifecycle.ts",
+    ],
+    rule: "Sole reader for capability × commercial namespace support + wanted wallet family; class derived from SVM cell (never a second table); txWriteAvailabilityForCapability composes support then session (disconnected first); census fixture adds descriptive columns only; no parallel capability address registry",
+    guardTests: ["surface-support-policy.test.ts"],
+  },
+  {
     id: "svm-write-census",
     owner: "test/svm-write-census-policy.test.ts",
     rule: "Sole enumerated set of product write-site files under app|components|hooks (excludes use-tx-sync); human action matrix is local research annex only and never imported by tests",
@@ -182,7 +205,8 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "keyed-multicall",
     owner:
-      "lib/web3/keyed-multicall.ts · lib/web3/svm-keyed-read.ts · lib/web3/svm-rpc.ts",
+      "Sole keyed batch read door (EVM useReadContracts + SVM getMultipleAccounts sibling)",
+    ownerFiles: ["lib/web3/keyed-multicall.ts"],
     rule: "useReadContracts + async SVM batch sibling only inside keyed-multicall; SVM arm = TanStack useQuery keyed by sorted unique accounts (shared cache, honors enabled/staleTime); product default = createProductSvmKeyedAccountSource (svm-rpc getMultipleAccounts); explicit null → unresolved_namespace; refuse mixed EVM/SVM batches by name; EVM entry shape unchanged; passport-detail-view mounts PassportCommerce once",
     guardTests: [
       "keyed-multicall-policy.test.ts",
@@ -451,7 +475,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   },
   {
     id: "active-account",
-    owner: "hooks/use-active-account.ts · lib/web3/active-account.ts · evm/svm adapters",
+    owner:
+      "Sole who-is-connected entry and EVM session predicates; wagmi account hooks only in the EVM adapter",
+    ownerFiles: [
+      "lib/web3/active-account.ts",
+      "hooks/use-active-account.ts",
+      "lib/web3/evm-account-adapter.ts",
+    ],
     rule: "Sole who-is-connected entry (discriminated account only); EVM facts via requireEvmSession / commercialNamespaceOf / switch availability (named causes); wagmi account hooks only in evm-account-adapter; no invented SVM namespace; no EVM-field undefined forks outside owners",
     guardTests: [
       "active-account-owner-policy.test.ts",

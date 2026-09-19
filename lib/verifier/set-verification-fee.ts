@@ -35,7 +35,7 @@ import {
 } from "@/lib/web3/svm-write-adapter";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
-  txWriteAvailability,
+  txWriteAvailabilityForCapability,
   txWriteRefusalMessage,
 } from "@/lib/web3/tx-write-availability";
 
@@ -59,6 +59,9 @@ export type SetVerificationFeeCause =
   | "disconnected"
   | "wrong_vm"
   | "unresolved_namespace"
+  | "not_in_program"
+  | "product_owner_owed"
+  | "authority_only"
   | "staking_not_configured"
   | "encode_failed"
   | "pda_failed"
@@ -132,11 +135,7 @@ export type PlanSetVerificationFeeInput = {
 export async function planSetVerificationFee(
   input: PlanSetVerificationFeeInput,
 ): Promise<PlanSetVerificationFeeResult> {
-  const avail = txWriteAvailability(
-    input.account,
-    input.chainId,
-    input.registry,
-  );
+  const avail = txWriteAvailabilityForCapability(input.account, "set_verification_fee", input.chainId, input.registry,);
   if (!avail.available) {
     return {
       ok: false,

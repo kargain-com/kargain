@@ -14,7 +14,7 @@ import {
 } from "@/lib/web3/active-account";
 import type { CommercialRegistry } from "@/lib/web3/commercial-active";
 import {
-  txWriteAvailability,
+  txWriteAvailabilityForCapability,
   type TxWriteUnavailable,
 } from "@/lib/web3/tx-write-availability";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
@@ -65,8 +65,9 @@ export async function preparePassportEditWrite(args: {
   ensureSiweSession?: EnsureSiwe;
   registry?: CommercialRegistry;
 }): Promise<PassportEditWritePrep> {
-  const avail = txWriteAvailability(
+  const avail = txWriteAvailabilityForCapability(
     args.account,
+    "set_passport_uri",
     args.targetChainId,
     args.registry,
   );
@@ -109,7 +110,13 @@ function unavailableToPrep(refusal: TxWriteUnavailable): PassportEditWritePrep {
   if (refusal.cause === "wrong_vm") {
     return { ok: false, cause: "wrong_vm", wanted: refusal.wanted };
   }
-  return { ok: false, cause: refusal.cause };
+  if (
+    refusal.cause === "disconnected" ||
+    refusal.cause === "unresolved_namespace"
+  ) {
+    return { ok: false, cause: refusal.cause };
+  }
+  return { ok: false, cause: "unresolved_namespace" };
 }
 
 /** Stable English when prep refuses before Irys / set-URI. */

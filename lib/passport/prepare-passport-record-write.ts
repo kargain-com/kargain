@@ -18,9 +18,15 @@ import {
 } from "@/lib/web3/active-account";
 import type { CommercialRegistry } from "@/lib/web3/commercial-active";
 import {
-  txWriteAvailability,
+  txWriteAvailabilityForCapability,
   type TxWriteUnavailable,
 } from "@/lib/web3/tx-write-availability";
+
+/** Capabilities that may run through record-write prep (caller supplies). */
+export type PassportRecordWriteCapability =
+  | "append_passport_record"
+  | "report_passport_discrepancy"
+  | "append_passport_attestation";
 
 export type PassportRecordWritePrep =
   | { ok: true; prep: "evm_prepared" }
@@ -40,13 +46,16 @@ type EnsureSiwe = typeof defaultEnsureSiweSession;
 export async function preparePassportRecordWrite(args: {
   account: ActiveAccount;
   targetChainId: number;
+  /** Action being prepared — prep does not choose a capability. */
+  capability: PassportRecordWriteCapability;
   evidenceFile: File | null;
   signMessageAsync: (args: { message: string }) => Promise<`0x${string}`>;
   ensureSiweSession?: EnsureSiwe;
   registry?: CommercialRegistry;
 }): Promise<PassportRecordWritePrep> {
-  const avail = txWriteAvailability(
+  const avail = txWriteAvailabilityForCapability(
     args.account,
+    args.capability,
     args.targetChainId,
     args.registry,
   );
@@ -81,7 +90,15 @@ function unavailableToPrep(refusal: TxWriteUnavailable): PassportRecordWritePrep
   if (refusal.cause === "wrong_vm") {
     return { ok: false, cause: "wrong_vm", wanted: refusal.wanted };
   }
-  return { ok: false, cause: refusal.cause };
+  if (
+    refusal.cause === "disconnected" ||
+    refusal.cause === "unresolved_namespace"
+  ) {
+    return { ok: false, cause: refusal.cause };
+  }
+  // Dual-VM record capabilities are supported on both VMs — support causes are
+  // unreachable here; fail closed without inventing a session family.
+  return { ok: false, cause: "unresolved_namespace" };
 }
 
 /** Stable English when prep refuses before evidence upload / append. */

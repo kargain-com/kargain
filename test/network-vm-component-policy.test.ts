@@ -31,6 +31,8 @@ export const VM_BRANCH_ALLOWLIST = [
   "lib/web3/svm-wallet-discovery.ts",
   "lib/web3/svm-write-lifecycle.ts",
   "lib/web3/tx-write-availability.ts",
+  // S8-D0 sole capability × namespace support reader — indexes support by stack.vm.
+  "lib/web3/surface-support.ts",
   "lib/web3/write-lifecycle.ts",
   "lib/storage/irys-upload-plan.ts",
   // П-8 Irys session door — account.vm fork lives here, not in wizards.

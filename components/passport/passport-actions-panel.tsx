@@ -313,6 +313,7 @@ export function PassportActionsPanel({
       const prep = await preparePassportRecordWrite({
         account,
         targetChainId: chainId,
+        capability: "append_passport_record",
         evidenceFile: recordEvidenceFile,
         signMessageAsync,
       });
@@ -363,6 +364,7 @@ export function PassportActionsPanel({
       const prep = await preparePassportRecordWrite({
         account,
         targetChainId: chainId,
+        capability: "report_passport_discrepancy",
         evidenceFile: discrepancyEvidenceFile,
         signMessageAsync,
       });
@@ -408,6 +410,7 @@ export function PassportActionsPanel({
       const prep = await preparePassportRecordWrite({
         account,
         targetChainId: chainId,
+        capability: "append_passport_record",
         evidenceFile: clarificationEvidenceFile,
         signMessageAsync,
       });
@@ -454,6 +457,7 @@ export function PassportActionsPanel({
       const prep = await preparePassportRecordWrite({
         account,
         targetChainId: chainId,
+        capability: "append_passport_attestation",
         evidenceFile: attestationEvidenceFile,
         signMessageAsync,
       });

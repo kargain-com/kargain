@@ -43,7 +43,7 @@ import {
 } from "@/lib/web3/svm-write-adapter";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
-  txWriteAvailability,
+  txWriteAvailabilityForCapability,
   txWriteRefusalMessage,
 } from "@/lib/web3/tx-write-availability";
 
@@ -79,6 +79,9 @@ export type JudgeChallengeCause =
   | "disconnected"
   | "wrong_vm"
   | "unresolved_namespace"
+  | "not_in_program"
+  | "product_owner_owed"
+  | "authority_only"
   | "passport_not_configured"
   | "invalid_token_id"
   | "invalid_outcome"
@@ -189,11 +192,7 @@ export async function planJudgeChallenge(input: {
     };
   }
 
-  const avail = txWriteAvailability(
-    input.account,
-    input.chainId,
-    input.registry,
-  );
+  const avail = txWriteAvailabilityForCapability(input.account, "judge_challenge", input.chainId, input.registry,);
   if (!avail.available) {
     return {
       ok: false,

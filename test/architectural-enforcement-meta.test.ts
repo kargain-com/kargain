@@ -148,4 +148,33 @@ describe("architectural enforcement meta", () => {
       `Unexpected ungarded enforcement tests (add a choke-point or extend the known pin):\n${ungarded.join("\n")}`,
     );
   });
+
+  it("ownerFiles prose has no path tokens; each path defines ≥1 census primitive", async () => {
+    const {
+      filesDefiningCensusPrimitives,
+      loadLiveSurfaceSources,
+      OWNER_PROSE_PATH_TOKEN_RE,
+    } = await import("./surface-support-derive.ts");
+    const sources = loadLiveSurfaceSources();
+    const defining = filesDefiningCensusPrimitives(sources);
+    for (const cp of ARCHITECTURAL_CHOKEPOINTS) {
+      if (cp.ownerFiles == null) continue;
+      assert.equal(
+        OWNER_PROSE_PATH_TOKEN_RE.test(cp.owner),
+        false,
+        `${cp.id}: owner must be prose without path tokens`,
+      );
+      for (const f of cp.ownerFiles) {
+        assert.ok(
+          fs.existsSync(path.join(ROOT, f)),
+          `${cp.id}: missing ownerFile ${f}`,
+        );
+        const defs = defining.get(f);
+        assert.ok(
+          defs != null && defs.length > 0,
+          `${cp.id}: ownerFile defines zero primitives: ${f}`,
+        );
+      }
+    }
+  });
 });

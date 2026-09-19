@@ -627,6 +627,7 @@ describe("appendPassportRecord ownership + panel surface", () => {
     const svmPrep = await preparePassportRecordWrite({
       account: svmAccount,
       targetChainId: ns,
+      capability: "append_passport_record",
       evidenceFile: new File(["x"], "e.bin"),
       signMessageAsync: async () => {
         svmOrder.push("sign");
@@ -650,6 +651,7 @@ describe("appendPassportRecord ownership + panel surface", () => {
     const pastePrep = await preparePassportRecordWrite({
       account: evmAccount,
       targetChainId: 84532,
+      capability: "append_passport_record",
       evidenceFile: null,
       signMessageAsync: async () => {
         pasteOrder.push("sign");
@@ -666,6 +668,7 @@ describe("appendPassportRecord ownership + panel surface", () => {
     const filePrep = await preparePassportRecordWrite({
       account: evmAccount,
       targetChainId: 84532,
+      capability: "append_passport_record",
       evidenceFile: new File(["x"], "e.bin"),
       signMessageAsync: async () => {
         fileOrder.push("sign");

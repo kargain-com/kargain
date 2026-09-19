@@ -40,7 +40,7 @@ import {
 } from "@/lib/web3/svm-write-adapter";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
-  txWriteAvailability,
+  txWriteAvailabilityForCapability,
   txWriteRefusalMessage,
 } from "@/lib/web3/tx-write-availability";
 
@@ -66,6 +66,9 @@ export type AppendPassportRecordCause =
   | "disconnected"
   | "wrong_vm"
   | "unresolved_namespace"
+  | "not_in_program"
+  | "product_owner_owed"
+  | "authority_only"
   | "passport_not_configured"
   | "invalid_token_id"
   | "encode_failed"
@@ -157,11 +160,7 @@ export async function planAppendPassportRecord(input: {
   /** Test inject — product path uses live getAccountInfo. */
   fetchAccountData?: FetchSvmAccountDataFn;
 }): Promise<PlanAppendPassportRecordResult> {
-  const avail = txWriteAvailability(
-    input.account,
-    input.chainId,
-    input.registry,
-  );
+  const avail = txWriteAvailabilityForCapability(input.account, "append_passport_record", input.chainId, input.registry,);
   if (!avail.available) {
     return {
       ok: false,

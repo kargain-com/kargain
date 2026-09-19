@@ -35,7 +35,7 @@ import {
 } from "@/lib/web3/svm-write-adapter";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
-  txWriteAvailability,
+  txWriteAvailabilityForCapability,
   txWriteRefusalMessage,
 } from "@/lib/web3/tx-write-availability";
 /** EVM call shape — behavioural pin: setPassportURI + [BigInt(tokenId), uri]. */
@@ -58,6 +58,9 @@ export type SetPassportUriCause =
   | "disconnected"
   | "wrong_vm"
   | "unresolved_namespace"
+  | "not_in_program"
+  | "product_owner_owed"
+  | "authority_only"
   | "passport_not_configured"
   | "invalid_token_id"
   | "encode_failed"
@@ -130,11 +133,7 @@ export async function planSetPassportUri(input: {
   uri: string;
   registry?: CommercialRegistry;
 }): Promise<PlanSetPassportUriResult> {
-  const avail = txWriteAvailability(
-    input.account,
-    input.chainId,
-    input.registry,
-  );
+  const avail = txWriteAvailabilityForCapability(input.account, "set_passport_uri", input.chainId, input.registry,);
   if (!avail.available) {
     return {
       ok: false,
