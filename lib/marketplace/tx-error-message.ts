@@ -103,6 +103,9 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   InvalidCurrencyCode: "That currency code cannot be registered as a listing feed.",
   InvalidFeed: "Currency feed address is invalid.",
   InvalidFeedDecimals: "Currency feed decimals are invalid.",
+  InvalidEncumbranceSeed: "Encumbrance answer seed prefix is empty or too long.",
+  EncumbranceConfigGrowthTooLarge: "Encumbrance registry growth exceeds the per-instruction limit.",
+  InvalidEncumbranceIntent: "Encumbrance intent must be leave-chain or open-consignment.",
   PaymentTokenNotSupported: "This payment token is not supported.",
   PaymentTokenFeedRequired:
     "Fiat-priced sales in this token need a payment-token price feed.",

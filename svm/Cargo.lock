@@ -596,6 +596,7 @@ version = "0.1.0"
 dependencies = [
  "borsh 1.8.1",
  "kar-passport",
+ "kargain-encumbrance",
  "kargain-errors",
  "kargain-events",
  "kargain-onft-codec",
@@ -612,6 +613,7 @@ dependencies = [
  "kar-pro-staking",
  "kargain-bonded-challenge",
  "kargain-claimable-payouts",
+ "kargain-encumbrance",
  "kargain-errors",
  "kargain-events",
  "mpl-core",
@@ -681,6 +683,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kargain-encumbrance"
+version = "0.1.0"
+dependencies = [
+ "borsh 1.8.1",
+ "kargain-errors",
+ "solana-program",
+]
+
+[[package]]
 name = "kargain-errors"
 version = "0.1.0"
 dependencies = [
@@ -710,6 +721,7 @@ dependencies = [
  "kargain-bonded-challenge",
  "kargain-claimable-payouts",
  "kargain-consignment-base",
+ "kargain-encumbrance",
  "kargain-price",
  "mpl-core",
  "serde",

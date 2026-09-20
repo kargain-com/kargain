@@ -39,6 +39,12 @@ export const SVM_ONLY_ERROR_NAMES = [
   "FiatDenominationRefused",
   /** D-07 — SVM-only named confidence bound (EVM Chainlink has no conf field). */
   "ConfidenceTooWide",
+  /** S8-E — answer PDA seed_prefix empty or >32. */
+  "InvalidEncumbranceSeed",
+  /** S8-E — PassportConfig realloc exceeds per-instruction growth cap. */
+  "EncumbranceConfigGrowthTooLarge",
+  /** S8-E — intent byte not LeaveChain/OpenConsignment. */
+  "InvalidEncumbranceIntent",
 ] as const;
 
 /**
@@ -69,6 +75,7 @@ export const SVM_ERROR_ASSERT_OWNERS: readonly string[] = [
   "svm/crates/kargain-bonded-challenge/src/lib.rs",
   "svm/crates/kargain-agented-split/src/lib.rs",
   "svm/crates/kargain-price/src/lib.rs",
+  "svm/crates/kargain-encumbrance/src/lib.rs",
 ] as const;
 
 export type ErrorCoverageEntry = {

@@ -94,4 +94,15 @@ pub enum PassportIx {
     TransferPassport {
         token_id: [u8; 32],
     },
+    // ---- S8-E append-only (trust contract) ----
+    /// Register an encumbrance source (program id = signer source identity via ix accounts).
+    AddEncumbranceSource {
+        /// Source program id to register.
+        program_id: [u8; 32],
+        seed_prefix: Vec<u8>,
+    },
+    /// Remove a registered encumbrance source by program id (swap-remove, like EVM).
+    RemoveEncumbranceSource {
+        program_id: [u8; 32],
+    },
 }

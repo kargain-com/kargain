@@ -61,6 +61,7 @@ const CONFIG_SEED = Buffer.from("config");
 const ASSET_SEED = Buffer.from("asset");
 const STATE_SEED = Buffer.from("state");
 const FREEZE_SEED = Buffer.from("freeze");
+const CHALLENGE_SEED = Buffer.from("challenge");
 const EP_CONFIG_SEED = Buffer.from("ep_config");
 const EP_CLEAR_SEED = Buffer.from("ep_clear");
 
@@ -533,6 +534,10 @@ export async function runLiveSvmRoundTrip(): Promise<LiveRoundTripResult> {
   const homeTokenId = tokenIdFromParts(STAND_SVM_NAMESPACE, 1n);
   const [homeAsset] = pda([ASSET_SEED, Buffer.from(homeTokenId)], passportProgram);
   const [homeState] = pda([STATE_SEED, Buffer.from(homeTokenId)], passportProgram);
+  const [homeChallenge] = pda(
+    [CHALLENGE_SEED, Buffer.from(homeTokenId)],
+    passportProgram,
+  );
 
   await sendIx(
     connection,
@@ -575,6 +580,8 @@ export async function runLiveSvmRoundTrip(): Promise<LiveRoundTripResult> {
           { pubkey: freezePda, isSigner: false, isWritable: false },
           { pubkey: CORE_ID, isSigner: false, isWritable: false },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          // Empty registry: challenge PDA only (may tail after system).
+          { pubkey: homeChallenge, isSigner: false, isWritable: false },
         ],
         data: gatewaySendData(
           STAND_EVM_EID,

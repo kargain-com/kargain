@@ -27,7 +27,7 @@ fn map_of(pairs: &[(&str, Value)]) -> Map<String, Value> {
 }
 
 pub fn all_entries() -> Vec<ManifestEntry> {
-    let mut out = Vec::with_capacity(98);
+    let mut out = Vec::with_capacity(100);
     out.extend(passport_entries());
     out.extend(gateway_entries());
     out.extend(staking_entries());
@@ -37,7 +37,7 @@ pub fn all_entries() -> Vec<ManifestEntry> {
     out
 }
 
-// ---- Passport (21) ----
+// ---- Passport (23) ----
 
 fn passport_entries() -> Vec<ManifestEntry> {
     let samples = passport_samples();
@@ -128,6 +128,13 @@ fn passport_samples() -> Vec<PassportIx> {
         },
         PassportIx::TransferPassport {
             token_id: b32(0x65),
+        },
+        PassportIx::AddEncumbranceSource {
+            program_id: b32(0x66),
+            seed_prefix: b"ans".to_vec(),
+        },
+        PassportIx::RemoveEncumbranceSource {
+            program_id: b32(0x66),
         },
     ]
 }
@@ -321,6 +328,25 @@ fn layout_and_sample_passport(ix: PassportIx) -> ManifestEntry {
             "TransferPassport",
             vec![field_fixed("token_id", 32)],
             map_of(&[("token_id", sample_bytes(token_id))]),
+        ),
+        PassportIx::AddEncumbranceSource {
+            program_id,
+            seed_prefix,
+        } => (
+            "AddEncumbranceSource",
+            vec![
+                field_fixed("program_id", 32),
+                field_vec_u8("seed_prefix"),
+            ],
+            map_of(&[
+                ("program_id", sample_bytes(program_id)),
+                ("seed_prefix", sample_bytes(seed_prefix)),
+            ]),
+        ),
+        PassportIx::RemoveEncumbranceSource { program_id } => (
+            "RemoveEncumbranceSource",
+            vec![field_fixed("program_id", 32)],
+            map_of(&[("program_id", sample_bytes(program_id))]),
         ),
     };
     entry_from_borsh("kar-passport", "PassportIx", name, fields, sample, &ix)

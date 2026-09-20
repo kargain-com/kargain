@@ -447,6 +447,45 @@
       "goldenHex": "146565656565656565656565656565656565656565656565656565656565656565"
     },
     {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 21,
+      "name": "AddEncumbranceSource",
+      "fields": [
+        {
+          "name": "program_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "seed_prefix",
+          "type": "vec_u8"
+        }
+      ],
+      "sample": {
+        "program_id": "6666666666666666666666666666666666666666666666666666666666666666",
+        "seed_prefix": "616e73"
+      },
+      "goldenHex": "15666666666666666666666666666666666666666666666666666666666666666603000000616e73"
+    },
+    {
+      "program": "kar-passport",
+      "enum": "PassportIx",
+      "index": 22,
+      "name": "RemoveEncumbranceSource",
+      "fields": [
+        {
+          "name": "program_id",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "program_id": "6666666666666666666666666666666666666666666666666666666666666666"
+      },
+      "goldenHex": "166666666666666666666666666666666666666666666666666666666666666666"
+    },
+    {
       "program": "kar-gateway",
       "enum": "GatewayIx",
       "index": 0,

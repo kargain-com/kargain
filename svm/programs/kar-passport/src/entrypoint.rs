@@ -33,6 +33,7 @@ use crate::core_asset::{
     transfer_asset, update_uri,
 };
 use crate::instruction::PassportIx;
+use crate::may::process_may;
 use crate::records::{
     check_append_attestation, check_append_record, check_report_discrepancy,
     append_record_checked, gate_and_read_owner, RECORD_TYPE_ATTESTATION, RECORD_TYPE_DISCREPANCY,
@@ -74,15 +75,7 @@ pub fn process_instruction(
         PassportIx::SetPassportUri { token_id, uri } => {
             set_passport_uri(program_id, accounts, token_id, uri)
         }
-        PassportIx::May { token_id, intent } => {
-            ops_log!(
-                "kar-passport May token={:02x}{:02x} intent={} (host may module)",
-                token_id[0],
-                token_id[1],
-                intent
-            );
-            Ok(())
-        }
+        PassportIx::May { token_id, intent } => process_may(program_id, accounts, token_id, intent),
         PassportIx::AppendRecord {
             token_id,
             record_type,
@@ -139,6 +132,13 @@ pub fn process_instruction(
         } => append_attestation(program_id, accounts, token_id, description, evidence_cid),
         PassportIx::TransferPassport { token_id } => {
             transfer_passport(program_id, accounts, token_id)
+        }
+        PassportIx::AddEncumbranceSource {
+            program_id: source_program,
+            seed_prefix,
+        } => add_encumbrance_source(program_id, accounts, source_program, seed_prefix),
+        PassportIx::RemoveEncumbranceSource { program_id: source_program } => {
+            remove_encumbrance_source(program_id, accounts, source_program)
         }
     }
 }
@@ -212,10 +212,148 @@ fn load_config(program_id: &Pubkey, config: &AccountInfo) -> Result<PassportConf
 fn save_config(config_ai: &AccountInfo, cfg: &PassportConfig) -> ProgramResult {
     let encoded = borsh::to_vec(cfg).map_err(|_| ProgramError::InvalidAccountData)?;
     let mut data = config_ai.try_borrow_mut_data()?;
-    if data.len() < encoded.len() {
+    if data.len() != encoded.len() {
+        // Grow/shrink path must realloc first so lengths match exactly (try_from_slice).
         return Err(ProgramError::AccountDataTooSmall);
     }
-    data[..encoded.len()].copy_from_slice(&encoded);
+    data.copy_from_slice(&encoded);
+    Ok(())
+}
+
+/// Realloc config to `new_len`, moving rent to/from `payer`. Growth capped at 10_240 B/ix.
+fn resize_config_account<'a>(
+    config: &AccountInfo<'a>,
+    payer: &AccountInfo<'a>,
+    system: &AccountInfo<'a>,
+    new_len: usize,
+) -> ProgramResult {
+    const MAX_GROWTH: usize = 10_240;
+    let old_len = config.data_len();
+    if new_len > old_len {
+        let growth = new_len - old_len;
+        if growth > MAX_GROWTH {
+            return Err(into_program_error(
+                kargain_errors::KargainError::EncumbranceConfigGrowthTooLarge,
+            ));
+        }
+    }
+    if system.key != &system_program::ID {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    let rent = Rent::get()?;
+    let new_minimum = rent.minimum_balance(new_len);
+    let old_lamports = config.lamports();
+    if new_minimum > old_lamports {
+        let deficit = new_minimum - old_lamports;
+        invoke(
+            &system_instruction::transfer(payer.key, config.key, deficit),
+            &[payer.clone(), config.clone(), system.clone()],
+        )?;
+    }
+    config.resize(new_len)?;
+    if new_len < old_len {
+        let new_minimum_after = rent.minimum_balance(new_len);
+        let current = config.lamports();
+        if current > new_minimum_after {
+            let excess = current - new_minimum_after;
+            **config.try_borrow_mut_lamports()? -= excess;
+            **payer.try_borrow_mut_lamports()? += excess;
+        }
+    }
+    Ok(())
+}
+
+fn require_config_authority(
+    program_id: &Pubkey,
+    config: &AccountInfo,
+    authority: &AccountInfo,
+) -> Result<PassportConfig, ProgramError> {
+    if !authority.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let cfg = load_config(program_id, config)?;
+    if authority.key.to_bytes() != cfg.authority {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    Ok(cfg)
+}
+
+fn add_encumbrance_source(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    source_program: [u8; 32],
+    seed_prefix: Vec<u8>,
+) -> ProgramResult {
+    use kargain_encumbrance::{
+        require_valid_seed_prefix, EncumbranceSourceEntry, MAX_ENCUMBRANCE_SOURCES,
+    };
+
+    let iter = &mut accounts.iter();
+    let config = next_account_info(iter)?;
+    let authority = next_account_info(iter)?;
+    let payer = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
+    if !payer.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    require_valid_seed_prefix(&seed_prefix).map_err(into_program_error)?;
+    let mut cfg = require_config_authority(program_id, config, authority)?;
+    if cfg.encumbrance_sources.len() >= MAX_ENCUMBRANCE_SOURCES {
+        return Err(into_program_error(
+            kargain_errors::KargainError::TooManyEncumbranceSources,
+        ));
+    }
+    if cfg
+        .encumbrance_sources
+        .iter()
+        .any(|e| e.program_id == source_program)
+    {
+        return Err(into_program_error(
+            kargain_errors::KargainError::SourceAlreadyRegistered,
+        ));
+    }
+    cfg.encumbrance_sources.push(EncumbranceSourceEntry {
+        program_id: source_program,
+        seed_prefix,
+    });
+    let encoded = borsh::to_vec(&cfg).map_err(|_| ProgramError::InvalidAccountData)?;
+    resize_config_account(config, payer, system, encoded.len())?;
+    save_config(config, &cfg)?;
+    ops_log!("kar-passport AddEncumbranceSource ok");
+    Ok(())
+}
+
+fn remove_encumbrance_source(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    source_program: [u8; 32],
+) -> ProgramResult {
+    let iter = &mut accounts.iter();
+    let config = next_account_info(iter)?;
+    let authority = next_account_info(iter)?;
+    let payer = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
+    if !payer.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let mut cfg = require_config_authority(program_id, config, authority)?;
+    let Some(idx) = cfg
+        .encumbrance_sources
+        .iter()
+        .position(|e| e.program_id == source_program)
+    else {
+        return Err(into_program_error(
+            kargain_errors::KargainError::SourceNotRegistered,
+        ));
+    };
+    // Swap-remove — same as EVM removeEncumbranceSource.
+    let last = cfg.encumbrance_sources.len() - 1;
+    cfg.encumbrance_sources.swap(idx, last);
+    cfg.encumbrance_sources.pop();
+    let encoded = borsh::to_vec(&cfg).map_err(|_| ProgramError::InvalidAccountData)?;
+    resize_config_account(config, payer, system, encoded.len())?;
+    save_config(config, &cfg)?;
+    ops_log!("kar-passport RemoveEncumbranceSource ok");
     Ok(())
 }
 

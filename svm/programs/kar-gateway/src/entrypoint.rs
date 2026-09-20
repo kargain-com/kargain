@@ -35,8 +35,9 @@ use crate::seeds::{config_pda, freeze_pda, CONFIG_SEED, FREEZE_SEED, PEER_SEED};
 use crate::send_receive::{plan_receive, plan_send, ReceiveKind};
 use kar_passport::core_asset::{is_live_core_asset, read_owner, read_uri, transfer_asset};
 use kar_passport::instruction::PassportIx;
-use kar_passport::may::may_leave_or_open;
-use kar_passport::state::is_home_token;
+use kar_passport::may::resolve_may_accounts;
+use kar_passport::state::{is_home_token, PassportConfig};
+use kargain_encumbrance::INTENT_LEAVE_CHAIN;
 use kargain_events::generated;
 use mock_endpoint::MockEndpointIx;
 
@@ -491,10 +492,11 @@ fn lz_receive(
 
 /// Send accounts (mock):
 /// 0 gateway_config, 1 owner(signer), 2 payer(signer), 3 passport_program,
-/// 4 passport_config, 5 asset, 6 state, 7 freeze, 8 core, 9 system
+/// 4 passport_config, 5 asset, 6 state, 7 freeze, 8 core, 9 system,
+/// 10 challenge PDA, 11..10+N answer accounts (N = registry len; empty ⇒ challenge only)
 ///
-/// Production adds:
-/// 10 peer_config, 11.. Endpoint send metas after sender (SendHelper.slice(2))
+/// Production adds after the may tail:
+/// peer_config, then Endpoint send metas after sender (SendHelper.slice(2))
 fn send(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -537,11 +539,31 @@ fn send(
     })?;
 
     let is_home = is_home_token(&token_id, cfg.namespace);
-    let may = may_leave_or_open(is_live_core_asset(asset), false, &[], &[]);
+    // Real may(LeaveChain): challenge + answer tail after system (index 10+).
+    let passport_cfg = PassportConfig::try_from_slice(&passport_config.try_borrow_data()?)
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+    let n = passport_cfg.encumbrance_sources.len();
+    let may_tail_len = 1 + n;
+    if accounts.len() < 10 + may_tail_len {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    }
+    let mut may_accounts: Vec<AccountInfo> = Vec::with_capacity(3 + n);
+    may_accounts.push(passport_config.clone());
+    may_accounts.push(asset.clone());
+    may_accounts.push(accounts[10].clone()); // challenge
+    for i in 0..n {
+        may_accounts.push(accounts[11 + i].clone());
+    }
+    let may = resolve_may_accounts(
+        passport_program.key,
+        &may_accounts,
+        token_id,
+        INTENT_LEAVE_CHAIN,
+    )?;
     let owner_ok = read_owner(asset)
         .map(|o| o == *owner.key)
         .unwrap_or(false);
-    let plan = plan_send(uri.clone(), token_id, is_home, may, owner_ok).map_err(into_program_error)?;
+    let plan = plan_send(uri.clone(), token_id, is_home, Ok(may), owner_ok).map_err(into_program_error)?;
 
     let config_seeds: &[&[u8]] = &[CONFIG_SEED, &[cfg.bump]];
     let freeze_seeds: &[&[u8]] = &[FREEZE_SEED, &[freeze_bump]];
@@ -602,11 +624,15 @@ fn send(
     let msg_len = message.len();
     let uri_len = plan.uri.len();
 
+    let production_start = 10 + may_tail_len;
     if production {
         if dst_eid != HUB_EID {
             return Err(ProgramError::InvalidArgument);
         }
-        let peer_ai = next_account_info(iter)?;
+        if accounts.len() <= production_start {
+            return Err(ProgramError::NotEnoughAccountKeys);
+        }
+        let peer_ai = &accounts[production_start];
         let (expected_peer, _) = peer_pda(program_id, gateway_config.key, dst_eid);
         if peer_ai.key != &expected_peer {
             return Err(ProgramError::InvalidSeeds);
@@ -620,7 +646,7 @@ fn send(
             return Err(ProgramError::InvalidAccountData);
         }
         // Remaining = Endpoint send metas after sender (no leading program, no sender).
-        let endpoint_accounts: Vec<AccountInfo> = accounts[11..].to_vec();
+        let endpoint_accounts: Vec<AccountInfo> = accounts[production_start + 1..].to_vec();
         let endpoint_program_ai = endpoint_accounts
             .iter()
             .find(|a| a.key == &endpoint_key)

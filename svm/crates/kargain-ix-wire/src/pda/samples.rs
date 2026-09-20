@@ -8,12 +8,12 @@ use serde_json::{Map, Value};
 use solana_program::pubkey::Pubkey;
 
 use super::{
-    dynamic_bytes32, dynamic_u32_be, dynamic_u32_le, PdaDynamicDecl, PdaManifestRecipe,
+    dynamic_bytes32, dynamic_u32_be, dynamic_u32_le, dynamic_u8, PdaDynamicDecl, PdaManifestRecipe,
     SYNTHETIC_PDA_PROGRAM_ID_BYTES,
 };
-use crate::{hex_of, sample_bytes, sample_u32};
+use crate::{hex_of, sample_bytes, sample_u32, sample_u8};
 
-/// Closed census of product PDA recipes (floor 30).
+/// Closed census of product PDA recipes (floor 31).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PdaRecipe {
     KarPassportConfig,
@@ -46,10 +46,12 @@ pub enum PdaRecipe {
     ClaimablePayoutsClaimAta,
     ClaimablePayoutsEscrow,
     BondedChallengeChallenge,
+    /// Answer PDA under a source program: `[seed_prefix, token_id, intent]`.
+    EncumbranceAnswer,
 }
 
 /// Every recipe, in stable owner/name order. Length is the census floor.
-pub fn all_recipes() -> [PdaRecipe; 30] {
+pub fn all_recipes() -> [PdaRecipe; 31] {
     use PdaRecipe::*;
     [
         KarPassportConfig,
@@ -82,6 +84,7 @@ pub fn all_recipes() -> [PdaRecipe; 30] {
         ClaimablePayoutsClaimAta,
         ClaimablePayoutsEscrow,
         BondedChallengeChallenge,
+        EncumbranceAnswer,
     ]
 }
 
@@ -571,6 +574,30 @@ fn entry_for(r: PdaRecipe) -> PdaManifestRecipe {
                 kargain_bonded_challenge::CHALLENGE_SEED,
                 vec![dynamic_bytes32("subject_id")],
                 map_of(&[("subject_id", sample_bytes(&subject))]),
+                addr,
+                bump,
+            )
+        }
+        PdaRecipe::EncumbranceAnswer => {
+            // Sample seed_prefix = b"ans" (registry-declared; not a fixed program tag).
+            let token = sample_token_id();
+            let intent = kargain_encumbrance::INTENT_LEAVE_CHAIN;
+            let (addr, bump) = kargain_encumbrance::derive_encumbrance_answer_pda(
+                &program,
+                b"ans",
+                &token,
+                intent,
+            )
+            .expect("sample encumbrance answer PDA");
+            recipe(
+                "kargain-encumbrance",
+                "answer",
+                b"ans",
+                vec![dynamic_bytes32("token_id"), dynamic_u8("intent")],
+                map_of(&[
+                    ("token_id", sample_bytes(&token)),
+                    ("intent", sample_u8(intent)),
+                ]),
                 addr,
                 bump,
             )

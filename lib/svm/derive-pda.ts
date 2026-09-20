@@ -255,6 +255,9 @@ function encodeDynamicSeed(
   if (encoding === "u32_be") {
     return encodeU32(value, "be");
   }
+  if (encoding === "u8") {
+    return encodeU8(value);
+  }
   return { ok: false, detail: `unsupported_encoding:${encoding}` };
 }
 
@@ -310,6 +313,21 @@ function encodeU32(
   return { ok: true, bytes: out };
 }
 
+function encodeU8(value: PdaSeedValue): EncodeOk | EncodeErr {
+  let n: number;
+  if (typeof value === "number") {
+    n = value;
+  } else if (typeof value === "string" && /^-?\d+$/.test(value)) {
+    n = Number(value);
+  } else {
+    return { ok: false, detail: "u8_wrong_type" };
+  }
+  if (!Number.isInteger(n) || n < 0 || n > 0xff) {
+    return { ok: false, detail: "u8_out_of_range" };
+  }
+  return { ok: true, bytes: Uint8Array.of(n) };
+}
+
 function hexToBytesExact(hex: string, expectedLen?: number): Uint8Array {
   if (!/^[0-9a-fA-F]*$/.test(hex) || hex.length % 2 !== 0) {
     throw new Error(`hex_malformed:${hex.length}`);
@@ -339,6 +357,11 @@ export function sampleSeedsFromManifest(
     } else if (dyn.encoding === "u32_le" || dyn.encoding === "u32_be") {
       if (typeof raw !== "number") {
         throw new Error(`sample_u32:${recipe.id}:${dyn.name}`);
+      }
+      out[dyn.name] = raw;
+    } else if (dyn.encoding === "u8") {
+      if (typeof raw !== "number") {
+        throw new Error(`sample_u8:${recipe.id}:${dyn.name}`);
       }
       out[dyn.name] = raw;
     } else {

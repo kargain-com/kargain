@@ -38,3 +38,4 @@ kargain-price = { workspace = true }
 kargain-consignment-base = { workspace = true }
 kargain-claimable-payouts = { workspace = true }
 kargain-bonded-challenge = { workspace = true }
+kargain-encumbrance = { workspace = true }

@@ -127,6 +127,13 @@ pub(crate) fn dynamic_u32_be(name: &str) -> PdaDynamicDecl {
     }
 }
 
+pub(crate) fn dynamic_u8(name: &str) -> PdaDynamicDecl {
+    PdaDynamicDecl {
+        name: name.into(),
+        encoding: "u8".into(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -137,12 +144,12 @@ mod tests {
     }
 
     #[test]
-    fn pda_census_is_thirty() {
+    fn pda_census_is_thirty_one() {
         let m = build_pda_manifest();
         assert_eq!(
             m.recipes.len(),
-            30,
-            "pda census floor: 20 program-local + 10 shared-crate = 30"
+            31,
+            "pda census floor: 20 program-local + 11 shared-crate = 31"
         );
     }
 

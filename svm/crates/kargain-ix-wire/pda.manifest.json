@@ -445,6 +445,27 @@
       },
       "goldenAddress": "9EX68WthvvLVPYTfDGiBMFzk9ZR9LyYWm16nJwFYkeK2",
       "goldenBump": 253
+    },
+    {
+      "owner": "kargain-encumbrance",
+      "id": "kargain-encumbrance/answer",
+      "seedTagHex": "616e73",
+      "dynamics": [
+        {
+          "name": "token_id",
+          "encoding": "bytes32"
+        },
+        {
+          "name": "intent",
+          "encoding": "u8"
+        }
+      ],
+      "sample": {
+        "intent": 0,
+        "token_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "goldenAddress": "dv1DnfwkaV1LfAspr8ggsxw7Nq9LPEEKEgJywqv3MwC",
+      "goldenBump": 255
     }
   ]
 }

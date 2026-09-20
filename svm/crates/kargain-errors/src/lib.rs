@@ -310,6 +310,15 @@ pub enum KargainError {
     InvalidCurrencyCode = 132,
     #[error("CurrencyNotAvailableOnChain")]
     CurrencyNotAvailableOnChain = 133,
+    /// SVM — empty or >32-byte encumbrance answer seed_prefix.
+    #[error("InvalidEncumbranceSeed")]
+    InvalidEncumbranceSeed = 134,
+    /// SVM — PassportConfig realloc growth exceeds per-instruction ceiling.
+    #[error("EncumbranceConfigGrowthTooLarge")]
+    EncumbranceConfigGrowthTooLarge = 135,
+    /// SVM — intent byte not LeaveChain(0) / OpenConsignment(1).
+    #[error("InvalidEncumbranceIntent")]
+    InvalidEncumbranceIntent = 136,
 }
 
 impl KargainError {
@@ -450,6 +459,9 @@ impl KargainError {
             Self::ConfidenceTooWide => "ConfidenceTooWide",
             Self::InvalidCurrencyCode => "InvalidCurrencyCode",
             Self::CurrencyNotAvailableOnChain => "CurrencyNotAvailableOnChain",
+            Self::InvalidEncumbranceSeed => "InvalidEncumbranceSeed",
+            Self::EncumbranceConfigGrowthTooLarge => "EncumbranceConfigGrowthTooLarge",
+            Self::InvalidEncumbranceIntent => "InvalidEncumbranceIntent",
         }
     }
 
@@ -590,6 +602,9 @@ impl KargainError {
             ConfidenceTooWide,
             InvalidCurrencyCode,
             CurrencyNotAvailableOnChain,
+            InvalidEncumbranceSeed,
+            EncumbranceConfigGrowthTooLarge,
+            InvalidEncumbranceIntent,
         ]
     }
 }

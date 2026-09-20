@@ -1,10 +1,13 @@
 //! On-chain account layouts (borsh). Model constants may live here; П-12 fields do not.
 
 use borsh::{BorshDeserialize, BorshSerialize};
+pub use kargain_encumbrance::{
+    EncumbranceAnswer, EncumbranceSourceEntry, ENCUMBRANCE_ANSWER_DISCRIMINATOR,
+    MAX_ENCUMBRANCE_SOURCES,
+};
 
 /// SPEC §13.10 model constant — identical on every chain; not a Timelock knob.
 pub const DISPUTE_WINDOW_SECONDS: u64 = 1_209_600; // 14d
-pub const MAX_ENCUMBRANCE_SOURCES: usize = 8;
 
 /// Status ordinals match Solidity `KarPassport.Status`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, BorshSerialize, BorshDeserialize, Default)]
@@ -51,13 +54,6 @@ pub struct PassportConfig {
 }
 
 pub const PASSPORT_CONFIG_DISCRIMINATOR: [u8; 8] = *b"kp_cfg\0\0";
-
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq, Eq)]
-pub struct EncumbranceSourceEntry {
-    pub program_id: [u8; 32],
-    /// Registry-declared seed prefix; passport derives answer PDA per source.
-    pub seed_prefix: Vec<u8>,
-}
 
 /// Per-token state PDA — never closed. After foreign burn: `burned = true` tombstone.
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq, Eq)]
@@ -114,18 +110,6 @@ pub struct PassportRecord {
 }
 
 pub const PASSPORT_RECORD_DISCRIMINATOR: [u8; 8] = *b"kp_rec\0\0";
-
-/// Answer record layout for encumbrance sources (SPEC §13.7).
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq, Eq)]
-pub struct EncumbranceAnswer {
-    pub discriminator: [u8; 8],
-    pub token_id: [u8; 32],
-    pub intent: u8,
-    /// `true` = allows; uninitialised account = no obligation.
-    pub allowed: bool,
-}
-
-pub const ENCUMBRANCE_ANSWER_DISCRIMINATOR: [u8; 8] = *b"enc_ans\0";
 
 /// Encode `token_id = (namespace << 128) | local_seq` as 32-byte big-endian.
 pub fn token_id_from_parts(namespace: u128, local_seq: u128) -> [u8; 32] {

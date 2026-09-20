@@ -955,11 +955,14 @@ On a chain whose NFT substrate offers a freeze primitive: custody-lock is **prog
 Extends §12.6 / encumbrance E1–E6.
 
 - The answer belongs to the **source**. Each registered source maintains an answer record at an address derived from a registry-declared seed under its own program; the passport derives that address per currently registered source and reads it.
-- Map: **E1** register sources; **E4** add/remove; **E5** intrinsic challenge forbids without self-registry; **E6** unanswerable → named refuse (`SourceUnanswerable` / equivalent).
+- **SVM derivation (sole owner `kargain-encumbrance`):** answer PDA seeds under the source program are `[seed_prefix, token_id, intent]` where `intent` is one byte (`LeaveChain = 0`, `OpenConsignment = 1`). Empty or >32-byte `seed_prefix` refuses (`InvalidEncumbranceSeed`). Intent outside `{0,1}` refuses (`InvalidEncumbranceIntent`).
+- **SVM `May` account layout:** passport config · Core asset · challenge PDA (`[b"challenge", token_id]` under passport) · one answer account per registered source (exact count). Challenge active ⇔ challenge account derives and (`data empty` → inactive, else `ChallengeAccount.opened_at != 0`). Never reads `PassportState.status` as challenge. Freeze stays out of `may` (custody lock is separate).
+- **SVM registration:** `AddEncumbranceSource { program_id, seed_prefix }` / `RemoveEncumbranceSource { program_id }` (authority + rent payer). Add reallocs config up (growth capped at 10_240 B/ix); remove reallocs **down** and returns excess lamports to the payer — `PassportConfig::try_from_slice` requires exact account length, so trailing capacity after a shorter Borsh payload would brick deserialize.
+- Map: **E1** register sources; **E4** add/remove; **E5** intrinsic challenge forbids without self-registry; **E6** unanswerable → named refuse (`SourceUnanswerable` / equivalent; SVM ordinal stays parameterless).
 - Uninitialised record = no obligation. Wrong owning program, wrong discriminator, or insufficient data = unanswerable.
 - **`may` does not consult `custodyLocked`** (`KarPassport.may`: exists → active challenge → staticcall sources). A locked home token is prevented from leaving by **custody** (gateway owns the NFT after lock) plus `_requireNotBridgedAway` on owner trust-mutating paths — not by `may`.
 - Encumbrance is the **secondary** guard; custody is **primary**. `AscendingConsignment.may` answers on **unresolved settlement**, not on “live lot exists.”
-
+- **Gateway Send** evaluates real `may(LeaveChain)` with the same account layout (challenge + answer tail after system); empty registry ⇒ challenge PDA only.
 #### 13.7a Active-verifier proof without read-only CPI (S5)
 
 Same answer-account pattern as §13.7, applied to verifier status:

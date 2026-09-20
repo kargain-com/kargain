@@ -139,6 +139,9 @@ export const SVM_PROGRAM_ERROR_BY_ORDINAL = [
   "ConfidenceTooWide", // 131
   "InvalidCurrencyCode", // 132
   "CurrencyNotAvailableOnChain", // 133
+  "InvalidEncumbranceSeed", // 134
+  "EncumbranceConfigGrowthTooLarge", // 135
+  "InvalidEncumbranceIntent", // 136
 ] as const;
 
 export type SvmProgramErrorName = (typeof SVM_PROGRAM_ERROR_BY_ORDINAL)[number];
