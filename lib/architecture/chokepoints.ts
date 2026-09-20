@@ -476,15 +476,17 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "active-account",
     owner:
-      "Sole who-is-connected entry and EVM session predicates; wagmi account hooks only in the EVM adapter",
+      "Sole who-is-connected entry and EVM session predicates; one ActiveAccountProvider per app; wagmi account hooks only in the EVM adapter",
     ownerFiles: [
       "lib/web3/active-account.ts",
+      "lib/web3/active-account-provider.tsx",
       "hooks/use-active-account.ts",
       "lib/web3/evm-account-adapter.ts",
     ],
-    rule: "Sole who-is-connected entry (discriminated account only); EVM facts via requireEvmSession / commercialNamespaceOf / switch availability (named causes); wagmi account hooks only in evm-account-adapter; no invented SVM namespace; no EVM-field undefined forks outside owners",
+    rule: "One ActiveAccountProvider computes the session (adapters + discovery once); useActiveAccount reads context only; EVM facts via requireEvmSession / commercialNamespaceOf / switch availability (named causes); wagmi account hooks only in evm-account-adapter; observed family conflict + standard:events via pure decisions; no invented SVM namespace; no EVM-field undefined forks outside owners",
     guardTests: [
       "active-account-owner-policy.test.ts",
+      "active-account-session-policy.test.ts",
       "active-account.test.ts",
       "svm-wallet-adapter-policy.test.ts",
       "solana-web3-app-graph-policy.test.ts",

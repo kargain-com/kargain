@@ -1,9 +1,12 @@
 /**
- * Sole active-account vocabulary (S8-2-fix).
+ * Sole active-account vocabulary (S8-2-fix + S8-D session).
  * Entry answers who is connected; EVM-shaped projections refuse by name.
+ * Observed family conflict and SVM Wallet Standard change decisions are pure
+ * here so the provider / session can apply them without a React stack.
  */
 
 import type { Connector } from "wagmi";
+import { address as assertSolanaAddress } from "@solana/kit";
 
 import {
   COMMERCIAL_ACTIVE,
@@ -42,6 +45,23 @@ export type ActiveAccount =
   | ActiveAccountDisconnected
   | ActiveAccountEvm
   | ActiveAccountSvm;
+
+/** Sole disconnected identity — never allocate `{ status: "disconnected" }` in render. */
+export const DISCONNECTED_ACCOUNT: ActiveAccountDisconnected = {
+  status: "disconnected",
+};
+
+/**
+ * Build the SVM ActiveAccount once (connect / accepted address change).
+ * Adapters and the provider must return this stored object — never a render-time literal.
+ */
+export function svmActiveAccountFromAddress(address: string): ActiveAccountSvm {
+  return {
+    status: "connected",
+    vm: "svm",
+    address,
+  };
+}
 
 export type EvmSessionCause = "disconnected" | "wrong_vm";
 
@@ -136,6 +156,92 @@ export async function dispatchConnect(
     await ports.onEvmDisconnect();
   }
   await ports.onSvmConnect(target.walletName);
+}
+
+/**
+ * Observed family conflict (not user connect).
+ * EVM connect via {@link dispatchConnect} clears SVM first — so an EVM
+ * connection appearing while an SVM session is live was not user-initiated.
+ * `disconnectPending` ensures at most one disconnect is issued per conflict
+ * (no timer — the flag is cleared when the disconnect settles).
+ */
+export type ObservedFamilyConflictState = {
+  svmLive: boolean;
+  evmConnected: boolean;
+  disconnectPending: boolean;
+};
+
+export type ObservedFamilyConflictAction =
+  | { action: "disconnect_evm" }
+  | { action: "noop" };
+
+export function decideObservedFamilyConflict(
+  state: ObservedFamilyConflictState,
+): ObservedFamilyConflictAction {
+  if (state.disconnectPending) {
+    return { action: "noop" };
+  }
+  if (state.svmLive && state.evmConnected) {
+    return { action: "disconnect_evm" };
+  }
+  return { action: "noop" };
+}
+
+/**
+ * Wallet Standard `standard:events` "change" → session mutation.
+ * Non-canonical addresses refuse by name; session stays unchanged.
+ */
+export type SvmAccountChangeInput = {
+  currentAddress: string;
+  accounts: readonly { address: string }[];
+};
+
+export type SvmAccountChangeAction =
+  | { action: "clear_session" }
+  | { action: "set_address"; address: string }
+  | { action: "noop" }
+  | { action: "refuse_noncanonical" };
+
+export function decideSvmAccountChangeEvent(
+  input: SvmAccountChangeInput,
+): SvmAccountChangeAction {
+  if (input.accounts.length === 0) {
+    return { action: "clear_session" };
+  }
+  const raw = input.accounts[0]!.address;
+  let canonical: string;
+  try {
+    canonical = assertSolanaAddress(raw);
+  } catch {
+    return { action: "refuse_noncanonical" };
+  }
+  if (canonical === input.currentAddress) {
+    return { action: "noop" };
+  }
+  return { action: "set_address", address: canonical };
+}
+
+/**
+ * Apply a change decision to an SVM session row.
+ * `noop` / `refuse_noncanonical` return the same object reference.
+ * `set_address` builds a new {@link svmActiveAccountFromAddress} once.
+ * Sole address fact: `account.address` (no parallel top-level address field).
+ */
+export function applySvmSessionChangeDecision<
+  T extends { account: ActiveAccountSvm },
+>(prev: T, decision: SvmAccountChangeAction): T | null {
+  switch (decision.action) {
+    case "clear_session":
+      return null;
+    case "noop":
+    case "refuse_noncanonical":
+      return prev;
+    case "set_address":
+      return {
+        ...prev,
+        account: svmActiveAccountFromAddress(decision.address),
+      };
+  }
 }
 
 /** Display / copy address for any connected family; undefined when disconnected. */

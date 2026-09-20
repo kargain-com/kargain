@@ -1,22 +1,21 @@
 "use client";
 
 /**
- * SVM account adapter — Wallet Standard session + discovery list.
+ * SVM account adapter — Wallet Standard session → ActiveAccount snapshot.
  * Kit validates addresses; web3.js never enters this module.
+ * Discovery subscription lives in {@link ActiveAccountProvider} (one per app).
+ *
+ * Returns the session-stored ActiveAccountSvm reference — never allocates an
+ * account object during render.
  *
  * Sign-and-send port: re-exports {@link createSvmSignAndSendPort} from the
  * session-adjacent owner (Wallet Standard feature bind).
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 import type { ActiveAccountSvm } from "@/lib/web3/active-account";
 import { useSvmAccountSession } from "@/lib/web3/svm-account-session";
-import {
-  listDiscoveredSvmWallets,
-  subscribeSvmWalletDiscovery,
-  type SvmDiscoveredWallet,
-} from "@/lib/web3/svm-wallet-discovery";
 import type { Wallet } from "@wallet-standard/base";
 
 export {
@@ -29,7 +28,6 @@ export type SvmAccountAdapterSnapshot = {
   connected: ActiveAccountSvm | null;
   /** Live Wallet Standard handle while connected — Irys provider door. */
   wallet: Wallet | null;
-  wallets: readonly SvmDiscoveredWallet[];
   isConnectPending: boolean;
   connectError: Error | null;
   connect: (walletName: string) => Promise<void>;
@@ -40,25 +38,8 @@ export type SvmAccountAdapterSnapshot = {
 export function useSvmAccountAdapter(): SvmAccountAdapterSnapshot {
   const { session, connect: sessionConnect, disconnect, clear } =
     useSvmAccountSession();
-  const [wallets, setWallets] = useState<readonly SvmDiscoveredWallet[]>([]);
   const [isConnectPending, setIsConnectPending] = useState(false);
   const [connectError, setConnectError] = useState<Error | null>(null);
-
-  useEffect(() => {
-    const refresh = () => {
-      setWallets(listDiscoveredSvmWallets());
-    };
-    refresh();
-    return subscribeSvmWalletDiscovery(refresh);
-  }, []);
-
-  const connected: ActiveAccountSvm | null = session
-    ? {
-        status: "connected",
-        vm: "svm",
-        address: session.address,
-      }
-    : null;
 
   const connect = useCallback(
     async (walletName: string) => {
@@ -79,9 +60,8 @@ export function useSvmAccountAdapter(): SvmAccountAdapterSnapshot {
   );
 
   return {
-    connected,
+    connected: session?.account ?? null,
     wallet: session?.wallet ?? null,
-    wallets,
     isConnectPending,
     connectError,
     connect,

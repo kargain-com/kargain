@@ -174,7 +174,8 @@ function isSoleWagmiHome(file: string, text: string, base: string): boolean {
   }
   if (
     file === "lib/web3/active-account.ts" ||
-    file === "hooks/use-active-account.ts"
+    file === "hooks/use-active-account.ts" ||
+    file === "lib/web3/active-account-provider.tsx"
   ) {
     return (
       base === "requireEvmSession" || base === "requireEvmSigningBinding"

@@ -6,11 +6,13 @@ import { type ReactNode, useEffect, useState } from "react";
 
 import { WalletSessionSync } from "@/components/providers/wallet-session-sync";
 import { DisplayCurrencyProvider } from "@/lib/marketplace/display-currency-context";
+import { ActiveAccountProvider } from "@/lib/web3/active-account-provider";
 import { SvmAccountSessionProvider } from "@/lib/web3/svm-account-session";
 import { createWagmiConfig } from "@/lib/web3/wagmi-config";
 
 /**
- * Global providers only (Query / Wagmi / SVM session / DisplayCurrency / WalletSessionSync).
+ * Global providers only (Query / Wagmi / SVM session / ActiveAccount /
+ * DisplayCurrency / WalletSessionSync).
  * Nostr + messaging mount solely under `app/(identity)/layout.tsx`.
  */
 export function AppProviders({ children }: { children: ReactNode }) {
@@ -36,10 +38,12 @@ export function AppProviders({ children }: { children: ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <WagmiProvider config={wagmiConfig}>
         <SvmAccountSessionProvider>
-          <DisplayCurrencyProvider>
-            <WalletSessionSync />
-            {children}
-          </DisplayCurrencyProvider>
+          <ActiveAccountProvider>
+            <DisplayCurrencyProvider>
+              <WalletSessionSync />
+              {children}
+            </DisplayCurrencyProvider>
+          </ActiveAccountProvider>
         </SvmAccountSessionProvider>
       </WagmiProvider>
     </QueryClientProvider>

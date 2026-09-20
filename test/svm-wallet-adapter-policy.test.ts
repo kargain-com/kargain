@@ -15,7 +15,9 @@ const SVM_OWNERS = [
   "lib/web3/svm-account-adapter.ts",
   "lib/web3/svm-account-session.tsx",
   "lib/web3/svm-wallet-discovery.ts",
-  // П-8: entry exposes svmWallet; Irys door types Wallet from wallet-standard.
+  "lib/web3/active-account.ts",
+  "lib/web3/active-account-provider.tsx",
+  // П-8: entry re-exports UseActiveAccountResult with svmWallet; Irys door types Wallet.
   "hooks/use-active-account.ts",
   "lib/passport/upload-passport-metadata.ts",
   // §7.2 U4: sole PDA derivation owner — async getProgramDerivedAddress from kit.

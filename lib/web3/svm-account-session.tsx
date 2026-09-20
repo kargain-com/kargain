@@ -3,12 +3,26 @@
 /**
  * In-memory SVM wallet session — one connected Solana account at a time.
  * Cleared on EVM connect (mutual exclusion with the EVM adapter).
+ *
+ * The ActiveAccountSvm value is built once via {@link svmActiveAccountFromAddress}
+ * at connect and on an accepted `set_address` change — never during render.
+ * Sole address fact: `account.address` (no parallel top-level address field).
+ *
+ * `disconnect` reads `session` from render scope (`useCallback` deps `[session]`).
+ * Session identity changes only on connect / accepted change / clear / disconnect —
+ * that dependency does not reintroduce per-render account churn.
+ *
+ * While a session is live, subscribes once to the wallet's `standard:events`
+ * `"change"`. accounts[0] updated → address canonicalised via kit; accounts
+ * empty → session cleared. A wallet without `standard:events` is a named
+ * limitation (session is a connect-time snapshot only) — never a poll loop.
  */
 
 import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -17,20 +31,29 @@ import { address as assertSolanaAddress } from "@solana/kit";
 import {
   StandardConnect,
   StandardDisconnect,
+  StandardEvents,
   type StandardConnectFeature,
   type StandardDisconnectFeature,
+  type StandardEventsFeature,
 } from "@wallet-standard/features";
 import type { Wallet } from "@wallet-standard/base";
 
+import {
+  applySvmSessionChangeDecision,
+  decideSvmAccountChangeEvent,
+  svmActiveAccountFromAddress,
+  type ActiveAccountSvm,
+} from "@/lib/web3/active-account";
 import {
   findDiscoveredSvmWallet,
   type SvmDiscoveredWallet,
 } from "@/lib/web3/svm-wallet-discovery";
 
 export type SvmSessionState = {
-  address: string;
   walletName: string;
   wallet: Wallet;
+  /** Built once at connect / accepted change — adapter returns this reference. */
+  account: ActiveAccountSvm;
 } | null;
 
 type SvmAccountSessionValue = {
@@ -63,6 +86,18 @@ function disconnectFeature(
     | StandardDisconnectFeature[typeof StandardDisconnect]
     | undefined;
   if (feature == null || typeof feature.disconnect !== "function") {
+    return undefined;
+  }
+  return feature;
+}
+
+function eventsFeature(
+  wallet: Wallet,
+): StandardEventsFeature[typeof StandardEvents] | undefined {
+  const feature = wallet.features[StandardEvents] as
+    | StandardEventsFeature[typeof StandardEvents]
+    | undefined;
+  if (feature == null || typeof feature.on !== "function") {
     return undefined;
   }
   return feature;
@@ -108,11 +143,32 @@ export function SvmAccountSessionProvider({
     }
     const canonical = assertSolanaAddress(account.address);
     setSession({
-      address: canonical,
       walletName: wallet.name,
       wallet,
+      account: svmActiveAccountFromAddress(canonical),
     });
   }, []);
+
+  // Wallet Standard account change while session is live.
+  // Named limitation: wallets without standard:events keep a connect-time
+  // snapshot only — no polling substitute.
+  useEffect(() => {
+    if (!session) return;
+    const feature = eventsFeature(session.wallet);
+    if (!feature) return;
+    return feature.on("change", (properties) => {
+      if (properties.accounts === undefined) return;
+      const accounts = properties.accounts;
+      setSession((prev) => {
+        if (!prev) return null;
+        const decision = decideSvmAccountChangeEvent({
+          currentAddress: prev.account.address,
+          accounts,
+        });
+        return applySvmSessionChangeDecision(prev, decision);
+      });
+    });
+  }, [session]);
 
   const value = useMemo(
     () => ({ session, connect, disconnect, clear }),

@@ -23,13 +23,19 @@ export const PROVIDER_SCOPE: readonly ProviderScopeEntry[] = [
     id: "WagmiProvider",
     scope: "global",
     justifyingConsumer:
-      "EVM account adapter under useActiveAccount (AppTopNav, WalletLoginButton, writes)",
+      "EVM account adapter under ActiveAccountProvider (AppTopNav, WalletLoginButton, writes)",
   },
   {
     id: "SvmAccountSessionProvider",
     scope: "global",
     justifyingConsumer:
-      "SVM Wallet Standard session under useActiveAccount / WalletLoginButton",
+      "SVM Wallet Standard session under ActiveAccountProvider / WalletLoginButton",
+  },
+  {
+    id: "ActiveAccountProvider",
+    scope: "global",
+    justifyingConsumer:
+      "One ActiveAccount computation per app; useActiveAccount context read",
   },
   {
     id: "DisplayCurrencyProvider",

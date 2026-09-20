@@ -21,6 +21,7 @@ describe("provider scope policy", () => {
     assert.deepEqual(
       [...GLOBAL_PROVIDER_IDS].sort(),
       [
+        "ActiveAccountProvider",
         "DisplayCurrencyProvider",
         "QueryClientProvider",
         "SvmAccountSessionProvider",
@@ -37,7 +38,7 @@ describe("provider scope policy", () => {
         "XmtpConversationsProvider",
       ].sort(),
     );
-    assert.equal(PROVIDER_SCOPE.length, 9);
+    assert.equal(PROVIDER_SCOPE.length, 10);
   });
 
   it("keeps root AppProviders free of identity providers", () => {
@@ -50,6 +51,7 @@ describe("provider scope policy", () => {
     assert.match(text, /QueryClientProvider/);
     assert.match(text, /WagmiProvider/);
     assert.match(text, /SvmAccountSessionProvider/);
+    assert.match(text, /ActiveAccountProvider/);
     assert.match(text, /DisplayCurrencyProvider/);
     assert.match(text, /WalletSessionSync/);
   });

@@ -14,13 +14,16 @@ import {
 
 const EVM_ADAPTER = "lib/web3/evm-account-adapter.ts";
 const ENTRY = "hooks/use-active-account.ts";
+const PROVIDER = "lib/web3/active-account-provider.tsx";
 const VOCAB = "lib/web3/active-account.ts";
 
 const OWNERS = [
   EVM_ADAPTER,
   ENTRY,
+  PROVIDER,
   VOCAB,
   "lib/web3/svm-account-adapter.ts",
+  "lib/web3/svm-account-session.tsx",
 ];
 
 const ACCOUNT_HOOK_IMPORT =
@@ -55,7 +58,7 @@ function evmShapedMemberPredicate(
   source: string,
 ): string | false {
   let check = source;
-  if (rel === ENTRY) {
+  if (rel === PROVIDER) {
     check = source.replace(/\bevmConnectorLabel\b/g, "");
   }
   if (BANNED_UNIQUE.test(check) || BANNED_FROM_ENTRY.test(check)) {
