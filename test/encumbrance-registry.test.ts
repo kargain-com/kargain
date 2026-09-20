@@ -18,7 +18,7 @@ function success(result: unknown): KeyedEntry {
 }
 
 function failure(): KeyedEntry {
-  return { status: "failure", error: new Error("out of range") };
+  return { status: "refused", cause: "evm_call_failed", error: new Error("out of range") };
 }
 
 describe("deriveEncumbranceRegistry", () => {

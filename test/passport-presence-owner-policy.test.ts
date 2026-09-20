@@ -68,7 +68,7 @@ import { derivePassportPresence } from "@/lib/passport/presence";
 export function PassportBridgePanel() {
   const locationPresence = derivePassportPresence({
     viewChainId: 84532,
-    custodyLocked: false,
+    custodyLock: { status: "known", locked: false },
   });
   return locationPresence.status;
 }
@@ -97,7 +97,7 @@ export function PassportBridgePanel() {
     const dirty = `
 import { derivePassportPresence } from "@/lib/passport/presence";
 export function invent() {
-  return derivePassportPresence({ viewChainId: 1, custodyLocked: false });
+  return derivePassportPresence({ viewChainId: 1, custodyLock: { status: "known", locked: false } });
 }
 `;
     assert.equal(

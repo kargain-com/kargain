@@ -47,7 +47,7 @@ function countingSource(
 }
 
 describe("svm keyed-read policy", () => {
-  it("no source configured → every entry fails unresolved_namespace", async () => {
+  it("no source configured → every entry refused unresolved_namespace", async () => {
     const { entries, cause } = await resolveSvmKeyedReads([
       { key: "a", account: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" },
       { key: "b", account: "11111111111111111111111111111111" },
@@ -55,9 +55,9 @@ describe("svm keyed-read policy", () => {
     assert.equal(cause, "unresolved_namespace");
     assert.equal(entries.length, 2);
     for (const e of entries) {
-      assert.equal(e.status, "failure");
-      if (e.status === "failure") {
-        assert.equal(e.error.message, "unresolved_namespace");
+      assert.equal(e.status, "refused");
+      if (e.status === "refused") {
+        assert.equal(e.cause, "unresolved_namespace");
       }
     }
   });
@@ -68,9 +68,12 @@ describe("svm keyed-read policy", () => {
     let lastAccounts: readonly string[] = [];
     const source = countingSource(async (accounts) => {
       lastAccounts = accounts;
-      return accounts.map((a) =>
-        a === "acctA" ? bytesA : a === "acctB" ? bytesB : null,
-      );
+      return {
+        ok: true as const,
+        values: accounts.map((a) =>
+          a === "acctA" ? bytesA : a === "acctB" ? bytesB : null,
+        ),
+      };
     });
     const before = ACCOUNT_BATCH_READS_EXERCISED;
     const { entries, cause } = await resolveSvmKeyedReads(
@@ -89,9 +92,9 @@ describe("svm keyed-read policy", () => {
     if (entries[0]!.status === "success") {
       assert.deepEqual(entries[0]!.result, bytesA);
     }
-    assert.equal(entries[1]!.status, "failure");
-    if (entries[1]!.status === "failure") {
-      assert.match(entries[1]!.error.message, /^account_not_found:/);
+    assert.equal(entries[1]!.status, "refused");
+    if (entries[1]!.status === "refused") {
+      assert.equal(entries[1]!.cause, "account_not_found");
     }
     assert.equal(entries[2]!.status, "success");
     if (entries[2]!.status === "success") {
@@ -100,6 +103,56 @@ describe("svm keyed-read policy", () => {
     assert.equal(entries[3]!.status, "success");
     if (entries[3]!.status === "success") {
       assert.deepEqual(entries[3]!.result, bytesB);
+    }
+  });
+
+  it("maps each FetchSvmAccountDataCause onto the same KeyedReadCause", async () => {
+    for (const cause of [
+      "rpc_unavailable",
+      "account_not_found",
+      "malformed_response",
+    ] as const) {
+      if (cause === "account_not_found") {
+        const { entries } = await resolveSvmKeyedReads(
+          [{ key: "a", account: "missing" }],
+          {
+            getAccountsData: async () => ({ ok: true, values: [null] }),
+          },
+        );
+        assert.equal(entries[0]!.status, "refused");
+        if (entries[0]!.status === "refused") {
+          assert.equal(entries[0]!.cause, "account_not_found");
+        }
+        continue;
+      }
+      const { entries } = await resolveSvmKeyedReads(
+        [{ key: "a", account: "acct" }],
+        {
+          getAccountsData: async () => ({
+            ok: false,
+            cause,
+            detail: `planted ${cause}`,
+          }),
+        },
+      );
+      assert.equal(entries[0]!.status, "refused");
+      if (entries[0]!.status === "refused") {
+        assert.equal(entries[0]!.cause, cause);
+      }
+    }
+  });
+
+  it("in-flight account map yields pending for every key", async () => {
+    const { svmEntriesFromAccountMap } = await import(
+      "@/lib/web3/keyed-multicall"
+    );
+    const entries = svmEntriesFromAccountMap(
+      [{ account: "a" }, { account: "b" }],
+      undefined,
+    );
+    assert.equal(entries.length, 2);
+    for (const e of entries) {
+      assert.equal(e.status, "pending");
     }
   });
 
@@ -175,7 +228,7 @@ describe("svm keyed-read policy", () => {
         "Absent1111111111111111111111111111111",
         "Absent2222222222222222222222222222222",
       ]);
-      assert.deepEqual(data, [null, null]);
+      assert.deepEqual(data, { ok: true, values: [null, null] });
       assert.equal(fetchCalls, 1);
       assert.equal(lastMethod, "getMultipleAccounts");
       assert.ok(ACCOUNT_BATCH_READS_EXERCISED >= 2);
@@ -346,11 +399,10 @@ describe("svm keyed-read async signature", () => {
   it("SvmKeyedAccountSource is async batch-only (owner source text)", () => {
     const text = readFileSync(path.join(ROOT, SVM_KEYED_REL), "utf8");
     assert.ok(
-      text.includes(
-        "Promise<(Uint8Array | null | undefined)[]>",
-      ),
-      "getAccountsData must be Promise-typed array",
+      text.includes("Promise<SvmKeyedAccountSourceBatch>"),
+      "getAccountsData must return typed batch Result (not Error strings)",
     );
+    assert.ok(text.includes("export type SvmKeyedAccountSourceBatch"));
     assert.ok(text.includes("export async function resolveSvmKeyedReads"));
     assert.ok(!text.includes("getAccountData:"));
   });

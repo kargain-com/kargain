@@ -56,7 +56,7 @@ function panelSource(): string {
 function presenceHere(viewChainId = 84532) {
   return {
     viewChainId,
-    custodyLocked: false as const,
+    custodyLock: { status: "known", locked: false } as const,
     ponderCustodyChain: viewChainId,
     custodyUnresolved: null,
   };
@@ -153,8 +153,8 @@ describe("activeVerifierFact tri-state", () => {
     assert.deepEqual(
       resolveActiveVerifierFact({
         entry: {
-          status: "failure",
-          error: new Error("account_not_found:stake"),
+          status: "refused",
+          cause: "account_not_found",
         },
         sessionBound: true,
         vm: "svm",
@@ -165,8 +165,7 @@ describe("activeVerifierFact tri-state", () => {
     assert.deepEqual(
       resolveActiveVerifierFact({
         entry: {
-          status: "failure",
-          error: new Error("svm_keyed_read_pending"),
+          status: "pending",
         },
         sessionBound: true,
         vm: "svm",

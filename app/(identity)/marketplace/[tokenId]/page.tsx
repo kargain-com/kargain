@@ -167,7 +167,7 @@ async function MarketplaceListingInner({
   if (result.passport.custodyUnresolved || result.passport.custodyChain == null) {
     location = resolvePassportLocationRefusal({
       viewChainId: result.passport.chainId,
-      custodyLocked: undefined,
+      custodyLock: { status: "pending" },
       ponderCustodyChain: result.passport.custodyChain,
       custodyUnresolved: result.passport.custodyUnresolved ?? null,
     });

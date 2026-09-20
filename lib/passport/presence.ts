@@ -3,6 +3,7 @@ import {
   parseCustodyUnresolvedCause,
 } from "@/lib/custody/normalized-event";
 import type { PassportStatus } from "@/lib/types/ponder";
+import type { KeyedReadCause } from "@/lib/web3/keyed-multicall";
 import { shortChainName } from "@/lib/web3/supported-chains";
 
 /**
@@ -10,25 +11,39 @@ import { shortChainName } from "@/lib/web3/supported-chains";
  * Distinct from escrow custody (selling mode holds the NFT) and from encumbrance/`may`.
  * Mirrors on-chain `custodyLocked` → `PassportBridgedAway`.
  *
- * Four states (§4.21) — unread chain read and incomplete fold are never collapsed.
+ * Five states (§4.21) — pending lock read, refused lock read, and incomplete fold
+ * are never collapsed. A wait and a refusal never share a sentence.
  */
 export type PassportPresence =
   | { readonly status: "here" }
   | { readonly status: "away"; readonly locationChainId: number | null }
-  | { readonly status: "location_unread" }
+  | { readonly status: "location_pending" }
+  | {
+      readonly status: "location_refused";
+      readonly cause: KeyedReadCause;
+    }
   | {
       readonly status: "location_unresolved";
       readonly cause: CustodyUnresolvedCause;
     };
 
+/**
+ * On-chain custody-lock read as a fact — known | pending | refused(cause).
+ * Never invent unlocked (`known` + `locked: false`) from absence.
+ */
+export type CustodyLockRead =
+  | { readonly status: "known"; readonly locked: boolean }
+  | { readonly status: "pending" }
+  | { readonly status: "refused"; readonly cause: KeyedReadCause };
+
 export type DerivePassportPresenceInput = {
   /** Chain the UI is viewing / acting on. */
   readonly viewChainId: number;
   /**
-   * On-chain `custodyLocked(tokenId)` on `viewChainId`.
-   * `undefined` = unread → `location_unread`.
+   * On-chain `custodyLocked(tokenId)` on `viewChainId` as a typed fact.
+   * Pending → `location_pending`; refused → `location_refused`.
    */
-  readonly custodyLocked: boolean | undefined;
+  readonly custodyLock: CustodyLockRead;
   /**
    * Ponder `custodyChain` when known — usable-copy location.
    * `undefined` does not invent location; lock alone still yields away.
@@ -61,8 +76,22 @@ const LOCATION_UNRESOLVED_CONSEQUENCE =
 const LOCATION_UNRESOLVED_UNKNOWN_NAMESPACE_CONSEQUENCE =
   "This passport cannot be acted on from Kargain while its location is outside the served networks.";
 
-const LOCATION_UNREAD_COPY =
+const LOCATION_PENDING_COPY =
   "Waiting for the chain to answer where this passport is.";
+
+const LOCATION_REFUSED_CONSEQUENCE =
+  "Actions that depend on custody stay unavailable until the location resolves.";
+
+const LOCATION_REFUSED_CAUSE_LINE: Record<KeyedReadCause, string> = {
+  rpc_unavailable: "The network did not answer where this passport is.",
+  account_not_found:
+    "The chain answered and this passport's lock account is not present.",
+  malformed_response:
+    "The chain answered with a lock read that could not be understood.",
+  unresolved_namespace:
+    "This network is not registered for lock reads in Kargain.",
+  evm_call_failed: "The chain call for this passport's lock did not succeed.",
+};
 
 /**
  * Sole chrome copy for a fold cause (§4.21). Exhaustive against
@@ -86,6 +115,10 @@ export function locationUnresolvedCauseCopyTable(): Readonly<
   return LOCATION_UNRESOLVED_CAUSE_LINE;
 }
 
+export function locationRefusedCauseCopy(cause: KeyedReadCause): string {
+  return `${LOCATION_REFUSED_CAUSE_LINE[cause]} ${LOCATION_REFUSED_CONSEQUENCE}`;
+}
+
 export function derivePassportPresence(
   input: DerivePassportPresenceInput,
 ): PassportPresence {
@@ -94,11 +127,15 @@ export function derivePassportPresence(
     return { status: "location_unresolved", cause: foldCause };
   }
 
-  if (input.custodyLocked === undefined) {
-    return { status: "location_unread" };
+  const lock = input.custodyLock;
+  if (lock.status === "pending") {
+    return { status: "location_pending" };
+  }
+  if (lock.status === "refused") {
+    return { status: "location_refused", cause: lock.cause };
   }
 
-  if (input.custodyLocked === true) {
+  if (lock.locked === true) {
     const fromPonder =
       input.ponderCustodyChain != null &&
       input.ponderCustodyChain !== input.viewChainId
@@ -131,18 +168,21 @@ export function isPassportHere(presence: PassportPresence): boolean {
   return presence.status === "here";
 }
 
-/** Writes must not be offered when away, unread, or fold-unresolved. */
+/** Writes must not be offered when away, pending, refused, or fold-unresolved. */
 export function presenceBlocksWrites(presence: PassportPresence): boolean {
   return presence.status !== "here";
 }
 
 /**
  * Factual body copy when presence blocks an action (§4.21).
- * Unread and unresolved never share a sentence.
+ * Pending, refused, and unresolved never share a sentence.
  */
 export function passportAwayActionCopy(presence: PassportPresence): string {
-  if (presence.status === "location_unread") {
-    return LOCATION_UNREAD_COPY;
+  if (presence.status === "location_pending") {
+    return LOCATION_PENDING_COPY;
+  }
+  if (presence.status === "location_refused") {
+    return locationRefusedCauseCopy(presence.cause);
   }
   if (presence.status === "location_unresolved") {
     return locationUnresolvedCauseCopy(presence.cause);

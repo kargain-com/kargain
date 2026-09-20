@@ -1,33 +1,54 @@
 /**
- * SVM batch account-read sibling for keyed-multicall (S8-3 / U7).
- * Without a source, every entry fails with `unresolved_namespace`.
+ * SVM batch account-read sibling for keyed-multicall (S8-3 / U7 / S8-D1a).
+ * Without a source, every entry is refused with `unresolved_namespace`.
  * Live bytes come from an injected {@link SvmKeyedAccountSource} (product:
  * `createProductSvmKeyedAccountSource` in svm-rpc). Async only — RPC is not sync.
  * One source call per resolve (unique accounts); never N sequential RPCs.
+ * Causes are typed — never encoded in Error.message.
  */
+
+import type { FetchSvmAccountDataCause } from "@/lib/web3/svm-rpc";
 
 export type SvmKeyedReadRequest = {
   key: string;
   account: string;
 };
 
+/** Causes produced by the SVM keyed-read door (product + unresolved namespace). */
+export type SvmKeyedReadCause =
+  | FetchSvmAccountDataCause
+  | "unresolved_namespace";
+
 export type SvmKeyedReadEntry =
   | { status: "success"; result: Uint8Array }
-  | { status: "failure"; error: Error };
+  | { status: "refused"; cause: SvmKeyedReadCause; detail?: string };
 
 /**
  * Injected account source (product RPC owner / tests). Async — no sync facade.
  * Batch door only: one `getAccountsData` per resolve for the unique set.
+ * Aligns with {@link FetchSvmAccountsDataResult} so causes are never stringified.
  */
 export type SvmKeyedAccountSource = {
   getAccountsData: (
     accounts: readonly string[],
-  ) => Promise<(Uint8Array | null | undefined)[]>;
+  ) => Promise<SvmKeyedAccountSourceBatch>;
 };
+
+export type SvmKeyedAccountSourceBatch =
+  | {
+      ok: true;
+      /** Per-account: bytes, or null when the RPC answered and the account is absent. */
+      values: readonly (Uint8Array | null)[];
+    }
+  | {
+      ok: false;
+      cause: FetchSvmAccountDataCause;
+      detail: string;
+    };
 
 /**
  * Resolve a batch of SVM account reads.
- * Without a source, every entry fails with `unresolved_namespace`.
+ * Without a source, every entry is refused with `unresolved_namespace`.
  * Unique accounts → one `getAccountsData`; results remapped to request order.
  */
 export async function resolveSvmKeyedReads(
@@ -45,9 +66,11 @@ export async function resolveSvmKeyedReads(
   }
 
   if (source == null) {
-    const err = new Error("unresolved_namespace");
     return {
-      entries: requests.map(() => ({ status: "failure", error: err })),
+      entries: requests.map(() => ({
+        status: "refused" as const,
+        cause: "unresolved_namespace" as const,
+      })),
       cause: "unresolved_namespace",
     };
   }
@@ -61,21 +84,39 @@ export async function resolveSvmKeyedReads(
     }
   }
 
-  let batch: (Uint8Array | null | undefined)[];
+  let batch: SvmKeyedAccountSourceBatch;
   try {
     batch = await source.getAccountsData(unique);
   } catch (err) {
-    const error = err instanceof Error ? err : new Error(String(err));
+    const detail = err instanceof Error ? err.message : String(err);
     return {
-      entries: requests.map(() => ({ status: "failure", error })),
+      entries: requests.map(() => ({
+        status: "refused" as const,
+        cause: "rpc_unavailable" as const,
+        detail,
+      })),
       cause: null,
     };
   }
 
-  if (!Array.isArray(batch) || batch.length !== unique.length) {
-    const error = new Error("malformed_response: getAccountsData length mismatch");
+  if (!batch.ok) {
     return {
-      entries: requests.map(() => ({ status: "failure", error })),
+      entries: requests.map(() => ({
+        status: "refused" as const,
+        cause: batch.cause,
+        detail: batch.detail,
+      })),
+      cause: null,
+    };
+  }
+
+  if (!Array.isArray(batch.values) || batch.values.length !== unique.length) {
+    return {
+      entries: requests.map(() => ({
+        status: "refused" as const,
+        cause: "malformed_response" as const,
+        detail: "getAccountsData length mismatch",
+      })),
       cause: null,
     };
   }
@@ -84,15 +125,17 @@ export async function resolveSvmKeyedReads(
     const idx = firstIndex.get(req.account);
     if (idx == null) {
       return {
-        status: "failure",
-        error: new Error(`account_not_found: ${req.account}`),
+        status: "refused" as const,
+        cause: "account_not_found" as const,
+        detail: req.account,
       };
     }
-    const data = batch[idx];
+    const data = batch.values[idx];
     if (data == null) {
       return {
-        status: "failure",
-        error: new Error(`account_not_found: ${req.account}`),
+        status: "refused" as const,
+        cause: "account_not_found" as const,
+        detail: req.account,
       };
     }
     return { status: "success", result: data };

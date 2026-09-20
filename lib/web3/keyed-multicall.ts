@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * Sole owner of wagmi `useReadContracts` and the SVM batch-read sibling (S8-3 / U7).
+ * Sole owner of wagmi `useReadContracts` and the SVM batch-read sibling (S8-3 / U7 / S8-D1a).
  * Consumers address results by named key — never by ordinal position.
  * SVM arm shares TanStack Query cache across mounts (EVM parity); honors enabled/staleTime.
+ * Entries are success | pending | refused(cause) — wait and refusal are never the same value.
  * Import ban: `test/keyed-multicall-policy.test.ts`.
  */
 
@@ -12,10 +13,12 @@ import { useCallback, useMemo } from "react";
 import type { Abi, Address } from "viem";
 import { useReadContracts } from "wagmi";
 
+import type { FetchSvmAccountDataCause } from "@/lib/web3/svm-rpc";
 import { createProductSvmKeyedAccountSource } from "@/lib/web3/svm-rpc";
 import {
   resolveSvmKeyedReads,
   type SvmKeyedAccountSource,
+  type SvmKeyedReadEntry,
 } from "@/lib/web3/svm-keyed-read";
 
 export type KeyedEvmContract<K extends string = string> = {
@@ -37,9 +40,19 @@ export type KeyedContract<K extends string = string> =
   | KeyedEvmContract<K>
   | KeyedSvmContract<K>;
 
+/**
+ * Closed refusal causes for keyed reads.
+ * SVM causes are {@link FetchSvmAccountDataCause} — one source, not restated.
+ */
+export type KeyedReadCause =
+  | FetchSvmAccountDataCause
+  | "unresolved_namespace"
+  | "evm_call_failed";
+
 export type KeyedEntry =
   | { status: "success"; result: unknown }
-  | { status: "failure"; error: Error };
+  | { status: "pending" }
+  | { status: "refused"; cause: KeyedReadCause; error?: Error };
 
 type WagmiReadEntry =
   | { status: "success"; result: unknown }
@@ -51,12 +64,52 @@ function isSvmContract<K extends string>(
   return "vm" in c && c.vm === "svm";
 }
 
-function toKeyedEntry(raw: WagmiReadEntry | undefined): KeyedEntry | undefined {
-  if (raw == null) return undefined;
+/** Pure: map one wagmi slot. Null while the batch is still in flight → pending. */
+export function wagmiSlotToKeyedEntry(
+  raw: WagmiReadEntry | undefined,
+  batchPending: boolean,
+): KeyedEntry | undefined {
+  if (raw == null) {
+    return batchPending ? { status: "pending" } : undefined;
+  }
   if (raw.status === "success") {
     return { status: "success", result: raw.result };
   }
-  return { status: "failure", error: raw.error };
+  return {
+    status: "refused",
+    cause: "evm_call_failed",
+    error: raw.error,
+  };
+}
+
+/** Pure: map resolveSvmKeyedReads entries onto KeyedEntry (no pending — that is RQ). */
+export function svmResolvedEntryToKeyedEntry(
+  entry: SvmKeyedReadEntry,
+): KeyedEntry {
+  if (entry.status === "success") {
+    return { status: "success", result: entry.result };
+  }
+  return { status: "refused", cause: entry.cause };
+}
+
+/**
+ * Pure: one KeyedEntry per contract from a per-account map.
+ * Missing RQ data → pending for every key (never a refusal).
+ */
+export function svmEntriesFromAccountMap(
+  contracts: readonly { account: string }[],
+  byAccount: Record<string, KeyedEntry> | undefined,
+): KeyedEntry[] {
+  const pendingEntry: KeyedEntry = { status: "pending" };
+  return contracts.map((c) => {
+    if (byAccount == null) return pendingEntry;
+    return (
+      byAccount[c.account] ?? {
+        status: "refused" as const,
+        cause: "account_not_found" as const,
+      }
+    );
+  });
 }
 
 function buildKeyMap<K extends string>(
@@ -72,9 +125,9 @@ function buildKeyMap<K extends string>(
 }
 
 export type KeyedReadContractsResult<K extends string> = {
-  /** Full entry; failure keeps `error` reachable for later SourceUnanswerable. */
+  /** Full entry; refused keeps `error` reachable for SourceUnanswerable (EVM). */
   entry: (key: K) => KeyedEntry | undefined;
-  /** Success payload only; missing/failure → `undefined` (never coerce boolean). */
+  /** Success payload only; missing/pending/refused → `undefined` (never coerce boolean). */
   get: (key: K) => unknown | undefined;
   asBigint: (key: K) => bigint | undefined;
   asNumber: (key: K) => number | undefined;
@@ -135,11 +188,7 @@ function resultApi<K extends string>(
 function mapSvmEntries(
   resolved: Awaited<ReturnType<typeof resolveSvmKeyedReads>>,
 ): KeyedEntry[] {
-  return resolved.entries.map((e) =>
-    e.status === "success"
-      ? { status: "success", result: e.result }
-      : { status: "failure", error: e.error },
-  );
+  return resolved.entries.map(svmResolvedEntryToKeyedEntry);
 }
 
 /** Stable RQ key: sorted unique accounts so identical PassportState mounts share one fetch. */
@@ -168,7 +217,7 @@ export function useKeyedReadContracts<const T extends readonly KeyedContract[]>(
   allowFailure?: boolean;
   /**
    * SVM account source. Omit → product live RPC source.
-   * Pass `null` → every entry fails `unresolved_namespace` (tests).
+   * Pass `null` → every entry refused `unresolved_namespace` (tests).
    * Pass an object → inject (tests / future domain owners).
    */
   svmAccountSource?: SvmKeyedAccountSource | null;
@@ -267,19 +316,11 @@ export function useKeyedReadContracts<const T extends readonly KeyedContract[]>(
   });
 
   const entriesFromAccountMap = useCallback(
-    (byAccount: Record<string, KeyedEntry> | undefined): KeyedEntry[] => {
-      const pendingEntry = {
-        status: "failure" as const,
-        error: new Error("svm_keyed_read_pending"),
-      };
-      return (contracts as readonly KeyedSvmContract<K>[]).map((c) => {
-        if (byAccount == null) return pendingEntry;
-        return byAccount[c.account] ?? {
-          status: "failure" as const,
-          error: new Error(`account_not_found: ${c.account}`),
-        };
-      });
-    },
+    (byAccount: Record<string, KeyedEntry> | undefined): KeyedEntry[] =>
+      svmEntriesFromAccountMap(
+        contracts as readonly KeyedSvmContract<K>[],
+        byAccount,
+      ),
     [contracts],
   );
 
@@ -335,7 +376,7 @@ export function useKeyedReadContracts<const T extends readonly KeyedContract[]>(
 
   const results = data as readonly WagmiReadEntry[] | undefined;
   const keyedFromWagmi = (contracts as readonly KeyedContract<K>[]).map((_, i) =>
-    toKeyedEntry(results?.[i]),
+    wagmiSlotToKeyedEntry(results?.[i], isPending),
   );
   const byKey = buildKeyMap(
     contracts as readonly KeyedContract<K>[],
@@ -351,7 +392,7 @@ export function useKeyedReadContracts<const T extends readonly KeyedContract[]>(
       const result = await refetch();
       const fresh = result.data as readonly WagmiReadEntry[] | undefined;
       const mapped = (contracts as readonly KeyedContract<K>[]).map((_, i) =>
-        toKeyedEntry(fresh?.[i]),
+        wagmiSlotToKeyedEntry(fresh?.[i], false),
       );
       const map = buildKeyMap(
         contracts as readonly KeyedContract<K>[],

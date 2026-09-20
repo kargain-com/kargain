@@ -203,7 +203,7 @@ export function useAuctionChainReads({
   const passportTokenOwner: string | null | undefined =
     !passport || !readsEnabled
       ? undefined
-      : passportOwnerEntry == null
+      : passportOwnerEntry == null || passportOwnerEntry.status === "pending"
         ? undefined
         : passportOwnerEntry.status === "success" &&
             typeof passportOwnerEntry.result === "string"

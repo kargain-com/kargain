@@ -144,7 +144,10 @@ export type DerivePassportActionSurfaceInput = {
 function presenceGate(
   presence: PassportPresence,
 ): PassportPresenceBlockedGate | null {
-  if (presence.status === "location_unread") {
+  if (
+    presence.status === "location_pending" ||
+    presence.status === "location_refused"
+  ) {
     return {
       status: "blocked",
       blockedBy: "presence",
@@ -207,7 +210,10 @@ export function resolvePassportLocationRefusal(
   facts: DerivePassportPresenceInput,
 ): PassportLocationRefusal {
   const presence = derivePassportPresence(facts);
-  if (presence.status === "location_unread") {
+  if (
+    presence.status === "location_pending" ||
+    presence.status === "location_refused"
+  ) {
     return {
       status: "refuse",
       presence,

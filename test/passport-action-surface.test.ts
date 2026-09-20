@@ -47,7 +47,7 @@ function challengeHere(wallet: string = WALLET) {
 
 const HERE_FACTS: DerivePassportPresenceInput = {
   viewChainId: 84532,
-  custodyLocked: false,
+  custodyLock: { status: "known", locked: false },
   ponderCustodyChain: 84532,
 };
 
@@ -118,7 +118,7 @@ describe("derivePassportActionSurface — presence", () => {
       baseInput({
         presenceFacts: {
           viewChainId: 84532,
-          custodyLocked: true,
+          custodyLock: { status: "known", locked: true },
           ponderCustodyChain: 11155111,
         },
       }),
@@ -140,7 +140,7 @@ describe("derivePassportActionSurface — presence", () => {
       baseInput({
         presenceFacts: {
           viewChainId: 84532,
-          custodyLocked: undefined,
+          custodyLock: { status: "pending" },
         },
       }),
     );
@@ -157,7 +157,7 @@ describe("derivePassportActionSurface — presence", () => {
         gate.blockedBy === "presence" &&
         gate.cause === "reads_unresolved"
       ) {
-        assert.equal(gate.presence.status, "location_unread", key);
+        assert.equal(gate.presence.status, "location_pending", key);
       }
     }
   });
@@ -167,7 +167,7 @@ describe("derivePassportActionSurface — presence", () => {
       baseInput({
         presenceFacts: {
           viewChainId: 84532,
-          custodyLocked: false,
+          custodyLock: { status: "known", locked: false },
           custodyUnresolved: "incomplete_crossing_link",
         },
       }),
@@ -274,7 +274,7 @@ void render;
       baseInput({
         presenceFacts: {
           viewChainId: 84532,
-          custodyLocked: undefined,
+          custodyLock: { status: "pending" },
         },
       }),
     );
@@ -284,7 +284,7 @@ void render;
       presenceSurface.editMetadata.blockedBy === "presence"
     ) {
       assert.equal(presenceSurface.editMetadata.cause, "reads_unresolved");
-      assert.equal(presenceSurface.editMetadata.presence.status, "location_unread");
+      assert.equal(presenceSurface.editMetadata.presence.status, "location_pending");
       assert.equal(
         presenceSurface.presenceCopy,
         passportAwayActionCopy(presenceSurface.editMetadata.presence),
@@ -326,7 +326,7 @@ describe("resolvePassportEditAccess", () => {
 
   it("refuses not_configured before presence causes", () => {
     const access = resolvePassportEditAccess({
-      presenceFacts: { viewChainId: 84532, custodyLocked: undefined },
+      presenceFacts: { viewChainId: 84532, custodyLock: { status: "pending" } },
       status: "VERIFIED",
       listingActive: false,
       configured: false,
@@ -339,7 +339,7 @@ describe("resolvePassportEditAccess", () => {
     const a = resolvePassportEditAccess({
       presenceFacts: {
         viewChainId: 84532,
-        custodyLocked: true,
+        custodyLock: { status: "known", locked: true },
         ponderCustodyChain: 11155111,
       },
       status: "VERIFIED",
@@ -349,7 +349,7 @@ describe("resolvePassportEditAccess", () => {
     assert.equal(a.status === "refuse" && a.cause, "away");
 
     const u = resolvePassportEditAccess({
-      presenceFacts: { viewChainId: 84532, custodyLocked: undefined },
+      presenceFacts: { viewChainId: 84532, custodyLock: { status: "pending" } },
       status: "VERIFIED",
       listingActive: false,
       configured: true,
@@ -359,7 +359,7 @@ describe("resolvePassportEditAccess", () => {
     const f = resolvePassportEditAccess({
       presenceFacts: {
         viewChainId: 84532,
-        custodyLocked: false,
+        custodyLock: { status: "known", locked: false },
         custodyUnresolved: "empty_history",
       },
       status: "VERIFIED",
@@ -391,7 +391,7 @@ describe("resolvePassportEditAccess", () => {
     const access = resolvePassportEditAccess({
       presenceFacts: {
         viewChainId: 84532,
-        custodyLocked: true,
+        custodyLock: { status: "known", locked: true },
         ponderCustodyChain: 11155111,
       },
       status: "DISPUTED",
@@ -409,7 +409,7 @@ describe("cause × surface — §4.21 lines and consequences", () => {
       const edit = resolvePassportEditAccess({
         presenceFacts: {
           viewChainId: 84532,
-          custodyLocked: false,
+          custodyLock: { status: "known", locked: false },
           custodyUnresolved: cause,
         },
         status: "VERIFIED",
@@ -425,7 +425,7 @@ describe("cause × surface — §4.21 lines and consequences", () => {
 
       const market = resolvePassportLocationRefusal({
         viewChainId: 84532,
-        custodyLocked: undefined,
+        custodyLock: { status: "pending" },
         custodyUnresolved: cause,
       });
       if (cause === "departure_without_arrival") {
@@ -451,7 +451,7 @@ describe("cause × surface — §4.21 lines and consequences", () => {
     const expected = locationUnresolvedCauseCopy(cause);
     const market = resolvePassportLocationRefusal({
       viewChainId: 84532,
-      custodyLocked: undefined,
+      custodyLock: { status: "pending" },
       custodyUnresolved: cause,
     });
     assert.equal(market.status, "refuse");
@@ -470,7 +470,7 @@ describe("cause × surface — §4.21 lines and consequences", () => {
     for (const cause of CUSTODY_UNRESOLVED_CAUSES) {
       const market = resolvePassportLocationRefusal({
         viewChainId: 84532,
-        custodyLocked: undefined,
+        custodyLock: { status: "pending" },
         custodyUnresolved: cause,
       });
       assert.notEqual(market.status, "ok");
@@ -483,7 +483,7 @@ describe("cause × surface — §4.21 lines and consequences", () => {
     }
     const unread = resolvePassportLocationRefusal({
       viewChainId: 84532,
-      custodyLocked: undefined,
+      custodyLock: { status: "pending" },
     });
     assert.equal(unread.status, "refuse");
     if (unread.status === "refuse") {
@@ -546,7 +546,7 @@ describe("editMetadataRefusalCopy", () => {
     const awayAccess = resolvePassportEditAccess({
       presenceFacts: {
         viewChainId: 84532,
-        custodyLocked: true,
+        custodyLock: { status: "known", locked: true },
         ponderCustodyChain: 11155111,
       },
       status: "VERIFIED",
@@ -559,7 +559,7 @@ describe("editMetadataRefusalCopy", () => {
     }
 
     const unreadAccess = resolvePassportEditAccess({
-      presenceFacts: { viewChainId: 84532, custodyLocked: undefined },
+      presenceFacts: { viewChainId: 84532, custodyLock: { status: "pending" } },
       status: "VERIFIED",
       listingActive: false,
       configured: true,

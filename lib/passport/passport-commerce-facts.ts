@@ -1,8 +1,8 @@
 /**
- * Sole dual-VM owner of passport commerce chrome reads (U9.2a).
+ * Sole dual-VM owner of passport commerce chrome reads (U9.2a / S8-D1a).
  *
- * EVM: batched may / custodyLocked / encumbrance / mode phase+mandate.
- * SVM: PassportState keyed-read → custodyLocked only; other facts stay unread /
+ * EVM: batched may / custodyLocked (ABI key) / encumbrance / mode phase+mandate.
+ * SVM: PassportState keyed-read → custodyLock fact only; other facts stay unread /
  * not configured (never invent false / unlocked).
  *
  * wagmiChainId is reachable only on the EVM arm of {@link planPassportCommerceReads}.
@@ -29,6 +29,9 @@ import {
   MAX_ENCUMBRANCE_SOURCES,
   type EncumbranceRegistry,
 } from "@/lib/passport/encumbrance-registry";
+import {
+  type CustodyLockRead,
+} from "@/lib/passport/presence";
 import { decodePassportState } from "@/lib/svm/decode-account-state";
 import { deriveSvmPda } from "@/lib/svm/derive-pda";
 import { tokenIdToBytes32 } from "@/lib/svm/event-payload-decode";
@@ -81,10 +84,10 @@ export type PassportCommerceFacts = {
    */
   encumbranceRegistry: EncumbranceRegistry;
   /**
-   * On-chain custody lock — usable copy not on this chain when true.
-   * `undefined` while unread (fail closed for presence).
+   * On-chain custody lock as a fact — known | pending | refused(cause).
+   * Never invent unlocked from absence.
    */
-  custodyLocked: boolean | undefined;
+  custodyLock: CustodyLockRead;
   /** Bonded verification challenge open on the passport itself. */
   challengeOpen: boolean | undefined;
   /** Mode holding a live consignment, when exactly one does. */
@@ -401,9 +404,42 @@ function readModeFactsFromEntries(
   };
 }
 
+/** Map a PassportState / custodyLocked keyed entry onto a custody-lock fact. */
+export function custodyLockFromKeyedEntry(
+  entry: KeyedEntry | undefined,
+  opts?: { batchPending?: boolean },
+): CustodyLockRead {
+  if (opts?.batchPending || entry == null) {
+    return { status: "pending" };
+  }
+  switch (entry.status) {
+    case "pending":
+      return { status: "pending" };
+    case "refused":
+      return { status: "refused", cause: entry.cause };
+    case "success": {
+      if (entry.result instanceof Uint8Array) {
+        const decoded = decodePassportState(entry.result);
+        if (!decoded.ok) {
+          return { status: "refused", cause: "malformed_response" };
+        }
+        return { status: "known", locked: decoded.value.custodyLocked };
+      }
+      if (typeof entry.result === "boolean") {
+        return { status: "known", locked: entry.result };
+      }
+      return { status: "refused", cause: "malformed_response" };
+    }
+    default: {
+      const _exhaustive: never = entry;
+      return _exhaustive;
+    }
+  }
+}
+
 /**
  * Resolve commerce facts from a plan + keyed entries.
- * Planning / unread → custodyLocked undefined (never invent false).
+ * Planning / unread → custody lock pending (never invent unlocked).
  */
 export function resolvePassportCommerceFacts(args: {
   plan: Extract<PassportCommerceReadPlan, { ok: true }> | null;
@@ -417,6 +453,7 @@ export function resolvePassportCommerceFacts(args: {
     countEntry: undefined,
     atEntries: Array.from({ length: MAX_ENCUMBRANCE_SOURCES }, () => undefined),
   });
+  const pendingLock: CustodyLockRead = { status: "pending" };
 
   if (args.planning || args.plan == null || args.plan.vm == null) {
     return {
@@ -425,7 +462,7 @@ export function resolvePassportCommerceFacts(args: {
       openConsignmentPermission: unreadPermission,
       leaveChainPermission: unreadPermission,
       encumbranceRegistry: unreadRegistry,
-      custodyLocked: undefined,
+      custodyLock: pendingLock,
       challengeOpen: undefined,
       liveConsignmentMode: null,
       hasLiveConsignment: undefined,
@@ -434,23 +471,10 @@ export function resolvePassportCommerceFacts(args: {
   }
 
   if (args.plan.vm === "svm") {
-    let custodyLocked: boolean | undefined;
-    const stateEntry = args.entry(PASSPORT_STATE_KEY);
-    if (stateEntry == null || args.isPending) {
-      custodyLocked = undefined;
-    } else if (stateEntry.status === "failure") {
-      if (stateEntry.error.message.includes("svm_keyed_read_pending")) {
-        custodyLocked = undefined;
-      } else {
-        // Account missing / decode failure stays unread — never invent unlocked.
-        custodyLocked = undefined;
-      }
-    } else if (stateEntry.result instanceof Uint8Array) {
-      const decoded = decodePassportState(stateEntry.result);
-      custodyLocked = decoded.ok ? decoded.value.custodyLocked : undefined;
-    } else {
-      custodyLocked = undefined;
-    }
+    const custodyLock = custodyLockFromKeyedEntry(
+      args.entry(PASSPORT_STATE_KEY),
+      { batchPending: args.isPending },
+    );
 
     return {
       fixedPrice: unreadModeFacts(false),
@@ -458,7 +482,7 @@ export function resolvePassportCommerceFacts(args: {
       openConsignmentPermission: unreadPermission,
       leaveChainPermission: unreadPermission,
       encumbranceRegistry: unreadRegistry,
-      custodyLocked,
+      custodyLock,
       challengeOpen: undefined,
       liveConsignmentMode: null,
       hasLiveConsignment: false,
@@ -485,7 +509,9 @@ export function resolvePassportCommerceFacts(args: {
   const mayOpenEntry = args.entry("mayOpen");
   const mayLeaveEntry = args.entry("mayLeave");
   const challengeOpenedAt = args.get("challengeOpenedAt");
-  const custodyLockedRaw = args.get("custodyLocked");
+  const custodyLock = custodyLockFromKeyedEntry(args.entry("custodyLocked"), {
+    batchPending: args.isPending,
+  });
 
   const anyUnresolved =
     fixedPriceFacts.live === undefined || ascendingFacts.live === undefined;
@@ -510,8 +536,7 @@ export function resolvePassportCommerceFacts(args: {
         args.entry(`encumbranceSourceAt.${i}`),
       ),
     }),
-    custodyLocked:
-      custodyLockedRaw == null ? undefined : custodyLockedRaw === true,
+    custodyLock,
     challengeOpen:
       challengeOpenedAt == null
         ? undefined

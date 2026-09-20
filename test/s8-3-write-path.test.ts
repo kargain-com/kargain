@@ -127,9 +127,9 @@ describe("resolveSvmKeyedReads", () => {
     ]);
     assert.equal(cause, "unresolved_namespace");
     assert.equal(entries.length, 1);
-    assert.equal(entries[0]!.status, "failure");
-    if (entries[0]!.status === "failure") {
-      assert.equal(entries[0]!.error.message, "unresolved_namespace");
+    assert.equal(entries[0]!.status, "refused");
+    if (entries[0]!.status === "refused") {
+      assert.equal(entries[0]!.cause, "unresolved_namespace");
     }
   });
 
@@ -138,8 +138,10 @@ describe("resolveSvmKeyedReads", () => {
     const { entries, cause } = await resolveSvmKeyedReads(
       [{ key: "a", account: "acct" }],
       {
-        getAccountsData: async (accounts) =>
-          accounts.map((a) => (a === "acct" ? bytes : null)),
+        getAccountsData: async (accounts) => ({
+          ok: true,
+          values: accounts.map((a) => (a === "acct" ? bytes : null)),
+        }),
       },
     );
     assert.equal(cause, null);

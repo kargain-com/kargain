@@ -156,8 +156,10 @@ export function ListingBuyPanel({
       ? (assetEntry.result as `0x${string}`)
       : undefined;
 
+  const quotePending = quoteEntry?.status === "pending";
   const quoteUnavailable =
-    quoteEntry?.status === "failure" || (!isQuoteLoading && quote == null);
+    quoteEntry?.status === "refused" ||
+    (!quotePending && !isQuoteLoading && quote == null);
   const isNative = asset != null && isAddressEqual(asset, zeroAddress);
   const assetMeta = useClaimAssetMeta({
     chainId,

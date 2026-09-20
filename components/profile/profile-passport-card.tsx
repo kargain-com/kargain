@@ -50,7 +50,7 @@ const TITLE_SLOT =
 /** Fixed mono meta lines under the title (state + VIN). */
 const META_SLOT = "h-4 truncate font-mono text-xs tabular-nums text-text-tertiary";
 
-const ORIGIN_ABSENT_PRESENCE: PassportPresence = { status: "location_unread" };
+const ORIGIN_ABSENT_PRESENCE: PassportPresence = { status: "location_pending" };
 
 export function ProfilePassportCard({
   tokenId,
@@ -83,12 +83,13 @@ export function ProfilePassportCard({
       ? ORIGIN_ABSENT_PRESENCE
       : resolvePassportPresence({
           viewChainId,
-          custodyLocked:
+          custodyLock:
             custodyUnresolved || custodyChain == null
-              ? undefined
-              : bridgedAway || Boolean(transitBadge)
-                ? true
-                : false,
+              ? { status: "pending" }
+              : {
+                  status: "known",
+                  locked: bridgedAway || Boolean(transitBadge),
+                },
           ponderCustodyChain: custodyChain,
           custodyUnresolved: custodyUnresolved ?? null,
           locationChainId: custodyChain,
@@ -104,7 +105,8 @@ export function ProfilePassportCard({
   });
   const stateText = transitBadge
     ? transitBadge
-    : presence.status === "location_unread" ||
+    : presence.status === "location_pending" ||
+        presence.status === "location_refused" ||
         presence.status === "location_unresolved"
       ? passportAwayActionCopy(presence)
       : bridgedAway && custodyChain != null

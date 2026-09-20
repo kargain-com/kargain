@@ -18,7 +18,7 @@ describe("derivePassportPresence", () => {
   it("here when unlocked and custody matches view", () => {
     const p = derivePassportPresence({
       viewChainId: 84532,
-      custodyLocked: false,
+      custodyLock: { status: "known", locked: false },
       ponderCustodyChain: 84532,
     });
     assert.equal(p.status, "here");
@@ -29,7 +29,7 @@ describe("derivePassportPresence", () => {
   it("away when custodyLocked — location from ponder or hint", () => {
     const fromPonder = derivePassportPresence({
       viewChainId: 84532,
-      custodyLocked: true,
+      custodyLock: { status: "known", locked: true },
       ponderCustodyChain: 11155111,
     });
     assert.equal(fromPonder.status, "away");
@@ -39,7 +39,7 @@ describe("derivePassportPresence", () => {
 
     const fromHint = derivePassportPresence({
       viewChainId: 84532,
-      custodyLocked: true,
+      custodyLock: { status: "known", locked: true },
       ponderCustodyChain: 84532,
       locationChainId: 11155111,
     });
@@ -52,7 +52,7 @@ describe("derivePassportPresence", () => {
   it("away when unlocked but ponder custody is elsewhere", () => {
     const p = derivePassportPresence({
       viewChainId: 84532,
-      custodyLocked: false,
+      custodyLock: { status: "known", locked: false },
       ponderCustodyChain: 11155111,
     });
     assert.equal(p.status, "away");
@@ -61,30 +61,55 @@ describe("derivePassportPresence", () => {
     }
   });
 
-  it("location_unread when lock unread — distinct from fold", () => {
+  it("location_pending when lock unread — distinct from fold", () => {
     const p = derivePassportPresence({
       viewChainId: 84532,
-      custodyLocked: undefined,
+      custodyLock: { status: "pending" },
       ponderCustodyChain: 84532,
     });
-    assert.equal(p.status, "location_unread");
+    assert.equal(p.status, "location_pending");
     assert.equal(presenceBlocksWrites(p), true);
     const copy = passportAwayActionCopy(p);
     assert.match(copy, /chain to answer/i);
     assert.doesNotMatch(copy, /Waiting for chain custody/);
   });
 
+  it("location_pending and rpc_unavailable refused never share a sentence", () => {
+    const pending = passportAwayActionCopy(
+      derivePassportPresence({
+        viewChainId: 84532,
+        custodyLock: { status: "pending" },
+      }),
+    );
+    const refused = passportAwayActionCopy(
+      derivePassportPresence({
+        viewChainId: 84532,
+        custodyLock: { status: "refused", cause: "rpc_unavailable" },
+      }),
+    );
+    assert.match(pending, /Waiting for the chain to answer/i);
+    assert.match(refused, /network did not answer/i);
+    assert.notEqual(pending, refused);
+    assert.equal(
+      derivePassportPresence({
+        viewChainId: 84532,
+        custodyLock: { status: "refused", cause: "rpc_unavailable" },
+      }).status,
+      "location_refused",
+    );
+  });
+
   it("location_unresolved carries each fold cause and never shares unread copy", () => {
     const unread = passportAwayActionCopy(
       derivePassportPresence({
         viewChainId: 84532,
-        custodyLocked: undefined,
+        custodyLock: { status: "pending" },
       }),
     );
     for (const cause of CUSTODY_UNRESOLVED_CAUSES) {
       const p = derivePassportPresence({
         viewChainId: 84532,
-        custodyLocked: undefined,
+        custodyLock: { status: "pending" },
         custodyUnresolved: cause,
       });
       assert.equal(p.status, "location_unresolved");
@@ -100,7 +125,7 @@ describe("derivePassportPresence", () => {
   it("fold cause wins over unlocked here", () => {
     const p = derivePassportPresence({
       viewChainId: 84532,
-      custodyLocked: false,
+      custodyLock: { status: "known", locked: false },
       ponderCustodyChain: 84532,
       custodyUnresolved: "departure_without_arrival",
     });
@@ -110,7 +135,7 @@ describe("derivePassportPresence", () => {
   it("away copy names the location chain", () => {
     const p = derivePassportPresence({
       viewChainId: 84532,
-      custodyLocked: true,
+      custodyLock: { status: "known", locked: true },
       ponderCustodyChain: 11155111,
     });
     const copy = passportAwayActionCopy(p);
@@ -159,11 +184,11 @@ describe("collapse ban — no single unresolved status", () => {
     const cases = [
       derivePassportPresence({
         viewChainId: 84532,
-        custodyLocked: undefined,
+        custodyLock: { status: "pending" },
       }),
       derivePassportPresence({
         viewChainId: 84532,
-        custodyLocked: false,
+        custodyLock: { status: "known", locked: false },
         custodyUnresolved: "empty_history",
       }),
     ];
@@ -191,16 +216,16 @@ describe("derivePassportTrustDisplay", () => {
     for (const presence of [
       derivePassportPresence({
         viewChainId: 84532,
-        custodyLocked: true,
+        custodyLock: { status: "known", locked: true },
         ponderCustodyChain: 11155111,
       }),
       derivePassportPresence({
         viewChainId: 84532,
-        custodyLocked: undefined,
+        custodyLock: { status: "pending" },
       }),
       derivePassportPresence({
         viewChainId: 84532,
-        custodyLocked: false,
+        custodyLock: { status: "known", locked: false },
         custodyUnresolved: "conflicting_determination",
       }),
     ] as const) {
@@ -214,7 +239,7 @@ describe("derivePassportTrustDisplay", () => {
   it("preserves recorded status when here", () => {
     const here = derivePassportPresence({
       viewChainId: 84532,
-      custodyLocked: false,
+      custodyLock: { status: "known", locked: false },
       ponderCustodyChain: 84532,
     });
     const verified = derivePassportTrustDisplay(here, "VERIFIED");

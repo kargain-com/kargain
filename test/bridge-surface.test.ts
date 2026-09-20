@@ -53,7 +53,7 @@ function input(overrides: Partial<BridgeSurfaceInput> = {}): BridgeSurfaceInput 
     isOwner: true,
     chainId: 84532,
     leaveChainPermission: AVAILABLE,
-    custodyLocked: false,
+    custodyLock: { status: "known", locked: false },
     ponderCustodyChain: 84532,
     ...overrides,
   };
@@ -197,7 +197,7 @@ describe("deriveBridgeSurface", () => {
     const surface = deriveBridgeSurface({
       isOwner: true,
       chainId: 84532,
-      custodyLocked: false,
+      custodyLock: { status: "known", locked: false },
       ponderCustodyChain: 84532,
     });
     assert.equal(surface.visible, false);
@@ -211,7 +211,7 @@ describe("deriveBridgeSurface — fold vs leave unread", () => {
         input({
           leaveChainPermission: AVAILABLE,
           custodyUnresolved: cause,
-          custodyLocked: false,
+          custodyLock: { status: "known", locked: false },
         }),
       );
       assert.equal(surface.canBridge, false, cause);
@@ -243,16 +243,16 @@ describe("deriveBridgeSurface — fold vs leave unread", () => {
     const surface = deriveBridgeSurface(
       input({
         leaveChainPermission: AVAILABLE,
-        custodyLocked: undefined,
+        custodyLock: { status: "pending" },
         custodyUnresolved: null,
       }),
     );
     assert.equal(surface.canBridge, false);
     assert.equal(surface.blockReason, null);
-    assert.equal(surface.location?.status, "location_unread");
+    assert.equal(surface.location?.status, "location_pending");
     assert.equal(
       surface.locationCopy,
-      passportAwayActionCopy({ status: "location_unread" }),
+      passportAwayActionCopy({ status: "location_pending" }),
     );
   });
 });

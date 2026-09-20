@@ -177,7 +177,7 @@ function ResolvedPassportCommerce({
         passportOwner={passportOwner}
         passportStatus={passportStatus}
         custodyUnresolved={custodyUnresolved}
-        custodyLocked={facts.custodyLocked}
+        custodyLock={facts.custodyLock}
         leaveChainPermission={facts.leaveChainPermission}
         liveConsignmentMode={facts.liveConsignmentMode}
         challengeOpen={facts.challengeOpen}

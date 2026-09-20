@@ -14,6 +14,7 @@ import { useBridgeTransit } from "@/hooks/use-bridge-transit";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import type { CommerceMode } from "@/lib/commerce/mode";
 import type { EncumbrancePermissionGate } from "@/lib/passport/encumbrance-permission";
+import type { CustodyLockRead } from "@/lib/passport/presence";
 import {
   BRIDGE_SECOND_HOP_REQUIRED,
   bridgeActionCopy,
@@ -70,9 +71,9 @@ type Props = {
   /** Fold incomplete cause — answered by bridge-surface (§4.21). */
   custodyUnresolved?: string | null;
   /**
-   * On-chain lock when read. `undefined` = not read — never invent `false`.
+   * On-chain lock as a fact. Omit → pending — never invent unlocked.
    */
-  custodyLocked?: boolean;
+  custodyLock?: CustodyLockRead;
   /** `may(tokenId, LeaveChain)` gate from commerce facts. */
   leaveChainPermission?: EncumbrancePermissionGate;
   /** Mode holding a live consignment, when one does — drives block copy. */
@@ -87,7 +88,7 @@ export function PassportBridgePanel({
   passportOwner,
   passportStatus,
   custodyUnresolved,
-  custodyLocked,
+  custodyLock,
   leaveChainPermission,
   liveConsignmentMode,
   challengeOpen,
@@ -147,7 +148,7 @@ export function PassportBridgePanel({
     challengeOpen: challengeOpen === true,
     transitActive,
     custodyUnresolved: custodyUnresolved ?? null,
-    custodyLocked,
+    custodyLock,
     ponderCustodyChain: chainId,
   });
 

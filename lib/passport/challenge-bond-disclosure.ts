@@ -204,11 +204,17 @@ export function resolveChallengeBondAmount(args: {
   if (entry == null) {
     return { amount: undefined, loading: true };
   }
-  if (entry.status === "failure") {
-    if (entry.error.message.includes("svm_keyed_read_pending")) {
+  switch (entry.status) {
+    case "pending":
       return { amount: undefined, loading: true };
+    case "refused":
+      return { amount: undefined, loading: false };
+    case "success":
+      break;
+    default: {
+      const _exhaustive: never = entry;
+      return _exhaustive;
     }
-    return { amount: undefined, loading: false };
   }
 
   if (args.arm === "passport_contract") {

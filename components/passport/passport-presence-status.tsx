@@ -39,7 +39,8 @@ export function PassportPresenceStatusBadge({
 
   if (display.badgeStatus == null) {
     if (
-      presence.status === "location_unread" ||
+      presence.status === "location_pending" ||
+      presence.status === "location_refused" ||
       presence.status === "location_unresolved"
     ) {
       return (

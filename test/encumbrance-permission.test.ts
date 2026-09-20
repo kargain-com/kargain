@@ -25,7 +25,8 @@ function sourceUnanswerableEntry(): KeyedEntry {
     args: [SOURCE],
   });
   return {
-    status: "failure",
+    status: "refused",
+    cause: "evm_call_failed",
     error: new ContractFunctionRevertedError({
       abi: KarPassportAbi,
       data: raw,
@@ -74,11 +75,20 @@ describe("deriveEncumbrancePermission", () => {
     });
   });
 
-  it("is reads_unresolved on an opaque transport failure", () => {
+  it("is reads_unresolved on an opaque transport refusal", () => {
     const gate = deriveEncumbrancePermission({
-      status: "failure",
+      status: "refused",
+      cause: "evm_call_failed",
       error: new Error("network down"),
     });
+    assert.deepEqual(gate, {
+      status: "blocked",
+      cause: "reads_unresolved",
+    });
+  });
+
+  it("is reads_unresolved while pending", () => {
+    const gate = deriveEncumbrancePermission({ status: "pending" });
     assert.deepEqual(gate, {
       status: "blocked",
       cause: "reads_unresolved",

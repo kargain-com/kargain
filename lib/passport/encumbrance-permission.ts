@@ -38,8 +38,8 @@ function parseSourceArg(args: readonly unknown[] | undefined): `0x${string}` | n
 
 /**
  * Derive the §9 permission gate from a keyed multicall `may` entry.
- * Fail closed: unread and opaque failures are `reads_unresolved`, never
- * presented as a definite refusal.
+ * Fail closed: pending and opaque refusals are `reads_unresolved`, never
+ * presented as a definite permission refusal.
  */
 export function deriveEncumbrancePermission(
   entry: KeyedEntry | undefined,
@@ -47,22 +47,33 @@ export function deriveEncumbrancePermission(
   if (entry == null) {
     return { status: "blocked", cause: "reads_unresolved" };
   }
-  if (entry.status === "success") {
-    if (entry.result === true) return AVAILABLE;
-    if (entry.result === false) {
-      return { status: "blocked", cause: "refused" };
+  switch (entry.status) {
+    case "pending":
+      return { status: "blocked", cause: "reads_unresolved" };
+    case "success": {
+      if (entry.result === true) return AVAILABLE;
+      if (entry.result === false) {
+        return { status: "blocked", cause: "refused" };
+      }
+      return { status: "blocked", cause: "reads_unresolved" };
     }
-    return { status: "blocked", cause: "reads_unresolved" };
-  }
-
-  const decoded = decodeCustomError(entry.error, ABI);
-  if (decoded?.name === "SourceUnanswerable") {
-    const source = parseSourceArg(decoded.args);
-    if (source != null) {
-      return { status: "blocked", cause: "source_unanswerable", source };
+    case "refused": {
+      if (entry.error != null) {
+        const decoded = decodeCustomError(entry.error, ABI);
+        if (decoded?.name === "SourceUnanswerable") {
+          const source = parseSourceArg(decoded.args);
+          if (source != null) {
+            return { status: "blocked", cause: "source_unanswerable", source };
+          }
+        }
+      }
+      return { status: "blocked", cause: "reads_unresolved" };
+    }
+    default: {
+      const _exhaustive: never = entry;
+      return _exhaustive;
     }
   }
-  return { status: "blocked", cause: "reads_unresolved" };
 }
 
 export function isEncumbrancePermissionAvailable(

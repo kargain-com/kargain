@@ -183,7 +183,7 @@ function assertEvmCallPin(
 function presenceHere(viewChainId = 84532) {
   return {
     viewChainId,
-    custodyLocked: false as const,
+    custodyLock: { status: "known", locked: false } as const,
     ponderCustodyChain: viewChainId,
     custodyUnresolved: null,
   };

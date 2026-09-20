@@ -4,9 +4,10 @@ import { usePassportCommerceFacts } from "@/hooks/use-passport-commerce-facts";
 import {
   derivePassportPresence,
   derivePassportTrustDisplay,
-  passportAwayActionCopy,
+  type CustodyLockRead,
   type PassportPresence,
   type PassportTrustDisplay,
+  passportAwayActionCopy,
 } from "@/lib/passport/presence";
 import type { PassportStatus } from "@/lib/types/ponder";
 
@@ -17,7 +18,7 @@ export type UsePassportPresenceInput = {
   readonly custodyUnresolved?: string | null;
   /**
    * When false, skip the lock read. Pass only when the read is intentionally
-   * not performed — `custodyLocked` stays `undefined` (honest “not read”).
+   * not performed — custody lock stays pending (honest “not read”).
    * Default: read when custody is known and there is no fold cause (fold wins
    * inside the deriver; skipping the RPC is still “not read”, not “unlocked”).
    */
@@ -44,12 +45,13 @@ export function usePassportPresence(input: UsePassportPresenceInput): {
     enabled: shouldReadLock,
   });
 
-  // When the lock read is skipped or still pending, leave undefined — never false.
-  const custodyLocked = shouldReadLock ? facts.custodyLocked : undefined;
+  const custodyLock: CustodyLockRead = shouldReadLock
+    ? facts.custodyLock
+    : { status: "pending" };
 
   const presence = derivePassportPresence({
     viewChainId: input.chainId,
-    custodyLocked,
+    custodyLock,
     ponderCustodyChain: input.ponderCustodyChain,
     custodyUnresolved: input.custodyUnresolved ?? null,
   });

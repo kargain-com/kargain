@@ -8,6 +8,7 @@ import {
   derivePassportPresence,
   passportAwayActionCopy,
   presenceBlocksWrites,
+  type CustodyLockRead,
   type PassportPresence,
 } from "@/lib/passport/presence";
 import { bridgeCounterpartChainId } from "@/lib/web3/bridge";
@@ -61,10 +62,10 @@ export type BridgeSurfaceInput = {
    */
   custodyUnresolved?: string | null;
   /**
-   * On-chain `custodyLocked` when a read answered. Omit / `undefined` when
-   * nothing was read — never invent `false`.
+   * On-chain custody lock as a fact. Omit → pending (nothing was read —
+   * never invent unlocked).
    */
-  custodyLocked?: boolean;
+  custodyLock?: CustodyLockRead;
   /** Ponder custody when known — optional; omit when unread. */
   ponderCustodyChain?: number | null;
 };
@@ -96,9 +97,11 @@ const TRANSIT_VISIBLE: BridgeSurfaceResult = {
 function locationFields(
   input: BridgeSurfaceInput,
 ): Pick<BridgeSurfaceResult, "location" | "locationCopy"> {
+  const custodyLock: CustodyLockRead =
+    input.custodyLock ?? { status: "pending" };
   const presence = derivePassportPresence({
     viewChainId: input.chainId,
-    custodyLocked: input.custodyLocked,
+    custodyLock,
     ponderCustodyChain: input.ponderCustodyChain,
     custodyUnresolved: input.custodyUnresolved ?? null,
   });

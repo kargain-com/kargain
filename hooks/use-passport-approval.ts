@@ -106,10 +106,13 @@ export function usePassportApproval({
     ? undefined
     : approvedForTokenEntry == null || approvedForAllEntry == null
       ? undefined
-      : approvedForTokenEntry.status === "failure" &&
-          approvedForAllEntry.status === "failure"
+      : approvedForTokenEntry.status === "pending" ||
+          approvedForAllEntry.status === "pending"
         ? undefined
-        : Boolean(approvedForToken || approvedForAll);
+        : approvedForTokenEntry.status === "refused" &&
+            approvedForAllEntry.status === "refused"
+          ? undefined
+          : Boolean(approvedForToken || approvedForAll);
 
   const needsApproval = isApproved === false;
 

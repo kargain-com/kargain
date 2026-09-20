@@ -272,7 +272,7 @@ export function PassportActionsPanel({
   const actionSurface = derivePassportActionSurface({
     presenceFacts: {
       viewChainId: chainId,
-      custodyLocked: commerceFacts.custodyLocked,
+      custodyLock: commerceFacts.custodyLock,
       ponderCustodyChain: ponderCustodyChain ?? chainId,
       custodyUnresolved: custodyUnresolved ?? null,
     },

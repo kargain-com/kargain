@@ -1040,16 +1040,17 @@ Ops-only guardian reducing powers for FixedPrice / Ascending modes (G3 — SPEC 
 
 Cross-surface contract for the question "where does this passport live". Consumed by §4.11 profile, §4.14 passport detail, §4.16 listing detail, §4.19 bridge panel, and every write gate. On-chain and indexer truth: [SPEC §I.12](./contracts/SPEC.md#i12-multi-chain-architecture-normative). Custody itself is a fold over crossings — the indexer answers `{ custodyChain, custodyUnresolved }`, never a wall-clock comparison.
 
-**Four presence states, not three.** Two facts were previously collapsed into one `unresolved`: an unanswered chain read and an incomplete custody fold. They have different causes, different remedies, and different lifetimes, so they are different states.
+**Five presence states.** An unanswered chain read and a refused chain read are different facts from an incomplete custody fold. A wait and a refusal never share a sentence.
 
 | State | Meaning | Source |
 |-------|---------|--------|
 | `here` | The usable copy is on the chain being viewed | lock read + custody agree |
 | `away` | The usable copy is on another network | lock read or custody |
-| `location_unread` | The chain read has not answered yet | `custodyLocked === undefined` — infrastructure, retryable |
+| `location_pending` | The lock read is still in flight | `custodyLock.status === "pending"` — waiting sentence |
+| `location_refused` | The lock read was refused with a named cause | `custodyLock.status === "refused"` — network-did-not-answer (or sibling cause line); no retry, banner, or timer |
 | `location_unresolved` | The custody fold returned a named cause | `custodyUnresolved` — carries the discriminant |
 
-`location_unread` and `location_unresolved` both block writes. They never share a sentence, and neither is ever rendered as an empty region, a silently disabled control, or `notFound()`.
+`location_pending`, `location_refused`, and `location_unresolved` all block writes. They never share a sentence with each other, and none is ever rendered as an empty region, a silently disabled control, or `notFound()`.
 
 **Named causes.** Every cause in the fold reaches chrome. No surface collapses them into one string.
 
@@ -1061,13 +1062,15 @@ Cross-surface contract for the question "where does this passport live". Consume
 | `unknown_namespace` | The last network recorded for this passport is not one Kargain serves. Historical Solana Devnet crossings could show this before the S9-B registry row; after that cutover, the same path must resolve to a served-network custody state or a different named gap. |
 | `conflicting_determination` | Two networks claim this passport at the same time. |
 
-Each line is followed by the same consequence sentence: **Actions that depend on custody stay unavailable until the location resolves.** `unknown_namespace` instead reads: **This passport cannot be acted on from Kargain while its location is outside the served networks.**
+Each fold line is followed by the same consequence sentence: **Actions that depend on custody stay unavailable until the location resolves.** `unknown_namespace` instead reads: **This passport cannot be acted on from Kargain while its location is outside the served networks.**
 
-**Absent location is never absent passport.** A passport whose location is unread or unresolved exists. Routes must refuse by name through the refusal surface they already own — [`EditRefusalShell`](../app/(identity)/passport/[tokenId]/edit/page.tsx) on the edit route, the detail shell on marketplace and passport detail — and must not call `notFound()`. The transit-shaped fold cause `departure_without_arrival` is the exception: marketplace detail renders the detail tree so the bridge transit owner can keep showing in-page progress. `notFound()` stays reserved for a token that does not exist.
+**Lock-read refusal.** When the chain read itself is refused (`rpc_unavailable`, `account_not_found`, `malformed_response`, `unresolved_namespace`, `evm_call_failed`), chrome uses `location_refused` with a cause-specific first sentence (for `rpc_unavailable`: **The network did not answer where this passport is.**) plus the same consequence. Pending lock reads keep: **Waiting for the chain to answer where this passport is.**
+
+**Absent location is never absent passport.** A passport whose location is pending, refused, or unresolved exists. Routes must refuse by name through the refusal surface they already own — [`EditRefusalShell`](../app/(identity)/passport/[tokenId]/edit/page.tsx) on the edit route, the detail shell on marketplace and passport detail — and must not call `notFound()`. The transit-shaped fold cause `departure_without_arrival` is the exception: marketplace detail renders the detail tree so the bridge transit owner can keep showing in-page progress. `notFound()` stays reserved for a token that does not exist.
 
 **No fallback operators for location facts.** If a value denotes a network, namespace, or location, `??` must not fabricate it from a hint or adjacent context. Either the owner proves the value and types it as present, or the absence is named and carried as absence. A fallback chain id is still a location claim, and code that does not own the location answer must not invent one.
 
-**Write-block causes.** `reads_unresolved` keeps its literal meaning — a chain read has not answered. A block that originates in the custody fold is `custody_unresolved` and carries the cause. A surface that reports a fold gap as `reads_unresolved` is stating something untrue about where the gap is.
+**Write-block causes.** `reads_unresolved` covers both pending and refused lock reads (the chain has not delivered a known lock). A block that originates in the custody fold is `custody_unresolved` and carries the cause. A surface that reports a fold gap as `reads_unresolved` is stating something untrue about where the gap is.
 
 **Typography.** The cause line and its consequence are sans, `text-text-secondary`. Chain ids, token ids and addresses inside them stay mono `tabular-nums` (§10.1). No accent-warm — an unresolved location is not a confirmed trust state.
 

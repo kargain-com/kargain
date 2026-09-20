@@ -9,7 +9,7 @@ import {
 } from "@/lib/passport/action-surface";
 import { fetchPassportDetail } from "@/lib/passport/fetch-passport-detail";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
-import type { PassportPresence } from "@/lib/passport/presence";
+import type { CustodyLockRead, PassportPresence } from "@/lib/passport/presence";
 import { parsePassportTokenId } from "@/lib/passport/passport-token-id";
 import { commerceModeAddresses } from "@/lib/commerce/mode";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
@@ -140,7 +140,7 @@ export default async function EditPassportPage({
     const access = resolvePassportEditAccess({
       presenceFacts: {
         viewChainId: originOrHint,
-        custodyLocked: undefined,
+        custodyLock: { status: "pending" },
         ponderCustodyChain: passport.custodyChain,
         custodyUnresolved: passport.custodyUnresolved ?? null,
       },
@@ -166,7 +166,7 @@ export default async function EditPassportPage({
     const access = resolvePassportEditAccess({
       presenceFacts: {
         viewChainId: originOrHint,
-        custodyLocked: undefined,
+        custodyLock: { status: "pending" },
         ponderCustodyChain: null,
         custodyUnresolved: null,
       },
@@ -193,7 +193,7 @@ export default async function EditPassportPage({
     const access = resolvePassportEditAccess({
       presenceFacts: {
         viewChainId: chainId,
-        custodyLocked: false,
+        custodyLock: { status: "known", locked: false },
         ponderCustodyChain: chainId,
       },
       status: passport.status,
@@ -222,7 +222,7 @@ export default async function EditPassportPage({
     const access = resolvePassportEditAccess({
       presenceFacts: {
         viewChainId: chainId,
-        custodyLocked: false,
+        custodyLock: { status: "known", locked: false },
         ponderCustodyChain: chainId,
       },
       status: passport.status,
@@ -245,12 +245,12 @@ export default async function EditPassportPage({
   let listingActive = false;
   let presenceFacts: {
     viewChainId: number;
-    custodyLocked: boolean | undefined;
+    custodyLock: CustodyLockRead;
     ponderCustodyChain: number | null;
     custodyUnresolved?: string | null;
   } = {
     viewChainId: chainId,
-    custodyLocked: undefined,
+    custodyLock: { status: "pending" },
     ponderCustodyChain: passport.custodyChain,
     custodyUnresolved: passport.custodyUnresolved,
   };
@@ -274,7 +274,7 @@ export default async function EditPassportPage({
 
     presenceFacts = {
       viewChainId: chainId,
-      custodyLocked: Boolean(custodyLocked),
+      custodyLock: { status: "known", locked: Boolean(custodyLocked) },
       ponderCustodyChain: passport.custodyChain,
       custodyUnresolved: passport.custodyUnresolved,
     };
@@ -285,7 +285,7 @@ export default async function EditPassportPage({
     // Fail closed: setPassportURI is gated by custody lock — unread → no edit.
     presenceFacts = {
       viewChainId: chainId,
-      custodyLocked: undefined,
+      custodyLock: { status: "pending" },
       ponderCustodyChain: passport.custodyChain,
       custodyUnresolved: passport.custodyUnresolved,
     };

@@ -4,15 +4,20 @@
  * (a) No component/hook reachable from the marketplace passport detail route
  *     calls wagmiChainId during render (import-graph derivation).
  * (b) Actions panel does not mount EVM-only session refusal for SVM sessions.
- * (c) Presence does not return location_unread merely because karPassportAddress
- *     is undefined — custodyLocked from the commerce-facts owner answers.
+ * (c) Presence does not return location_pending merely because karPassportAddress
+ *     is undefined — custodyLock from the commerce-facts owner answers.
  *
  * Entity-owner EVM coercion is owned by the ProtocolOwner type wall
  * (test/protocol-owner-policy.test.ts) — not a second text-scanner mechanism.
+ *
+ * S8-D1a amend: PassportCommerceFacts has no dual `custodyLocked` boolean —
+ * tsc assignability plant below pins that absence.
  */
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -28,7 +33,59 @@ import { commercialSvmNamespaceIds } from "../lib/web3/commercial-active.ts";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DETAIL_ENTRY =
   "app/(identity)/marketplace/[tokenId]/page.tsx";
-const ACTIONS_PANEL = path.join(
+
+function runAssignabilityProbe(source: string): {
+  status: number | null;
+  out: string;
+} {
+  const tmp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "kargain-commerce-facts-"),
+  );
+  const probe = path.join(tmp, "probe.ts");
+  const tsconfigPath = path.join(tmp, "tsconfig.json");
+  try {
+    fs.writeFileSync(
+      tsconfigPath,
+      `${JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            lib: ["ES2022"],
+            skipLibCheck: true,
+            strict: true,
+            noEmit: true,
+            esModuleInterop: true,
+            module: "ESNext",
+            moduleResolution: "bundler",
+            resolveJsonModule: true,
+            isolatedModules: true,
+            allowImportingTsExtensions: true,
+            typeRoots: [path.join(ROOT, "node_modules/@types")],
+            paths: {
+              "@/*": [path.join(ROOT, "*")],
+            },
+            baseUrl: ROOT,
+          },
+          files: [probe],
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    fs.writeFileSync(probe, source);
+    const result = spawnSync(
+      "pnpm",
+      ["exec", "tsc", "--noEmit", "-p", tsconfigPath],
+      { cwd: ROOT, encoding: "utf8" },
+    );
+    return {
+      status: result.status,
+      out: `${result.stdout}\n${result.stderr}`,
+    };
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}const ACTIONS_PANEL = path.join(
   ROOT,
   "components/passport/passport-actions-panel.tsx",
 );
@@ -189,7 +246,7 @@ describe("passport detail SVM chrome policy (U9.2a)", () => {
     );
   });
 
-  it("(c) presence is not location_unread merely because karPassportAddress is undefined", () => {
+  it("(c) presence is not location_pending merely because karPassportAddress is undefined", () => {
     const namespaces = commercialSvmNamespaceIds();
     assert.ok(namespaces.length > 0, "live SVM commercial row required");
     const ns = namespaces[0]!;
@@ -202,47 +259,47 @@ describe("passport detail SVM chrome policy (U9.2a)", () => {
     // Honest answer: lock known unlocked → here (not unread).
     const withLock = derivePassportPresence({
       viewChainId: ns,
-      custodyLocked: false,
+      custodyLock: { status: "known", locked: false },
       ponderCustodyChain: ns,
     });
     assert.equal(
       withLock.status,
       "here",
-      "custodyLocked false must not become location_unread when passport address is absent",
+      "custodyLocked false must not become location_pending when passport address is absent",
     );
 
     // Plant: the old coupling — treat missing address as unread without a lock read.
     function plantedUnreadWhenNoPassportAddress(input: {
       chainId: number;
-      custodyLocked: boolean | undefined;
-    }): "location_unread" | "other" {
+      custodyLock: { status: "known"; locked: boolean };
+    }): "location_pending" | "other" {
       if (karPassportAddress(input.chainId) == null) {
-        return "location_unread";
+        return "location_pending";
       }
       const p = derivePassportPresence({
         viewChainId: input.chainId,
-        custodyLocked: input.custodyLocked,
+        custodyLock: input.custodyLock,
         ponderCustodyChain: input.chainId,
       });
-      return p.status === "location_unread" ? "location_unread" : "other";
+      return p.status === "location_pending" ? "location_pending" : "other";
     }
 
     assert.equal(
       plantedUnreadWhenNoPassportAddress({
         chainId: ns,
-        custodyLocked: false,
+        custodyLock: { status: "known", locked: false },
       }),
-      "location_unread",
+      "location_pending",
       "planted no-address⇒unread coupling must turn red against the live here answer",
     );
     assert.notEqual(
       withLock.status,
-      "location_unread",
-      "live presence must not return location_unread for known unlocked lock on SVM",
+      "location_pending",
+      "live presence must not return location_pending for known unlocked lock on SVM",
     );
   });
 
-  it("SVM commerce-facts plan reads PassportState; resolve surfaces custodyLocked unread while pending", async () => {
+  it("SVM commerce-facts plan reads PassportState; resolve surfaces custodyLock pending while unread", async () => {
     const namespaces = commercialSvmNamespaceIds();
     assert.ok(namespaces.length > 0, "live SVM commercial row required");
     const ns = namespaces[0]!;
@@ -257,7 +314,7 @@ describe("passport detail SVM chrome policy (U9.2a)", () => {
     assert.equal(plan.contracts.length, 1);
     assert.equal(plan.contracts[0]!.key, "passportState");
 
-    // Pending → unread (never invent false).
+    // Pending → custodyLock pending (never invent unlocked).
     const pending = resolvePassportCommerceFacts({
       plan,
       planning: false,
@@ -265,9 +322,9 @@ describe("passport detail SVM chrome policy (U9.2a)", () => {
       get: () => undefined,
       isPending: true,
     });
-    assert.equal(pending.custodyLocked, undefined);
+    assert.equal(pending.custodyLock.status, "pending");
 
-    // Planning → unread.
+    // Planning → custodyLock pending.
     const planning = resolvePassportCommerceFacts({
       plan: null,
       planning: true,
@@ -275,7 +332,7 @@ describe("passport detail SVM chrome policy (U9.2a)", () => {
       get: () => undefined,
       isPending: false,
     });
-    assert.equal(planning.custodyLocked, undefined);
+    assert.equal(planning.custodyLock.status, "pending");
   });
 
   it("EVM commerce-facts plan still builds custodyLocked keyed read", async () => {
@@ -300,6 +357,44 @@ describe("passport detail SVM chrome policy (U9.2a)", () => {
     assert.ok(
       keys.includes("custodyLocked"),
       "live EVM plan must retain custodyLocked",
+    );
+  });
+
+  it("PassportCommerceFacts has no custodyLocked boolean — tsc RED with member, GREEN without", () => {
+    const red = runAssignabilityProbe(`
+import type { PassportCommerceFacts } from "@/lib/passport/passport-commerce-facts";
+import type { CustodyLockRead } from "@/lib/passport/presence";
+declare const lock: CustodyLockRead;
+declare const facts: PassportCommerceFacts;
+const planted: PassportCommerceFacts = {
+  ...facts,
+  custodyLock: lock,
+  custodyLocked: undefined,
+};
+void planted;
+`);
+    assert.notEqual(
+      red.status,
+      0,
+      `expected custodyLocked member on Facts to fail tsc; out:\n${red.out}`,
+    );
+    assert.match(red.out, /custodyLocked|not assignable|excess|does not exist/i);
+
+    const green = runAssignabilityProbe(`
+import type { PassportCommerceFacts } from "@/lib/passport/passport-commerce-facts";
+import type { CustodyLockRead } from "@/lib/passport/presence";
+declare const lock: CustodyLockRead;
+declare const facts: PassportCommerceFacts;
+const clean: PassportCommerceFacts = {
+  ...facts,
+  custodyLock: lock,
+};
+void clean;
+`);
+    assert.equal(
+      green.status,
+      0,
+      `expected Facts without custodyLocked member to pass tsc; out:\n${green.out}`,
     );
   });
 });

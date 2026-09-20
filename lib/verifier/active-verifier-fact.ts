@@ -154,8 +154,8 @@ export async function planActiveVerifierRead(args: {
  *   success + true → active; success otherwise → inactive;
  *   sessionBound + pending → unresolved; !sessionBound → inactive.
  *
- * SVM: decode StakeAccount.active; missing/undecodable → inactive;
- * pending / unread → unresolved.
+ * SVM: decode StakeAccount.active; account_not_found / undecodable → inactive;
+ * pending / unresolved_namespace / rpc_unavailable → unresolved.
  */
 export function resolveActiveVerifierFact(args: {
   entry: KeyedEntry | undefined;
@@ -176,23 +176,22 @@ export function resolveActiveVerifierFact(args: {
     return { kind: "unresolved" };
   }
 
-  if (entry.status === "failure") {
-    if (entry.error.message.includes("svm_keyed_read_pending")) {
+  switch (entry.status) {
+    case "pending":
       return { kind: "unresolved" };
-    }
-    // account_not_found / rpc / decode path — treat as inactive when the read answered.
-    if (
-      entry.error.message.includes("account_not_found") ||
-      entry.error.message.includes("unresolved_namespace")
-    ) {
-      // unresolved_namespace with a planned read is still unread infrastructure.
-      if (entry.error.message.includes("unresolved_namespace")) {
-        return { kind: "unresolved" };
+    case "refused":
+      if (entry.cause === "account_not_found") {
+        return { kind: "inactive" };
       }
-      return { kind: "inactive" };
+      // unresolved_namespace / rpc_unavailable / malformed / evm_call_failed —
+      // do not invent inactive.
+      return { kind: "unresolved" };
+    case "success":
+      break;
+    default: {
+      const _exhaustive: never = entry;
+      return _exhaustive;
     }
-    // Other failures while session-bound: leave unresolved (do not invent false).
-    return { kind: "unresolved" };
   }
 
   if (args.vm === "evm") {

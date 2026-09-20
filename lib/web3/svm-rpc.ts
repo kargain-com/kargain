@@ -307,20 +307,28 @@ export async function fetchProductSvmAccountData(
 
 /**
  * Product {@link SvmKeyedAccountSource}: one `getMultipleAccounts` per batch.
- * Not-found → null slot (keyed-read names the miss). Other refusals throw by cause name.
+ * Not-found → null slot (keyed-read names the miss). Other refusals keep typed causes.
  */
 export function createProductSvmKeyedAccountSource(): SvmKeyedAccountSource {
   return {
     getAccountsData: async (accounts: readonly string[]) => {
       const batch = await fetchProductSvmAccountsData(accounts);
       if (!batch.ok) {
-        throw new Error(`${batch.cause}: ${batch.detail}`);
+        return { ok: false, cause: batch.cause, detail: batch.detail };
       }
-      return batch.values.map((result) => {
-        if (result.ok) return result.value;
-        if (result.cause === "account_not_found") return null;
-        throw new Error(`${result.cause}: ${result.detail}`);
-      });
+      const values: (Uint8Array | null)[] = [];
+      for (const result of batch.values) {
+        if (result.ok) {
+          values.push(result.value);
+          continue;
+        }
+        if (result.cause === "account_not_found") {
+          values.push(null);
+          continue;
+        }
+        return { ok: false, cause: result.cause, detail: result.detail };
+      }
+      return { ok: true, values };
     },
   };
 }

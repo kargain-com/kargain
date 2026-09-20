@@ -88,12 +88,24 @@ export function useListingChainReads(input: {
   });
 
   const phaseEntry = reads.entry("consignmentPhase");
-  const chainListingRead: ChainListingRead =
-    phaseEntry?.status === "success"
-      ? "success"
-      : phaseEntry?.status === "failure"
-        ? "failure"
-        : "pending";
+  let chainListingRead: ChainListingRead = "pending";
+  if (phaseEntry != null) {
+    switch (phaseEntry.status) {
+      case "success":
+        chainListingRead = "success";
+        break;
+      case "refused":
+        chainListingRead = "failure";
+        break;
+      case "pending":
+        chainListingRead = "pending";
+        break;
+      default: {
+        const _exhaustive: never = phaseEntry;
+        void _exhaustive;
+      }
+    }
+  }
 
   const denominationRaw = reads.get("consignmentDenominationOf");
   const denominationKindRaw = (() => {
