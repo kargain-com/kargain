@@ -323,16 +323,30 @@ describe("passport detail SVM chrome policy (U9.2a)", () => {
       isPending: true,
     });
     assert.equal(pending.custodyLock.status, "pending");
+    assert.equal(pending.hasLiveConsignment.status, "refused");
+    assert.equal(
+      pending.hasLiveConsignment.status === "refused" &&
+        pending.hasLiveConsignment.cause,
+      "product_owner_owed",
+    );
+    assert.equal(pending.fixedPrice.configured, true);
 
-    // Planning → custodyLock pending.
+    // Planning with namespace → SVM support refusals (no "not deployed" flash).
     const planning = resolvePassportCommerceFacts({
       plan: null,
       planning: true,
       entry: () => undefined,
       get: () => undefined,
       isPending: false,
+      namespace: ns,
     });
     assert.equal(planning.custodyLock.status, "pending");
+    assert.equal(planning.fixedPrice.configured, true);
+    assert.equal(
+      planning.openConsignmentPermission.status === "blocked" &&
+        planning.openConsignmentPermission.cause,
+      "product_owner_owed",
+    );
   });
 
   it("EVM commerce-facts plan still builds custodyLocked keyed read", async () => {

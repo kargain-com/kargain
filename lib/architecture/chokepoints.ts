@@ -677,9 +677,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "passport-commerce-facts",
     owner:
-      "lib/passport/passport-commerce-facts.ts · hooks/use-passport-commerce-facts.ts · lib/web3/supported-chains.ts",
-    rule: "Dual-VM passport commerce chrome reads: EVM batched may/custodyLocked/encumbrance/modes; SVM PassportState keyed-read → custodyLock fact only; wagmiChainId only inside the EVM plan arm; eip155WagmiChainId is the product chrome door that returns undefined for commercial SVM (never throw); presence must not treat missing karPassportAddress as location_pending",
-    guardTests: ["passport-detail-svm-chrome-policy.test.ts"],
+      "lib/passport/passport-commerce-facts.ts · lib/passport/commerce-fact.ts · lib/passport/passport-commerce-rail.ts · hooks/use-passport-commerce-facts.ts · lib/web3/supported-chains.ts",
+    rule: "Dual-VM passport commerce chrome: EVM batched may/custodyLocked/encumbrance/modes; SVM PassportState → custodyLock + surfaceSupport refusals for owed cells (never invent hasLiveConsignment false or configured false); CommerceFact = known|pending|refused(KeyedReadCause|SurfaceSupportCause); wagmiChainId only inside the EVM plan arm; eip155WagmiChainId returns undefined for commercial SVM",
+    guardTests: [
+      "passport-detail-svm-chrome-policy.test.ts",
+      "commerce-fact-status-policy.test.ts",
+      "commerce-fact-matrix.test.ts",
+    ],
   },
   {
     id: "passport-detail-svm-chrome",

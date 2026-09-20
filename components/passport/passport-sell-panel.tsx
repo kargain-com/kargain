@@ -157,14 +157,9 @@ export function PassportSellPanel({
     isActiveVerifier:
       isActiveVerifier === undefined ? undefined : isActiveVerifier === true,
     passportStatus,
-    fixedPriceMandate:
-      facts.fixedPrice.mandate === undefined
-        ? undefined
-        : { value: facts.fixedPrice.mandate, now },
-    ascendingMandate:
-      facts.ascending.mandate === undefined
-        ? undefined
-        : { value: facts.ascending.mandate, now },
+    fixedPriceMandate: facts.fixedPrice.mandate,
+    ascendingMandate: facts.ascending.mandate,
+    now,
   });
 
   const refetch = () => {
@@ -204,8 +199,14 @@ export function PassportSellPanel({
     );
   }
 
-  const fixedMandate = facts.fixedPrice.mandate;
-  const ascendingMandate = facts.ascending.mandate;
+  const fixedMandate =
+    facts.fixedPrice.mandate.status === "known"
+      ? facts.fixedPrice.mandate.value
+      : null;
+  const ascendingMandate =
+    facts.ascending.mandate.status === "known"
+      ? facts.ascending.mandate.value
+      : null;
   const anyVisible =
     surface.showFixedPriceOpen ||
     surface.showFixedPriceGrant ||
@@ -219,8 +220,7 @@ export function PassportSellPanel({
     const openGate = facts.openConsignmentPermission;
     if (openGate.status === "blocked") {
       // Unresolved is waiting copy; refused / unanswerable are definite facts.
-      // Hide only when modes are missing and permission is available-shaped
-      // unread would still show waiting — openGate is always blocked or available.
+      // Support causes return empty copy — hide rather than invent D2 sentences.
       if (
         openGate.cause !== "reads_unresolved" ||
         facts.fixedPrice.configured ||
@@ -244,9 +244,12 @@ export function PassportSellPanel({
 
   const canOpen =
     isEncumbrancePermissionAvailable(facts.openConsignmentPermission) &&
-    facts.hasLiveConsignment === false;
+    facts.hasLiveConsignment.status === "known" &&
+    !facts.hasLiveConsignment.value;
 
   const selfOpen = surface.ascendingSelfOpen;
+  const fixedPriceLiveKnownTrue =
+    facts.fixedPrice.live.status === "known" && facts.fixedPrice.live.value;
 
   return (
     <section className="space-y-3 rounded-md border border-border-default bg-bg-card p-4">
@@ -279,7 +282,7 @@ export function PassportSellPanel({
           chainId={chainId}
           tokenId={tokenId}
           mandate={fixedMandate}
-          listingActive={facts.fixedPrice.live === true}
+          listingActive={fixedPriceLiveKnownTrue}
           onChanged={refetch}
         />
       ) : null}

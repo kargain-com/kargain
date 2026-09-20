@@ -5,6 +5,11 @@ import { zeroAddress } from "viem";
 import { AVAILABLE, blocked } from "../lib/challenge/action-gate.ts";
 import type { MandateSnapshot } from "../lib/commerce/mandate.ts";
 import { COMPENSATION_FORM, DENOMINATION_KIND } from "../lib/commerce/denomination.ts";
+import {
+  commerceFactKnown,
+  commerceFactPending,
+  commerceFactRefused,
+} from "../lib/passport/commerce-fact.ts";
 import type { EncumbrancePermissionGate } from "../lib/passport/encumbrance-permission.ts";
 import {
   deriveSellSurface,
@@ -13,7 +18,6 @@ import {
 } from "../lib/passport/sell-surface.ts";
 
 const AGENT = "0x1111111111111111111111111111111111111111" as const;
-const OWNER = "0x2222222222222222222222222222222222222222" as const;
 const NOW = 2_000_000_000;
 
 const AVAILABLE_PERM: EncumbrancePermissionGate = { status: "available" };
@@ -29,6 +33,10 @@ const UNANSWERABLE: EncumbrancePermissionGate = {
   status: "blocked",
   cause: "source_unanswerable",
   source: AGENT,
+};
+const SUPPORT_OWED: EncumbrancePermissionGate = {
+  status: "blocked",
+  cause: "product_owner_owed",
 };
 
 const allHidden: SellSurfaceFlags = {
@@ -74,143 +82,169 @@ function activeMandate(
 function input(overrides: Partial<SellSurfaceInput> = {}): SellSurfaceInput {
   return {
     isOwner: true,
-    hasLiveConsignment: false,
+    hasLiveConsignment: commerceFactKnown(false),
     fixedPriceConfigured: true,
     ascendingConfigured: true,
     openConsignmentPermission: AVAILABLE_PERM,
     isActiveVerifier: false,
     passportStatus: "UNVERIFIED",
-    fixedPriceMandate: { value: null, now: NOW },
-    ascendingMandate: { value: null, now: NOW },
+    fixedPriceMandate: commerceFactKnown(inactiveMandate("fixedPrice")),
+    ascendingMandate: commerceFactKnown(inactiveMandate("ascending")),
+    now: NOW,
     ...overrides,
   };
 }
 
+function flagsOf(result: ReturnType<typeof deriveSellSurface>): SellSurfaceFlags {
+  const { closedCause: _c, ...flags } = result;
+  return flags;
+}
+
 describe("deriveSellSurface", () => {
-  it("hides everything for non-owners", () => {
-    assert.deepEqual(deriveSellSurface(input({ isOwner: false })), allHidden);
+  it("hides when not owner", () => {
+    assert.deepEqual(flagsOf(deriveSellSurface(input({ isOwner: false }))), allHidden);
   });
 
-  it("fails closed while live consignment holds the NFT", () => {
+  it("EVM known live consignment — hides CTAs", () => {
     assert.deepEqual(
-      deriveSellSurface(input({ hasLiveConsignment: true })),
-      allHidden,
-    );
-  });
-
-  it("fails closed while live-consignment or may facts are unresolved", () => {
-    assert.deepEqual(
-      deriveSellSurface(input({ hasLiveConsignment: undefined })),
-      allHidden,
-    );
-    assert.deepEqual(
-      deriveSellSurface(input({ openConsignmentPermission: UNRESOLVED })),
-      allHidden,
-    );
-    assert.deepEqual(
-      deriveSellSurface(input({ openConsignmentPermission: REFUSED })),
+      flagsOf(deriveSellSurface(input({ hasLiveConsignment: commerceFactKnown(true) }))),
       allHidden,
     );
   });
 
-  it("fails closed when a source is unanswerable", () => {
+  it("EVM pending live — fail closed", () => {
+    const result = deriveSellSurface(
+      input({ hasLiveConsignment: commerceFactPending() }),
+    );
+    assert.deepEqual(flagsOf(result), allHidden);
+    assert.equal(result.closedCause, "live_pending");
+  });
+
+  it("SVM product_owner_owed live — fail closed with cause", () => {
+    const result = deriveSellSurface(
+      input({
+        hasLiveConsignment: commerceFactRefused("product_owner_owed"),
+      }),
+    );
+    assert.deepEqual(flagsOf(result), allHidden);
+    assert.equal(result.closedCause, "product_owner_owed");
+  });
+
+  it("hides when permission unresolved / refused / unanswerable / support", () => {
     assert.deepEqual(
-      deriveSellSurface(input({ openConsignmentPermission: UNANSWERABLE })),
+      flagsOf(deriveSellSurface(input({ openConsignmentPermission: UNRESOLVED }))),
+      allHidden,
+    );
+    assert.deepEqual(
+      flagsOf(deriveSellSurface(input({ openConsignmentPermission: REFUSED }))),
+      allHidden,
+    );
+    assert.deepEqual(
+      flagsOf(deriveSellSurface(input({ openConsignmentPermission: UNANSWERABLE }))),
+      allHidden,
+    );
+    assert.deepEqual(
+      flagsOf(deriveSellSurface(input({ openConsignmentPermission: SUPPORT_OWED }))),
       allHidden,
     );
   });
 
-  it("shows fixed-price open and ascending grant for a private owner (status ignored)", () => {
-    assert.deepEqual(deriveSellSurface(input()), {
-      ...allHidden,
+  it("EVM known not-live — shows fixed-price open when free", () => {
+    assert.deepEqual(flagsOf(deriveSellSurface(input())), {
       showFixedPriceOpen: true,
       showFixedPriceGrant: true,
+      showFixedPriceMandateCard: false,
+      ascendingSelfOpen: null,
       showAscendingGrant: true,
+      showAscendingMandateCard: false,
       showAscendingRunnerNote: true,
     });
-    assert.deepEqual(
-      deriveSellSurface(input({ passportStatus: "VERIFIED" })),
-      {
-        ...allHidden,
-        showFixedPriceOpen: true,
-        showFixedPriceGrant: true,
-        showAscendingGrant: true,
-        showAscendingRunnerNote: true,
-      },
-    );
   });
 
-  it("replaces ascending grant with available self-open for a KarPro owner when VERIFIED", () => {
+  it("KarPro + VERIFIED — ascending self-open available", () => {
     assert.deepEqual(
-      deriveSellSurface(
-        input({ isActiveVerifier: true, passportStatus: "VERIFIED" }),
+      flagsOf(
+        deriveSellSurface(
+          input({
+            isActiveVerifier: true,
+            passportStatus: "VERIFIED",
+          }),
+        ),
       ),
       {
-        ...allHidden,
         showFixedPriceOpen: true,
         showFixedPriceGrant: true,
+        showFixedPriceMandateCard: false,
         ascendingSelfOpen: AVAILABLE,
+        showAscendingGrant: false,
+        showAscendingMandateCard: false,
+        showAscendingRunnerNote: false,
       },
     );
   });
 
-  it("Nuclear #4: KarPro owner UNVERIFIED gets blocked self-open (dimmed Auction), not available", () => {
+  it("KarPro + non-VERIFIED — dimmed ascending self-open", () => {
     assert.deepEqual(
-      deriveSellSurface(
-        input({ isActiveVerifier: true, passportStatus: "UNVERIFIED" }),
+      flagsOf(
+        deriveSellSurface(
+          input({
+            isActiveVerifier: true,
+            passportStatus: "UNVERIFIED",
+          }),
+        ),
       ),
       {
-        ...allHidden,
         showFixedPriceOpen: true,
         showFixedPriceGrant: true,
+        showFixedPriceMandateCard: false,
         ascendingSelfOpen: blocked("not_verified"),
+        showAscendingGrant: false,
+        showAscendingMandateCard: false,
+        showAscendingRunnerNote: false,
       },
     );
   });
 
   it("Nuclear #4: unread status fails closed on ascending self-open", () => {
-    const flags = deriveSellSurface(
-      input({ isActiveVerifier: true, passportStatus: undefined }),
+    const flags = flagsOf(
+      deriveSellSurface(
+        input({ isActiveVerifier: true, passportStatus: undefined }),
+      ),
     );
     assert.equal(flags.ascendingSelfOpen, null);
     assert.equal(flags.showFixedPriceOpen, true);
   });
 
-  it("shows a fixed-price mandate card when a standing grant exists", () => {
-    assert.deepEqual(
+  it("active fixed-price mandate shows mandate card", () => {
+    const flags = flagsOf(
       deriveSellSurface(
         input({
-          fixedPriceMandate: {
-            value: activeMandate("fixedPrice"),
-            now: NOW,
-          },
+          fixedPriceMandate: commerceFactKnown(activeMandate("fixedPrice")),
         }),
       ),
-      {
-        ...allHidden,
-        showFixedPriceOpen: true,
-        showFixedPriceMandateCard: true,
-        showAscendingGrant: true,
-        showAscendingRunnerNote: true,
-      },
     );
+    assert.equal(flags.showFixedPriceMandateCard, true);
+    assert.equal(flags.showFixedPriceGrant, false);
   });
 
   it("keeps an expired mandate as a management card", () => {
     assert.deepEqual(
-      deriveSellSurface(
-        input({
-          fixedPriceMandate: {
-            value: activeMandate("fixedPrice", { expiry: NOW - 1 }),
-            now: NOW,
-          },
-        }),
+      flagsOf(
+        deriveSellSurface(
+          input({
+            fixedPriceMandate: commerceFactKnown(
+              activeMandate("fixedPrice", { expiry: NOW - 1 }),
+            ),
+          }),
+        ),
       ),
       {
-        ...allHidden,
         showFixedPriceOpen: true,
+        showFixedPriceGrant: false,
         showFixedPriceMandateCard: true,
+        ascendingSelfOpen: null,
         showAscendingGrant: true,
+        showAscendingMandateCard: false,
         showAscendingRunnerNote: true,
       },
     );
@@ -218,47 +252,54 @@ describe("deriveSellSurface", () => {
 
   it("shows an ascending mandate card when a standing grant exists", () => {
     assert.deepEqual(
-      deriveSellSurface(
-        input({
-          ascendingMandate: {
-            value: activeMandate("ascending"),
-            now: NOW,
-          },
-          isActiveVerifier: true,
-          passportStatus: "VERIFIED",
-        }),
+      flagsOf(
+        deriveSellSurface(
+          input({
+            ascendingMandate: commerceFactKnown(activeMandate("ascending")),
+            isActiveVerifier: true,
+            passportStatus: "VERIFIED",
+          }),
+        ),
       ),
       {
-        ...allHidden,
         showFixedPriceOpen: true,
         showFixedPriceGrant: true,
+        showFixedPriceMandateCard: false,
+        ascendingSelfOpen: null,
+        showAscendingGrant: false,
         showAscendingMandateCard: true,
+        showAscendingRunnerNote: false,
       },
     );
   });
 
-  it("hides ascending actions when ascending is not configured", () => {
-    const flags = deriveSellSurface(input({ ascendingConfigured: false }));
-    assert.equal(flags.ascendingSelfOpen, null);
-    assert.equal(flags.showAscendingGrant, false);
-    assert.equal(flags.showAscendingRunnerNote, false);
-    assert.equal(flags.showFixedPriceOpen, true);
-  });
-
-  it("hides grant CTAs while mandate reads are unresolved", () => {
-    const flags = deriveSellSurface(
-      input({
-        fixedPriceMandate: undefined,
-        ascendingMandate: undefined,
-        isActiveVerifier: true,
-        passportStatus: "VERIFIED",
-      }),
+  it("pending mandate — open still shows; grant/card hide", () => {
+    const flags = flagsOf(
+      deriveSellSurface(
+        input({
+          fixedPriceMandate: commerceFactPending(),
+          ascendingMandate: commerceFactPending(),
+        }),
+      ),
     );
     assert.equal(flags.showFixedPriceOpen, true);
     assert.equal(flags.showFixedPriceGrant, false);
-    assert.equal(flags.ascendingSelfOpen, null);
     assert.equal(flags.showAscendingGrant, false);
   });
 
-  void OWNER; // retained for future owner-address fixtures
+  it("refused mandate — fail closed", () => {
+    const result = deriveSellSurface(
+      input({
+        fixedPriceMandate: commerceFactRefused("product_owner_owed"),
+      }),
+    );
+    assert.deepEqual(flagsOf(result), allHidden);
+    assert.equal(result.closedCause, "product_owner_owed");
+  });
+
+  it("ascendingConfigured false hides ascending flags", () => {
+    const flags = flagsOf(deriveSellSurface(input({ ascendingConfigured: false })));
+    assert.equal(flags.showAscendingGrant, false);
+    assert.equal(flags.showAscendingRunnerNote, false);
+  });
 });

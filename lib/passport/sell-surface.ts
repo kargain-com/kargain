@@ -6,6 +6,7 @@ import {
 import type { MandateSnapshot } from "@/lib/commerce/mandate";
 import { isMandateExpired, mandateHasAgent } from "@/lib/commerce/mandate";
 import type { CommerceMode } from "@/lib/commerce/mode";
+import type { CommerceFact, CommerceFactCause } from "@/lib/passport/commerce-fact";
 import {
   isEncumbrancePermissionAvailable,
   type EncumbrancePermissionGate,
@@ -34,6 +35,21 @@ export type SellSurfaceFlags = {
   showAscendingRunnerNote: boolean;
 };
 
+/** Closed cause carried for D2 — never invent CTAs while pending/refused. */
+export type SellSurfaceClosedCause =
+  | "not_owner"
+  | "live_consignment"
+  | "live_pending"
+  | "live_refused"
+  | "permission_blocked"
+  | "mandate_pending"
+  | "mandate_refused";
+
+export type SellSurfaceResult = SellSurfaceFlags & {
+  /** Null when CTAs may show; set when fail-closed. */
+  closedCause: SellSurfaceClosedCause | CommerceFactCause | null;
+};
+
 /** A mandate read together with the clock used to judge its expiry. */
 export type MandateState = {
   /** `null` means a successful read with no mandate. */
@@ -44,11 +60,11 @@ export type MandateState = {
 export type SellSurfaceInput = {
   isOwner: boolean;
   /**
-   * `true` when any mode still holds this passport (offered, bidding, or under
-   * settlement hold). `undefined` means unresolved — fail closed.
+   * Live-lot fact — known false is the only value that admits sell CTAs.
+   * Pending and refused fail closed and carry the cause.
    */
-  hasLiveConsignment: boolean | undefined;
-  /** Mode contracts deployed on this chain. */
+  hasLiveConsignment: CommerceFact<boolean>;
+  /** Mode contracts deployed on this chain (registry). */
   fixedPriceConfigured: boolean;
   ascendingConfigured: boolean;
   /** `may(tokenId, OpenConsignment)` gate — sole permission answer. */
@@ -60,9 +76,11 @@ export type SellSurfaceInput = {
    * fixed-price flags ignore status.
    */
   passportStatus: PassportStatus | undefined;
-  /** `undefined` means the mandate read is unresolved. */
-  fixedPriceMandate: MandateState | undefined;
-  ascendingMandate: MandateState | undefined;
+  /** Mandate facts — pending/refused fail closed for grant/card. */
+  fixedPriceMandate: CommerceFact<MandateSnapshot | null>;
+  ascendingMandate: CommerceFact<MandateSnapshot | null>;
+  /** Wall-clock for expiry when mandate is known. */
+  now: number;
 };
 
 const HIDDEN_FLAGS: SellSurfaceFlags = {
@@ -75,13 +93,18 @@ const HIDDEN_FLAGS: SellSurfaceFlags = {
   showAscendingRunnerNote: false,
 };
 
+function hidden(closedCause: SellSurfaceResult["closedCause"]): SellSurfaceResult {
+  return { ...HIDDEN_FLAGS, closedCause };
+}
+
 type MandateStanding = "none" | "active" | "expired";
 
-function mandateStanding(state: MandateState | undefined): MandateStanding {
-  if (!state) return "none";
-  const mandate = state.value;
+function mandateStanding(
+  mandate: MandateSnapshot | null,
+  now: number,
+): MandateStanding {
   if (!mandateHasAgent(mandate)) return "none";
-  return isMandateExpired(mandate, state.now) ? "expired" : "active";
+  return isMandateExpired(mandate, now) ? "expired" : "active";
 }
 
 /**
@@ -93,23 +116,52 @@ function mandateStanding(state: MandateState | undefined): MandateStanding {
  * KarPro + known non-VERIFIED keeps a blocked self-open gate so the Auction CTA
  * stays visible (dimmed) with a named cause — same pattern as Bridge.
  */
-export function deriveSellSurface(input: SellSurfaceInput): SellSurfaceFlags {
-  if (!input.isOwner || input.hasLiveConsignment !== false) {
-    return { ...HIDDEN_FLAGS };
-  }
-  if (!isEncumbrancePermissionAvailable(input.openConsignmentPermission)) {
-    return { ...HIDDEN_FLAGS };
+export function deriveSellSurface(input: SellSurfaceInput): SellSurfaceResult {
+  if (!input.isOwner) {
+    return hidden("not_owner");
   }
 
-  const fixedPriceStanding = mandateStanding(input.fixedPriceMandate);
-  const ascendingStanding = mandateStanding(input.ascendingMandate);
-  const fixedPriceKnown = input.fixedPriceMandate !== undefined;
-  const ascendingKnown = input.ascendingMandate !== undefined;
+  const live = input.hasLiveConsignment;
+  if (live.status === "pending") {
+    return hidden("live_pending");
+  }
+  if (live.status === "refused") {
+    return hidden(live.cause);
+  }
+  if (live.value) {
+    return hidden("live_consignment");
+  }
+
+  if (!isEncumbrancePermissionAvailable(input.openConsignmentPermission)) {
+    return hidden("permission_blocked");
+  }
+
+  const fpMandate = input.fixedPriceMandate;
+  const ascMandate = input.ascendingMandate;
+  if (fpMandate.status === "refused") {
+    return hidden(fpMandate.cause);
+  }
+  if (ascMandate.status === "refused") {
+    return hidden(ascMandate.cause);
+  }
+
+  const fixedPriceKnown = fpMandate.status === "known";
+  const ascendingKnown = ascMandate.status === "known";
+  const fixedPriceStanding = fixedPriceKnown
+    ? mandateStanding(fpMandate.value, input.now)
+    : "none";
+  const ascendingStanding = ascendingKnown
+    ? mandateStanding(ascMandate.value, input.now)
+    : "none";
 
   const fixedPriceFree =
-    input.fixedPriceConfigured && fixedPriceKnown && fixedPriceStanding === "none";
+    input.fixedPriceConfigured &&
+    fixedPriceKnown &&
+    fixedPriceStanding === "none";
   const ascendingFree =
-    input.ascendingConfigured && ascendingKnown && ascendingStanding === "none";
+    input.ascendingConfigured &&
+    ascendingKnown &&
+    ascendingStanding === "none";
 
   const verified = input.passportStatus === "VERIFIED";
   const statusKnown = input.passportStatus !== undefined;
@@ -117,9 +169,7 @@ export function deriveSellSurface(input: SellSurfaceInput): SellSurfaceFlags {
   let ascendingSelfOpen: ActionGate<AscendingSelfOpenCause> | null = null;
   if (ascendingFree && input.isActiveVerifier === true) {
     if (statusKnown) {
-      ascendingSelfOpen = verified
-        ? AVAILABLE
-        : blocked("not_verified");
+      ascendingSelfOpen = verified ? AVAILABLE : blocked("not_verified");
     }
   }
 
@@ -127,13 +177,18 @@ export function deriveSellSurface(input: SellSurfaceInput): SellSurfaceFlags {
     showFixedPriceOpen: input.fixedPriceConfigured,
     showFixedPriceGrant: fixedPriceFree,
     showFixedPriceMandateCard:
-      input.fixedPriceConfigured && fixedPriceKnown && fixedPriceStanding !== "none",
+      input.fixedPriceConfigured &&
+      fixedPriceKnown &&
+      fixedPriceStanding !== "none",
     ascendingSelfOpen,
     showAscendingGrant: ascendingFree && input.isActiveVerifier === false,
     showAscendingMandateCard:
-      input.ascendingConfigured && ascendingKnown && ascendingStanding !== "none",
+      input.ascendingConfigured &&
+      ascendingKnown &&
+      ascendingStanding !== "none",
     showAscendingRunnerNote:
       input.ascendingConfigured && input.isActiveVerifier === false,
+    closedCause: null,
   };
 }
 

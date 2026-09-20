@@ -11,12 +11,12 @@ import { useAuctionDetail } from "@/hooks/use-auction-detail";
 import { usePassportCommerceFacts } from "@/hooks/use-passport-commerce-facts";
 import {
   auctionBlocksListingCommerce,
-  marketplaceListingBlocksAuction,
   type AuctionRow,
 } from "@/lib/auction/map-ponder-auction";
 import { sectionScrollAnchor } from "@/lib/design/instrument-classes";
 import { isEncumbrancePermissionAvailable } from "@/lib/passport/encumbrance-permission";
 import type { FixedPriceListingDetailProp } from "@/lib/passport/fetch-passport-detail";
+import { derivePassportCommerceRail } from "@/lib/passport/passport-commerce-rail";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
 
@@ -60,8 +60,8 @@ function TransitPassportCommerce({
         passportOwner={passportOwner}
         passportStatus={passportStatus}
         custodyUnresolved={custodyUnresolved}
-        liveConsignmentMode={null}
-        challengeOpen={undefined}
+        liveConsignmentMode={{ status: "pending" }}
+        challengeOpen={{ status: "pending" }}
       />
     </div>
   );
@@ -82,11 +82,6 @@ function ResolvedPassportCommerce({
     chainId: commerceChainId,
     tokenId,
   });
-  const listingBlocksAuction = marketplaceListingBlocksAuction({
-    ponderActive: Boolean(listing?.active) || Boolean(facts.fixedPrice.live),
-    chainIsListed: facts.fixedPrice.live === true,
-    chainListedPending: facts.fixedPrice.configured && facts.fixedPrice.live === undefined,
-  });
 
   const detail = useAuctionDetail({
     chainId: commerceChainId,
@@ -103,11 +98,17 @@ function ResolvedPassportCommerce({
   const auctionHoldOpen = Boolean(
     detail.hold?.open && detail.hold.releaseAt !== 0n,
   );
-  const ascendingLive =
-    facts.ascending.live === true ||
-    auctionOwnsCommerce ||
-    Boolean(detail.auction?.active) ||
-    auctionHoldOpen;
+
+  const rail = derivePassportCommerceRail({
+    fixedPriceConfigured: facts.fixedPrice.configured,
+    ascendingConfigured: facts.ascending.configured,
+    fixedPriceLive: facts.fixedPrice.live,
+    ascendingLive: facts.ascending.live,
+    ponderListingActive: Boolean(listing?.active),
+    auctionOwnsCommerce,
+    auctionPonderActive: Boolean(detail.auction?.active),
+    auctionHoldOpen,
+  });
 
   const canOpenConsignment = isEncumbrancePermissionAvailable(
     facts.openConsignmentPermission,
@@ -125,13 +126,13 @@ function ResolvedPassportCommerce({
   return (
     <div id="passport-commerce" className={cn("space-y-4", sectionScrollAnchor)}>
       <WatchlistButton tokenId={tokenId} />
-      {ascendingLive ? (
+      {rail.ascendingLive ? (
         <AuctionDetailClientIsland
           chainId={commerceChainId}
           tokenId={tokenId}
           passportOwner={passportOwner}
           canOpenConsignment={canOpenConsignment}
-          listingBlocksAuction={listingBlocksAuction}
+          listingBlocksAuction={rail.listingBlocksAuction}
           ponderCustodyChain={commerceChainId}
           custodyUnresolved={custodyUnresolved}
           detail={detail}
@@ -143,7 +144,7 @@ function ResolvedPassportCommerce({
             tokenId={tokenId}
             passportOwner={passportOwner}
             canOpenConsignment={canOpenConsignment}
-            listingBlocksAuction={listingBlocksAuction}
+            listingBlocksAuction={rail.listingBlocksAuction}
             ponderCustodyChain={commerceChainId}
             custodyUnresolved={custodyUnresolved}
             detail={detail}

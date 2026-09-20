@@ -49,6 +49,8 @@ export const SURFACE_CAPABILITIES = [
   "settlement_notes",
   "hold_protection_ends_at",
   "has_unresolved_settlement",
+  /** BondedChallenge open stamp — EVM challengeOpenedAt; SVM ChallengeAccount.opened_at. */
+  "challenge_open",
   // Approvals / bridge / commerce writes
   "passport_approve",
   "passport_approval_state",
@@ -264,6 +266,7 @@ export const SURFACE_SUPPORT_TABLE: Readonly<
   settlement_notes: productOwnerOwed(),
   hold_protection_ends_at: productOwnerOwed(),
   has_unresolved_settlement: productOwnerOwed(),
+  challenge_open: productOwnerOwed(),
   // D-25 cross-program ApproveEscrow — product reader owed
   passport_approve: productOwnerOwed(),
   passport_approval_state: productOwnerOwed(),

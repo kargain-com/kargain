@@ -30,7 +30,7 @@ export function PassportEncumbranceRegistry({
   registry,
   unanswerableSource = null,
 }: Props) {
-  if (registry.unresolved) {
+  if (registry.status === "pending") {
     return (
       <section className={cn(instrumentReadoutPanel, "space-y-2")}>
         <p className={serialLabel}>Encumbrance sources</p>
@@ -41,6 +41,12 @@ export function PassportEncumbranceRegistry({
     );
   }
 
+  if (registry.status === "refused") {
+    // Support / decode refusal — D2 names it; empty body this unit (no wait lie).
+    return null;
+  }
+
+  const sources = registry.value;
   const highlight =
     unanswerableSource != null &&
     isRegisteredEncumbranceSource(registry, unanswerableSource)
@@ -50,13 +56,13 @@ export function PassportEncumbranceRegistry({
   return (
     <section className={cn(instrumentReadoutPanel, "space-y-2")}>
       <p className={serialLabel}>Encumbrance sources</p>
-      {registry.sources.length === 0 ? (
+      {sources.length === 0 ? (
         <p className="text-sm text-text-secondary">
           No external sources are registered on this chain.
         </p>
       ) : (
         <ul className="space-y-2">
-          {registry.sources.map((source) => {
+          {sources.map((source) => {
             const isBroken = highlight != null && source === highlight;
             return (
               <li key={source} className="space-y-0.5">

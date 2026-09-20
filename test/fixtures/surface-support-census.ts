@@ -1119,7 +1119,7 @@ export const SURFACE_CENSUS_PAIRS: SurfaceCensusPair[] = [
     "file": "hooks/use-auction-chain-reads.ts",
     "primitive": "useKeyedReadContracts",
     "functionName": "challengeOpenedAt",
-    "capability": "has_unresolved_settlement"
+    "capability": "challenge_open"
   },
   {
     "file": "hooks/use-auction-chain-reads.ts",
@@ -1906,6 +1906,17 @@ export const SURFACE_CENSUS_CAPABILITY_META: SurfaceCensusCapabilityMeta[] = [
     },
     "svmReader": "owed",
     "observedSvmBehaviour": "known"
+  },
+  {
+    "id": "challenge_open",
+    "kind": "read_fact",
+    "evmSource": "see consuming files",
+    "evidence": {
+      "source": "state",
+      "item": "ChallengeAccount.opened_at"
+    },
+    "svmReader": "owed",
+    "observedSvmBehaviour": "silent_undefined"
   },
   {
     "id": "passport_approve",

@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import {
   deriveEncumbranceRegistry,
+  encumbranceRegistryFromSupport,
   isRegisteredEncumbranceSource,
   MAX_ENCUMBRANCE_SOURCES,
 } from "../lib/passport/encumbrance-registry.ts";
@@ -22,20 +23,41 @@ function failure(): KeyedEntry {
 }
 
 describe("deriveEncumbranceRegistry", () => {
-  it("is unresolved when count is unread", () => {
+  it("is pending when count is unread", () => {
     assert.deepEqual(
       deriveEncumbranceRegistry({ countEntry: undefined, atEntries: [] }),
-      { sources: [], unresolved: true },
+      { status: "pending" },
     );
   });
 
-  it("builds an ordered list from count + At entries", () => {
+  it("is pending while count entry is pending", () => {
+    assert.deepEqual(
+      deriveEncumbranceRegistry({
+        countEntry: { status: "pending" },
+        atEntries: [],
+      }),
+      { status: "pending" },
+    );
+  });
+
+  it("refuses with keyed cause when count read fails", () => {
+    assert.deepEqual(
+      deriveEncumbranceRegistry({
+        countEntry: failure(),
+        atEntries: [],
+      }),
+      { status: "refused", cause: "evm_call_failed" },
+    );
+  });
+
+  it("builds known sources from count + At entries", () => {
     const registry = deriveEncumbranceRegistry({
       countEntry: success(2n),
       atEntries: [success(A), success(B), failure(), failure()],
     });
-    assert.equal(registry.unresolved, false);
-    assert.deepEqual(registry.sources, [A, B]);
+    assert.equal(registry.status, "known");
+    if (registry.status !== "known") return;
+    assert.deepEqual(registry.value, [A, B]);
   });
 
   it("caps at MAX_ENCUMBRANCE_SOURCES", () => {
@@ -47,7 +69,9 @@ describe("deriveEncumbranceRegistry", () => {
       countEntry: success(10n),
       atEntries,
     });
-    assert.equal(registry.sources.length, 8);
+    assert.equal(registry.status, "known");
+    if (registry.status !== "known") return;
+    assert.equal(registry.value.length, 8);
   });
 
   it("omits failed At slots inside the count window", () => {
@@ -55,7 +79,16 @@ describe("deriveEncumbranceRegistry", () => {
       countEntry: success(2n),
       atEntries: [success(A), failure()],
     });
-    assert.deepEqual(registry.sources, [A]);
+    assert.equal(registry.status, "known");
+    if (registry.status !== "known") return;
+    assert.deepEqual(registry.value, [A]);
+  });
+
+  it("encumbranceRegistryFromSupport carries product_owner_owed", () => {
+    assert.deepEqual(encumbranceRegistryFromSupport("product_owner_owed"), {
+      status: "refused",
+      cause: "product_owner_owed",
+    });
   });
 });
 
@@ -69,10 +102,14 @@ describe("isRegisteredEncumbranceSource", () => {
     assert.equal(isRegisteredEncumbranceSource(registry, B), false);
   });
 
-  it("returns false while unresolved", () => {
+  it("returns false while pending or refused", () => {
+    assert.equal(
+      isRegisteredEncumbranceSource({ status: "pending" }, A),
+      false,
+    );
     assert.equal(
       isRegisteredEncumbranceSource(
-        { sources: [], unresolved: true },
+        { status: "refused", cause: "product_owner_owed" },
         A,
       ),
       false,
@@ -99,5 +136,7 @@ describe("encumbrance registry UI", () => {
     assert.match(panel, /Encumbrance sources/);
     assert.match(panel, /Could not answer/);
     assert.match(panel, /unanswerableSource/);
+    assert.match(panel, /registry\.status === "pending"/);
+    assert.match(panel, /registry\.status === "refused"/);
   });
 });

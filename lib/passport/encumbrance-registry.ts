@@ -1,21 +1,25 @@
 /**
- * Pure normalization of the KarPassport encumbrance registry views.
+ * Pure normalization of the KarPassport encumbrance registry views (S8-D1b).
  * Membership is per passport contract / chain — never invent members.
+ * Shape is CommerceFact — known sources | pending | refused(cause).
  */
 
 import { getAddress, isAddress, type Address } from "viem";
 
+import {
+  commerceFactKnown,
+  commerceFactPending,
+  commerceFactRefused,
+  type CommerceFact,
+  type SurfaceSupportCause,
+} from "@/lib/passport/commerce-fact";
 import type { KeyedEntry } from "@/lib/web3/keyed-multicall";
 
 /** Matches `KarPassport.MAX_ENCUMBRANCE_SOURCES`. */
 export const MAX_ENCUMBRANCE_SOURCES = 8;
 
-export type EncumbranceRegistry = {
-  /** Ordered sources when the count read succeeded. */
-  readonly sources: readonly Address[];
-  /** True while count is unread or failed — fail closed (show nothing invented). */
-  readonly unresolved: boolean;
-};
+/** Registry membership as a commerce fact. */
+export type EncumbranceRegistry = CommerceFact<readonly Address[]>;
 
 /**
  * Build registry membership from keyed `encumbranceSourceCount` +
@@ -26,8 +30,20 @@ export function deriveEncumbranceRegistry(input: {
   atEntries: readonly (KeyedEntry | undefined)[];
 }): EncumbranceRegistry {
   const { countEntry, atEntries } = input;
-  if (countEntry == null || countEntry.status !== "success") {
-    return { sources: [], unresolved: true };
+  if (countEntry == null) {
+    return commerceFactPending();
+  }
+  switch (countEntry.status) {
+    case "pending":
+      return commerceFactPending();
+    case "refused":
+      return commerceFactRefused(countEntry.cause);
+    case "success":
+      break;
+    default: {
+      const _exhaustive: never = countEntry;
+      return _exhaustive;
+    }
   }
 
   const rawCount = countEntry.result;
@@ -38,7 +54,7 @@ export function deriveEncumbranceRegistry(input: {
         ? rawCount
         : Number(rawCount);
   if (!Number.isFinite(count) || count < 0) {
-    return { sources: [], unresolved: true };
+    return commerceFactRefused("malformed_response");
   }
 
   const n = Math.min(count, MAX_ENCUMBRANCE_SOURCES);
@@ -50,15 +66,22 @@ export function deriveEncumbranceRegistry(input: {
     if (typeof raw !== "string" || !isAddress(raw)) continue;
     sources.push(getAddress(raw));
   }
-  return { sources, unresolved: false };
+  return commerceFactKnown(sources);
 }
 
-/** True when `source` is in the registry list (checksum-normalized). */
+/** Registry from a surfaceSupport refusal — never pending. */
+export function encumbranceRegistryFromSupport(
+  cause: SurfaceSupportCause,
+): EncumbranceRegistry {
+  return commerceFactRefused(cause);
+}
+
+/** True when `source` is in the known registry list (checksum-normalized). */
 export function isRegisteredEncumbranceSource(
   registry: EncumbranceRegistry,
   source: Address,
 ): boolean {
-  if (registry.unresolved) return false;
+  if (registry.status !== "known") return false;
   const needle = getAddress(source);
-  return registry.sources.some((s) => s === needle);
+  return registry.value.some((s) => s === needle);
 }

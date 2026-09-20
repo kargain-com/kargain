@@ -12,6 +12,7 @@ import { InstrumentLink } from "@/components/ui/instrument-link";
 import { useBridge } from "@/hooks/use-bridge";
 import { useBridgeTransit } from "@/hooks/use-bridge-transit";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
+import type { CommerceFact } from "@/lib/passport/commerce-fact";
 import type { CommerceMode } from "@/lib/commerce/mode";
 import type { EncumbrancePermissionGate } from "@/lib/passport/encumbrance-permission";
 import type { CustodyLockRead } from "@/lib/passport/presence";
@@ -76,10 +77,10 @@ type Props = {
   custodyLock?: CustodyLockRead;
   /** `may(tokenId, LeaveChain)` gate from commerce facts. */
   leaveChainPermission?: EncumbrancePermissionGate;
-  /** Mode holding a live consignment, when one does — drives block copy. */
-  liveConsignmentMode: CommerceMode | null;
-  /** Bonded verification challenge open on the passport. */
-  challengeOpen: boolean | undefined;
+  /** Mode holding a live consignment — fact; only known refines block copy. */
+  liveConsignmentMode: CommerceFact<CommerceMode | null>;
+  /** Bonded verification challenge open — fact; only known true → challenged. */
+  challengeOpen: CommerceFact<boolean>;
 };
 
 export function PassportBridgePanel({
@@ -145,7 +146,7 @@ export function PassportBridgePanel({
     chainId,
     leaveChainPermission,
     liveConsignmentMode,
-    challengeOpen: challengeOpen === true,
+    challengeOpen,
     transitActive,
     custodyUnresolved: custodyUnresolved ?? null,
     custodyLock,

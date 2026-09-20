@@ -11,6 +11,7 @@ import { KarPassportAbi } from "../lib/contracts/abis.generated.ts";
 import {
   deriveEncumbrancePermission,
   encumbrancePermissionCopy,
+  encumbrancePermissionFromSupport,
   isEncumbrancePermissionAvailable,
   type EncumbrancePermissionGate,
 } from "../lib/passport/encumbrance-permission.ts";
@@ -137,6 +138,35 @@ describe("encumbrancePermissionCopy", () => {
     );
     assert.match(copy, /cannot open a consignment/);
     assert.doesNotMatch(copy, /0x/);
+  });
+
+  it("support causes return empty copy (D2 names them; never wait-as-refusal)", () => {
+    for (const cause of [
+      "product_owner_owed",
+      "not_in_program",
+      "authority_only",
+    ] as const) {
+      const copy = encumbrancePermissionCopy(
+        { status: "blocked", cause },
+        "openConsignment",
+      );
+      assert.equal(copy, "", cause);
+      assert.doesNotMatch(copy, /Waiting/);
+    }
+  });
+});
+
+describe("encumbrancePermissionFromSupport", () => {
+  it("never maps product_owner_owed to reads_unresolved", () => {
+    const gate = encumbrancePermissionFromSupport("product_owner_owed");
+    assert.deepEqual(gate, {
+      status: "blocked",
+      cause: "product_owner_owed",
+    });
+    assert.notEqual(
+      (gate as { cause: string }).cause,
+      "reads_unresolved",
+    );
   });
 });
 

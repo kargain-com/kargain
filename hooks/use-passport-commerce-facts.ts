@@ -1,5 +1,5 @@
 /**
- * React port wiring for dual-VM passport commerce chrome facts (U9.2a).
+ * React port wiring for dual-VM passport commerce chrome facts (U9.2a / S8-D1b).
  * No VM fork — the lib owner plans contracts and resolves the surface.
  */
 
@@ -35,7 +35,8 @@ type PlannedOk = Extract<PassportCommerceReadPlan, { ok: true }>;
 /**
  * One batched read of every commerce fact the passport surfaces need.
  * Missing mode addresses fail closed (not configured, never "free").
- * SVM answers custodyLocked from PassportState; other facts stay unread.
+ * SVM answers custodyLocked from PassportState; other facts refuse via
+ * surfaceSupport (never invent false).
  */
 export function usePassportCommerceFacts(input: {
   chainId: number;
@@ -99,6 +100,9 @@ export function usePassportCommerceFacts(input: {
     entry: reads.entry,
     get: reads.get,
     isPending: reads.isPending,
+    // SVM planning flash: refuse by census before the PDA plan lands.
+    namespace: chainId,
+    registry,
   });
 
   return {

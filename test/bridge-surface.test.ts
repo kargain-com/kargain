@@ -4,6 +4,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { CUSTODY_UNRESOLVED_CAUSES } from "../lib/custody/normalized-event.ts";
+import {
+  commerceFactKnown,
+  commerceFactPending,
+  commerceFactRefused,
+} from "../lib/passport/commerce-fact.ts";
 import type { EncumbrancePermissionGate } from "../lib/passport/encumbrance-permission.ts";
 import {
   CROSSING_TRUST_DISCLOSURE,
@@ -35,6 +40,10 @@ const UNANSWERABLE: EncumbrancePermissionGate = {
   status: "blocked",
   cause: "source_unanswerable",
   source: SOURCE,
+};
+const SUPPORT_OWED: EncumbrancePermissionGate = {
+  status: "blocked",
+  cause: "product_owner_owed",
 };
 
 const HIDDEN: BridgeSurfaceResult = {
@@ -133,7 +142,7 @@ describe("deriveBridgeSurface", () => {
       deriveBridgeSurface(
         input({
           leaveChainPermission: REFUSED,
-          liveConsignmentMode: "fixedPrice",
+          liveConsignmentMode: commerceFactKnown("fixedPrice"),
         }),
       ).blockReason,
       "consigned",
@@ -145,7 +154,7 @@ describe("deriveBridgeSurface", () => {
       deriveBridgeSurface(
         input({
           leaveChainPermission: REFUSED,
-          challengeOpen: true,
+          challengeOpen: commerceFactKnown(true),
         }),
       ).blockReason,
       "challenged",
@@ -157,11 +166,45 @@ describe("deriveBridgeSurface", () => {
       deriveBridgeSurface(
         input({
           leaveChainPermission: REFUSED,
-          liveConsignmentMode: "ascending",
-          challengeOpen: true,
+          liveConsignmentMode: commerceFactKnown("ascending"),
+          challengeOpen: commerceFactKnown(true),
         }),
       ).blockReason,
       "challenged",
+    );
+  });
+
+  it("pending challengeOpen never invents challenged when leave refused", () => {
+    assert.equal(
+      deriveBridgeSurface(
+        input({
+          leaveChainPermission: REFUSED,
+          challengeOpen: commerceFactPending(),
+        }),
+      ).blockReason,
+      "refused",
+    );
+  });
+
+  it("SVM product_owner_owed leave permission — named support block, not waiting", () => {
+    const surface = deriveBridgeSurface(
+      input({ leaveChainPermission: SUPPORT_OWED }),
+    );
+    assert.equal(surface.canBridge, false);
+    assert.equal(surface.blockReason, "product_owner_owed");
+    assert.equal(bridgeBlockReasonCopy(surface.blockReason!), "");
+    assert.notEqual(surface.blockReason, "unresolved");
+  });
+
+  it("refused liveConsignmentMode never invents consigned", () => {
+    assert.equal(
+      deriveBridgeSurface(
+        input({
+          leaveChainPermission: REFUSED,
+          liveConsignmentMode: commerceFactRefused("product_owner_owed"),
+        }),
+      ).blockReason,
+      "refused",
     );
   });
 

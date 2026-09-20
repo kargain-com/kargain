@@ -1,6 +1,7 @@
 /**
- * Sole derivation for passport `may(intent)` outcomes (E0 / E6).
+ * Sole derivation for passport `may(intent)` outcomes (E0 / E6 / S8-D1b).
  * Available | blocked with named cause — address carried on source_unanswerable.
+ * Support causes (surfaceSupport) are distinct from chain-refused and from wait.
  * Sell and bridge consume this; they do not invent permission copy.
  */
 
@@ -8,6 +9,7 @@ import { isAddress, getAddress, type Abi } from "viem";
 
 import { AVAILABLE } from "@/lib/challenge/action-gate";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
+import type { SurfaceSupportCause } from "@/lib/passport/commerce-fact";
 import type { KeyedEntry } from "@/lib/web3/keyed-multicall";
 import { decodeCustomError } from "@/lib/web3/decode-custom-error";
 import { shortAddress } from "@/lib/web3/wallet-display";
@@ -15,11 +17,15 @@ import { shortAddress } from "@/lib/web3/wallet-display";
 export type EncumbrancePermissionCause =
   | "refused"
   | "source_unanswerable"
-  | "reads_unresolved";
+  | "reads_unresolved"
+  | SurfaceSupportCause;
 
 export type EncumbrancePermissionGate =
   | { readonly status: "available" }
-  | { readonly status: "blocked"; readonly cause: "refused" | "reads_unresolved" }
+  | {
+      readonly status: "blocked";
+      readonly cause: "refused" | "reads_unresolved" | SurfaceSupportCause;
+    }
   | {
       readonly status: "blocked";
       readonly cause: "source_unanswerable";
@@ -76,6 +82,13 @@ export function deriveEncumbrancePermission(
   }
 }
 
+/** Gate from a surfaceSupport refusal — never mapped to reads_unresolved. */
+export function encumbrancePermissionFromSupport(
+  cause: SurfaceSupportCause,
+): EncumbrancePermissionGate {
+  return { status: "blocked", cause };
+}
+
 export function isEncumbrancePermissionAvailable(
   gate: EncumbrancePermissionGate,
 ): boolean {
@@ -85,6 +98,8 @@ export function isEncumbrancePermissionAvailable(
 /**
  * Body copy for a blocked gate. Unanswerable names the source as a fact
  * (not an alarm). Unresolved is waiting copy, never a definite refusal.
+ * Support causes return empty — D2 names them at the control; this unit
+ * must not invent wait-as-refusal or a new D2 sentence.
  */
 export function encumbrancePermissionCopy(
   gate: EncumbrancePermissionGate,
@@ -92,19 +107,26 @@ export function encumbrancePermissionCopy(
 ): string {
   if (gate.status === "available") return "";
 
-  if (gate.cause === "reads_unresolved") {
-    return "Waiting for chain permission…";
+  const cause = gate.cause;
+  switch (cause) {
+    case "reads_unresolved":
+      return "Waiting for chain permission…";
+    case "source_unanswerable":
+      return sourceUnanswerableCopy(gate.source);
+    case "product_owner_owed":
+    case "not_in_program":
+    case "authority_only":
+      return "";
+    case "refused":
+      if (intent === "openConsignment") {
+        return "This passport cannot open a consignment right now.";
+      }
+      return "This passport cannot leave the chain right now.";
+    default: {
+      const _exhaustive: never = cause;
+      return _exhaustive;
+    }
   }
-
-  if (gate.cause === "source_unanswerable") {
-    return sourceUnanswerableCopy(gate.source);
-  }
-
-  // refused
-  if (intent === "openConsignment") {
-    return "This passport cannot open a consignment right now.";
-  }
-  return "This passport cannot leave the chain right now.";
 }
 
 /**

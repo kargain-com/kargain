@@ -1,4 +1,8 @@
 import type { CommerceMode } from "@/lib/commerce/mode";
+import type {
+  CommerceFact,
+  SurfaceSupportCause,
+} from "@/lib/passport/commerce-fact";
 import {
   encumbrancePermissionCopy,
   isEncumbrancePermissionAvailable,
@@ -19,7 +23,8 @@ export type BridgeBlockReason =
   | "challenged"
   | "refused"
   | "unresolved"
-  | "source_unanswerable";
+  | "source_unanswerable"
+  | SurfaceSupportCause;
 
 export type BridgeSurfaceMode = "hidden" | "action";
 
@@ -47,10 +52,16 @@ export type BridgeSurfaceInput = {
    * `may(tokenId, LeaveChain)` gate — the authoritative leave permission.
    */
   leaveChainPermission?: EncumbrancePermissionGate;
-  /** Live consignment mode, when known, so the block copy can be specific. */
-  liveConsignmentMode?: CommerceMode | null;
-  /** Open passport challenge (bonded verification challenge). */
-  challengeOpen?: boolean;
+  /**
+   * Live consignment mode fact — only `known` with a mode refines "consigned"
+   * copy; pending/refused never invent consigned.
+   */
+  liveConsignmentMode?: CommerceFact<CommerceMode | null>;
+  /**
+   * Challenge-open fact — only `known` + true yields "challenged";
+   * pending/refused never invent challenged.
+   */
+  challengeOpen?: CommerceFact<boolean>;
   /**
    * Active bridge transit for this token (src burn/lock — wallet may no longer
    * own the NFT). Keeps the panel visible with canBridge false.
@@ -198,11 +209,34 @@ export function deriveBridgeSurface(
     };
   }
 
+  if (
+    gate.status === "blocked" &&
+    (gate.cause === "product_owner_owed" ||
+      gate.cause === "not_in_program" ||
+      gate.cause === "authority_only")
+  ) {
+    // Support refusal — named cause, never mapped to waiting (`unresolved`).
+    return {
+      visible: true,
+      mode: "action",
+      canBridge: false,
+      blockReason: gate.cause,
+      unanswerableSource: null,
+      ...loc,
+    };
+  }
+
   if (gate.status === "blocked" && gate.cause === "refused") {
     // Challenge first: it outranks commerce when both apply.
-    const reason: BridgeBlockReason = input.challengeOpen
+    // Only known facts refine copy — pending/refused never invent challenged/consigned.
+    const challengeKnownOpen =
+      input.challengeOpen?.status === "known" && input.challengeOpen.value;
+    const consignedKnown =
+      input.liveConsignmentMode?.status === "known" &&
+      input.liveConsignmentMode.value != null;
+    const reason: BridgeBlockReason = challengeKnownOpen
       ? "challenged"
-      : input.liveConsignmentMode
+      : consignedKnown
         ? "consigned"
         : "refused";
     return {
@@ -273,6 +307,18 @@ export function bridgeBlockReasonCopy(
           : { status: "blocked", cause: "reads_unresolved" },
         "leaveChain",
       );
+    case "product_owner_owed":
+    case "not_in_program":
+    case "authority_only":
+      // D2 names these at the control — empty this unit (no wait-as-refusal).
+      return encumbrancePermissionCopy(
+        { status: "blocked", cause: reason },
+        "leaveChain",
+      );
+    default: {
+      const _exhaustive: never = reason;
+      return _exhaustive;
+    }
   }
 }
 
