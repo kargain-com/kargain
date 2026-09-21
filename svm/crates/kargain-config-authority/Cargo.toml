@@ -1,0 +1,13 @@
+[package]
+name = "kargain-config-authority"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Sole pure config-authority admission (signer + key equality)"
+
+[dependencies]
+solana-program = { workspace = true }
+kargain-errors = { workspace = true }
+
+[dev-dependencies]

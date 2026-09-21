@@ -11,6 +11,7 @@ borsh = { workspace = true }
 kargain-errors = { workspace = true }
 kargain-agented-split = { workspace = true }
 kargain-events = { workspace = true }
+kargain-config-authority = { workspace = true }
 solana-program = { workspace = true }
 
 [dev-dependencies]

@@ -16,11 +16,11 @@ use kargain_consignment_base::{
     custody_authority_pda, enter_committed_not_offered, force_recall_ready, grant_mandate,
     is_escrow_approved, lower_commission, lower_floor, mandate_pda, owner_withdraw_ok, pause,
     recall_pda, release_custody, request_recall, require_agented_price_meets_floor,
-    require_can_open, require_mandate_allows_open, require_not_paused, revoke_mandate,
-    set_price, set_snapshot_floor, take_custody, terminate_to_owner, unpause, write_open,
-    CloseReason, CommerceConfig, Compensation, CompensationForm, ConsignmentRecord, Denomination,
-    DenominationKind, HarnessAsset, MandateRecord, RecallRecord, ASSET_DISCRIMINATOR, ASSET_SEED,
-    CONFIG_SEED, CONSIGNMENT_SEED, MANDATE_SEED, RECALL_DISCRIMINATOR, RECALL_SEED,
+    require_can_open, require_config_authority, require_mandate_allows_open, require_not_paused,
+    revoke_mandate, set_price, set_snapshot_floor, take_custody, terminate_to_owner, unpause,
+    write_open, CloseReason, CommerceConfig, Compensation, CompensationForm, ConsignmentRecord,
+    Denomination, DenominationKind, HarnessAsset, MandateRecord, RecallRecord, ASSET_DISCRIMINATOR,
+    ASSET_SEED, CONFIG_SEED, CONSIGNMENT_SEED, MANDATE_SEED, RECALL_DISCRIMINATOR, RECALL_SEED,
     emit::{
         emit_commerce, event_closed, event_commission_lowered, event_floor_lowered,
         event_mandate_granted, event_opened, event_price_set, event_split_paid, CommerceEmitter,
@@ -64,7 +64,7 @@ pub enum FixedPriceIx {
     CreateAsset { token_id: [u8; 32] },
     /// Accounts: owner(signer) · asset · spender — set TransferDelegate analogue
     ApproveEscrow { token_id: [u8; 32] },
-    /// Accounts: owner · asset · may_flag (ignored) — harness stub: set may via config bit on asset approved
+    /// Accounts: authority(signer) · config · asset
     SetMayOpen { token_id: [u8; 32], allowed: bool },
     SetSelfEncumbrance { registered: bool },
     /// Mandate grant
@@ -533,8 +533,11 @@ fn set_may_open(
     allowed: bool,
 ) -> ProgramResult {
     let iter = &mut accounts.iter();
-    let _authority = next_account_info(iter)?;
+    let authority = next_account_info(iter)?;
+    let config = next_account_info(iter)?;
     let asset_info = next_account_info(iter)?;
+    let cfg = load_config(config)?;
+    require_config_authority(authority, config, program_id, &cfg.authority)?;
     let (key, _) = asset_pda(program_id, &token_id);
     if asset_info.key != &key {
         return Err(ProgramError::InvalidSeeds);
@@ -546,17 +549,8 @@ fn set_self_enc(program_id: &Pubkey, accounts: &[AccountInfo], registered: bool)
     let iter = &mut accounts.iter();
     let authority = next_account_info(iter)?;
     let config = next_account_info(iter)?;
-    if !authority.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-    let (key, _) = config_pda(program_id);
-    if config.key != &key {
-        return Err(ProgramError::InvalidSeeds);
-    }
     let mut cfg = load_config(config)?;
-    if cfg.authority != authority.key.to_bytes() {
-        return Err(into_pe(KargainError::NotGuardianOrOwner));
-    }
+    require_config_authority(authority, config, program_id, &cfg.authority)?;
     cfg.self_encumbrance_registered = registered;
     save_config(config, &cfg)
 }
@@ -1085,10 +1079,10 @@ fn force_recall_at(
 ) -> ProgramResult {
     let iter = &mut accounts.iter();
     let authority = next_account_info(iter)?;
+    let config = next_account_info(iter)?;
     let recall_info = next_account_info(iter)?;
-    if !authority.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    let cfg = load_config(config)?;
+    require_config_authority(authority, config, program_id, &cfg.authority)?;
     let (rkey, _) = recall_pda(program_id, &token_id);
     if recall_info.key != &rkey {
         return Err(ProgramError::InvalidSeeds);
@@ -1211,17 +1205,8 @@ fn unpause_ix(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let iter = &mut accounts.iter();
     let authority = next_account_info(iter)?;
     let config = next_account_info(iter)?;
-    if !authority.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-    let (key, _) = config_pda(program_id);
-    if config.key != &key {
-        return Err(ProgramError::InvalidSeeds);
-    }
     let mut cfg = load_config(config)?;
-    if cfg.authority != authority.key.to_bytes() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    require_config_authority(authority, config, program_id, &cfg.authority)?;
     unpause(&mut cfg);
     save_config(config, &cfg)?;
     emit_commerce(
@@ -1738,7 +1723,7 @@ fn approve_payment_token(
     let payment_token = next_account_info(iter)?;
     let system = next_account_info(iter)?;
     let payer = next_account_info(iter)?;
-    if !authority.is_signer || !payer.is_signer {
+    if !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
     let mint_key = mint.key.to_bytes();
@@ -1746,9 +1731,7 @@ fn approve_payment_token(
         return Err(into_pe(KargainError::ZeroAddress));
     }
     let cfg = load_config(config)?;
-    if cfg.authority != authority.key.to_bytes() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    require_config_authority(authority, config, program_id, &cfg.authority)?;
     let decimals = require_admitted_spl_mint_account(mint.owner, &mint.try_borrow_data()?)
         .map_err(into_pe)?;
     let (key, bump) = payment_token_pda(program_id, &mint_key);
@@ -2069,17 +2052,11 @@ fn force_seed_price_account(
     let price_info = next_account_info(iter)?;
     let system = next_account_info(iter)?;
     let payer = next_account_info(iter)?;
-    if !authority.is_signer || !payer.is_signer {
+    if !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
-    }
-    let (cfg_key, _) = config_pda(program_id);
-    if config.key != &cfg_key {
-        return Err(ProgramError::InvalidSeeds);
     }
     let cfg = load_config(config)?;
-    if cfg.authority != authority.key.to_bytes() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    require_config_authority(authority, config, program_id, &cfg.authority)?;
     if feed_id == [0u8; 32] {
         return Err(into_pe(KargainError::InvalidFeed));
     }
@@ -2103,4 +2080,149 @@ fn force_seed_price_account(
     let mut dst = price_info.try_borrow_mut_data()?;
     dst[..PRICE_UPDATE_V2_LEN].copy_from_slice(&data);
     Ok(())
+}
+
+
+#[cfg(test)]
+mod config_authority_handler_tests {
+    use super::*;
+
+    fn pid() -> Pubkey { Pubkey::new_from_array([9u8; 32]) }
+    fn auth() -> Pubkey { Pubkey::new_from_array([1u8; 32]) }
+    fn wrong() -> Pubkey { Pubkey::new_from_array([2u8; 32]) }
+
+    fn cfg_bytes(program_id: &Pubkey, authority: &Pubkey) -> (Pubkey, Vec<u8>) {
+        let (key, bump) = config_pda(program_id);
+        let cfg = CommerceConfig::new(authority.to_bytes(), [3u8; 32], 100, [4u8; 32], bump).unwrap();
+        (key, borsh::to_vec(&cfg).unwrap())
+    }
+
+    fn asset_bytes(program_id: &Pubkey, token: &[u8; 32]) -> (Pubkey, Vec<u8>) {
+        let (key, bump) = asset_pda(program_id, token);
+        let a = HarnessAsset {
+            discriminator: ASSET_DISCRIMINATOR,
+            token_id: *token,
+            owner: [5u8; 32],
+            approved_for: [0u8; 32],
+            bump,
+        };
+        let mut data = vec![0u8; HarnessAsset::SPACE + 1];
+        let enc = borsh::to_vec(&a).unwrap();
+        data[..enc.len()].copy_from_slice(&enc);
+        (key, data)
+    }
+
+    fn recall_bytes(program_id: &Pubkey, token: &[u8; 32]) -> (Pubkey, Vec<u8>) {
+        let (key, bump) = recall_pda(program_id, token);
+        let r = RecallRecord {
+            discriminator: RECALL_DISCRIMINATOR,
+            token_id: *token,
+            requested_at: 1,
+            bump,
+        };
+        (key, borsh::to_vec(&r).unwrap())
+    }
+
+    #[test]
+    fn set_may_open_unsigned_wrong_correct() {
+        let program_id = pid();
+        let authority = auth();
+        let (cfg_key, mut cfg_data) = cfg_bytes(&program_id, &authority);
+        let token = [7u8; 32];
+        let (asset_key, mut asset_data) = asset_bytes(&program_id, &token);
+        let mut al = 0u64; let mut cl = 0u64; let mut asl = 0u64;
+        {
+            let a = AccountInfo::new(&authority, false, false, &mut al, &mut [], &program_id, false, 0);
+            let c = AccountInfo::new(&cfg_key, false, false, &mut cl, &mut cfg_data, &program_id, false, 0);
+            let s = AccountInfo::new(&asset_key, false, true, &mut asl, &mut asset_data, &program_id, false, 0);
+            assert_eq!(set_may_open(&program_id, &[a, c, s], token, true).unwrap_err(), ProgramError::MissingRequiredSignature);
+        }
+        {
+            let w = wrong();
+            let a = AccountInfo::new(&w, true, false, &mut al, &mut [], &program_id, false, 0);
+            let c = AccountInfo::new(&cfg_key, false, false, &mut cl, &mut cfg_data, &program_id, false, 0);
+            let s = AccountInfo::new(&asset_key, false, true, &mut asl, &mut asset_data, &program_id, false, 0);
+            assert_eq!(
+                set_may_open(&program_id, &[a, c, s], token, true).unwrap_err(),
+                ProgramError::Custom(u32::from(KargainError::NotOwner)),
+            );
+        }
+        {
+            let a = AccountInfo::new(&authority, true, false, &mut al, &mut [], &program_id, false, 0);
+            let c = AccountInfo::new(&cfg_key, false, false, &mut cl, &mut cfg_data, &program_id, false, 0);
+            let s = AccountInfo::new(&asset_key, false, true, &mut asl, &mut asset_data, &program_id, false, 0);
+            set_may_open(&program_id, &[a, c, s], token, true).unwrap();
+        }
+        assert_eq!(asset_data[HarnessAsset::SPACE], 1);
+    }
+
+    #[test]
+    fn force_recall_at_unsigned_wrong_correct() {
+        let program_id = pid();
+        let authority = auth();
+        let (cfg_key, mut cfg_data) = cfg_bytes(&program_id, &authority);
+        let token = [8u8; 32];
+        let (rkey, mut rdata) = recall_bytes(&program_id, &token);
+        let mut al = 0u64; let mut cl = 0u64; let mut rl = 0u64;
+        {
+            let a = AccountInfo::new(&authority, false, false, &mut al, &mut [], &program_id, false, 0);
+            let c = AccountInfo::new(&cfg_key, false, false, &mut cl, &mut cfg_data, &program_id, false, 0);
+            let r = AccountInfo::new(&rkey, false, true, &mut rl, &mut rdata, &program_id, false, 0);
+            assert_eq!(force_recall_at(&program_id, &[a, c, r], token, 99).unwrap_err(), ProgramError::MissingRequiredSignature);
+        }
+        {
+            let w = wrong();
+            let a = AccountInfo::new(&w, true, false, &mut al, &mut [], &program_id, false, 0);
+            let c = AccountInfo::new(&cfg_key, false, false, &mut cl, &mut cfg_data, &program_id, false, 0);
+            let r = AccountInfo::new(&rkey, false, true, &mut rl, &mut rdata, &program_id, false, 0);
+            assert_eq!(
+                force_recall_at(&program_id, &[a, c, r], token, 99).unwrap_err(),
+                ProgramError::Custom(u32::from(KargainError::NotOwner)),
+            );
+        }
+        {
+            let a = AccountInfo::new(&authority, true, false, &mut al, &mut [], &program_id, false, 0);
+            let c = AccountInfo::new(&cfg_key, false, false, &mut cl, &mut cfg_data, &program_id, false, 0);
+            let r = AccountInfo::new(&rkey, false, true, &mut rl, &mut rdata, &program_id, false, 0);
+            force_recall_at(&program_id, &[a, c, r], token, 42).unwrap();
+        }
+        assert_eq!(RecallRecord::try_from_slice(&rdata).unwrap().requested_at, 42);
+    }
+
+    #[test]
+    fn set_self_enc_and_unpause_gate() {
+        let program_id = pid();
+        let authority = auth();
+        let (cfg_key, mut cfg_data) = cfg_bytes(&program_id, &authority);
+        let mut al = 0u64; let mut cl = 0u64;
+        {
+            let a = AccountInfo::new(&authority, false, false, &mut al, &mut [], &program_id, false, 0);
+            let c = AccountInfo::new(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id, false, 0);
+            assert_eq!(set_self_enc(&program_id, &[a, c], true).unwrap_err(), ProgramError::MissingRequiredSignature);
+        }
+        {
+            let w = wrong();
+            let a = AccountInfo::new(&w, true, false, &mut al, &mut [], &program_id, false, 0);
+            let c = AccountInfo::new(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id, false, 0);
+            assert_eq!(
+                set_self_enc(&program_id, &[a, c], true).unwrap_err(),
+                ProgramError::Custom(u32::from(KargainError::NotOwner)),
+            );
+        }
+        {
+            let a = AccountInfo::new(&authority, true, false, &mut al, &mut [], &program_id, false, 0);
+            let c = AccountInfo::new(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id, false, 0);
+            set_self_enc(&program_id, &[a, c], true).unwrap();
+        }
+        assert!(CommerceConfig::try_from_slice(&cfg_data).unwrap().self_encumbrance_registered);
+        let mut loaded = CommerceConfig::try_from_slice(&cfg_data).unwrap();
+        loaded.paused = true;
+        cfg_data = borsh::to_vec(&loaded).unwrap();
+        {
+            let a = AccountInfo::new(&authority, true, false, &mut al, &mut [], &program_id, false, 0);
+            let c = AccountInfo::new(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id, false, 0);
+            unpause_ix(&program_id, &[a, c]).unwrap();
+        }
+        assert!(!CommerceConfig::try_from_slice(&cfg_data).unwrap().paused);
+    }
 }

@@ -88,12 +88,12 @@ describe("svm-fixed-price-price-owner-policy", () => {
     assert.ok(!buyBody.includes("rec.enabled"));
   });
 
-  it("ForceSeedPriceAccount is authority-gated", () => {
+  it("ForceSeedPriceAccount is authority-gated via shared owner", () => {
     const src = fs.readFileSync(FP_IX, "utf8");
     assert.ok(src.includes("ForceSeedPriceAccount"));
     const fn = src.slice(src.indexOf("fn force_seed_price_account"));
     const body = fn.slice(0, fn.indexOf("\nfn ") === -1 ? fn.length : fn.indexOf("\nfn "));
-    assert.ok(body.includes("cfg.authority") || body.includes("authority.key"));
+    assert.ok(body.includes("require_config_authority("));
     assert.ok(body.includes("PRICE_LAB_SEED") || body.includes("price-lab"));
   });
 

@@ -22,4 +22,5 @@ kargain-events = { workspace = true }
 kargain-bonded-challenge = { workspace = true }
 kargain-claimable-payouts = { workspace = true }
 kargain-encumbrance = { workspace = true }
+kargain-config-authority = { workspace = true }
 kar-pro-staking = { path = "../kar-pro-staking", features = ["no-entrypoint"] }

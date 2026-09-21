@@ -613,6 +613,7 @@ dependencies = [
  "kar-pro-staking",
  "kargain-bonded-challenge",
  "kargain-claimable-payouts",
+ "kargain-config-authority",
  "kargain-encumbrance",
  "kargain-errors",
  "kargain-events",
@@ -672,11 +673,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "kargain-config-authority"
+version = "0.1.0"
+dependencies = [
+ "kargain-errors",
+ "solana-program",
+]
+
+[[package]]
 name = "kargain-consignment-base"
 version = "0.1.0"
 dependencies = [
  "borsh 1.8.1",
  "kargain-agented-split",
+ "kargain-config-authority",
  "kargain-errors",
  "kargain-events",
  "solana-program",

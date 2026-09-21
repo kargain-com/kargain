@@ -626,6 +626,7 @@ export async function runLiveConsignmentAutomaton(opts?: {
         programId,
         [
           { pubkey: authority.publicKey, isSigner: true, isWritable: false },
+          { pubkey: configPda, isSigner: false, isWritable: false },
           { pubkey: recallM, isSigner: false, isWritable: true },
         ],
         Buffer.concat([Buffer.from([20]), tokenM, encU64(past)]),

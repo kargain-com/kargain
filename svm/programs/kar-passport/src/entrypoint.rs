@@ -268,13 +268,12 @@ fn require_config_authority(
     config: &AccountInfo,
     authority: &AccountInfo,
 ) -> Result<PassportConfig, ProgramError> {
-    if !authority.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
     let cfg = load_config(program_id, config)?;
-    if authority.key.to_bytes() != cfg.authority {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    kargain_config_authority::admit_config_authority(
+        authority.is_signer,
+        &authority.key.to_bytes(),
+        &cfg.authority,
+    )?;
     Ok(cfg)
 }
 
@@ -1420,4 +1419,116 @@ fn transfer_passport(
     );
     ops_log!("kar-passport TransferPassport ok");
     Ok(())
+}
+
+#[cfg(test)]
+mod config_authority_tests {
+    use super::*;
+    use kargain_errors::KargainError;
+
+    fn pid() -> Pubkey {
+        Pubkey::new_from_array([9u8; 32])
+    }
+    fn auth() -> Pubkey {
+        Pubkey::new_from_array([1u8; 32])
+    }
+    fn wrong() -> Pubkey {
+        Pubkey::new_from_array([2u8; 32])
+    }
+
+    fn cfg_bytes(program_id: &Pubkey, authority: &Pubkey) -> (Pubkey, Vec<u8>) {
+        let (key, bump) = config_pda(program_id);
+        let cfg = PassportConfig {
+            discriminator: PASSPORT_CONFIG_DISCRIMINATOR,
+            authority: authority.to_bytes(),
+            namespace: 1,
+            local_eid: 1,
+            endpoint_program: [3u8; 32],
+            dispute_deposit: 1,
+            staking_program: [4u8; 32],
+            bridge_gateway: [0u8; 32],
+            forfeit_recipient: [5u8; 32],
+            next_token_id: [0u8; 32],
+            encumbrance_sources: vec![],
+            bump,
+        };
+        (key, borsh::to_vec(&cfg).unwrap())
+    }
+
+    #[test]
+    fn require_config_authority_unsigned_wrong_correct() {
+        let program_id = pid();
+        let authority = auth();
+        let (cfg_key, mut cfg_data) = cfg_bytes(&program_id, &authority);
+        let mut al = 0u64;
+        let mut cl = 0u64;
+        {
+            let a = AccountInfo::new(
+                &authority,
+                false,
+                false,
+                &mut al,
+                &mut [],
+                &program_id,
+                false,
+                0,
+            );
+            let c = AccountInfo::new(
+                &cfg_key,
+                false,
+                false,
+                &mut cl,
+                &mut cfg_data,
+                &program_id,
+                false,
+                0,
+            );
+            assert_eq!(
+                require_config_authority(&program_id, &c, &a).unwrap_err(),
+                ProgramError::MissingRequiredSignature,
+            );
+        }
+        {
+            let w = wrong();
+            let a = AccountInfo::new(&w, true, false, &mut al, &mut [], &program_id, false, 0);
+            let c = AccountInfo::new(
+                &cfg_key,
+                false,
+                false,
+                &mut cl,
+                &mut cfg_data,
+                &program_id,
+                false,
+                0,
+            );
+            assert_eq!(
+                require_config_authority(&program_id, &c, &a).unwrap_err(),
+                ProgramError::Custom(u32::from(KargainError::NotOwner)),
+            );
+        }
+        {
+            let a = AccountInfo::new(
+                &authority,
+                true,
+                false,
+                &mut al,
+                &mut [],
+                &program_id,
+                false,
+                0,
+            );
+            let c = AccountInfo::new(
+                &cfg_key,
+                false,
+                false,
+                &mut cl,
+                &mut cfg_data,
+                &program_id,
+                false,
+                0,
+            );
+            let cfg = require_config_authority(&program_id, &c, &a).unwrap();
+            assert_eq!(cfg.authority, authority.to_bytes());
+        }
+    }
 }

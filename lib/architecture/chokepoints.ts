@@ -565,6 +565,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-consignment-automaton-policy.test.ts"],
   },
   {
+    id: "svm-mode-config-authority",
+    owner: "svm/crates/kargain-config-authority::admit_config_authority",
+    rule: "Sole pure config-authority admit (unsigned→MissingRequiredSignature, wrong-key→NotOwner); modes(+harness) reach it via consignment-base require_config_authority (PDA then admit); passport via load_config then admit; no inline authority-key compare outside the admit owner",
+    guardTests: ["svm-mode-config-authority-policy.test.ts"],
+  },
+  {
     id: "svm-fixed-price-price-owner",
     owner: "svm/crates/kargain-price + svm/programs/kar-fixed-price",
     rule: "FixedPrice fiat/oracle only via kargain-price (PriceUpdateV2_msg@41); admit pins feed; buy refuses stale/wide/bad by name; Ascending stays oracle-banned; ApprovePaymentToken proves mint; SPL buy measures delivery; ForceSeedPriceAccount authority-gated for LIVE",

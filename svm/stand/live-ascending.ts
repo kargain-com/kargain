@@ -594,6 +594,8 @@ async function createAsset(
   tokenId: Buffer,
   custodyPda: InstanceType<typeof PublicKey>,
   verified: boolean,
+  authority: InstanceType<typeof Keypair>,
+  configPda: InstanceType<typeof PublicKey>,
 ) {
   const [asset] = pda(programId, [Buffer.from("harness-asset"), tokenId]);
   await sendAndConfirmTransaction(
@@ -634,13 +636,14 @@ async function createAsset(
         ix(
           programId,
           [
-            { pubkey: payer.publicKey, isSigner: false, isWritable: false },
+            { pubkey: authority.publicKey, isSigner: true, isWritable: false },
+            { pubkey: configPda, isSigner: false, isWritable: false },
             { pubkey: asset, isSigner: false, isWritable: true },
           ],
           Buffer.concat([Buffer.from([IX.SetVerified]), tokenId, Buffer.from([1])]),
         ),
       ),
-      [payer],
+      [authority],
     );
   }
   return asset;
@@ -977,6 +980,8 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     tokenA,
     custodyPda,
     false,
+    authority,
+    configPda,
   );
   const passportNotVerified = await expectCustom(
     conn,
@@ -1008,13 +1013,14 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
       ix(
         programId,
         [
-          { pubkey: payer.publicKey, isSigner: false, isWritable: false },
+          { pubkey: authority.publicKey, isSigner: true, isWritable: false },
+          { pubkey: configPda, isSigner: false, isWritable: false },
           { pubkey: assetUnverified, isSigner: false, isWritable: true },
         ],
         Buffer.concat([Buffer.from([IX.SetVerified]), tokenA, Buffer.from([1])]),
       ),
     ),
-    [payer],
+    [authority],
   );
 
   const badDuration = await expectCustom(
@@ -1453,7 +1459,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   // ---------- Lot B: challenge uphold + reversal ----------
   const tokenB = randomTokenId(0xb2);
   const pdasB = lotPdas(programId, tokenB);
-  const assetB = await createAsset(conn, programId, payer, seller, tokenB, custodyPda, true);
+  const assetB = await createAsset(conn, programId, payer, seller, tokenB, custodyPda, true, authority, configPda);
 
   await sendAndConfirmTransaction(
     conn,
@@ -1818,6 +1824,8 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
       tokenN,
       custodyPda,
       true,
+      authority,
+      configPda,
     );
     negatives.NotActiveVerifierOpen = await expectCustom(
       conn,
@@ -1844,7 +1852,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     );
     const tokenN2 = randomTokenId(0xd11);
     const pdasN2 = lotPdas(programId, tokenN2);
-    const assetN2 = await createAsset(conn, programId, payer, seller, tokenN2, custodyPda, true);
+    const assetN2 = await createAsset(conn, programId, payer, seller, tokenN2, custodyPda, true, authority, configPda);
     negatives.SourceUnanswerableOpen = await expectCustom(
       conn,
       new Transaction().add(
@@ -1874,7 +1882,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   {
     const tokenN = randomTokenId(0xd2);
     const pdasN = lotPdas(programId, tokenN);
-    const assetN = await createAsset(conn, programId, payer, seller, tokenN, custodyPda, true);
+    const assetN = await createAsset(conn, programId, payer, seller, tokenN, custodyPda, true, authority, configPda);
     await sendAndConfirmTransaction(
       conn,
       new Transaction().add(
@@ -2036,7 +2044,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   // Hold-path negatives on a dedicated lot
   {
     const tokenN = randomTokenId(0xd3);
-    const assetN = await createAsset(conn, programId, payer, seller, tokenN, custodyPda, true);
+    const assetN = await createAsset(conn, programId, payer, seller, tokenN, custodyPda, true, authority, configPda);
     const pdasN = await openBidForceSettle(tokenN, assetN, bidder1);
 
     negatives.NotHoldBuyerConfirm = await expectCustom(
@@ -2373,7 +2381,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   // ProtectionElapsed / WrongPlatformRecipient / NoHold / BidFromAgent
   {
     const tokenN = randomTokenId(0xd4);
-    const assetN = await createAsset(conn, programId, payer, seller, tokenN, custodyPda, true);
+    const assetN = await createAsset(conn, programId, payer, seller, tokenN, custodyPda, true, authority, configPda);
     const pdasN = await openBidForceSettle(tokenN, assetN, bidder2);
     await sendAndConfirmTransaction(
       conn,
@@ -2461,7 +2469,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   {
     const tokenN = randomTokenId(0xd5);
     const pdasN = lotPdas(programId, tokenN);
-    const assetN = await createAsset(conn, programId, payer, seller, tokenN, custodyPda, true);
+    const assetN = await createAsset(conn, programId, payer, seller, tokenN, custodyPda, true, authority, configPda);
     const [mandateN] = pda(programId, [Buffer.from("mandate"), tokenN]);
     await sendAndConfirmTransaction(
       conn,
@@ -2590,7 +2598,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
 
   const tokenS = randomTokenId(0xe1);
   const pdasS = lotPdas(programId, tokenS);
-  const assetS = await createAsset(conn, programId, payer, seller, tokenS, custodyPda, true);
+  const assetS = await createAsset(conn, programId, payer, seller, tokenS, custodyPda, true, authority, configPda);
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
@@ -2940,7 +2948,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
 
   const tokenC = randomTokenId(0xc3);
   const pdasC = lotPdas(programId, tokenC);
-  const assetC = await createAsset(conn, programId, payer, seller, tokenC, custodyPda, true);
+  const assetC = await createAsset(conn, programId, payer, seller, tokenC, custodyPda, true, authority, configPda);
 
   const pauseOpenCode = await expectCustom(
     conn,

@@ -15,7 +15,10 @@ use kargain_agented_split::{
     compute_agented_split, compute_direct_split, AgentedSplit, CompensationForm as SplitForm,
     BPS_DENOM,
 };
+use kargain_config_authority::admit_config_authority;
 use kargain_errors::KargainError;
+use solana_program::account_info::AccountInfo;
+use solana_program::program_error::ProgramError;
 use solana_program::pubkey::Pubkey;
 
 pub const RECALL_COOLDOWN_SECS: u64 = 7 * 24 * 60 * 60; // 7 days — Recall.sol
@@ -302,6 +305,28 @@ pub fn asset_pda(program_id: &Pubkey, token_id: &[u8; 32]) -> (Pubkey, u8) {
 
 pub fn custody_authority_pda(program_id: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[CUSTODY_SEED], program_id)
+}
+
+/// Mode AccountInfo gate: config PDA then sole pure admit in `kargain-config-authority`.
+///
+/// Callers load their own config layout and pass `cfg.authority` bytes — this crate
+/// does not deserialize AscendingConfig vs CommerceConfig. Admission refusals:
+/// unsigned → `MissingRequiredSignature`; wrong key → `NotOwner`.
+pub fn require_config_authority(
+    authority: &AccountInfo,
+    config: &AccountInfo,
+    program_id: &Pubkey,
+    expected_authority: &[u8; 32],
+) -> Result<(), ProgramError> {
+    let (expected_config, _) = config_pda(program_id);
+    if config.key != &expected_config {
+        return Err(ProgramError::InvalidSeeds);
+    }
+    admit_config_authority(
+        authority.is_signer,
+        &authority.key.to_bytes(),
+        expected_authority,
+    )
 }
 
 pub fn require_not_paused(cfg: &CommerceConfig) -> Result<(), KargainError> {
@@ -996,5 +1021,142 @@ mod tests {
             Err(KargainError::NotDirectConsignment)
         );
         assert!(agent_withdraw_ok(&agented, &pk(2)).is_ok());
+    }
+
+    #[test]
+    fn require_config_authority_wrong_config_pda_refused() {
+        let program_id = Pubkey::new_from_array(pk(7));
+        let authority_key = Pubkey::new_from_array(pk(1));
+        let wrong = Pubkey::new_from_array(pk(9));
+        let mut al = 0u64;
+        let mut cl = 0u64;
+        let mut a_data: [u8; 0] = [];
+        let mut c_data: [u8; 0] = [];
+        let authority = AccountInfo::new(
+            &authority_key,
+            true,
+            false,
+            &mut al,
+            &mut a_data,
+            &program_id,
+            false,
+            0,
+        );
+        let config = AccountInfo::new(
+            &wrong,
+            false,
+            false,
+            &mut cl,
+            &mut c_data,
+            &program_id,
+            false,
+            0,
+        );
+        let err = require_config_authority(&authority, &config, &program_id, &pk(1))
+            .expect_err("wrong pda");
+        assert_eq!(err, ProgramError::InvalidSeeds);
+    }
+
+    #[test]
+    fn require_config_authority_unsigned_refused() {
+        let program_id = Pubkey::new_from_array(pk(7));
+        let authority_key = Pubkey::new_from_array(pk(1));
+        let (config_key, _) = config_pda(&program_id);
+        let mut al = 0u64;
+        let mut cl = 0u64;
+        let mut a_data: [u8; 0] = [];
+        let mut c_data: [u8; 0] = [];
+        let authority = AccountInfo::new(
+            &authority_key,
+            false,
+            false,
+            &mut al,
+            &mut a_data,
+            &program_id,
+            false,
+            0,
+        );
+        let config = AccountInfo::new(
+            &config_key,
+            false,
+            false,
+            &mut cl,
+            &mut c_data,
+            &program_id,
+            false,
+            0,
+        );
+        let err = require_config_authority(&authority, &config, &program_id, &pk(1))
+            .expect_err("unsigned");
+        assert_eq!(err, ProgramError::MissingRequiredSignature);
+    }
+
+    #[test]
+    fn require_config_authority_wrong_key_refused_not_owner() {
+        let program_id = Pubkey::new_from_array(pk(7));
+        let wrong_key = Pubkey::new_from_array(pk(2));
+        let (config_key, _) = config_pda(&program_id);
+        let mut al = 0u64;
+        let mut cl = 0u64;
+        let mut a_data: [u8; 0] = [];
+        let mut c_data: [u8; 0] = [];
+        let authority = AccountInfo::new(
+            &wrong_key,
+            true,
+            false,
+            &mut al,
+            &mut a_data,
+            &program_id,
+            false,
+            0,
+        );
+        let config = AccountInfo::new(
+            &config_key,
+            false,
+            false,
+            &mut cl,
+            &mut c_data,
+            &program_id,
+            false,
+            0,
+        );
+        let err = require_config_authority(&authority, &config, &program_id, &pk(1))
+            .expect_err("wrong key");
+        assert_eq!(
+            err,
+            ProgramError::Custom(u32::from(KargainError::NotOwner))
+        );
+    }
+
+    #[test]
+    fn require_config_authority_correct_accepted() {
+        let program_id = Pubkey::new_from_array(pk(7));
+        let authority_key = Pubkey::new_from_array(pk(1));
+        let (config_key, _) = config_pda(&program_id);
+        let mut al = 0u64;
+        let mut cl = 0u64;
+        let mut a_data: [u8; 0] = [];
+        let mut c_data: [u8; 0] = [];
+        let authority = AccountInfo::new(
+            &authority_key,
+            true,
+            false,
+            &mut al,
+            &mut a_data,
+            &program_id,
+            false,
+            0,
+        );
+        let config = AccountInfo::new(
+            &config_key,
+            false,
+            false,
+            &mut cl,
+            &mut c_data,
+            &program_id,
+            false,
+            0,
+        );
+        assert!(require_config_authority(&authority, &config, &program_id, &pk(1)).is_ok());
     }
 }
