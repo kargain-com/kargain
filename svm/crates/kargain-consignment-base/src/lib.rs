@@ -259,6 +259,25 @@ pub fn consignment_account_is_live(info: &AccountInfo) -> Result<bool, ProgramEr
     Ok(record.is_live())
 }
 
+/// Recall request flag from account data — fail closed on undecodable records.
+///
+/// Empty → not requested. Non-empty but undecodable → `InvalidAccountData` (never
+/// invent `requested_at == 0` on corrupt recall bytes).
+pub fn recall_account_requested_at(info: &AccountInfo) -> Result<u64, ProgramError> {
+    if info.data_is_empty() {
+        return Ok(0);
+    }
+    let data = info.try_borrow_data()?;
+    let record = RecallRecord::try_from_slice(&data)
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+    Ok(record.requested_at)
+}
+
+/// Whether a recall account records a non-zero `requested_at`.
+pub fn recall_account_is_requested(info: &AccountInfo) -> Result<bool, ProgramError> {
+    Ok(recall_account_requested_at(info)? != 0)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub struct MandateRecord {
     pub discriminator: [u8; 8],
@@ -1212,6 +1231,38 @@ mod tests {
         let info = AccountInfo::new(&key, false, false, &mut lamports, &mut data, &owner, false, 0);
         assert_eq!(
             consignment_account_is_live(&info).unwrap_err(),
+            ProgramError::InvalidAccountData,
+        );
+    }
+
+    #[test]
+    fn recall_account_is_requested_empty_is_false() {
+        let key = Pubkey::new_from_array(pk(9));
+        let owner = Pubkey::new_from_array(pk(1));
+        let mut lamports = 0u64;
+        let mut data: Vec<u8> = vec![];
+        let info = AccountInfo::new(&key, false, false, &mut lamports, &mut data, &owner, false, 0);
+        assert_eq!(recall_account_is_requested(&info).unwrap(), false);
+        assert_eq!(recall_account_requested_at(&info).unwrap(), 0);
+    }
+
+    #[test]
+    fn recall_account_is_requested_undecodable_is_invalid_account_data() {
+        let key = Pubkey::new_from_array(pk(9));
+        let owner = Pubkey::new_from_array(pk(1));
+        let mut lamports = 1u64;
+        let mut data = vec![0xABu8; 16]; // non-empty, not a RecallRecord
+        let soft = RecallRecord::try_from_slice(&data)
+            .map(|r| r.requested_at != 0)
+            .unwrap_or(false);
+        assert!(!soft, "soft unwrap_or(false) invents not-requested (red control)");
+        let info = AccountInfo::new(&key, false, false, &mut lamports, &mut data, &owner, false, 0);
+        assert_eq!(
+            recall_account_is_requested(&info).unwrap_err(),
+            ProgramError::InvalidAccountData,
+        );
+        assert_eq!(
+            recall_account_requested_at(&info).unwrap_err(),
             ProgramError::InvalidAccountData,
         );
     }

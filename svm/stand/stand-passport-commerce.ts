@@ -12,6 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  STAND_EVM_EID,
   STAND_SVM_EID,
   STAND_SVM_NAMESPACE,
 } from "./constants.ts";
@@ -90,9 +91,10 @@ export const FP_IX = {
   BindPassportProgram: 27,
 } as const;
 
-/** GatewayIx — ForceSetCustodyLock appended after InitLzReceiveTypes (8). */
+/** GatewayIx — Send = 1 (matches kar-gateway instruction enum). */
 export const GATEWAY_IX = {
-  ForceSetCustodyLock: 8,
+  Initialize: 0,
+  Send: 1,
 } as const;
 
 /** HarnessIx — CoreAddTransferDelegate appended after SkipFreeze (25). */
@@ -327,8 +329,42 @@ export function coreOwner(data: Buffer): Pk {
 }
 
 const PLUGIN_TRANSFER_DELEGATE = 3;
+const PLUGIN_PERMANENT_FREEZE = 5;
 const AUTH_OWNER = 1;
 const AUTH_ADDRESS = 3;
+
+/** Walk Core plugin registry; true when PermanentFreezeDelegate.frozen. */
+export function isPermanentlyFrozen(data: Buffer): boolean {
+  let i = 1;
+  i += 32;
+  const ua = data[i++]!;
+  if (ua === 1 || ua === 2) i += 32;
+  const nameLen = data.readUInt32LE(i);
+  i += 4 + nameLen;
+  const uriLen = data.readUInt32LE(i);
+  i += 4 + uriLen;
+  const seq = data[i++]!;
+  if (seq === 1) i += 8;
+  if (data[i] !== 3) return false;
+  i += 1;
+  const registryOffset = Number(data.readBigUInt64LE(i));
+  i = registryOffset;
+  if (data[i] !== 4) return false;
+  i += 1;
+  const n = data.readUInt32LE(i);
+  i += 4;
+  for (let r = 0; r < n; r++) {
+    const pluginType = data[i++]!;
+    const authDisc = data[i++]!;
+    if (authDisc === AUTH_ADDRESS) i += 32;
+    const offset = Number(data.readBigUInt64LE(i));
+    i += 8;
+    if (pluginType === PLUGIN_PERMANENT_FREEZE) {
+      return data[offset] === PLUGIN_PERMANENT_FREEZE && data[offset + 1]! !== 0;
+    }
+  }
+  return false;
+}
 
 /** Whether TransferDelegate plugin exists with Address authority == expected. */
 export function hasTransferDelegateAddress(data: Buffer, expected: Pk): boolean {
@@ -616,47 +652,121 @@ export function bindPassportProgramIx(
 }
 
 /**
- * Freeze (or thaw) a live Core passport via gateway ForceSetCustodyLock →
- * passport SetCustodyLock → Core UpdatePlugin PermanentFreezeDelegate.
- * PermanentFreeze authority is the gateway freeze PDA (not harness / owner).
+ * Borsh GatewayIx::Send data (disc 1).
+ * Matches live-roundtrip / production encode — sole stand owner of this layout.
  */
-export async function setPassportPermanentFreeze(
+export function gatewaySendData(
+  dstEid: number,
+  to: Uint8Array,
+  tokenId: Uint8Array,
+  nativeFee = 0n,
+): Buffer {
+  const eid = Buffer.alloc(4);
+  eid.writeUInt32LE(dstEid, 0);
+  const fee = Buffer.alloc(8);
+  fee.writeBigUInt64LE(nativeFee, 0);
+  const emptyOptions = Buffer.alloc(4);
+  emptyOptions.writeUInt32LE(0, 0);
+  return Buffer.concat([
+    Buffer.from([GATEWAY_IX.Send]),
+    eid,
+    Buffer.from(to),
+    Buffer.from(tokenId),
+    fee,
+    emptyOptions,
+  ]);
+}
+
+/** PassportState.custody_locked — disc(8)+token(32)+status(1)+verifier(32)+verified_at(8). */
+export function passportStateCustodyLocked(data: Buffer): boolean {
+  return data[81]! !== 0;
+}
+
+/**
+ * Build gateway.Send instruction metas:
+ * config · owner · payer · passport · passport_config · asset · state · freeze ·
+ * core · system · challenge · answer[0..N]
+ */
+export function gatewaySendKeys(args: {
+  gatewayConfig: Pk;
+  owner: Pk;
+  payer: Pk;
+  passportProgram: Pk;
+  passportConfig: Pk;
+  asset: Pk;
+  state: Pk;
+  freeze: Pk;
+  challenge: Pk;
+  /** LeaveChain answer accounts — one per passport encumbrance registry entry. */
+  mayAnswers?: Pk[];
+}): Meta[] {
+  const keys: Meta[] = [
+    { pubkey: args.gatewayConfig, isSigner: false, isWritable: true },
+    { pubkey: args.owner, isSigner: true, isWritable: true },
+    { pubkey: args.payer, isSigner: true, isWritable: true },
+    { pubkey: args.passportProgram, isSigner: false, isWritable: false },
+    { pubkey: args.passportConfig, isSigner: false, isWritable: true },
+    { pubkey: args.asset, isSigner: false, isWritable: true },
+    { pubkey: args.state, isSigner: false, isWritable: true },
+    { pubkey: args.freeze, isSigner: false, isWritable: false },
+    { pubkey: CORE_ID, isSigner: false, isWritable: false },
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    { pubkey: args.challenge, isSigner: false, isWritable: false },
+  ];
+  for (const a of args.mayAnswers ?? []) {
+    keys.push({ pubkey: a, isSigner: false, isWritable: false });
+  }
+  return keys;
+}
+
+/**
+ * Real gateway.Send (mock endpoint) — may(LeaveChain) + home debit + custody lock + freeze.
+ * Returns null on success; custom error code on refusal.
+ */
+export async function tryGatewaySend(
   conn: Conn,
   stack: PassportCommerceStack,
+  owner: Kp,
   payer: Kp,
-  tokenId: Buffer,
-  asset: Pk,
-  state: Pk,
-  locked: boolean,
-): Promise<void> {
-  const tid = Buffer.from(tokenId);
+  args: {
+    tokenId: Buffer;
+    asset: Pk;
+    state: Pk;
+    challenge: Pk;
+    to?: Uint8Array;
+    dstEid?: number;
+    mayAnswers?: Pk[];
+  },
+): Promise<number | null> {
+  const tid = Buffer.from(args.tokenId);
   if (tid.length !== 32) throw new Error("tokenId must be 32 bytes");
-  await sendAndConfirmTransaction(
-    conn,
-    new Transaction().add(
-      ix(
-        stack.gatewayProgram,
-        [
-          { pubkey: stack.passportAuthority.publicKey, isSigner: true, isWritable: false },
-          { pubkey: stack.gatewayConfig, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: stack.passportProgram, isSigner: false, isWritable: false },
-          { pubkey: stack.passportConfig, isSigner: false, isWritable: true },
-          { pubkey: asset, isSigner: false, isWritable: true },
-          { pubkey: state, isSigner: false, isWritable: true },
-          { pubkey: stack.gatewayFreeze, isSigner: false, isWritable: false },
-          { pubkey: CORE_ID, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-        ],
-        Buffer.concat([
-          Buffer.from([GATEWAY_IX.ForceSetCustodyLock]),
-          tid,
-          Buffer.from([locked ? 1 : 0]),
-        ]),
-      ),
+  const to = args.to ?? Keypair.generate().publicKey.toBytes();
+  const dstEid = args.dstEid ?? STAND_EVM_EID;
+  const tx = new Transaction().add(
+    ix(
+      stack.gatewayProgram,
+      gatewaySendKeys({
+        gatewayConfig: stack.gatewayConfig,
+        owner: owner.publicKey,
+        payer: payer.publicKey,
+        passportProgram: stack.passportProgram,
+        passportConfig: stack.passportConfig,
+        asset: args.asset,
+        state: args.state,
+        freeze: stack.gatewayFreeze,
+        challenge: args.challenge,
+        mayAnswers: args.mayAnswers,
+      }),
+      gatewaySendData(dstEid, to, tid),
     ),
-    [stack.passportAuthority, payer],
   );
+  try {
+    const signers = owner.publicKey.equals(payer.publicKey) ? [owner] : [owner, payer];
+    await sendAndConfirmTransaction(conn, tx, signers, { commitment: "confirmed" });
+    return null;
+  } catch (e) {
+    return customErrCode(e);
+  }
 }
 
 export async function mintPassportAsset(

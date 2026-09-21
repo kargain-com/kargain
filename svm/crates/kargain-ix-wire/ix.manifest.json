@@ -682,28 +682,6 @@
       "goldenHex": "07"
     },
     {
-      "program": "kar-gateway",
-      "enum": "GatewayIx",
-      "index": 8,
-      "name": "ForceSetCustodyLock",
-      "fields": [
-        {
-          "name": "token_id",
-          "type": "fixed_bytes",
-          "len": 32
-        },
-        {
-          "name": "locked",
-          "type": "bool"
-        }
-      ],
-      "sample": {
-        "locked": true,
-        "token_id": "7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b"
-      },
-      "goldenHex": "087b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b01"
-    },
-    {
       "program": "kar-pro-staking",
       "enum": "StakingIx",
       "index": 0,

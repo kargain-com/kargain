@@ -2,7 +2,8 @@
  * Local-validator proof: FixedPrice Core + passport path (S8-E step 5).
  *
  * Asserts chain state (never success-only / invented return constants):
- * - Corrective negatives: unbound OpenDirect(140); rebind AAI; frozen OpenDirect(137);
+ * - Corrective negatives: unbound OpenDirect(140); rebind AAI; Send→OpenDirect NotPassportOwner(79);
+ *   registry miss(71); retired harness(141); live-lot Send LeaveChainRefused(37) then Send ok after close
  *   registry-miss OpenDirect(71); retired CreateAsset(141)
  * - Native buy: pull → buyer owns Core asset → three-leg deltas = fee snapshot split
  * - SPL buy + soft-revoke then buy still settles (D-31)
@@ -53,15 +54,16 @@ import {
   expectCustom,
   grantKeys,
   hasTransferDelegateAddress,
+  isPermanentlyFrozen,
   ix,
   loadDeployProgramId,
   mintPassportAsset,
   openDirectKeys,
   openFromMandateKeys,
+  passportStateCustodyLocked,
   pda,
   sendIxWithAlt,
-  setPassportPermanentFreeze,
-  tryMayLeaveChain,
+  tryGatewaySend,
   withOpenAnswers,
   type Conn,
   type Kp,
@@ -105,7 +107,7 @@ const ERR = {
   ConfidenceTooWide: 131,
   LeaveChainRefused: 37,
   NoMandate: 84,
-  AssetFrozen: 137,
+  NotPassportOwner: 79,
   PassportProgramUnbound: 140,
   HarnessInstructionRetired: 141,
 } as const;
@@ -360,6 +362,8 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   unboundOpenCode: number;
   rebindCode: "AccountAlreadyInitialized";
   frozenOpenCode: number;
+  frozenCustodyLocked: boolean;
+  frozenPermanentFreeze: boolean;
   registryMissCode: number;
   retiredIxCode: number;
   nativeBuy: {
@@ -409,6 +413,8 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   transferFeeRefuseCode: number;
   leaveChainWhileLive: number;
   leaveChainAfterClose: null;
+  leaveChainSendWhileLive: number;
+  leaveChainSendAfterClose: null;
   revokeOpenCode: number;
   transferDelegateAfterRevoke: boolean;
   artifacts: StandArtifactBindings;
@@ -538,18 +544,28 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
 
   await addEncumbranceSource(conn, stack, programId, ENCUMBRANCE_SEED_PREFIX);
 
-  // 5. Frozen open: mint + ForceSetCustodyLock(true) + OpenDirect → AssetFrozen(137)
+  // 5. Frozen open via real gateway.Send: mint + Send → custody lock +
+  // PermanentFreeze; OpenDirect as seller → NotPassportOwner(79) (owner moved to gateway).
   const lotFrozen = await mintCoreLot(conn, stack, programId, payer, seller);
   const [frozenState] = pda(stack.passportProgram, [SEED.state, lotFrozen.tokenId]);
-  await setPassportPermanentFreeze(
-    conn,
-    stack,
-    payer,
-    lotFrozen.tokenId,
-    lotFrozen.asset,
-    frozenState,
-    true,
+  const sendFrozen = await tryGatewaySend(conn, stack, seller, payer, {
+    tokenId: lotFrozen.tokenId,
+    asset: lotFrozen.asset,
+    state: frozenState,
+    challenge: lotFrozen.challenge,
+    mayAnswers: [lotFrozen.answers.leave],
+  });
+  assert.equal(sendFrozen, null, "gateway.Send must succeed before open refuse");
+  const frozenStateInfo = await conn.getAccountInfo(frozenState);
+  assert.ok(frozenStateInfo, "state after Send");
+  const frozenCustodyLocked = passportStateCustodyLocked(
+    frozenStateInfo!.data as Buffer,
   );
+  assert.equal(frozenCustodyLocked, true, "custody_locked after Send");
+  const frozenAssetInfo = await conn.getAccountInfo(lotFrozen.asset);
+  assert.ok(frozenAssetInfo, "asset after Send");
+  const frozenPermanentFreeze = isPermanentlyFrozen(frozenAssetInfo!.data as Buffer);
+  assert.equal(frozenPermanentFreeze, true, "PermanentFreeze frozen after Send");
   const frozenOpenCode = await expectCustom(
     conn,
     new Transaction().add(
@@ -582,7 +598,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
       ),
     ),
     [seller, payer],
-    ERR.AssetFrozen,
+    ERR.NotPassportOwner,
   );
 
   // 6. Retired harness ix CreateAsset → HarnessInstructionRetired(141)
@@ -612,21 +628,21 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     seller,
   };
 
-  // ---- Native buy + May LeaveChain while live / after close ----
+  // ---- Native buy + gateway.Send LeaveChain while live / after close ----
   const lotN = await mintCoreLot(conn, stack, programId, payer, seller);
   const priceN = 1000n;
   await openDirectNative(conn, ctx, lotN, priceN);
+  const [lotNState] = pda(stack.passportProgram, [SEED.state, lotN.tokenId]);
 
-  const leaveChainWhileLive = await tryMayLeaveChain(
-    conn,
-    stack,
-    payer,
-    lotN.tokenId,
-    lotN.asset,
-    lotN.challenge,
-    programId,
-  );
-  assert.equal(leaveChainWhileLive, ERR.LeaveChainRefused);
+  const leaveChainSendWhileLive = await tryGatewaySend(conn, stack, seller, payer, {
+    tokenId: lotN.tokenId,
+    asset: lotN.asset,
+    state: lotNState,
+    challenge: lotN.challenge,
+    mayAnswers: [lotN.answers.leave],
+  });
+  assert.equal(leaveChainSendWhileLive, ERR.LeaveChainRefused);
+  const leaveChainWhileLive = leaveChainSendWhileLive;
 
   const lotNData = readConsignment((await conn.getAccountInfo(lotN.consign))!.data as Buffer);
   assert.equal(lotNData.phase, PHASE.Offered);
@@ -677,16 +693,21 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   assert.equal(balS1 - balS0, sellerAmt);
   assert.equal(balA1 - balA0, agentAmt);
 
-  const leaveChainAfterClose = await tryMayLeaveChain(
-    conn,
-    stack,
-    payer,
-    lotN.tokenId,
-    lotN.asset,
-    lotN.challenge,
-    programId,
+  // After close answers allow LeaveChain; buyer owns Core → Send succeeds (lock + freeze).
+  const leaveChainSendAfterClose = await tryGatewaySend(conn, stack, buyer, payer, {
+    tokenId: lotN.tokenId,
+    asset: lotN.asset,
+    state: lotNState,
+    challenge: lotN.challenge,
+    mayAnswers: [lotN.answers.leave],
+  });
+  assert.equal(leaveChainSendAfterClose, null);
+  const leaveChainAfterClose = leaveChainSendAfterClose;
+  assert.equal(
+    passportStateCustodyLocked((await conn.getAccountInfo(lotNState))!.data as Buffer),
+    true,
+    "custody_locked after post-close Send",
   );
-  assert.equal(leaveChainAfterClose, null);
 
   // ---- Fiat native refuse ----
   const lotF = await mintCoreLot(conn, stack, programId, payer, seller);
@@ -1932,6 +1953,8 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     unboundOpenCode,
     rebindCode,
     frozenOpenCode,
+    frozenCustodyLocked,
+    frozenPermanentFreeze,
     registryMissCode,
     retiredIxCode,
     nativeBuy: {
@@ -1981,6 +2004,8 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     transferFeeRefuseCode,
     leaveChainWhileLive: leaveChainWhileLive!,
     leaveChainAfterClose,
+    leaveChainSendWhileLive: leaveChainSendWhileLive!,
+    leaveChainSendAfterClose,
     revokeOpenCode,
     transferDelegateAfterRevoke,
   });

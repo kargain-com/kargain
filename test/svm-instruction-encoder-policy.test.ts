@@ -37,6 +37,15 @@ const ENCODER_REL = "lib/svm/encode-instruction.ts";
 
 const ENTRIES = ixManifestEntries();
 
+/**
+ * One-shot intentional retirements vs HEAD append-only.
+ * ForceSetCustodyLock was never deployed; deleted to restore gateway ≡ a6b7f9d.
+ * Do not re-add under the same (program,index).
+ */
+const APPEND_ONLY_ALLOWED_REMOVALS = new Set([
+  "kar-gateway:8:ForceSetCustodyLock",
+]);
+
 function loadWorkingManifest(): IxManifest {
   return JSON.parse(readFileSync(path.join(ROOT, MANIFEST_REL), "utf8")) as IxManifest;
 }
@@ -91,10 +100,10 @@ export function handRolledIxPredicate(
 describe("svm instruction encoder policy", () => {
   // Equality pin on the wire census (not a floor): appending a variant is
   // expected to turn this red until a human acknowledges the new wire entry.
-  it("wire census entry count equals the acknowledged total (102)", () => {
-    assert.equal(ENTRIES.length, 102);
+  it("wire census entry count equals the acknowledged total (101)", () => {
+    assert.equal(ENTRIES.length, 101);
     const working = loadWorkingManifest();
-    assert.equal(working.entries.length, 102);
+    assert.equal(working.entries.length, 101);
   });
 
   // Per-entry presence of goldenHex + sample, and unique (program,name,index).
@@ -191,14 +200,17 @@ describe("svm instruction encoder policy", () => {
       const prev = priorMax.get(e.program) ?? -1;
       if (e.index > prev) priorMax.set(e.program, e.index);
       const cur = workingByKey.get(entryKey(e));
-      assert.ok(
-        cur,
-        `append_only_removed:${e.program}:${e.index}:${e.name}`,
-      );
+      if (!cur) {
+        assert.ok(
+          APPEND_ONLY_ALLOWED_REMOVALS.has(`${e.program}:${e.index}:${e.name}`),
+          `append_only_removed:${e.program}:${e.index}:${e.name}`,
+        );
+        continue;
+      }
       assert.equal(
-        cur!.name,
+        cur.name,
         e.name,
-        `append_only_renamed:${e.program}:${e.index}:was_${e.name}_now_${cur!.name}`,
+        `append_only_renamed:${e.program}:${e.index}:was_${e.name}_now_${cur.name}`,
       );
     }
     for (const e of working.entries) {

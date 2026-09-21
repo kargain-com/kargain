@@ -286,9 +286,13 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.equal(fp.fiatRefuseCode, 133); // CurrencyNotAvailableOnChain
       assert.equal(fp.unboundOpenCode, 140); // PassportProgramUnbound
       assert.equal(fp.rebindCode, "AccountAlreadyInitialized");
-      assert.equal(fp.frozenOpenCode, 137); // AssetFrozen
+      assert.equal(fp.frozenOpenCode, 79); // NotPassportOwner after real Send
+      assert.equal(fp.frozenCustodyLocked, true);
+      assert.equal(fp.frozenPermanentFreeze, true);
       assert.equal(fp.registryMissCode, 71); // ModeNotEncumbranceSource
       assert.equal(fp.retiredIxCode, 141); // HarnessInstructionRetired
+      assert.equal(fp.leaveChainSendWhileLive, 37); // LeaveChainRefused
+      assert.equal(fp.leaveChainSendAfterClose, null);
       assert.equal(fp.fiatNoFeedCode, 124); // PaymentTokenFeedRequired
       assert.equal(fp.staleBuyCode, 122);
       assert.equal(fp.wideConfCode, 131);

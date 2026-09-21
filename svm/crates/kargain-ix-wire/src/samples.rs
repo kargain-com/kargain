@@ -398,10 +398,6 @@ fn gateway_samples() -> Vec<GatewayIx> {
             peer: b32(0x7a),
         },
         GatewayIx::InitLzReceiveTypes,
-        GatewayIx::ForceSetCustodyLock {
-            token_id: b32(0x7b),
-            locked: true,
-        },
     ]
 }
 
@@ -500,14 +496,6 @@ fn layout_and_sample_gateway(ix: GatewayIx) -> ManifestEntry {
             ]),
         ),
         GatewayIx::InitLzReceiveTypes => ("InitLzReceiveTypes", vec![], Map::new()),
-        GatewayIx::ForceSetCustodyLock { token_id, locked } => (
-            "ForceSetCustodyLock",
-            vec![field_fixed("token_id", 32), field_bool("locked")],
-            map_of(&[
-                ("token_id", sample_bytes(token_id)),
-                ("locked", sample_bool(*locked)),
-            ]),
-        ),
     };
     entry_from_borsh("kar-gateway", "GatewayIx", name, fields, sample, &ix)
 }

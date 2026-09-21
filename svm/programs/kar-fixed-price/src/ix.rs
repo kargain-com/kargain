@@ -20,7 +20,8 @@ use kargain_consignment_base::{
     agent_withdraw_ok, close_lot, compute_split_for_lot, config_pda, consignment_account_is_live,
     consignment_pda, core_asset_owner, custody_authority_pda, enter_committed_not_offered,
     force_recall_ready, grant_mandate, lower_commission, lower_floor, mandate_pda,
-    owner_withdraw_ok, passport_binding_pda, pause, recall_pda, request_recall,
+    owner_withdraw_ok, passport_binding_pda, pause, recall_account_is_requested,
+    recall_account_requested_at, recall_pda, request_recall,
     require_agented_price_meets_floor, require_binding_uninitialised,
     require_bound_passport_program, require_config_authority, require_mandate_allows_open,
     require_not_paused, require_passport_core_asset, require_transfer_delegate, revoke_mandate,
@@ -1081,10 +1082,7 @@ fn request_recall_ix(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u
         return Err(ProgramError::MissingRequiredSignature);
     }
     let c = load_consignment(consignment)?;
-    let already = !recall_info.data_is_empty()
-        && RecallRecord::try_from_slice(&recall_info.try_borrow_data()?)
-            .map(|r| r.requested_at != 0)
-            .unwrap_or(false);
+    let already = recall_account_is_requested(recall_info)?;
     let now = Clock::get()?.unix_timestamp as u64;
     let requested_at =
         request_recall(&c, &seller.key.to_bytes(), already, now).map_err(into_pe)?;
@@ -1154,13 +1152,7 @@ fn force_recall_ix(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8;
         return Err(ProgramError::MissingRequiredSignature);
     }
     let mut c = load_consignment(consignment)?;
-    let requested_at = if recall_info.data_is_empty() {
-        0
-    } else {
-        RecallRecord::try_from_slice(&recall_info.try_borrow_data()?)
-            .map(|r| r.requested_at)
-            .unwrap_or(0)
-    };
+    let requested_at = recall_account_requested_at(recall_info)?;
     let now = Clock::get()?.unix_timestamp as u64;
     force_recall_ready(&c, &seller.key.to_bytes(), requested_at, now).map_err(into_pe)?;
     clear_recall(recall_info)?;

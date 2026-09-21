@@ -30,6 +30,7 @@ import {
 import { assertPayloadUnchanged, relayCopyPayload } from "./dumb-relay.ts";
 import { withStandArtifactBindings } from "./stand-artifact-bindings.ts";
 import type { StandArtifactBindings } from "./stand-artifact-bindings.ts";
+import { gatewaySendData, gatewaySendKeys } from "./stand-passport-commerce.ts";
 import type {
   StandConnection,
   StandKeypair,
@@ -171,23 +172,6 @@ function gatewayInitializeData(args: {
     Buffer.from(args.endpoint.toBytes()),
     Buffer.from(args.passport.toBytes()),
     encodeU128Le(args.namespace),
-  ]);
-}
-
-function gatewaySendData(dstEid: number, to: Uint8Array, tokenId: Uint8Array): Buffer {
-  const eid = Buffer.alloc(4);
-  eid.writeUInt32LE(dstEid, 0);
-  const fee = Buffer.alloc(8);
-  fee.writeBigUInt64LE(0n, 0);
-  const emptyOptions = Buffer.alloc(4); // vec len 0
-  emptyOptions.writeUInt32LE(0, 0);
-  return Buffer.concat([
-    Buffer.from([1]),
-    eid,
-    Buffer.from(to),
-    Buffer.from(tokenId),
-    fee,
-    emptyOptions,
   ]);
 }
 
@@ -569,20 +553,17 @@ export async function runLiveSvmRoundTrip(): Promise<LiveRoundTripResult> {
     [
       new TransactionInstruction({
         programId: gatewayProgram,
-        keys: [
-          { pubkey: gatewayConfig, isSigner: false, isWritable: true },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: passportProgram, isSigner: false, isWritable: false },
-          { pubkey: passportConfig, isSigner: false, isWritable: true },
-          { pubkey: homeAsset, isSigner: false, isWritable: true },
-          { pubkey: homeState, isSigner: false, isWritable: true },
-          { pubkey: freezePda, isSigner: false, isWritable: false },
-          { pubkey: CORE_ID, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          // Empty registry: challenge PDA only (may tail after system).
-          { pubkey: homeChallenge, isSigner: false, isWritable: false },
-        ],
+        keys: gatewaySendKeys({
+          gatewayConfig,
+          owner: payer.publicKey,
+          payer: payer.publicKey,
+          passportProgram,
+          passportConfig,
+          asset: homeAsset,
+          state: homeState,
+          freeze: freezePda,
+          challenge: homeChallenge,
+        }),
         data: gatewaySendData(
           STAND_EVM_EID,
           recipient.publicKey.toBytes(),
