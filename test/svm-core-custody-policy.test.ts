@@ -3,9 +3,9 @@
  *
  * - Binding / freeze / TransferDelegate / TransferV1 live in core_custody.rs
  * - Passport asset address + liveness: sole owner kargain-passport-asset
- * - Modes must not call TransferV1CpiBuilder (migration is steps 5–6)
+ * - Modes must not call TransferV1CpiBuilder directly (use core_custody movers)
  * - Passport keeps its own Core CPI door (no custody helper copy)
- * - Harness is the only validator proof consumer of the shared moves
+ * - Harness proves skip-freeze; FixedPrice (step 5) consumes the three movers; Ascending waits for step 6
  * - No public ungated TransferV1 in the shared crate (skip-freeze plant = harness only)
  */
 import assert from "node:assert/strict";
@@ -128,13 +128,31 @@ pub fn transfer_owner_to_custody_skip_freeze_gate() {
     assert.ok(src.includes('"NotLiveCoreAsset"'));
   });
 
-  it("modes do not call TransferV1CpiBuilder (shared owner unused until steps 5–6)", () => {
+  it("modes do not call TransferV1CpiBuilder (consume shared movers only)", () => {
     for (const prog of ["kar-fixed-price", "kar-ascending"]) {
       const hit = searchUnder("TransferV1CpiBuilder", path.join(SVM, "programs", prog), [
         "*.rs",
       ]);
-      assert.equal(hit.trim(), "", `${prog} must not CPI TransferV1 yet:\n${hit}`);
+      assert.equal(hit.trim(), "", `${prog} must not CPI TransferV1 directly:\n${hit}`);
     }
+  });
+
+  it("FixedPrice consumes the three shared movers; Ascending still must not", () => {
+    const fp = searchUnder(
+      String.raw`transfer_owner_to_custody|transfer_delegate_to_custody|transfer_custody_to_recipient`,
+      path.join(SVM, "programs/kar-fixed-price"),
+      ["*.rs"],
+    );
+    assert.ok(fp.includes("transfer_owner_to_custody"), "FixedPrice must owner→custody");
+    assert.ok(fp.includes("transfer_delegate_to_custody"), "FixedPrice must delegate→custody");
+    assert.ok(fp.includes("transfer_custody_to_recipient"), "FixedPrice must custody→recipient");
+
+    const asc = searchUnder(
+      String.raw`transfer_owner_to_custody|transfer_delegate_to_custody|transfer_custody_to_recipient`,
+      path.join(SVM, "programs/kar-ascending"),
+      ["*.rs"],
+    );
+    assert.equal(asc.trim(), "", `Ascending must not consume Core movers until step 6:\n${asc}`);
   });
 
   it("passport Core door stays passport-only — no custody helper copy", () => {
@@ -144,7 +162,7 @@ pub fn transfer_owner_to_custody_skip_freeze_gate() {
     assert.ok(!src.includes("transfer_owner_to_custody"), "no custody move copy");
   });
 
-  it("bidirectional: harness consumes shared moves; skip-freeze plant is harness-local", () => {
+  it("bidirectional: harness + FixedPrice consume shared moves; skip-freeze plant is harness-local", () => {
     const harness = fs.readFileSync(HARNESS_IX, "utf8");
     assert.ok(harness.includes("transfer_owner_to_custody"));
     assert.ok(harness.includes("transfer_delegate_to_custody"));
@@ -161,14 +179,14 @@ pub fn transfer_owner_to_custody_skip_freeze_gate() {
       path.join(SVM, "programs"),
       ["*.rs"],
     );
-    const allowed = ["consignment-harness"];
+    const allowed = ["consignment-harness", "kar-fixed-price"];
     const lines = moveHits
       .split("\n")
       .filter((l) => l.trim() && !allowed.some((a) => l.includes(a)));
     assert.equal(
       lines.join("\n").trim(),
       "",
-      `shared custody moves outside harness proof surface:\n${lines.join("\n")}`,
+      `shared custody moves outside allowed programs:\n${lines.join("\n")}`,
     );
   });
 });

@@ -59,6 +59,13 @@ pub fn require_passport_core_asset(
     Ok(())
 }
 
+/// Read the Core asset owner pubkey from account data.
+pub fn core_asset_owner(asset: &AccountInfo) -> Result<Pubkey, ProgramError> {
+    let data = asset.try_borrow_data()?;
+    let parsed = Asset::from_bytes(&data).map_err(|_| ProgramError::InvalidAccountData)?;
+    Ok(parsed.base.owner)
+}
+
 /// Pure freeze read from account data (host-testable).
 pub fn is_permanently_frozen(data: &[u8]) -> Result<bool, ProgramError> {
     let asset = Asset::from_bytes(data).map_err(|_| ProgramError::InvalidAccountData)?;

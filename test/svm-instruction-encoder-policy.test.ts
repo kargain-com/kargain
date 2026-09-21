@@ -91,10 +91,10 @@ export function handRolledIxPredicate(
 describe("svm instruction encoder policy", () => {
   // Equality pin on the wire census (not a floor): appending a variant is
   // expected to turn this red until a human acknowledges the new wire entry.
-  it("wire census entry count equals the acknowledged total (100)", () => {
-    assert.equal(ENTRIES.length, 100);
+  it("wire census entry count equals the acknowledged total (101)", () => {
+    assert.equal(ENTRIES.length, 101);
     const working = loadWorkingManifest();
-    assert.equal(working.entries.length, 100);
+    assert.equal(working.entries.length, 101);
   });
 
   // Per-entry presence of goldenHex + sample, and unique (program,name,index).

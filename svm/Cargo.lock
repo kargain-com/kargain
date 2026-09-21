@@ -582,12 +582,15 @@ name = "kar-fixed-price"
 version = "0.1.0"
 dependencies = [
  "borsh 1.8.1",
+ "kar-passport",
  "kargain-agented-split",
  "kargain-claimable-payouts",
  "kargain-consignment-base",
+ "kargain-encumbrance",
  "kargain-errors",
  "kargain-events",
  "kargain-price",
+ "mpl-core",
  "solana-program",
 ]
 

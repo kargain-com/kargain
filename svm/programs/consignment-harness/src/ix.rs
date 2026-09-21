@@ -125,6 +125,9 @@ pub enum HarnessIx {
     /// Test plant: skip freeze gate — expect Core InvalidAuthority when frozen.
     /// Accounts: asset · owner(signer) · custody · payer · core · system
     CoreTransferOwnerSkipFreeze { token_id: [u8; 32] },
+    /// S8-E step 5 — AddPlugin TransferDelegate on any live Core asset (passport or harness).
+    /// Accounts: owner(signer) · asset(w) · delegate · payer(signer) · core · system
+    CoreAddTransferDelegate {},
 }
 
 /// Per-asset may_open flag stored beside asset (harness stub for passport may).
@@ -229,6 +232,7 @@ pub fn process_instruction(
         HarnessIx::CoreTransferOwnerSkipFreeze { token_id } => {
             core_transfer_owner_skip_freeze(program_id, accounts, token_id)
         }
+        HarnessIx::CoreAddTransferDelegate {} => core_add_transfer_delegate(accounts),
     }
 }
 
@@ -1616,6 +1620,42 @@ fn core_transfer_owner_skip_freeze(
     Ok(())
 }
 
+/// Owner adds TransferDelegate → `delegate` on an existing Core asset (any program PDA).
+fn core_add_transfer_delegate(accounts: &[AccountInfo]) -> ProgramResult {
+    use mpl_core::{
+        instructions::AddPluginV1CpiBuilder,
+        types::{Plugin, PluginAuthority, TransferDelegate},
+    };
+    use solana_program::system_program;
+
+    let iter = &mut accounts.iter();
+    let owner = next_account_info(iter)?;
+    let asset = next_account_info(iter)?;
+    let delegate = next_account_info(iter)?;
+    let payer = next_account_info(iter)?;
+    let core_program = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
+    if !owner.is_signer || !payer.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if core_program.key != &mpl_core::ID {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    if system.key != &system_program::ID {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    AddPluginV1CpiBuilder::new(core_program)
+        .asset(asset)
+        .payer(payer)
+        .authority(Some(owner))
+        .system_program(system)
+        .plugin(Plugin::TransferDelegate(TransferDelegate {}))
+        .init_authority(PluginAuthority::Address {
+            address: *delegate.key,
+        })
+        .invoke()?;
+    Ok(())
+}
 
 #[cfg(test)]
 mod config_authority_handler_tests {

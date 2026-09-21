@@ -109,6 +109,9 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   AssetFrozen: "This passport asset is frozen and cannot move.",
   NotTransferDelegate: "Transfer delegate authority does not match the custody key.",
   NotLiveCoreAsset: "This account is not a live Core passport asset.",
+  PassportProgramUnbound: "This selling mode has not been bound to a passport program.",
+  HarnessInstructionRetired:
+    "This harness instruction is retired; use Core passport custody instead.",
   PaymentTokenNotSupported: "This payment token is not supported.",
   PaymentTokenFeedRequired:
     "Fiat-priced sales in this token need a payment-token price feed.",

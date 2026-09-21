@@ -3,7 +3,7 @@
 //! Fiat offered iff payment-token (or native) feed path is pinned at admit.
 //! Purchase reads a price account via `kargain-price` (sole decode owner). Ascending
 //! stays oracle-banned. Shared automaton + money crates own phase/split/payout.
-//! Custody via ownership-move (D-25 harness path).
+//! Custody = Core passport TransferV1 (S8-E step 5); trust via passport May library.
 
 use solana_program::entrypoint;
 

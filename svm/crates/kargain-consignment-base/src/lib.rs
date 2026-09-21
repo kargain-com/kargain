@@ -10,12 +10,18 @@
 
 pub mod emit;
 pub mod core_custody;
+pub mod passport_binding;
 
 pub use core_custody::{
-    has_transfer_delegate, is_live_core_asset, is_permanently_frozen, passport_asset_pda,
-    require_not_frozen, require_passport_core_asset, require_transfer_delegate,
+    core_asset_owner, has_transfer_delegate, is_live_core_asset, is_permanently_frozen,
+    passport_asset_pda, require_not_frozen, require_passport_core_asset, require_transfer_delegate,
     transfer_custody_to_recipient, transfer_delegate_authority_is_owner,
     transfer_delegate_to_custody, transfer_owner_to_custody, PASSPORT_ASSET_SEED,
+};
+
+pub use passport_binding::{
+    passport_binding_pda, require_binding_uninitialised, require_bound_passport_program,
+    PassportBinding, PASSPORT_BINDING_DISCRIMINATOR, PASSPORT_BINDING_SEED,
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};

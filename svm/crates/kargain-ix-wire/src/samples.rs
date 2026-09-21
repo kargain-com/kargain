@@ -27,7 +27,7 @@ fn map_of(pairs: &[(&str, Value)]) -> Map<String, Value> {
 }
 
 pub fn all_entries() -> Vec<ManifestEntry> {
-    let mut out = Vec::with_capacity(100);
+    let mut out = Vec::with_capacity(101);
     out.extend(passport_entries());
     out.extend(gateway_entries());
     out.extend(staking_entries());
@@ -653,7 +653,7 @@ fn layout_and_sample_pass(ix: PassIx) -> ManifestEntry {
     entry_from_borsh("kar-pro-pass", "PassIx", name, fields, sample, &ix)
 }
 
-// ---- FixedPrice (27) ----
+// ---- FixedPrice (28) ----
 
 fn fixed_price_entries() -> Vec<ManifestEntry> {
     fixed_price_samples()
@@ -767,6 +767,7 @@ fn fixed_price_samples() -> Vec<FixedPriceIx> {
             feed_id: b32(0xbf),
             data: price_data,
         },
+        FixedPriceIx::BindPassportProgram,
     ]
 }
 
@@ -1012,6 +1013,7 @@ fn layout_and_sample_fixed_price(ix: FixedPriceIx) -> ManifestEntry {
                 ("data", sample_bytes(data)),
             ]),
         ),
+        FixedPriceIx::BindPassportProgram => ("BindPassportProgram", vec![], Map::new()),
     };
     entry_from_borsh("kar-fixed-price", "FixedPriceIx", name, fields, sample, &ix)
 }

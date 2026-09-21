@@ -51,6 +51,10 @@ export const SVM_ONLY_ERROR_NAMES = [
   "NotTransferDelegate",
   /** S8-E step 4 — account is not a live Core asset. */
   "NotLiveCoreAsset",
+  /** S8-E step 5 — mode has not bound a passport program. */
+  "PassportProgramUnbound",
+  /** S8-E step 5 — FixedPrice harness CreateAsset / ApproveEscrow / SetMayOpen / SetSelfEncumbrance retired. */
+  "HarnessInstructionRetired",
 ] as const;
 
 /**

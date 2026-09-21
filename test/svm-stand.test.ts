@@ -303,7 +303,8 @@ describe("svm-stand live Core CPI round trip", () => {
         assert.equal(fp.fiatAgented.floorBefore, F);
         assert.equal(fp.fiatAgented.amount, A);
         assert.equal(fp.fiatAgented.expectedFloorAsset, expectedFloorAsset);
-        assert.equal(fp.fiatAgented.floorAfter, expectedFloorAsset);
+        // Sold clears durable floor; D-27 rewrite is proven by ownerDelta.
+        assert.equal(fp.fiatAgented.floorAfter, 0n);
         assert.equal(fp.fiatAgented.ownerDelta, expectedFloorAsset);
         assert.equal(fp.fiatAgented.platformDelta, (A * fee) / 10_000n);
         assert.equal(
@@ -321,8 +322,12 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.equal(fp.splBuySettledTotal, 1000n);
       assert.equal(fp.admittedDecimals, fp.chainMintDecimals);
       assert.equal(fp.transferFeeRefuseCode, 69);
+      assert.equal(fp.leaveChainWhileLive, 37); // LeaveChainRefused
+      assert.equal(fp.leaveChainAfterClose, null);
+      assert.equal(fp.revokeOpenCode, 84); // NoMandate
+      assert.equal(fp.transferDelegateAfterRevoke, true);
       console.warn(
-        `\n[svm-stand] fixed-price PASS native / fiat gates+fresh / agented D-27 / external / pause / soft-revoke / admit / delivery / TransferFee\n`,
+        `\n[svm-stand] fixed-price PASS native / fiat gates+fresh / agented D-27 / external / pause / soft-revoke / admit / delivery / TransferFee / May LeaveChain / Revoke+delegate\n`,
       );
 
       const ascReady = await probeAscendingValidator("http://127.0.0.1:8899");

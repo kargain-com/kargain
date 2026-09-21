@@ -226,12 +226,12 @@ mod tests {
     }
 
     #[test]
-    fn census_is_one_hundred() {
+    fn census_is_one_hundred_one() {
         let m = build_manifest();
         assert_eq!(
             m.entries.len(),
-            100,
-            "ix census floor: 23+8+7+3+27+32 = 100"
+            101,
+            "ix census floor: 23+8+7+3+28+32 = 101"
         );
     }
 }

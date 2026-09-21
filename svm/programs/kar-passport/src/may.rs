@@ -206,6 +206,39 @@ pub fn resolve_may_accounts(
     .map_err(into_pe)
 }
 
+/// Sole registry lookup for modes: is `source_program` registered, and what is its
+/// answer `seed_prefix`? Decodes `PassportConfig` here so modes never do.
+///
+/// Returns `(seed_prefix, registry_len)` so the caller can slice the may answer tail.
+/// Refuses with `ModeNotEncumbranceSource` when the program is absent from the registry.
+pub fn encumbrance_seed_prefix_for_source(
+    config_ai: &AccountInfo,
+    passport_program: &Pubkey,
+    source_program: &Pubkey,
+) -> Result<(Vec<u8>, usize), ProgramError> {
+    let (cfg_key, _) = config_pda(passport_program);
+    if config_ai.key != &cfg_key {
+        return Err(ProgramError::InvalidSeeds);
+    }
+    if config_ai.owner != passport_program {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    let cfg = PassportConfig::try_from_slice(&config_ai.try_borrow_data()?)
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+    if cfg.discriminator != PASSPORT_CONFIG_DISCRIMINATOR {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let registry_len = cfg.encumbrance_sources.len();
+    let source_bytes = source_program.to_bytes();
+    let seed_prefix = cfg
+        .encumbrance_sources
+        .iter()
+        .find(|e| e.program_id == source_bytes)
+        .map(|e| e.seed_prefix.clone())
+        .ok_or_else(|| into_pe(KargainError::ModeNotEncumbranceSource))?;
+    Ok((seed_prefix, registry_len))
+}
+
 /// Entrypoint helper — runs resolve and maps false → LeaveChainRefused / OpenConsignmentRefused.
 pub fn process_may(
     program_id: &Pubkey,

@@ -1,8 +1,8 @@
 /**
- * Local-validator proof: FixedPrice asset + fiat (S6 #5).
+ * Local-validator proof: FixedPrice Core + passport path (S8-E step 5).
  *
  * Asserts chain state (never success-only / invented return constants):
- * - Native buy: pull → buyer owns asset → three-leg deltas = fee snapshot split
+ * - Native buy: pull → buyer owns Core asset → three-leg deltas = fee snapshot split
  * - SPL buy + soft-revoke then buy still settles (D-31)
  * - Transfer-fee mint refused at admission (TransferFeeExtensionForbidden)
  * - Conforming mint: PaymentTokenRecord.decimals == mint decimals from chain
@@ -13,13 +13,14 @@
  * - SPL Fiat without feed → PaymentTokenFeedRequired
  * - SPL Fiat with lab price account: fresh buy converts; stale/wide/bad refuse by name
  * - Agented Margin fiat: Grant → OpenFromMandate → ForceSeed → Buy rewrites floor (D-27)
- *   to asset units; Margin owner leg = rewritten floor; three-leg split conserves amount
+ * - May(LeaveChain) refused while live / allowed after close
+ * - After Revoke: TransferDelegate still present; OpenFromMandate → NoMandate (not NotTransferDelegate)
  *
- * Requires: local validator, kar_fixed_price.so preloaded or deployable.
+ * Requires: local validator, kar_fixed_price + kar_passport + mpl-core preloaded.
  */
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -27,16 +28,48 @@ import {
   withStandArtifactBindings,
   type StandArtifactBindings,
 } from "./stand-artifact-bindings.ts";
+import {
+  ENCUMBRANCE_SEED_PREFIX,
+  FP_IX,
+  RPC_DEFAULT,
+  SEED,
+  airdrop,
+  addEncumbranceSource,
+  addTransferDelegateToCustody,
+  answerPdas,
+  bindPassportProgram,
+  buyHeadKeys,
+  confirmExternalKeys,
+  coreOwner,
+  encI64,
+  encU16,
+  encU32,
+  encU64,
+  ensurePassportCommerceStack,
+  expectCustom,
+  grantKeys,
+  hasTransferDelegateAddress,
+  ix,
+  loadDeployProgramId,
+  mintPassportAsset,
+  openDirectKeys,
+  openFromMandateKeys,
+  pda,
+  sendIxWithAlt,
+  tryMayLeaveChain,
+  withOpenAnswers,
+  type Conn,
+  type Kp,
+  type Pk,
+} from "./stand-passport-commerce.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../lab/package.json"));
 const {
   Connection,
   Keypair,
-  PublicKey,
   SystemProgram,
   Transaction,
-  TransactionInstruction,
   sendAndConfirmTransaction,
 } = require("@solana/web3.js") as typeof import("@solana/web3.js");
 const {
@@ -54,8 +87,7 @@ const {
 } = require("@solana/spl-token") as typeof import("@solana/spl-token");
 
 const ROOT = path.resolve(__dirname, "../..");
-const RPC = process.env.SVM_STAND_RPC ?? "http://127.0.0.1:8899";
-const DEPLOY = path.join(ROOT, "svm/target/deploy");
+const RPC = RPC_DEFAULT;
 
 const ERR = {
   ContractPaused: 76,
@@ -65,34 +97,12 @@ const ERR = {
   StalePrice: 122,
   BadOracleAnswer: 123,
   ConfidenceTooWide: 131,
+  LeaveChainRefused: 37,
+  NoMandate: 84,
 } as const;
 
 const PHASE = { Offered: 1, Closed: 2 } as const;
-
-/** Borsh enum tags — FixedPriceIx order in ix.rs */
-const IX = {
-  InitConfig: 0,
-  CreateAsset: 1,
-  ApproveEscrow: 2,
-  SetMayOpen: 3,
-  SetSelfEncumbrance: 4,
-  Grant: 5,
-  Revoke: 6,
-  OpenDirect: 7,
-  OpenFromMandate: 8,
-  Pause: 17,
-  Unpause: 18,
-  ApprovePaymentToken: 19,
-  RevokePaymentToken: 20,
-  Buy: 21,
-  SetSettlementNote: 22,
-  ConfirmExternalPayment: 23,
-  ForceSeedPriceAccount: 26,
-} as const;
-
-/** Margin form ordinal — CompensationForm::Margin in consignment-base. */
 const FORM_MARGIN = 0;
-/** Fiat denomination ordinal. */
 const DENOM_FIAT = 1;
 
 const FIXTURES = path.join(ROOT, "svm/lab/fixtures/price-measure");
@@ -102,57 +112,13 @@ const LAB_FEED_ID = Buffer.from(
 );
 const CURRENCY_USD = Buffer.concat([Buffer.from("USD"), Buffer.alloc(29)]);
 
-function loadProgramId(): InstanceType<typeof PublicKey> {
-  const kpPath = path.join(DEPLOY, "kar_fixed_price-keypair.json");
-  if (!existsSync(kpPath)) {
-    throw new Error(`missing ${kpPath} — build kar-fixed-price with cargo-build-sbf`);
-  }
-  const secret = Uint8Array.from(JSON.parse(readFileSync(kpPath, "utf8")));
-  return Keypair.fromSecretKey(secret).publicKey;
+function loadProgramId(): Pk {
+  return loadDeployProgramId("kar_fixed_price");
 }
 
-async function airdrop(conn: InstanceType<typeof Connection>, kp: InstanceType<typeof Keypair>, sol = 20) {
-  const sig = await conn.requestAirdrop(kp.publicKey, sol * 1e9);
-  await conn.confirmTransaction(sig, "confirmed");
-}
-
-function pda(programId: InstanceType<typeof PublicKey>, seeds: (Buffer | Uint8Array)[]) {
-  return PublicKey.findProgramAddressSync(seeds, programId);
-}
-
-function ix(
-  programId: InstanceType<typeof PublicKey>,
-  keys: { pubkey: InstanceType<typeof PublicKey>; isSigner: boolean; isWritable: boolean }[],
-  data: Buffer,
-) {
-  return new TransactionInstruction({ programId, keys, data });
-}
-
-function encU16(n: number): Buffer {
-  const b = Buffer.alloc(2);
-  b.writeUInt16LE(n, 0);
-  return b;
-}
-function encU32(n: number): Buffer {
-  const b = Buffer.alloc(4);
-  b.writeUInt32LE(n, 0);
-  return b;
-}
-function encU64(n: bigint | number): Buffer {
-  const b = Buffer.alloc(8);
-  b.writeBigUInt64LE(BigInt(n), 0);
-  return b;
-}
-function encI64(n: bigint | number): Buffer {
-  const b = Buffer.alloc(8);
-  b.writeBigInt64LE(BigInt(n), 0);
-  return b;
-}
-
-/** Asset-only admit (zeros feed). */
 function encApproveAssetOnly(): Buffer {
   return Buffer.concat([
-    Buffer.from([IX.ApprovePaymentToken]),
+    Buffer.from([FP_IX.ApprovePaymentToken]),
     Buffer.alloc(32, 0),
     Buffer.alloc(32, 0),
     encU32(0),
@@ -160,15 +126,14 @@ function encApproveAssetOnly(): Buffer {
   ]);
 }
 
-/** Fiat-capable admit — pin FP program as price_program for lab ForceSeed. */
 function encApproveWithFeed(
-  priceProgram: InstanceType<typeof PublicKey>,
+  priceProgram: Pk,
   feedId: Buffer,
   staleness: number,
   maxConfBps: number,
 ): Buffer {
   return Buffer.concat([
-    Buffer.from([IX.ApprovePaymentToken]),
+    Buffer.from([FP_IX.ApprovePaymentToken]),
     priceProgram.toBuffer(),
     feedId,
     encU32(staleness),
@@ -182,47 +147,17 @@ function patchPublishTime(bin: Buffer, unix: number): Buffer {
   return out;
 }
 
-function customErrCode(e: unknown): number | null {
-  const msg = e instanceof Error ? e.message : String(e);
-  const m = msg.match(/custom program error: (0x[0-9a-fA-F]+|\d+)/);
-  if (!m) return null;
-  const raw = m[1]!;
-  return raw.startsWith("0x") ? parseInt(raw, 16) : parseInt(raw, 10);
-}
-
-async function expectCustom(
-  conn: InstanceType<typeof Connection>,
-  tx: InstanceType<typeof Transaction>,
-  signers: InstanceType<typeof Keypair>[],
-  code: number,
-): Promise<number> {
-  try {
-    await sendAndConfirmTransaction(conn, tx, signers, { commitment: "confirmed" });
-    assert.fail(`expected custom error ${code}`);
-  } catch (e) {
-    const got = customErrCode(e);
-    assert.equal(got, code, `expected error ${code}, got ${got}: ${e}`);
-    return got!;
-  }
-  throw new Error("unreachable");
-}
-
-function readAsset(data: Buffer): { owner: InstanceType<typeof PublicKey> } {
-  const owner = new PublicKey(data.subarray(8 + 32, 8 + 64));
-  return { owner };
-}
-
 function readConsignment(data: Buffer): {
   price: bigint;
   phase: number;
   feeBps: number;
   floor: bigint;
 } {
-  let o = 8 + 32 + 32 + 32 + 32; // disc + token + seller + agent + asset
-  o += 1 + 32; // denom
+  let o = 8 + 32 + 32 + 32 + 32;
+  o += 1 + 32;
   const floor = data.readBigUInt64LE(o);
   o += 8;
-  o += 1 + 2; // form + commission
+  o += 1 + 2;
   const feeBps = data.readUInt16LE(o);
   o += 2;
   const price = data.readBigUInt64LE(o);
@@ -247,15 +182,15 @@ export async function probeValidator(rpc = RPC): Promise<boolean> {
 }
 
 async function initMode(
-  conn: InstanceType<typeof Connection>,
-  programId: InstanceType<typeof PublicKey>,
-  payer: InstanceType<typeof Keypair>,
-  authority: InstanceType<typeof Keypair>,
-  platform: InstanceType<typeof Keypair>,
-  guardian: InstanceType<typeof Keypair>,
+  conn: Conn,
+  programId: Pk,
+  payer: Kp,
+  authority: Kp,
+  platform: Kp,
+  guardian: Kp,
   feeBps: number,
 ) {
-  const [configPda] = pda(programId, [Buffer.from("consign-config")]);
+  const [configPda] = pda(programId, [SEED.consignConfig]);
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
@@ -269,7 +204,7 @@ async function initMode(
           { pubkey: guardian.publicKey, isSigner: false, isWritable: false },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],
-        Buffer.concat([Buffer.from([IX.InitConfig]), encU16(feeBps)]),
+        Buffer.concat([Buffer.from([FP_IX.InitConfig]), encU16(feeBps)]),
       ),
     ),
     [payer, authority],
@@ -277,47 +212,139 @@ async function initMode(
   return configPda;
 }
 
-async function createAndApproveAsset(
-  conn: InstanceType<typeof Connection>,
-  programId: InstanceType<typeof PublicKey>,
-  payer: InstanceType<typeof Keypair>,
-  seller: InstanceType<typeof Keypair>,
-  tokenId: Buffer,
-  custodyPda: InstanceType<typeof PublicKey>,
+type Minted = {
+  tokenId: Buffer;
+  asset: Pk;
+  challenge: Pk;
+  consign: Pk;
+  recall: Pk;
+  escrow: Pk;
+  answers: { leave: Pk; open: Pk };
+};
+
+async function mintCoreLot(
+  conn: Conn,
+  stack: Awaited<ReturnType<typeof ensurePassportCommerceStack>>,
+  programId: Pk,
+  payer: Kp,
+  seller: Kp,
+): Promise<Minted> {
+  const { tokenId, asset, challenge } = await mintPassportAsset(
+    conn,
+    stack,
+    payer,
+    seller.publicKey,
+  );
+  const [consign] = pda(programId, [SEED.consignment, tokenId]);
+  const [recall] = pda(programId, [SEED.recall, tokenId]);
+  const [escrow] = pda(programId, [SEED.escrow, tokenId]);
+  const answers = answerPdas(programId, tokenId);
+  return { tokenId, asset, challenge, consign, recall, escrow, answers };
+}
+
+async function openDirectNative(
+  conn: Conn,
+  ctx: {
+    programId: Pk;
+    configPda: Pk;
+    binding: Pk;
+    stack: Awaited<ReturnType<typeof ensurePassportCommerceStack>>;
+    custodyPda: Pk;
+    payer: Kp;
+    seller: Kp;
+  },
+  lot: Minted,
+  price: bigint,
 ) {
-  const [asset] = pda(programId, [Buffer.from("harness-asset"), tokenId]);
-  await sendAndConfirmTransaction(
-    conn,
-    new Transaction().add(
-      ix(
-        programId,
-        [
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: asset, isSigner: false, isWritable: true },
-          { pubkey: seller.publicKey, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-        ],
-        Buffer.concat([Buffer.from([IX.CreateAsset]), tokenId]),
-      ),
-    ),
-    [payer],
+  const keys = withOpenAnswers(
+    openDirectKeys({
+      seller: ctx.seller.publicKey,
+      config: ctx.configPda,
+      binding: ctx.binding,
+      passportConfig: ctx.stack.passportConfig,
+      asset: lot.asset,
+      challenge: lot.challenge,
+      mayAnswerOpen: lot.answers.open,
+      consign: lot.consign,
+      custody: ctx.custodyPda,
+      payer: ctx.payer.publicKey,
+    }),
+    lot.answers.leave,
+    lot.answers.open,
   );
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
       ix(
-        programId,
-        [
-          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-          { pubkey: asset, isSigner: false, isWritable: true },
-          { pubkey: custodyPda, isSigner: false, isWritable: false },
-        ],
-        Buffer.concat([Buffer.from([IX.ApproveEscrow]), tokenId]),
+        ctx.programId,
+        keys,
+        Buffer.concat([
+          Buffer.from([FP_IX.OpenDirect]),
+          lot.tokenId,
+          Buffer.alloc(32, 0),
+          Buffer.from([0]),
+          Buffer.alloc(32, 0),
+          encU64(price),
+        ]),
       ),
     ),
-    [seller],
+    [ctx.seller, ctx.payer],
   );
-  return asset;
+}
+
+async function openDirectSpl(
+  conn: Conn,
+  ctx: {
+    programId: Pk;
+    configPda: Pk;
+    binding: Pk;
+    stack: Awaited<ReturnType<typeof ensurePassportCommerceStack>>;
+    custodyPda: Pk;
+    payer: Kp;
+    seller: Kp;
+  },
+  lot: Minted,
+  mint: Pk,
+  payTok: Pk,
+  denomKind: number,
+  currency: Buffer,
+  price: bigint,
+) {
+  const keys = withOpenAnswers(
+    openDirectKeys({
+      seller: ctx.seller.publicKey,
+      config: ctx.configPda,
+      paymentTok: payTok,
+      binding: ctx.binding,
+      passportConfig: ctx.stack.passportConfig,
+      asset: lot.asset,
+      challenge: lot.challenge,
+      mayAnswerOpen: lot.answers.open,
+      consign: lot.consign,
+      custody: ctx.custodyPda,
+      payer: ctx.payer.publicKey,
+    }),
+    lot.answers.leave,
+    lot.answers.open,
+  );
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      ix(
+        ctx.programId,
+        keys,
+        Buffer.concat([
+          Buffer.from([FP_IX.OpenDirect]),
+          lot.tokenId,
+          mint.toBuffer(),
+          Buffer.from([denomKind]),
+          currency,
+          encU64(price),
+        ]),
+      ),
+    ),
+    [ctx.seller, ctx.payer],
+  );
 }
 
 export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
@@ -340,7 +367,6 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     buyerOwns: boolean;
     expectedAssetAmt: number;
   };
-  /** D-27: agented Margin fiat buy rewrites floor to asset units before split. */
   fiatAgented: {
     floorBefore: bigint;
     floorAfter: bigint;
@@ -349,6 +375,8 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     agentDelta: bigint;
     platformDelta: bigint;
     amount: bigint;
+    buyLegacyWouldBe: number;
+    buyVersionedSize: number;
   };
   external: {
     phase: number;
@@ -361,14 +389,18 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   pauseBuyCode: number;
   pauseExternalPhase: number;
   softRevokeBuyPhase: number;
-  /** SPL buy: platform+seller ATA amounts after settle (= price; delivery held through pull). */
   splBuySettledTotal: bigint;
   admittedDecimals: number;
   chainMintDecimals: number;
   transferFeeRefuseCode: number;
+  leaveChainWhileLive: number;
+  leaveChainAfterClose: null;
+  revokeOpenCode: number;
+  transferDelegateAfterRevoke: boolean;
   artifacts: StandArtifactBindings;
 }> {
-  const conn = new Connection(opts?.rpc ?? RPC, "confirmed");
+  const rpc = opts?.rpc ?? RPC;
+  const conn = new Connection(rpc, "confirmed");
   const programId = loadProgramId();
   const payer = Keypair.generate();
   const authority = Keypair.generate();
@@ -382,49 +414,50 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     await airdrop(conn, k, 8);
   }
 
+  const stack = await ensurePassportCommerceStack(conn);
   const feeBps = 250;
   const configPda = await initMode(conn, programId, payer, authority, platform, guardian, feeBps);
-  const [custodyPda] = pda(programId, [Buffer.from("custody")]);
-
-  // ---- Native buy ----
-  const tokenN = Buffer.alloc(32, 0x11);
-  const assetN = await createAndApproveAsset(conn, programId, payer, seller, tokenN, custodyPda);
-  const [consignN] = pda(programId, [Buffer.from("consignment"), tokenN]);
-  const [recallN] = pda(programId, [Buffer.from("recall"), tokenN]);
-  const [escrowN] = pda(programId, [Buffer.from("escrow"), tokenN]);
-  const priceN = 1000n;
-
-  await sendAndConfirmTransaction(
+  await addEncumbranceSource(conn, stack, programId, ENCUMBRANCE_SEED_PREFIX);
+  const binding = await bindPassportProgram(
     conn,
-    new Transaction().add(
-      ix(
-        programId,
-        [
-          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: assetN, isSigner: false, isWritable: true },
-          { pubkey: consignN, isSigner: false, isWritable: true },
-          { pubkey: custodyPda, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-        ],
-        Buffer.concat([
-          Buffer.from([IX.OpenDirect]),
-          tokenN,
-          Buffer.alloc(32, 0), // native mint
-          Buffer.from([0]), // Asset denom
-          Buffer.alloc(32, 0),
-          encU64(priceN),
-        ]),
-      ),
-    ),
-    [seller, payer],
+    programId,
+    configPda,
+    authority,
+    payer,
+    stack.passportProgram,
   );
+  const [custodyPda] = pda(programId, [SEED.custody]);
 
-  const lotN = readConsignment((await conn.getAccountInfo(consignN))!.data as Buffer);
-  assert.equal(lotN.phase, PHASE.Offered);
-  const platformAmt = (priceN * BigInt(lotN.feeBps)) / 10_000n;
-  const sellerAmt = priceN - platformAmt; // direct: no agent
+  const ctx = {
+    programId,
+    configPda,
+    binding,
+    stack,
+    custodyPda,
+    payer,
+    seller,
+  };
+
+  // ---- Native buy + May LeaveChain while live / after close ----
+  const lotN = await mintCoreLot(conn, stack, programId, payer, seller);
+  const priceN = 1000n;
+  await openDirectNative(conn, ctx, lotN, priceN);
+
+  const leaveChainWhileLive = await tryMayLeaveChain(
+    conn,
+    stack,
+    payer,
+    lotN.tokenId,
+    lotN.asset,
+    lotN.challenge,
+    programId,
+  );
+  assert.equal(leaveChainWhileLive, ERR.LeaveChainRefused);
+
+  const lotNData = readConsignment((await conn.getAccountInfo(lotN.consign))!.data as Buffer);
+  assert.equal(lotNData.phase, PHASE.Offered);
+  const platformAmt = (priceN * BigInt(lotNData.feeBps)) / 10_000n;
+  const sellerAmt = priceN - platformAmt;
   const agentAmt = 0n;
 
   const balP0 = BigInt(await conn.getBalance(platform.publicKey));
@@ -436,28 +469,31 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     new Transaction().add(
       ix(
         programId,
-        [
-          { pubkey: buyer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: consignN, isSigner: false, isWritable: true },
-          { pubkey: assetN, isSigner: false, isWritable: true },
-          { pubkey: platform.publicKey, isSigner: false, isWritable: true },
-          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-          { pubkey: agent.publicKey, isSigner: false, isWritable: true },
-          { pubkey: recallN, isSigner: false, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: escrowN, isSigner: false, isWritable: true },
-        ],
-        Buffer.concat([Buffer.from([IX.Buy]), tokenN]),
+        buyHeadKeys({
+          buyer: buyer.publicKey,
+          config: configPda,
+          consign: lotN.consign,
+          binding,
+          passportConfig: stack.passportConfig,
+          asset: lotN.asset,
+          custody: custodyPda,
+          platform: platform.publicKey,
+          seller: seller.publicKey,
+          agent: agent.publicKey,
+          recall: lotN.recall,
+          payer: payer.publicKey,
+          escrow: lotN.escrow,
+          answerLeave: lotN.answers.leave,
+          answerOpen: lotN.answers.open,
+        }),
+        Buffer.concat([Buffer.from([FP_IX.Buy]), lotN.tokenId]),
       ),
     ),
     [buyer, payer],
   );
 
-  const closedN = readConsignment((await conn.getAccountInfo(consignN))!.data as Buffer);
-  const assetAfterN = readAsset((await conn.getAccountInfo(assetN))!.data as Buffer);
-  const buyerOwnsN = assetAfterN.owner.toBase58();
+  const closedN = readConsignment((await conn.getAccountInfo(lotN.consign))!.data as Buffer);
+  const buyerOwnsN = coreOwner((await conn.getAccountInfo(lotN.asset))!.data as Buffer).toBase58();
   assert.equal(closedN.phase, PHASE.Closed);
   assert.equal(buyerOwnsN, buyer.publicKey.toBase58());
   const balP1 = BigInt(await conn.getBalance(platform.publicKey));
@@ -467,29 +503,45 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   assert.equal(balS1 - balS0, sellerAmt);
   assert.equal(balA1 - balA0, agentAmt);
 
-  // ---- Fiat native refuse (no native USD feed on config) ----
-  const tokenF = Buffer.alloc(32, 0x22);
-  const assetF = await createAndApproveAsset(conn, programId, payer, seller, tokenF, custodyPda);
-  const [consignF] = pda(programId, [Buffer.from("consignment"), tokenF]);
+  const leaveChainAfterClose = await tryMayLeaveChain(
+    conn,
+    stack,
+    payer,
+    lotN.tokenId,
+    lotN.asset,
+    lotN.challenge,
+    programId,
+  );
+  assert.equal(leaveChainAfterClose, null);
+
+  // ---- Fiat native refuse ----
+  const lotF = await mintCoreLot(conn, stack, programId, payer, seller);
   const fiatRefuseCode = await expectCustom(
     conn,
     new Transaction().add(
       ix(
         programId,
-        [
-          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: assetF, isSigner: false, isWritable: true },
-          { pubkey: consignF, isSigner: false, isWritable: true },
-          { pubkey: custodyPda, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-        ],
+        withOpenAnswers(
+          openDirectKeys({
+            seller: seller.publicKey,
+            config: configPda,
+            binding,
+            passportConfig: stack.passportConfig,
+            asset: lotF.asset,
+            challenge: lotF.challenge,
+            mayAnswerOpen: lotF.answers.open,
+            consign: lotF.consign,
+            custody: custodyPda,
+            payer: payer.publicKey,
+          }),
+          lotF.answers.leave,
+          lotF.answers.open,
+        ),
         Buffer.concat([
-          Buffer.from([IX.OpenDirect]),
-          tokenF,
+          Buffer.from([FP_IX.OpenDirect]),
+          lotF.tokenId,
           Buffer.alloc(32, 0),
-          Buffer.from([1]), // Fiat
+          Buffer.from([1]),
           CURRENCY_USD,
           encU64(500),
         ]),
@@ -499,40 +551,10 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     ERR.CurrencyNotAvailableOnChain,
   );
 
-  // ---- External confirm (no money movement) ----
-  const tokenE = Buffer.alloc(32, 0x33);
-  const assetE = await createAndApproveAsset(conn, programId, payer, seller, tokenE, custodyPda);
-  const [consignE] = pda(programId, [Buffer.from("consignment"), tokenE]);
-  const [recallE] = pda(programId, [Buffer.from("recall"), tokenE]);
-  const [noteE] = pda(programId, [Buffer.from("settlement-note"), tokenE]);
-  const [escrowE] = pda(programId, [Buffer.from("escrow"), tokenE]);
-
-  await sendAndConfirmTransaction(
-    conn,
-    new Transaction().add(
-      ix(
-        programId,
-        [
-          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: assetE, isSigner: false, isWritable: true },
-          { pubkey: consignE, isSigner: false, isWritable: true },
-          { pubkey: custodyPda, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-        ],
-        Buffer.concat([
-          Buffer.from([IX.OpenDirect]),
-          tokenE,
-          Buffer.alloc(32, 0),
-          Buffer.from([0]),
-          Buffer.alloc(32, 0),
-          encU64(777),
-        ]),
-      ),
-    ),
-    [seller, payer],
-  );
+  // ---- External confirm ----
+  const lotE = await mintCoreLot(conn, stack, programId, payer, seller);
+  const [noteE] = pda(programId, [SEED.settlementNote, lotE.tokenId]);
+  await openDirectNative(conn, ctx, lotE, 777n);
 
   const noteBytes = Buffer.alloc(256);
   Buffer.from("paid offline").copy(noteBytes);
@@ -543,14 +565,14 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
         programId,
         [
           { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-          { pubkey: consignE, isSigner: false, isWritable: false },
+          { pubkey: lotE.consign, isSigner: false, isWritable: false },
           { pubkey: noteE, isSigner: false, isWritable: true },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
           { pubkey: payer.publicKey, isSigner: true, isWritable: true },
         ],
         Buffer.concat([
-          Buffer.from([IX.SetSettlementNote]),
-          tokenE,
+          Buffer.from([FP_IX.SetSettlementNote]),
+          lotE.tokenId,
           noteBytes,
           encU32(12),
         ]),
@@ -561,22 +583,29 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
 
   const extP0 = BigInt(await conn.getBalance(platform.publicKey));
   const extS0 = BigInt(await conn.getBalance(seller.publicKey));
-  const extEsc0 = BigInt((await conn.getAccountInfo(escrowE))?.lamports ?? 0);
+  const extEsc0 = BigInt((await conn.getAccountInfo(lotE.escrow))?.lamports ?? 0);
 
   {
     const tx = new Transaction().add(
       ix(
         programId,
-        [
-          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-          { pubkey: consignE, isSigner: false, isWritable: true },
-          { pubkey: assetE, isSigner: false, isWritable: true },
-          { pubkey: noteE, isSigner: false, isWritable: true },
-          { pubkey: recallE, isSigner: false, isWritable: true },
-        ],
+        confirmExternalKeys({
+          caller: seller.publicKey,
+          consign: lotE.consign,
+          note: noteE,
+          recall: lotE.recall,
+          binding,
+          passportConfig: stack.passportConfig,
+          asset: lotE.asset,
+          custody: custodyPda,
+          buyer: buyer.publicKey,
+          payer: payer.publicKey,
+          answerLeave: lotE.answers.leave,
+          answerOpen: lotE.answers.open,
+        }),
         Buffer.concat([
-          Buffer.from([IX.ConfirmExternalPayment]),
-          tokenE,
+          Buffer.from([FP_IX.ConfirmExternalPayment]),
+          lotE.tokenId,
           buyer.publicKey.toBuffer(),
         ]),
       ),
@@ -585,19 +614,18 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     await sendAndConfirmTransaction(conn, tx, [payer, seller]);
   }
 
-  const closedE = readConsignment((await conn.getAccountInfo(consignE))!.data as Buffer);
-  const assetAfterE = readAsset((await conn.getAccountInfo(assetE))!.data as Buffer);
-  const extBuyerOwns = assetAfterE.owner.toBase58();
+  const closedE = readConsignment((await conn.getAccountInfo(lotE.consign))!.data as Buffer);
+  const extBuyerOwns = coreOwner((await conn.getAccountInfo(lotE.asset))!.data as Buffer).toBase58();
   assert.equal(closedE.phase, PHASE.Closed);
   assert.equal(extBuyerOwns, buyer.publicKey.toBase58());
   const extP1 = BigInt(await conn.getBalance(platform.publicKey));
   const extS1 = BigInt(await conn.getBalance(seller.publicKey));
-  const extEsc1 = BigInt((await conn.getAccountInfo(escrowE))?.lamports ?? 0);
+  const extEsc1 = BigInt((await conn.getAccountInfo(lotE.escrow))?.lamports ?? 0);
   assert.equal(extP1 - extP0, 0n);
   assert.equal(extS1 - extS0, 0n);
   assert.equal(extEsc1 - extEsc0, 0n);
 
-  // ---- Pause: open + buy refuse; external still works ----
+  // ---- Pause ----
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
@@ -607,32 +635,37 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           { pubkey: guardian.publicKey, isSigner: true, isWritable: false },
           { pubkey: configPda, isSigner: false, isWritable: true },
         ],
-        Buffer.from([IX.Pause]),
+        Buffer.from([FP_IX.Pause]),
       ),
     ),
     [guardian],
   );
 
-  const tokenP = Buffer.alloc(32, 0x44);
-  const assetP = await createAndApproveAsset(conn, programId, payer, seller, tokenP, custodyPda);
-  const [consignP] = pda(programId, [Buffer.from("consignment"), tokenP]);
+  const lotP = await mintCoreLot(conn, stack, programId, payer, seller);
   const pauseOpenCode = await expectCustom(
     conn,
     new Transaction().add(
       ix(
         programId,
-        [
-          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: assetP, isSigner: false, isWritable: true },
-          { pubkey: consignP, isSigner: false, isWritable: true },
-          { pubkey: custodyPda, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-        ],
+        withOpenAnswers(
+          openDirectKeys({
+            seller: seller.publicKey,
+            config: configPda,
+            binding,
+            passportConfig: stack.passportConfig,
+            asset: lotP.asset,
+            challenge: lotP.challenge,
+            mayAnswerOpen: lotP.answers.open,
+            consign: lotP.consign,
+            custody: custodyPda,
+            payer: payer.publicKey,
+          }),
+          lotP.answers.leave,
+          lotP.answers.open,
+        ),
         Buffer.concat([
-          Buffer.from([IX.OpenDirect]),
-          tokenP,
+          Buffer.from([FP_IX.OpenDirect]),
+          lotP.tokenId,
           Buffer.alloc(32, 0),
           Buffer.from([0]),
           Buffer.alloc(32, 0),
@@ -644,7 +677,6 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     ERR.ContractPaused,
   );
 
-  // Unpause, open a lot, re-pause, buy refuses; external ok
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
@@ -654,45 +686,15 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           { pubkey: authority.publicKey, isSigner: true, isWritable: false },
           { pubkey: configPda, isSigner: false, isWritable: true },
         ],
-        Buffer.from([IX.Unpause]),
+        Buffer.from([FP_IX.Unpause]),
       ),
     ),
     [authority],
   );
 
-  const tokenPb = Buffer.alloc(32, 0x45);
-  const assetPb = await createAndApproveAsset(conn, programId, payer, seller, tokenPb, custodyPda);
-  const [consignPb] = pda(programId, [Buffer.from("consignment"), tokenPb]);
-  const [recallPb] = pda(programId, [Buffer.from("recall"), tokenPb]);
-  const [escrowPb] = pda(programId, [Buffer.from("escrow"), tokenPb]);
-  const [notePb] = pda(programId, [Buffer.from("settlement-note"), tokenPb]);
-
-  await sendAndConfirmTransaction(
-    conn,
-    new Transaction().add(
-      ix(
-        programId,
-        [
-          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: assetPb, isSigner: false, isWritable: true },
-          { pubkey: consignPb, isSigner: false, isWritable: true },
-          { pubkey: custodyPda, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-        ],
-        Buffer.concat([
-          Buffer.from([IX.OpenDirect]),
-          tokenPb,
-          Buffer.alloc(32, 0),
-          Buffer.from([0]),
-          Buffer.alloc(32, 0),
-          encU64(200),
-        ]),
-      ),
-    ),
-    [seller, payer],
-  );
+  const lotPb = await mintCoreLot(conn, stack, programId, payer, seller);
+  const [notePb] = pda(programId, [SEED.settlementNote, lotPb.tokenId]);
+  await openDirectNative(conn, ctx, lotPb, 200n);
 
   await sendAndConfirmTransaction(
     conn,
@@ -703,7 +705,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           { pubkey: guardian.publicKey, isSigner: true, isWritable: false },
           { pubkey: configPda, isSigner: false, isWritable: true },
         ],
-        Buffer.from([IX.Pause]),
+        Buffer.from([FP_IX.Pause]),
       ),
     ),
     [guardian],
@@ -714,20 +716,24 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     new Transaction().add(
       ix(
         programId,
-        [
-          { pubkey: buyer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: consignPb, isSigner: false, isWritable: true },
-          { pubkey: assetPb, isSigner: false, isWritable: true },
-          { pubkey: platform.publicKey, isSigner: false, isWritable: true },
-          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-          { pubkey: agent.publicKey, isSigner: false, isWritable: true },
-          { pubkey: recallPb, isSigner: false, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: escrowPb, isSigner: false, isWritable: true },
-        ],
-        Buffer.concat([Buffer.from([IX.Buy]), tokenPb]),
+        buyHeadKeys({
+          buyer: buyer.publicKey,
+          config: configPda,
+          consign: lotPb.consign,
+          binding,
+          passportConfig: stack.passportConfig,
+          asset: lotPb.asset,
+          custody: custodyPda,
+          platform: platform.publicKey,
+          seller: seller.publicKey,
+          agent: agent.publicKey,
+          recall: lotPb.recall,
+          payer: payer.publicKey,
+          escrow: lotPb.escrow,
+          answerLeave: lotPb.answers.leave,
+          answerOpen: lotPb.answers.open,
+        }),
+        Buffer.concat([Buffer.from([FP_IX.Buy]), lotPb.tokenId]),
       ),
     ),
     [buyer, payer],
@@ -743,14 +749,14 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
         programId,
         [
           { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-          { pubkey: consignPb, isSigner: false, isWritable: false },
+          { pubkey: lotPb.consign, isSigner: false, isWritable: false },
           { pubkey: notePb, isSigner: false, isWritable: true },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
           { pubkey: payer.publicKey, isSigner: true, isWritable: true },
         ],
         Buffer.concat([
-          Buffer.from([IX.SetSettlementNote]),
-          tokenPb,
+          Buffer.from([FP_IX.SetSettlementNote]),
+          lotPb.tokenId,
           notePbBytes,
           encU32(15),
         ]),
@@ -763,24 +769,32 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     new Transaction().add(
       ix(
         programId,
-        [
-          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-          { pubkey: consignPb, isSigner: false, isWritable: true },
-          { pubkey: assetPb, isSigner: false, isWritable: true },
-          { pubkey: notePb, isSigner: false, isWritable: true },
-          { pubkey: recallPb, isSigner: false, isWritable: true },
-        ],
+        confirmExternalKeys({
+          caller: seller.publicKey,
+          consign: lotPb.consign,
+          note: notePb,
+          recall: lotPb.recall,
+          binding,
+          passportConfig: stack.passportConfig,
+          asset: lotPb.asset,
+          custody: custodyPda,
+          buyer: buyer.publicKey,
+          payer: payer.publicKey,
+          answerLeave: lotPb.answers.leave,
+          answerOpen: lotPb.answers.open,
+        }),
         Buffer.concat([
-          Buffer.from([IX.ConfirmExternalPayment]),
-          tokenPb,
+          Buffer.from([FP_IX.ConfirmExternalPayment]),
+          lotPb.tokenId,
           buyer.publicKey.toBuffer(),
         ]),
       ),
     ),
-    [seller],
+    [seller, payer],
   );
-  const pauseExternalPhase = readConsignment((await conn.getAccountInfo(consignPb))!.data as Buffer)
-    .phase;
+  const pauseExternalPhase = readConsignment(
+    (await conn.getAccountInfo(lotPb.consign))!.data as Buffer,
+  ).phase;
   assert.equal(pauseExternalPhase, PHASE.Closed);
 
   await sendAndConfirmTransaction(
@@ -792,13 +806,13 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           { pubkey: authority.publicKey, isSigner: true, isWritable: false },
           { pubkey: configPda, isSigner: false, isWritable: true },
         ],
-        Buffer.from([IX.Unpause]),
+        Buffer.from([FP_IX.Unpause]),
       ),
     ),
     [authority],
   );
 
-  // ---- SPL: admit, open, soft-revoke, buy still settles ----
+  // ---- SPL soft-revoke buy ----
   const mint = Keypair.generate();
   const mintLamports = await getMinimumBalanceForRentExemptMint(conn);
   await sendAndConfirmTransaction(
@@ -816,7 +830,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     [payer, mint],
   );
 
-  const [payTok] = pda(programId, [Buffer.from("payment-token"), mint.publicKey.toBuffer()]);
+  const [payTok] = pda(programId, [SEED.paymentToken, mint.publicKey.toBuffer()]);
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
@@ -838,49 +852,26 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
 
   const payTokInfo = await conn.getAccountInfo(payTok);
   assert.ok(payTokInfo);
-  const admittedDecimals = payTokInfo.data[8 + 32 + 1]!; // disc + mint + enabled
+  const admittedDecimals = payTokInfo.data[8 + 32 + 1]!;
   const mintInfo = await conn.getAccountInfo(mint.publicKey);
   assert.ok(mintInfo);
   const chainMintDecimals = mintInfo.data[44]!;
   assert.equal(admittedDecimals, chainMintDecimals);
   assert.equal(admittedDecimals, 6);
 
-  const tokenS = Buffer.alloc(32, 0x55);
-  const assetS = await createAndApproveAsset(conn, programId, payer, seller, tokenS, custodyPda);
-  const [consignS] = pda(programId, [Buffer.from("consignment"), tokenS]);
-  const [recallS] = pda(programId, [Buffer.from("recall"), tokenS]);
-  const [escrowS] = pda(programId, [Buffer.from("escrow"), tokenS]);
+  const lotS = await mintCoreLot(conn, stack, programId, payer, seller);
   const priceS = 1000n;
-
-  await sendAndConfirmTransaction(
+  await openDirectSpl(
     conn,
-    new Transaction().add(
-      ix(
-        programId,
-        [
-          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: assetS, isSigner: false, isWritable: true },
-          { pubkey: consignS, isSigner: false, isWritable: true },
-          { pubkey: custodyPda, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: payTok, isSigner: false, isWritable: false },
-        ],
-        Buffer.concat([
-          Buffer.from([IX.OpenDirect]),
-          tokenS,
-          mint.publicKey.toBuffer(),
-          Buffer.from([0]),
-          Buffer.alloc(32, 0),
-          encU64(priceS),
-        ]),
-      ),
-    ),
-    [seller, payer],
+    ctx,
+    lotS,
+    mint.publicKey,
+    payTok,
+    0,
+    Buffer.alloc(32, 0),
+    priceS,
   );
 
-  // Soft-revoke
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
@@ -891,16 +882,38 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           { pubkey: configPda, isSigner: false, isWritable: false },
           { pubkey: payTok, isSigner: false, isWritable: true },
         ],
-        Buffer.concat([Buffer.from([IX.RevokePaymentToken]), mint.publicKey.toBuffer()]),
+        Buffer.concat([Buffer.from([FP_IX.RevokePaymentToken]), mint.publicKey.toBuffer()]),
       ),
     ),
     [guardian],
   );
 
-  // Buyer + escrow ATAs
+  const ataRent = await getMinimumBalanceForRentExemptAccount(conn);
   const buyerAta = Keypair.generate();
   const escrowAta = Keypair.generate();
-  const ataRent = await getMinimumBalanceForRentExemptAccount(conn);
+  const platformAta = Keypair.generate();
+  const sellerAta = Keypair.generate();
+  const [platClaim] = pda(programId, [
+    SEED.claim,
+    platform.publicKey.toBuffer(),
+    mint.publicKey.toBuffer(),
+  ]);
+  const [platClaimAta] = pda(programId, [
+    SEED.claimAta,
+    platform.publicKey.toBuffer(),
+    mint.publicKey.toBuffer(),
+  ]);
+  const [sellClaim] = pda(programId, [
+    SEED.claim,
+    seller.publicKey.toBuffer(),
+    mint.publicKey.toBuffer(),
+  ]);
+  const [sellClaimAta] = pda(programId, [
+    SEED.claimAta,
+    seller.publicKey.toBuffer(),
+    mint.publicKey.toBuffer(),
+  ]);
+
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
@@ -919,39 +932,8 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
         lamports: ataRent,
         programId: TOKEN_PROGRAM_ID,
       }),
-      createInitializeAccount3Instruction(escrowAta.publicKey, mint.publicKey, escrowS),
+      createInitializeAccount3Instruction(escrowAta.publicKey, mint.publicKey, lotS.escrow),
       createMintToInstruction(mint.publicKey, buyerAta.publicKey, payer.publicKey, Number(priceS)),
-    ),
-    [payer, buyerAta, escrowAta],
-  );
-
-  // Recipient ATAs for platform + seller (agent amount 0 on direct)
-  const platformAta = Keypair.generate();
-  const sellerAta = Keypair.generate();
-  const [platClaim] = pda(programId, [
-    Buffer.from("claim"),
-    platform.publicKey.toBuffer(),
-    mint.publicKey.toBuffer(),
-  ]);
-  const [platClaimAta] = pda(programId, [
-    Buffer.from("claim-ata"),
-    platform.publicKey.toBuffer(),
-    mint.publicKey.toBuffer(),
-  ]);
-  const [sellClaim] = pda(programId, [
-    Buffer.from("claim"),
-    seller.publicKey.toBuffer(),
-    mint.publicKey.toBuffer(),
-  ]);
-  const [sellClaimAta] = pda(programId, [
-    Buffer.from("claim-ata"),
-    seller.publicKey.toBuffer(),
-    mint.publicKey.toBuffer(),
-  ]);
-
-  await sendAndConfirmTransaction(
-    conn,
-    new Transaction().add(
       SystemProgram.createAccount({
         fromPubkey: payer.publicKey,
         newAccountPubkey: platformAta.publicKey,
@@ -969,7 +951,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
       }),
       createInitializeAccount3Instruction(sellerAta.publicKey, mint.publicKey, seller.publicKey),
     ),
-    [payer, platformAta, sellerAta],
+    [payer, buyerAta, escrowAta, platformAta, sellerAta],
   );
 
   await sendAndConfirmTransaction(
@@ -978,17 +960,23 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
       ix(
         programId,
         [
-          { pubkey: buyer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: consignS, isSigner: false, isWritable: true },
-          { pubkey: assetS, isSigner: false, isWritable: true },
-          { pubkey: platform.publicKey, isSigner: false, isWritable: true },
-          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-          { pubkey: agent.publicKey, isSigner: false, isWritable: true },
-          { pubkey: recallS, isSigner: false, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: escrowS, isSigner: false, isWritable: true },
+          ...buyHeadKeys({
+            buyer: buyer.publicKey,
+            config: configPda,
+            consign: lotS.consign,
+            binding,
+            passportConfig: stack.passportConfig,
+            asset: lotS.asset,
+            custody: custodyPda,
+            platform: platform.publicKey,
+            seller: seller.publicKey,
+            agent: agent.publicKey,
+            recall: lotS.recall,
+            payer: payer.publicKey,
+            escrow: lotS.escrow,
+            answerLeave: lotS.answers.leave,
+            answerOpen: lotS.answers.open,
+          }),
           { pubkey: buyerAta.publicKey, isSigner: false, isWritable: true },
           { pubkey: escrowAta.publicKey, isSigner: false, isWritable: true },
           { pubkey: mint.publicKey, isSigner: false, isWritable: false },
@@ -1000,27 +988,26 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           { pubkey: sellClaim, isSigner: false, isWritable: true },
           { pubkey: sellClaimAta, isSigner: false, isWritable: true },
         ],
-        Buffer.concat([Buffer.from([IX.Buy]), tokenS]),
+        Buffer.concat([Buffer.from([FP_IX.Buy]), lotS.tokenId]),
       ),
     ),
     [buyer, payer],
   );
 
-  const softRevokeBuyPhase = readConsignment((await conn.getAccountInfo(consignS))!.data as Buffer)
-    .phase;
+  const softRevokeBuyPhase = readConsignment(
+    (await conn.getAccountInfo(lotS.consign))!.data as Buffer,
+  ).phase;
   assert.equal(softRevokeBuyPhase, PHASE.Closed);
   const platTok = await getAccount(conn, platformAta.publicKey);
   const sellTok = await getAccount(conn, sellerAta.publicKey);
   const splBuySettledTotal = platTok.amount + sellTok.amount;
-  assert.equal(splBuySettledTotal, priceS, "SPL pull+split must conserve full price (delivery)");
+  assert.equal(splBuySettledTotal, priceS);
 
-  // ---- Transfer-fee mint refused at admission (not at buy) ----
+  // ---- Transfer-fee mint refused ----
   const extensions = [ExtensionType.TransferFeeConfig];
   const mintLen = getMintLen(extensions);
   const feeMint = Keypair.generate();
   const feeMintRent = await conn.getMinimumBalanceForRentExemption(mintLen);
-  const transferFeeBasisPoints = 100;
-  const maxFee = BigInt(1e12);
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
@@ -1035,8 +1022,8 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
         feeMint.publicKey,
         payer.publicKey,
         payer.publicKey,
-        transferFeeBasisPoints,
-        maxFee,
+        100,
+        BigInt(1e12),
         TOKEN_2022_PROGRAM_ID,
       ),
       createInitializeMint2Instruction(
@@ -1050,10 +1037,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     [payer, feeMint],
   );
 
-  const [payTokFee] = pda(programId, [
-    Buffer.from("payment-token"),
-    feeMint.publicKey.toBuffer(),
-  ]);
+  const [payTokFee] = pda(programId, [SEED.paymentToken, feeMint.publicKey.toBuffer()]);
   const transferFeeRefuseCode = await expectCustom(
     conn,
     new Transaction().add(
@@ -1074,7 +1058,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     ERR.TransferFeeExtensionForbidden,
   );
 
-  // ---- Fiat SPL: no feed → PaymentTokenFeedRequired (fresh enabled asset-only mint) ----
+  // ---- Fiat SPL no feed ----
   const mintNoFeed = Keypair.generate();
   await sendAndConfirmTransaction(
     conn,
@@ -1090,10 +1074,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     ),
     [payer, mintNoFeed],
   );
-  const [payTokNoFeed] = pda(programId, [
-    Buffer.from("payment-token"),
-    mintNoFeed.publicKey.toBuffer(),
-  ]);
+  const [payTokNoFeed] = pda(programId, [SEED.paymentToken, mintNoFeed.publicKey.toBuffer()]);
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
@@ -1112,34 +1093,32 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     ),
     [authority, payer],
   );
-  const tokenNoFeed = Buffer.alloc(32, 0x66);
-  const assetNoFeed = await createAndApproveAsset(
-    conn,
-    programId,
-    payer,
-    seller,
-    tokenNoFeed,
-    custodyPda,
-  );
-  const [consignNoFeed] = pda(programId, [Buffer.from("consignment"), tokenNoFeed]);
+  const lotNoFeed = await mintCoreLot(conn, stack, programId, payer, seller);
   const fiatNoFeedCode = await expectCustom(
     conn,
     new Transaction().add(
       ix(
         programId,
-        [
-          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: assetNoFeed, isSigner: false, isWritable: true },
-          { pubkey: consignNoFeed, isSigner: false, isWritable: true },
-          { pubkey: custodyPda, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: payTokNoFeed, isSigner: false, isWritable: false },
-        ],
+        withOpenAnswers(
+          openDirectKeys({
+            seller: seller.publicKey,
+            config: configPda,
+            paymentTok: payTokNoFeed,
+            binding,
+            passportConfig: stack.passportConfig,
+            asset: lotNoFeed.asset,
+            challenge: lotNoFeed.challenge,
+            mayAnswerOpen: lotNoFeed.answers.open,
+            consign: lotNoFeed.consign,
+            custody: custodyPda,
+            payer: payer.publicKey,
+          }),
+          lotNoFeed.answers.leave,
+          lotNoFeed.answers.open,
+        ),
         Buffer.concat([
-          Buffer.from([IX.OpenDirect]),
-          tokenNoFeed,
+          Buffer.from([FP_IX.OpenDirect]),
+          lotNoFeed.tokenId,
           mintNoFeed.publicKey.toBuffer(),
           Buffer.from([1]),
           CURRENCY_USD,
@@ -1151,9 +1130,8 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     ERR.PaymentTokenFeedRequired,
   );
 
-  // ---- Fiat SPL with lab price account ----
+  // ---- Fiat SPL with lab price ----
   const mintFiat = Keypair.generate();
-  const mintFiatLamports = await getMinimumBalanceForRentExemptMint(conn);
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
@@ -1161,17 +1139,14 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
         fromPubkey: payer.publicKey,
         newAccountPubkey: mintFiat.publicKey,
         space: 82,
-        lamports: mintFiatLamports,
+        lamports: await getMinimumBalanceForRentExemptMint(conn),
         programId: TOKEN_PROGRAM_ID,
       }),
       createInitializeMint2Instruction(mintFiat.publicKey, 6, payer.publicKey, null),
     ),
     [payer, mintFiat],
   );
-  const [payTokFiat] = pda(programId, [
-    Buffer.from("payment-token"),
-    mintFiat.publicKey.toBuffer(),
-  ]);
+  const [payTokFiat] = pda(programId, [SEED.paymentToken, mintFiat.publicKey.toBuffer()]);
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
@@ -1191,7 +1166,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     [authority, payer],
   );
 
-  const [priceLabPda] = pda(programId, [Buffer.from("price-lab"), LAB_FEED_ID]);
+  const [priceLabPda] = pda(programId, [SEED.priceLab, LAB_FEED_ID]);
   const slot = await conn.getSlot("confirmed");
   let nowUnix = await conn.getBlockTime(slot);
   if (nowUnix == null) nowUnix = Math.floor(Date.now() / 1000);
@@ -1211,373 +1186,133 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
             { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
             { pubkey: payer.publicKey, isSigner: true, isWritable: true },
           ],
-          Buffer.concat([
-            Buffer.from([IX.ForceSeedPriceAccount]),
-            LAB_FEED_ID,
-            data,
-          ]),
+          Buffer.concat([Buffer.from([FP_IX.ForceSeedPriceAccount]), LAB_FEED_ID, data]),
         ),
       ),
       [authority, payer],
     );
   }
 
-  // Stale → StalePrice
-  await seedPrice("lab-stale.bin", nowUnix - 1_000_000);
-  const tokenStale = Buffer.alloc(32, 0x71);
-  const assetStale = await createAndApproveAsset(
-    conn,
-    programId,
-    payer,
-    seller,
-    tokenStale,
-    custodyPda,
-  );
-  const [consignStale] = pda(programId, [Buffer.from("consignment"), tokenStale]);
-  const [recallStale] = pda(programId, [Buffer.from("recall"), tokenStale]);
-  const [escrowStale] = pda(programId, [Buffer.from("escrow"), tokenStale]);
-  await sendAndConfirmTransaction(
-    conn,
-    new Transaction().add(
-      ix(
-        programId,
-        [
-          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: assetStale, isSigner: false, isWritable: true },
-          { pubkey: consignStale, isSigner: false, isWritable: true },
-          { pubkey: custodyPda, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: payTokFiat, isSigner: false, isWritable: false },
-        ],
-        Buffer.concat([
-          Buffer.from([IX.OpenDirect]),
-          tokenStale,
-          mintFiat.publicKey.toBuffer(),
-          Buffer.from([1]),
-          CURRENCY_USD,
-          encU64(150_0000_0000n),
-        ]),
+  async function fiatRefuseBuy(
+    fixture: string,
+    publishUnix: number,
+    errCode: number,
+  ): Promise<number> {
+    await seedPrice(fixture, publishUnix);
+    const lot = await mintCoreLot(conn, stack, programId, payer, seller);
+    await openDirectSpl(
+      conn,
+      ctx,
+      lot,
+      mintFiat.publicKey,
+      payTokFiat,
+      DENOM_FIAT,
+      CURRENCY_USD,
+      150_0000_0000n,
+    );
+    const bAta = Keypair.generate();
+    const eAta = Keypair.generate();
+    await sendAndConfirmTransaction(
+      conn,
+      new Transaction().add(
+        SystemProgram.createAccount({
+          fromPubkey: payer.publicKey,
+          newAccountPubkey: bAta.publicKey,
+          space: 165,
+          lamports: ataRent,
+          programId: TOKEN_PROGRAM_ID,
+        }),
+        createInitializeAccount3Instruction(bAta.publicKey, mintFiat.publicKey, buyer.publicKey),
+        SystemProgram.createAccount({
+          fromPubkey: payer.publicKey,
+          newAccountPubkey: eAta.publicKey,
+          space: 165,
+          lamports: ataRent,
+          programId: TOKEN_PROGRAM_ID,
+        }),
+        createInitializeAccount3Instruction(eAta.publicKey, mintFiat.publicKey, lot.escrow),
+        createMintToInstruction(mintFiat.publicKey, bAta.publicKey, payer.publicKey, 2_000_000),
       ),
-    ),
-    [seller, payer],
-  );
-  const buyerAtaStale = Keypair.generate();
-  const escrowAtaStale = Keypair.generate();
-  await sendAndConfirmTransaction(
-    conn,
-    new Transaction().add(
-      SystemProgram.createAccount({
-        fromPubkey: payer.publicKey,
-        newAccountPubkey: buyerAtaStale.publicKey,
-        space: 165,
-        lamports: ataRent,
-        programId: TOKEN_PROGRAM_ID,
-      }),
-      createInitializeAccount3Instruction(
-        buyerAtaStale.publicKey,
-        mintFiat.publicKey,
-        buyer.publicKey,
+      [payer, bAta, eAta],
+    );
+    return expectCustom(
+      conn,
+      new Transaction().add(
+        ix(
+          programId,
+          [
+            ...buyHeadKeys({
+              buyer: buyer.publicKey,
+              config: configPda,
+              consign: lot.consign,
+              binding,
+              passportConfig: stack.passportConfig,
+              asset: lot.asset,
+              custody: custodyPda,
+              platform: platform.publicKey,
+              seller: seller.publicKey,
+              agent: seller.publicKey,
+              recall: lot.recall,
+              payer: payer.publicKey,
+              escrow: lot.escrow,
+              answerLeave: lot.answers.leave,
+              answerOpen: lot.answers.open,
+            }),
+            { pubkey: payTokFiat, isSigner: false, isWritable: false },
+            { pubkey: priceLabPda, isSigner: false, isWritable: false },
+            { pubkey: bAta.publicKey, isSigner: false, isWritable: true },
+            { pubkey: eAta.publicKey, isSigner: false, isWritable: true },
+            { pubkey: mintFiat.publicKey, isSigner: false, isWritable: false },
+            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+          ],
+          Buffer.concat([Buffer.from([FP_IX.Buy]), lot.tokenId]),
+        ),
       ),
-      SystemProgram.createAccount({
-        fromPubkey: payer.publicKey,
-        newAccountPubkey: escrowAtaStale.publicKey,
-        space: 165,
-        lamports: ataRent,
-        programId: TOKEN_PROGRAM_ID,
-      }),
-      createInitializeAccount3Instruction(escrowAtaStale.publicKey, mintFiat.publicKey, escrowStale),
-      createMintToInstruction(mintFiat.publicKey, buyerAtaStale.publicKey, payer.publicKey, 2_000_000),
-    ),
-    [payer, buyerAtaStale, escrowAtaStale],
-  );
-  const staleBuyCode = await expectCustom(
-    conn,
-    new Transaction().add(
-      ix(
-        programId,
-        [
-          { pubkey: buyer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: consignStale, isSigner: false, isWritable: true },
-          { pubkey: assetStale, isSigner: false, isWritable: true },
-          { pubkey: platform.publicKey, isSigner: false, isWritable: true },
-          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-          { pubkey: recallStale, isSigner: false, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: escrowStale, isSigner: false, isWritable: true },
-          { pubkey: payTokFiat, isSigner: false, isWritable: false },
-          { pubkey: priceLabPda, isSigner: false, isWritable: false },
-          { pubkey: buyerAtaStale.publicKey, isSigner: false, isWritable: true },
-          { pubkey: escrowAtaStale.publicKey, isSigner: false, isWritable: true },
-          { pubkey: mintFiat.publicKey, isSigner: false, isWritable: false },
-          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-        ],
-        Buffer.concat([Buffer.from([IX.Buy]), tokenStale]),
-      ),
-    ),
-    [buyer, payer],
-    ERR.StalePrice,
-  );
+      [buyer, payer],
+      errCode,
+    );
+  }
 
-  // Wide conf → ConfidenceTooWide
-  await seedPrice("lab-wide_conf.bin", nowUnix);
-  const tokenWide = Buffer.alloc(32, 0x72);
-  const assetWide = await createAndApproveAsset(
-    conn,
-    programId,
-    payer,
-    seller,
-    tokenWide,
-    custodyPda,
-  );
-  const [consignWide] = pda(programId, [Buffer.from("consignment"), tokenWide]);
-  const [recallWide] = pda(programId, [Buffer.from("recall"), tokenWide]);
-  const [escrowWide] = pda(programId, [Buffer.from("escrow"), tokenWide]);
-  await sendAndConfirmTransaction(
-    conn,
-    new Transaction().add(
-      ix(
-        programId,
-        [
-          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: assetWide, isSigner: false, isWritable: true },
-          { pubkey: consignWide, isSigner: false, isWritable: true },
-          { pubkey: custodyPda, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: payTokFiat, isSigner: false, isWritable: false },
-        ],
-        Buffer.concat([
-          Buffer.from([IX.OpenDirect]),
-          tokenWide,
-          mintFiat.publicKey.toBuffer(),
-          Buffer.from([1]),
-          CURRENCY_USD,
-          encU64(150_0000_0000n),
-        ]),
-      ),
-    ),
-    [seller, payer],
-  );
-  const buyerAtaWide = Keypair.generate();
-  const escrowAtaWide = Keypair.generate();
-  await sendAndConfirmTransaction(
-    conn,
-    new Transaction().add(
-      SystemProgram.createAccount({
-        fromPubkey: payer.publicKey,
-        newAccountPubkey: buyerAtaWide.publicKey,
-        space: 165,
-        lamports: ataRent,
-        programId: TOKEN_PROGRAM_ID,
-      }),
-      createInitializeAccount3Instruction(
-        buyerAtaWide.publicKey,
-        mintFiat.publicKey,
-        buyer.publicKey,
-      ),
-      SystemProgram.createAccount({
-        fromPubkey: payer.publicKey,
-        newAccountPubkey: escrowAtaWide.publicKey,
-        space: 165,
-        lamports: ataRent,
-        programId: TOKEN_PROGRAM_ID,
-      }),
-      createInitializeAccount3Instruction(escrowAtaWide.publicKey, mintFiat.publicKey, escrowWide),
-      createMintToInstruction(mintFiat.publicKey, buyerAtaWide.publicKey, payer.publicKey, 2_000_000),
-    ),
-    [payer, buyerAtaWide, escrowAtaWide],
-  );
-  const wideConfCode = await expectCustom(
-    conn,
-    new Transaction().add(
-      ix(
-        programId,
-        [
-          { pubkey: buyer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: consignWide, isSigner: false, isWritable: true },
-          { pubkey: assetWide, isSigner: false, isWritable: true },
-          { pubkey: platform.publicKey, isSigner: false, isWritable: true },
-          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-          { pubkey: recallWide, isSigner: false, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: escrowWide, isSigner: false, isWritable: true },
-          { pubkey: payTokFiat, isSigner: false, isWritable: false },
-          { pubkey: priceLabPda, isSigner: false, isWritable: false },
-          { pubkey: buyerAtaWide.publicKey, isSigner: false, isWritable: true },
-          { pubkey: escrowAtaWide.publicKey, isSigner: false, isWritable: true },
-          { pubkey: mintFiat.publicKey, isSigner: false, isWritable: false },
-          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-        ],
-        Buffer.concat([Buffer.from([IX.Buy]), tokenWide]),
-      ),
-    ),
-    [buyer, payer],
-    ERR.ConfidenceTooWide,
-  );
+  const staleBuyCode = await fiatRefuseBuy("lab-stale.bin", nowUnix - 1_000_000, ERR.StalePrice);
+  const wideConfCode = await fiatRefuseBuy("lab-wide_conf.bin", nowUnix, ERR.ConfidenceTooWide);
+  const badOracleCode = await fiatRefuseBuy("lab-non_positive.bin", nowUnix, ERR.BadOracleAnswer);
 
-  // Non-positive → BadOracleAnswer
-  await seedPrice("lab-non_positive.bin", nowUnix);
-  const tokenBad = Buffer.alloc(32, 0x73);
-  const assetBad = await createAndApproveAsset(conn, programId, payer, seller, tokenBad, custodyPda);
-  const [consignBad] = pda(programId, [Buffer.from("consignment"), tokenBad]);
-  const [recallBad] = pda(programId, [Buffer.from("recall"), tokenBad]);
-  const [escrowBad] = pda(programId, [Buffer.from("escrow"), tokenBad]);
-  await sendAndConfirmTransaction(
-    conn,
-    new Transaction().add(
-      ix(
-        programId,
-        [
-          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: assetBad, isSigner: false, isWritable: true },
-          { pubkey: consignBad, isSigner: false, isWritable: true },
-          { pubkey: custodyPda, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: payTokFiat, isSigner: false, isWritable: false },
-        ],
-        Buffer.concat([
-          Buffer.from([IX.OpenDirect]),
-          tokenBad,
-          mintFiat.publicKey.toBuffer(),
-          Buffer.from([1]),
-          CURRENCY_USD,
-          encU64(150_0000_0000n),
-        ]),
-      ),
-    ),
-    [seller, payer],
-  );
-  const buyerAtaBad = Keypair.generate();
-  const escrowAtaBad = Keypair.generate();
-  await sendAndConfirmTransaction(
-    conn,
-    new Transaction().add(
-      SystemProgram.createAccount({
-        fromPubkey: payer.publicKey,
-        newAccountPubkey: buyerAtaBad.publicKey,
-        space: 165,
-        lamports: ataRent,
-        programId: TOKEN_PROGRAM_ID,
-      }),
-      createInitializeAccount3Instruction(buyerAtaBad.publicKey, mintFiat.publicKey, buyer.publicKey),
-      SystemProgram.createAccount({
-        fromPubkey: payer.publicKey,
-        newAccountPubkey: escrowAtaBad.publicKey,
-        space: 165,
-        lamports: ataRent,
-        programId: TOKEN_PROGRAM_ID,
-      }),
-      createInitializeAccount3Instruction(escrowAtaBad.publicKey, mintFiat.publicKey, escrowBad),
-      createMintToInstruction(mintFiat.publicKey, buyerAtaBad.publicKey, payer.publicKey, 2_000_000),
-    ),
-    [payer, buyerAtaBad, escrowAtaBad],
-  );
-  const badOracleCode = await expectCustom(
-    conn,
-    new Transaction().add(
-      ix(
-        programId,
-        [
-          { pubkey: buyer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: consignBad, isSigner: false, isWritable: true },
-          { pubkey: assetBad, isSigner: false, isWritable: true },
-          { pubkey: platform.publicKey, isSigner: false, isWritable: true },
-          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-          { pubkey: recallBad, isSigner: false, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: escrowBad, isSigner: false, isWritable: true },
-          { pubkey: payTokFiat, isSigner: false, isWritable: false },
-          { pubkey: priceLabPda, isSigner: false, isWritable: false },
-          { pubkey: buyerAtaBad.publicKey, isSigner: false, isWritable: true },
-          { pubkey: escrowAtaBad.publicKey, isSigner: false, isWritable: true },
-          { pubkey: mintFiat.publicKey, isSigner: false, isWritable: false },
-          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-        ],
-        Buffer.concat([Buffer.from([IX.Buy]), tokenBad]),
-      ),
-    ),
-    [buyer, payer],
-    ERR.BadOracleAnswer,
-  );
-
-  // Fresh narrow → settle (fiat $150 → 1_000_000 token units at feed $150)
+  // Fresh fiat settle
   await seedPrice("lab-fresh_narrow.bin", nowUnix);
-  const tokenFresh = Buffer.alloc(32, 0x74);
-  const assetFresh = await createAndApproveAsset(
-    conn,
-    programId,
-    payer,
-    seller,
-    tokenFresh,
-    custodyPda,
-  );
-  const [consignFresh] = pda(programId, [Buffer.from("consignment"), tokenFresh]);
-  const [recallFresh] = pda(programId, [Buffer.from("recall"), tokenFresh]);
-  const [escrowFresh] = pda(programId, [Buffer.from("escrow"), tokenFresh]);
+  const lotFresh = await mintCoreLot(conn, stack, programId, payer, seller);
   const fiatPrice1e8 = 150_0000_0000n;
-  const expectedAssetAmt = 1_000_000n; // 150e8 * 1e6 / 150e8
-  await sendAndConfirmTransaction(
+  const expectedAssetAmt = 1_000_000n;
+  await openDirectSpl(
     conn,
-    new Transaction().add(
-      ix(
-        programId,
-        [
-          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: assetFresh, isSigner: false, isWritable: true },
-          { pubkey: consignFresh, isSigner: false, isWritable: true },
-          { pubkey: custodyPda, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: payTokFiat, isSigner: false, isWritable: false },
-        ],
-        Buffer.concat([
-          Buffer.from([IX.OpenDirect]),
-          tokenFresh,
-          mintFiat.publicKey.toBuffer(),
-          Buffer.from([1]),
-          CURRENCY_USD,
-          encU64(fiatPrice1e8),
-        ]),
-      ),
-    ),
-    [seller, payer],
+    ctx,
+    lotFresh,
+    mintFiat.publicKey,
+    payTokFiat,
+    DENOM_FIAT,
+    CURRENCY_USD,
+    fiatPrice1e8,
   );
   const buyerAtaFresh = Keypair.generate();
   const escrowAtaFresh = Keypair.generate();
   const platformAtaF = Keypair.generate();
   const sellerAtaF = Keypair.generate();
   const [platClaimF] = pda(programId, [
-    Buffer.from("claim"),
+    SEED.claim,
     platform.publicKey.toBuffer(),
     mintFiat.publicKey.toBuffer(),
   ]);
   const [platClaimAtaF] = pda(programId, [
-    Buffer.from("claim-ata"),
+    SEED.claimAta,
     platform.publicKey.toBuffer(),
     mintFiat.publicKey.toBuffer(),
   ]);
   const [sellClaimF] = pda(programId, [
-    Buffer.from("claim"),
+    SEED.claim,
     seller.publicKey.toBuffer(),
     mintFiat.publicKey.toBuffer(),
   ]);
   const [sellClaimAtaF] = pda(programId, [
-    Buffer.from("claim-ata"),
+    SEED.claimAta,
     seller.publicKey.toBuffer(),
     mintFiat.publicKey.toBuffer(),
   ]);
@@ -1603,7 +1338,11 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
         lamports: ataRent,
         programId: TOKEN_PROGRAM_ID,
       }),
-      createInitializeAccount3Instruction(escrowAtaFresh.publicKey, mintFiat.publicKey, escrowFresh),
+      createInitializeAccount3Instruction(
+        escrowAtaFresh.publicKey,
+        mintFiat.publicKey,
+        lotFresh.escrow,
+      ),
       createMintToInstruction(
         mintFiat.publicKey,
         buyerAtaFresh.publicKey,
@@ -1639,17 +1378,23 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
       ix(
         programId,
         [
-          { pubkey: buyer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: consignFresh, isSigner: false, isWritable: true },
-          { pubkey: assetFresh, isSigner: false, isWritable: true },
-          { pubkey: platform.publicKey, isSigner: false, isWritable: true },
-          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-          { pubkey: recallFresh, isSigner: false, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: escrowFresh, isSigner: false, isWritable: true },
+          ...buyHeadKeys({
+            buyer: buyer.publicKey,
+            config: configPda,
+            consign: lotFresh.consign,
+            binding,
+            passportConfig: stack.passportConfig,
+            asset: lotFresh.asset,
+            custody: custodyPda,
+            platform: platform.publicKey,
+            seller: seller.publicKey,
+            agent: seller.publicKey,
+            recall: lotFresh.recall,
+            payer: payer.publicKey,
+            escrow: lotFresh.escrow,
+            answerLeave: lotFresh.answers.leave,
+            answerOpen: lotFresh.answers.open,
+          }),
           { pubkey: payTokFiat, isSigner: false, isWritable: false },
           { pubkey: priceLabPda, isSigner: false, isWritable: false },
           { pubkey: buyerAtaFresh.publicKey, isSigner: false, isWritable: true },
@@ -1663,33 +1408,33 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           { pubkey: sellClaimF, isSigner: false, isWritable: true },
           { pubkey: sellClaimAtaF, isSigner: false, isWritable: true },
         ],
-        Buffer.concat([Buffer.from([IX.Buy]), tokenFresh]),
+        Buffer.concat([Buffer.from([FP_IX.Buy]), lotFresh.tokenId]),
       ),
     ),
     [buyer, payer],
   );
-  const freshClosed = readConsignment((await conn.getAccountInfo(consignFresh))!.data);
-  const freshAsset = readAsset((await conn.getAccountInfo(assetFresh))!.data);
+  const freshClosed = readConsignment((await conn.getAccountInfo(lotFresh.consign))!.data as Buffer);
+  const freshOwner = coreOwner((await conn.getAccountInfo(lotFresh.asset))!.data as Buffer);
   assert.equal(freshClosed.phase, PHASE.Closed);
-  assert.equal(freshAsset.owner.toBase58(), buyer.publicKey.toBase58());
-  const escrowFreshAcc = await getAccount(conn, escrowAtaFresh.publicKey);
-  assert.equal(escrowFreshAcc.amount, 0n);
+  assert.equal(freshOwner.toBase58(), buyer.publicKey.toBase58());
 
-  // ---- Agented Margin fiat: Grant → OpenFromMandate → ForceSeed → Buy (D-27 floor rewrite) ----
+  // ---- Agented Margin fiat + Revoke / TransferDelegate pin ----
   await seedPrice("lab-fresh_narrow.bin", nowUnix);
-  const tokenAg = Buffer.alloc(32, 0x75);
-  const assetAg = await createAndApproveAsset(conn, programId, payer, seller, tokenAg, custodyPda);
-  const [mandateAg] = pda(programId, [Buffer.from("mandate"), tokenAg]);
-  const [consignAg] = pda(programId, [Buffer.from("consignment"), tokenAg]);
-  const [recallAg] = pda(programId, [Buffer.from("recall"), tokenAg]);
-  const [escrowAg] = pda(programId, [Buffer.from("escrow"), tokenAg]);
-  const fiatFloor1e8 = 100_0000_0000n; // $100 floor (fiat 1e8)
-  const fiatAgentedPrice = fiatPrice1e8; // $150 ≥ floor
+  const lotAg = await mintCoreLot(conn, stack, programId, payer, seller);
+  await addTransferDelegateToCustody(conn, seller, payer, lotAg.asset, custodyPda);
+  assert.ok(
+    hasTransferDelegateAddress(
+      (await conn.getAccountInfo(lotAg.asset))!.data as Buffer,
+      custodyPda,
+    ),
+  );
+
+  const [mandateAg] = pda(programId, [SEED.mandate, lotAg.tokenId]);
+  const fiatFloor1e8 = 100_0000_0000n;
+  const fiatAgentedPrice = fiatPrice1e8;
   const feeBpsAg = 250n;
-  const amountAg = expectedAssetAmt; // same feed → 1_000_000
-  // Margin scale base = settled − ⌊settled·fee/10000⌋
-  const baseFiat =
-    fiatAgentedPrice - (fiatAgentedPrice * feeBpsAg) / 10_000n;
+  const amountAg = expectedAssetAmt;
+  const baseFiat = fiatAgentedPrice - (fiatAgentedPrice * feeBpsAg) / 10_000n;
   const baseAsset = amountAg - (amountAg * feeBpsAg) / 10_000n;
   const expectedFloorAsset = (baseAsset * fiatFloor1e8) / baseFiat;
 
@@ -1698,26 +1443,26 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     new Transaction().add(
       ix(
         programId,
-        [
-          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-          { pubkey: assetAg, isSigner: false, isWritable: false },
-          { pubkey: mandateAg, isSigner: false, isWritable: true },
-          { pubkey: consignAg, isSigner: false, isWritable: false },
-          { pubkey: custodyPda, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-        ],
+        grantKeys({
+          owner: seller.publicKey,
+          binding,
+          asset: lotAg.asset,
+          mandate: mandateAg,
+          consign: lotAg.consign,
+          custody: custodyPda,
+          payer: payer.publicKey,
+        }),
         Buffer.concat([
-          Buffer.from([IX.Grant]),
-          tokenAg,
+          Buffer.from([FP_IX.Grant]),
+          lotAg.tokenId,
           agent.publicKey.toBuffer(),
-          encU64(0), // no expiry
+          encU64(0),
           mintFiat.publicKey.toBuffer(),
           Buffer.from([DENOM_FIAT]),
           CURRENCY_USD,
           encU64(fiatFloor1e8),
           Buffer.from([FORM_MARGIN]),
-          encU16(0), // commission 0
+          encU16(0),
         ]),
       ),
     ),
@@ -1729,20 +1474,25 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     new Transaction().add(
       ix(
         programId,
-        [
-          { pubkey: agent.publicKey, isSigner: true, isWritable: false },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: assetAg, isSigner: false, isWritable: true },
-          { pubkey: mandateAg, isSigner: false, isWritable: false },
-          { pubkey: consignAg, isSigner: false, isWritable: true },
-          { pubkey: custodyPda, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: payTokFiat, isSigner: false, isWritable: false },
-        ],
+        openFromMandateKeys({
+          agent: agent.publicKey,
+          config: configPda,
+          mandate: mandateAg,
+          paymentTok: payTokFiat,
+          binding,
+          passportConfig: stack.passportConfig,
+          asset: lotAg.asset,
+          challenge: lotAg.challenge,
+          mayAnswerOpen: lotAg.answers.open,
+          consign: lotAg.consign,
+          custody: custodyPda,
+          payer: payer.publicKey,
+          answerLeave: lotAg.answers.leave,
+          answerOpen: lotAg.answers.open,
+        }),
         Buffer.concat([
-          Buffer.from([IX.OpenFromMandate]),
-          tokenAg,
+          Buffer.from([FP_IX.OpenFromMandate]),
+          lotAg.tokenId,
           Buffer.from([DENOM_FIAT]),
           CURRENCY_USD,
           encU64(fiatAgentedPrice),
@@ -1752,10 +1502,9 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     [agent, payer],
   );
 
-  const lotAgBefore = readConsignment((await conn.getAccountInfo(consignAg))!.data as Buffer);
+  const lotAgBefore = readConsignment((await conn.getAccountInfo(lotAg.consign))!.data as Buffer);
   assert.equal(lotAgBefore.phase, PHASE.Offered);
   assert.equal(lotAgBefore.floor, fiatFloor1e8);
-  assert.equal(lotAgBefore.feeBps, 250);
   const floorBefore = lotAgBefore.floor;
 
   const buyerAtaAg = Keypair.generate();
@@ -1764,32 +1513,32 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   const sellerAtaAg = Keypair.generate();
   const agentAtaAg = Keypair.generate();
   const [platClaimAg] = pda(programId, [
-    Buffer.from("claim"),
+    SEED.claim,
     platform.publicKey.toBuffer(),
     mintFiat.publicKey.toBuffer(),
   ]);
   const [platClaimAtaAg] = pda(programId, [
-    Buffer.from("claim-ata"),
+    SEED.claimAta,
     platform.publicKey.toBuffer(),
     mintFiat.publicKey.toBuffer(),
   ]);
   const [sellClaimAg] = pda(programId, [
-    Buffer.from("claim"),
+    SEED.claim,
     seller.publicKey.toBuffer(),
     mintFiat.publicKey.toBuffer(),
   ]);
   const [sellClaimAtaAg] = pda(programId, [
-    Buffer.from("claim-ata"),
+    SEED.claimAta,
     seller.publicKey.toBuffer(),
     mintFiat.publicKey.toBuffer(),
   ]);
   const [agentClaimAg] = pda(programId, [
-    Buffer.from("claim"),
+    SEED.claim,
     agent.publicKey.toBuffer(),
     mintFiat.publicKey.toBuffer(),
   ]);
   const [agentClaimAtaAg] = pda(programId, [
-    Buffer.from("claim-ata"),
+    SEED.claimAta,
     agent.publicKey.toBuffer(),
     mintFiat.publicKey.toBuffer(),
   ]);
@@ -1804,11 +1553,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
         lamports: ataRent,
         programId: TOKEN_PROGRAM_ID,
       }),
-      createInitializeAccount3Instruction(
-        buyerAtaAg.publicKey,
-        mintFiat.publicKey,
-        buyer.publicKey,
-      ),
+      createInitializeAccount3Instruction(buyerAtaAg.publicKey, mintFiat.publicKey, buyer.publicKey),
       SystemProgram.createAccount({
         fromPubkey: payer.publicKey,
         newAccountPubkey: escrowAtaAg.publicKey,
@@ -1816,7 +1561,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
         lamports: ataRent,
         programId: TOKEN_PROGRAM_ID,
       }),
-      createInitializeAccount3Instruction(escrowAtaAg.publicKey, mintFiat.publicKey, escrowAg),
+      createInitializeAccount3Instruction(escrowAtaAg.publicKey, mintFiat.publicKey, lotAg.escrow),
       createMintToInstruction(
         mintFiat.publicKey,
         buyerAtaAg.publicKey,
@@ -1859,68 +1604,155 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     [payer, buyerAtaAg, escrowAtaAg, platformAtaAg, sellerAtaAg, agentAtaAg],
   );
 
-  const platBal0 = (await getAccount(conn, platformAtaAg.publicKey)).amount;
-  const sellBal0 = (await getAccount(conn, sellerAtaAg.publicKey)).amount;
-  const agentBal0 = (await getAccount(conn, agentAtaAg.publicKey)).amount;
+  const platBeforeAg = (await getAccount(conn, platformAtaAg.publicKey)).amount;
+  const sellBeforeAg = (await getAccount(conn, sellerAtaAg.publicKey)).amount;
+  const agentBeforeAg = (await getAccount(conn, agentAtaAg.publicKey)).amount;
 
+  const agentedBuyIx = ix(
+    programId,
+    [
+      ...buyHeadKeys({
+        buyer: buyer.publicKey,
+        config: configPda,
+        consign: lotAg.consign,
+        binding,
+        passportConfig: stack.passportConfig,
+        asset: lotAg.asset,
+        custody: custodyPda,
+        platform: platform.publicKey,
+        seller: seller.publicKey,
+        agent: agent.publicKey,
+        recall: lotAg.recall,
+        payer: payer.publicKey,
+        escrow: lotAg.escrow,
+        answerLeave: lotAg.answers.leave,
+        answerOpen: lotAg.answers.open,
+      }),
+      { pubkey: payTokFiat, isSigner: false, isWritable: false },
+      { pubkey: priceLabPda, isSigner: false, isWritable: false },
+      { pubkey: buyerAtaAg.publicKey, isSigner: false, isWritable: true },
+      { pubkey: escrowAtaAg.publicKey, isSigner: false, isWritable: true },
+      { pubkey: mintFiat.publicKey, isSigner: false, isWritable: false },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: platformAtaAg.publicKey, isSigner: false, isWritable: true },
+      { pubkey: platClaimAg, isSigner: false, isWritable: true },
+      { pubkey: platClaimAtaAg, isSigner: false, isWritable: true },
+      { pubkey: sellerAtaAg.publicKey, isSigner: false, isWritable: true },
+      { pubkey: sellClaimAg, isSigner: false, isWritable: true },
+      { pubkey: sellClaimAtaAg, isSigner: false, isWritable: true },
+      { pubkey: agentAtaAg.publicKey, isSigner: false, isWritable: true },
+      { pubkey: agentClaimAg, isSigner: false, isWritable: true },
+      { pubkey: agentClaimAtaAg, isSigner: false, isWritable: true },
+    ],
+    Buffer.concat([Buffer.from([FP_IX.Buy]), lotAg.tokenId]),
+  );
+  const agentedBuyAlt = await sendIxWithAlt(conn, payer, agentedBuyIx, [buyer, payer]);
+  console.warn(
+    `[svm-stand] fixed-price agented buy ALT legacyWouldBe=${agentedBuyAlt.legacyWouldBe} ` +
+      `versionedSize=${agentedBuyAlt.versionedSize} (limit 1232)`,
+  );
+
+  const lotAgAfter = readConsignment((await conn.getAccountInfo(lotAg.consign))!.data as Buffer);
+  assert.equal(lotAgAfter.phase, PHASE.Closed);
+  // Sold clears durable floor; D-27 rewrite is proven by Margin owner leg === expectedFloorAsset.
+  assert.equal(lotAgAfter.floor, 0n);
+  const platformDeltaAg =
+    (await getAccount(conn, platformAtaAg.publicKey)).amount - platBeforeAg;
+  const ownerDeltaAg = (await getAccount(conn, sellerAtaAg.publicKey)).amount - sellBeforeAg;
+  const agentDeltaAg = (await getAccount(conn, agentAtaAg.publicKey)).amount - agentBeforeAg;
+  const expectedPlatformAg = (amountAg * feeBpsAg) / 10_000n;
+  assert.equal(ownerDeltaAg, expectedFloorAsset, "D-27 Margin owner = rewritten floor");
+  assert.equal(platformDeltaAg, expectedPlatformAg);
+  assert.equal(platformDeltaAg + ownerDeltaAg + agentDeltaAg, amountAg);
+
+  // Revoke leaves TransferDelegate; OpenFromMandate → NoMandate
+  const lotRev = await mintCoreLot(conn, stack, programId, payer, seller);
+  await addTransferDelegateToCustody(conn, seller, payer, lotRev.asset, custodyPda);
+  const [mandateRev] = pda(programId, [SEED.mandate, lotRev.tokenId]);
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        grantKeys({
+          owner: seller.publicKey,
+          binding,
+          asset: lotRev.asset,
+          mandate: mandateRev,
+          consign: lotRev.consign,
+          custody: custodyPda,
+          payer: payer.publicKey,
+        }),
+        Buffer.concat([
+          Buffer.from([FP_IX.Grant]),
+          lotRev.tokenId,
+          agent.publicKey.toBuffer(),
+          encU64(0),
+          Buffer.alloc(32, 0),
+          Buffer.from([0]),
+          Buffer.alloc(32, 0),
+          encU64(100),
+          Buffer.from([FORM_MARGIN]),
+          encU16(0),
+        ]),
+      ),
+    ),
+    [seller, payer],
+  );
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
       ix(
         programId,
         [
-          { pubkey: buyer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: consignAg, isSigner: false, isWritable: true },
-          { pubkey: assetAg, isSigner: false, isWritable: true },
-          { pubkey: platform.publicKey, isSigner: false, isWritable: true },
-          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-          { pubkey: agent.publicKey, isSigner: false, isWritable: true },
-          { pubkey: recallAg, isSigner: false, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: escrowAg, isSigner: false, isWritable: true },
-          { pubkey: payTokFiat, isSigner: false, isWritable: false },
-          { pubkey: priceLabPda, isSigner: false, isWritable: false },
-          { pubkey: buyerAtaAg.publicKey, isSigner: false, isWritable: true },
-          { pubkey: escrowAtaAg.publicKey, isSigner: false, isWritable: true },
-          { pubkey: mintFiat.publicKey, isSigner: false, isWritable: false },
-          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-          { pubkey: platformAtaAg.publicKey, isSigner: false, isWritable: true },
-          { pubkey: platClaimAg, isSigner: false, isWritable: true },
-          { pubkey: platClaimAtaAg, isSigner: false, isWritable: true },
-          { pubkey: sellerAtaAg.publicKey, isSigner: false, isWritable: true },
-          { pubkey: sellClaimAg, isSigner: false, isWritable: true },
-          { pubkey: sellClaimAtaAg, isSigner: false, isWritable: true },
-          { pubkey: agentAtaAg.publicKey, isSigner: false, isWritable: true },
-          { pubkey: agentClaimAg, isSigner: false, isWritable: true },
-          { pubkey: agentClaimAtaAg, isSigner: false, isWritable: true },
+          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
+          { pubkey: binding, isSigner: false, isWritable: false },
+          { pubkey: lotRev.asset, isSigner: false, isWritable: false },
+          { pubkey: mandateRev, isSigner: false, isWritable: true },
+          { pubkey: lotRev.consign, isSigner: false, isWritable: false },
         ],
-        Buffer.concat([Buffer.from([IX.Buy]), tokenAg]),
+        Buffer.concat([Buffer.from([FP_IX.Revoke]), lotRev.tokenId]),
       ),
     ),
-    [buyer, payer],
+    [seller],
   );
-
-  const closedAg = readConsignment((await conn.getAccountInfo(consignAg))!.data as Buffer);
-  const assetAfterAg = readAsset((await conn.getAccountInfo(assetAg))!.data as Buffer);
-  assert.equal(closedAg.phase, PHASE.Closed);
-  const buyerOwnsAg = assetAfterAg.owner.toBase58();
-  assert.equal(buyerOwnsAg, buyer.publicKey.toBase58());
-  // Sold clears durable floor; rewrite is proven by Margin owner leg === expectedFloorAsset.
-  assert.equal(closedAg.floor, 0n);
-
-  const platformDeltaAg =
-    (await getAccount(conn, platformAtaAg.publicKey)).amount - platBal0;
-  const ownerDeltaAg = (await getAccount(conn, sellerAtaAg.publicKey)).amount - sellBal0;
-  const agentDeltaAg = (await getAccount(conn, agentAtaAg.publicKey)).amount - agentBal0;
-  const expectedPlatformAg = (amountAg * feeBpsAg) / 10_000n;
-  const expectedAgentAg = amountAg - expectedPlatformAg - expectedFloorAsset;
-  assert.equal(ownerDeltaAg, expectedFloorAsset, "D-27 Margin owner = rewritten floor");
-  assert.equal(platformDeltaAg, expectedPlatformAg);
-  assert.equal(agentDeltaAg, expectedAgentAg);
-  assert.equal(platformDeltaAg + ownerDeltaAg + agentDeltaAg, amountAg);
-  const floorAfter = expectedFloorAsset; // rewritten floor applied at settle (proven via owner leg)
+  const transferDelegateAfterRevoke = hasTransferDelegateAddress(
+    (await conn.getAccountInfo(lotRev.asset))!.data as Buffer,
+    custodyPda,
+  );
+  assert.equal(transferDelegateAfterRevoke, true);
+  const revokeOpenCode = await expectCustom(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        openFromMandateKeys({
+          agent: agent.publicKey,
+          config: configPda,
+          mandate: mandateRev,
+          binding,
+          passportConfig: stack.passportConfig,
+          asset: lotRev.asset,
+          challenge: lotRev.challenge,
+          mayAnswerOpen: lotRev.answers.open,
+          consign: lotRev.consign,
+          custody: custodyPda,
+          payer: payer.publicKey,
+          answerLeave: lotRev.answers.leave,
+          answerOpen: lotRev.answers.open,
+        }),
+        Buffer.concat([
+          Buffer.from([FP_IX.OpenFromMandate]),
+          lotRev.tokenId,
+          Buffer.from([0]),
+          Buffer.alloc(32, 0),
+          encU64(200),
+        ]),
+      ),
+    ),
+    [agent, payer],
+    ERR.NoMandate,
+  );
 
   return withStandArtifactBindings({
     nativeBuy: {
@@ -1930,7 +1762,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
       sellerDelta: balS1 - balS0,
       agentDelta: balA1 - balA0,
       price: priceN,
-      feeBps: lotN.feeBps,
+      feeBps: lotNData.feeBps,
     },
     fiatRefuseCode,
     fiatNoFeedCode,
@@ -1939,17 +1771,19 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     badOracleCode,
     fiatFresh: {
       phase: freshClosed.phase,
-      buyerOwns: freshAsset.owner.toBase58() === buyer.publicKey.toBase58(),
+      buyerOwns: freshOwner.equals(buyer.publicKey),
       expectedAssetAmt: Number(expectedAssetAmt),
     },
     fiatAgented: {
       floorBefore,
-      floorAfter,
+      floorAfter: lotAgAfter.floor,
       expectedFloorAsset,
       ownerDelta: ownerDeltaAg,
       agentDelta: agentDeltaAg,
       platformDelta: platformDeltaAg,
       amount: amountAg,
+      buyLegacyWouldBe: agentedBuyAlt.legacyWouldBe,
+      buyVersionedSize: agentedBuyAlt.versionedSize,
     },
     external: {
       phase: closedE.phase,
@@ -1966,5 +1800,9 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     admittedDecimals,
     chainMintDecimals,
     transferFeeRefuseCode,
+    leaveChainWhileLive: leaveChainWhileLive!,
+    leaveChainAfterClose,
+    revokeOpenCode,
+    transferDelegateAfterRevoke,
   });
 }

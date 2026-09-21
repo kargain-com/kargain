@@ -573,8 +573,14 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-core-custody",
     owner: "svm/crates/kargain-consignment-base::core_custody · svm/crates/kargain-passport-asset",
-    rule: "Sole Core custody helpers (binding via kargain-passport-asset PDA+liveness, AssetFrozen freeze gate before every public TransferV1, TransferDelegate read, owner/delegate/custody moves); passport keeps its own core_asset CPI door; skip-freeze plant harness-only; modes must not TransferV1 until steps 5–6",
+    rule: "Sole Core custody helpers (binding via kargain-passport-asset PDA+liveness, AssetFrozen freeze gate before every public TransferV1, TransferDelegate read, owner/delegate/custody moves); passport keeps its own core_asset CPI door; skip-freeze plant harness-only; modes must not TransferV1CpiBuilder — FixedPrice consumes movers (step 5), Ascending waits for step 6",
     guardTests: ["svm-core-custody-policy.test.ts"],
+  },
+  {
+    id: "svm-fixed-price-core-custody",
+    owner: "svm/programs/kar-fixed-price",
+    rule: "FixedPrice trades Core passport via shared movers + passport May/registry; no HarnessAsset / load_asset / take_custody / release_custody / is_escrow_approved / self_encumbrance_registered / read_may_open / write_may_open",
+    guardTests: ["svm-fixed-price-core-custody-policy.test.ts"],
   },
   {
     id: "svm-fixed-price-price-owner",

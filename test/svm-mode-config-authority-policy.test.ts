@@ -21,12 +21,11 @@ const PASSPORT_ENTRY = path.join(SVM, "programs/kar-passport/src/entrypoint.rs")
 
 /** Stated floor — every config-authority / trust-warp binder that must call the owner. */
 const REQUIRED_HANDLERS: ReadonlyArray<{ program: string; fn: string }> = [
-  { program: "kar-fixed-price", fn: "set_may_open" },
-  { program: "kar-fixed-price", fn: "set_self_enc" },
   { program: "kar-fixed-price", fn: "force_recall_at" },
   { program: "kar-fixed-price", fn: "unpause_ix" },
   { program: "kar-fixed-price", fn: "approve_payment_token" },
   { program: "kar-fixed-price", fn: "force_seed_price_account" },
+  { program: "kar-fixed-price", fn: "bind_passport_program" },
   { program: "kar-ascending", fn: "set_may_open" },
   { program: "kar-ascending", fn: "set_verified" },
   { program: "kar-ascending", fn: "set_self_enc" },
@@ -42,7 +41,7 @@ const REQUIRED_HANDLERS: ReadonlyArray<{ program: string; fn: string }> = [
   { program: "consignment-harness", fn: "unpause_ix" },
 ];
 
-const HANDLER_FLOOR = 19;
+const HANDLER_FLOOR = 18;
 
 /** Inline authority-key vs config-authority compares (must live only in admit owner). */
 const INLINE_AUTHORITY_EQ =
@@ -220,23 +219,23 @@ describe("svm-mode-config-authority-policy", () => {
 
   it("plant: handler binds authority and skips the owner (red then green)", () => {
     const dirty = `
-fn set_may_open(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+fn bind_passport_program(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let iter = &mut accounts.iter();
     let authority = next_account_info(iter)?;
-    let asset_info = next_account_info(iter)?;
+    let binding = next_account_info(iter)?;
     let _ = authority;
-    write_may_open(asset_info, true)
+    Ok(())
 }
 `;
     const clean = `
-fn set_may_open(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+fn bind_passport_program(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let iter = &mut accounts.iter();
     let authority = next_account_info(iter)?;
     let config = next_account_info(iter)?;
-    let asset_info = next_account_info(iter)?;
+    let binding = next_account_info(iter)?;
     let cfg = load_config(config)?;
     require_config_authority(authority, config, program_id, &cfg.authority)?;
-    write_may_open(asset_info, true)
+    Ok(())
 }
 `;
     assert.equal(handlerCallsOwner(dirty), false, "planted skip must be red");
@@ -246,10 +245,11 @@ fn set_may_open(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult 
     const plantedPath = path.join(dir, "ix.rs");
     fs.writeFileSync(plantedPath, dirty);
     const plantedSrc = fs.readFileSync(plantedPath, "utf8");
-    const plantedBody = extractFnBody(plantedSrc, "set_may_open");
-    const msg = "kar-fixed-price::set_may_open binds authority-class and skips require_config_authority";
+    const plantedBody = extractFnBody(plantedSrc, "bind_passport_program");
+    const msg =
+      "kar-fixed-price::bind_passport_program binds authority-class and skips require_config_authority";
     const violations = findAuthorityOwnerViolations(
-      [{ program: "kar-fixed-price", fn: "set_may_open" }],
+      [{ program: "kar-fixed-price", fn: "bind_passport_program" }],
       () => plantedSrc,
     );
     assert.ok(violations.some((v) => v.includes("skips require_config_authority")), msg);
@@ -257,9 +257,11 @@ fn set_may_open(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult 
     fs.rmSync(dir, { recursive: true, force: true });
 
     assert.equal(
-      findAuthorityOwnerViolations([{ program: "kar-fixed-price", fn: "set_may_open" }]).length,
+      findAuthorityOwnerViolations([
+        { program: "kar-fixed-price", fn: "bind_passport_program" },
+      ]).length,
       0,
-      "live set_may_open is green",
+      "live bind_passport_program is green",
     );
   });
 
@@ -301,27 +303,27 @@ fn force_recall_at(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResu
 
   it("plant: inline authority.key != cfg.authority in handler (red then green)", () => {
     const dirty = `
-fn set_may_open(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+fn bind_passport_program(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let iter = &mut accounts.iter();
     let authority = next_account_info(iter)?;
     let config = next_account_info(iter)?;
-    let asset_info = next_account_info(iter)?;
+    let binding = next_account_info(iter)?;
     let cfg = load_config(config)?;
     if authority.key.to_bytes() != cfg.authority {
         return Err(ProgramError::MissingRequiredSignature);
     }
-    write_may_open(asset_info, true)
+    Ok(())
 }
 `;
     const clean = `
-fn set_may_open(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+fn bind_passport_program(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let iter = &mut accounts.iter();
     let authority = next_account_info(iter)?;
     let config = next_account_info(iter)?;
-    let asset_info = next_account_info(iter)?;
+    let binding = next_account_info(iter)?;
     let cfg = load_config(config)?;
     require_config_authority(authority, config, program_id, &cfg.authority)?;
-    write_may_open(asset_info, true)
+    Ok(())
 }
 `;
     assert.equal(
@@ -335,7 +337,7 @@ fn set_may_open(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult 
       "owner call clears inline equality plant",
     );
     const violations = findInlineAuthorityEqViolations(
-      [{ program: "kar-fixed-price", fn: "set_may_open" }],
+      [{ program: "kar-fixed-price", fn: "bind_passport_program" }],
       () => dirty,
     );
     assert.ok(
@@ -343,10 +345,11 @@ fn set_may_open(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult 
       "violation message names the class",
     );
     assert.equal(
-      findInlineAuthorityEqViolations([{ program: "kar-fixed-price", fn: "set_may_open" }])
-        .length,
+      findInlineAuthorityEqViolations([
+        { program: "kar-fixed-price", fn: "bind_passport_program" },
+      ]).length,
       0,
-      "live set_may_open has no inline equality",
+      "live bind_passport_program has no inline equality",
     );
   });
 });

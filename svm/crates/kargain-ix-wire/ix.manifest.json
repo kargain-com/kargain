@@ -1442,6 +1442,15 @@
       "goldenHex": "1abfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7"
     },
     {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 27,
+      "name": "BindPassportProgram",
+      "fields": [],
+      "sample": {},
+      "goldenHex": "1b"
+    },
+    {
       "program": "kar-ascending",
       "enum": "AscendingIx",
       "index": 0,

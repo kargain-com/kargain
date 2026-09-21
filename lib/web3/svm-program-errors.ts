@@ -145,6 +145,8 @@ export const SVM_PROGRAM_ERROR_BY_ORDINAL = [
   "AssetFrozen", // 137
   "NotTransferDelegate", // 138
   "NotLiveCoreAsset", // 139
+  "PassportProgramUnbound", // 140
+  "HarnessInstructionRetired", // 141
 ] as const;
 
 export type SvmProgramErrorName = (typeof SVM_PROGRAM_ERROR_BY_ORDINAL)[number];

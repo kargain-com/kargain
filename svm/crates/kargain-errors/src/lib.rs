@@ -328,6 +328,12 @@ pub enum KargainError {
     /// SVM — account is not a live Metaplex Core asset (D-17).
     #[error("NotLiveCoreAsset")]
     NotLiveCoreAsset = 139,
+    /// SVM — mode has not bound a passport program (one-shot BindPassportProgram).
+    #[error("PassportProgramUnbound")]
+    PassportProgramUnbound = 140,
+    /// SVM — FixedPrice harness CreateAsset / ApproveEscrow / SetMayOpen / SetSelfEncumbrance retired.
+    #[error("HarnessInstructionRetired")]
+    HarnessInstructionRetired = 141,
 }
 
 impl KargainError {
@@ -474,6 +480,8 @@ impl KargainError {
             Self::AssetFrozen => "AssetFrozen",
             Self::NotTransferDelegate => "NotTransferDelegate",
             Self::NotLiveCoreAsset => "NotLiveCoreAsset",
+            Self::PassportProgramUnbound => "PassportProgramUnbound",
+            Self::HarnessInstructionRetired => "HarnessInstructionRetired",
         }
     }
 
@@ -620,6 +628,8 @@ impl KargainError {
             AssetFrozen,
             NotTransferDelegate,
             NotLiveCoreAsset,
+            PassportProgramUnbound,
+            HarnessInstructionRetired,
         ]
     }
 }
