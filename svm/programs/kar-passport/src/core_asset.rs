@@ -17,10 +17,7 @@ use solana_program::{
 
 use crate::seeds::ASSET_SEED;
 
-/// Live Core asset (D-17): owned by Core with more than the 1-byte burn tombstone.
-pub fn is_live_core_asset(asset: &AccountInfo) -> bool {
-    asset.owner == &mpl_core::ID && asset.data_len() > 1
-}
+pub use kargain_passport_asset::is_live_core_asset;
 
 pub fn read_uri(asset: &AccountInfo) -> Result<String, ProgramError> {
     if !is_live_core_asset(asset) {

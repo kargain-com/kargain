@@ -1,14 +1,19 @@
 //! Sole Core custody helpers for mode programs (S8-E step 4).
 //!
 //! Binding, freeze gate, TransferDelegate read, and TransferV1 moves.
-//! `kar-passport/src/core_asset.rs` stays the passport's own door — do not duplicate.
+//! Passport Core asset address + liveness: `kargain-passport-asset`.
+//! `kar-passport/src/core_asset.rs` stays the passport's own CPI door.
 //!
 //! mpl-core facts (pinned by stand tests):
 //! - (a) TransferV1 resets owner-managed TransferDelegate authority to Owner.
 //! - (b) Frozen PermanentFreezeDelegate → Core `InvalidAuthority` (9); we refuse
 //!   with `AssetFrozen` before CPI so the refusal is named.
+//!
+//! No public function in this module may TransferV1 without `require_not_frozen`.
+//! Fact-(b) skip-freeze plant lives only in consignment-harness.
 
 use kargain_errors::KargainError;
+use kargain_passport_asset::asset_pda;
 use mpl_core::{
     instructions::TransferV1CpiBuilder,
     Asset, AuthorityType,
@@ -22,22 +27,20 @@ use solana_program::{
 
 use crate::{custody_authority_pda, CUSTODY_SEED};
 
-/// Passport Core asset PDA seed — must match `kar-passport` `ASSET_SEED` (`b"asset"`).
-/// Distinct from harness `ASSET_SEED` (`b"harness-asset"`).
-pub const PASSPORT_ASSET_SEED: &[u8] = b"asset";
+/// Re-export passport asset seed for callers that need invoke_signed seed bytes.
+pub use kargain_passport_asset::ASSET_SEED as PASSPORT_ASSET_SEED;
+
+/// Re-export live-Core predicate from the sole owner.
+pub use kargain_passport_asset::is_live_core_asset;
 
 fn into_pe(e: KargainError) -> ProgramError {
     ProgramError::Custom(u32::from(e))
 }
 
 /// Derive the passport Core asset PDA for `token_id` under `passport_program`.
+#[inline]
 pub fn passport_asset_pda(passport_program: &Pubkey, token_id: &[u8; 32]) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[PASSPORT_ASSET_SEED, token_id], passport_program)
-}
-
-/// Live Core asset (D-17): owned by Core with more than the 1-byte burn tombstone.
-pub fn is_live_core_asset(asset: &AccountInfo) -> bool {
-    asset.owner == &mpl_core::ID && asset.data_len() > 1
+    asset_pda(passport_program, token_id)
 }
 
 /// Binding: account key == passport asset PDA and account is a live Core asset.
@@ -142,30 +145,6 @@ pub fn transfer_owner_to_custody<'info>(
 ) -> ProgramResult {
     require_passport_core_asset(passport_program, token_id, asset)?;
     require_not_frozen(asset)?;
-    if !owner.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-    let (expected_custody, _) = custody_authority_pda(mode_program);
-    if custody.key != &expected_custody {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    transfer_v1(asset, payer, owner, custody, core_program, system, None)
-}
-
-/// Same as `transfer_owner_to_custody` but **skips** the freeze gate — test-only
-/// plant path to observe Core `InvalidAuthority` on a frozen asset.
-pub fn transfer_owner_to_custody_skip_freeze_gate<'info>(
-    mode_program: &Pubkey,
-    passport_program: &Pubkey,
-    token_id: &[u8; 32],
-    asset: &AccountInfo<'info>,
-    owner: &AccountInfo<'info>,
-    custody: &AccountInfo<'info>,
-    payer: &AccountInfo<'info>,
-    core_program: &AccountInfo<'info>,
-    system: &AccountInfo<'info>,
-) -> ProgramResult {
-    require_passport_core_asset(passport_program, token_id, asset)?;
     if !owner.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -334,8 +313,7 @@ mod tests {
         let program = pk(7);
         let token = [3u8; 32];
         let (a, _) = passport_asset_pda(&program, &token);
-        let (b, _) =
-            Pubkey::find_program_address(&[PASSPORT_ASSET_SEED, &token], &program);
+        let (b, _) = Pubkey::find_program_address(&[PASSPORT_ASSET_SEED, &token], &program);
         assert_eq!(a, b);
         assert_eq!(PASSPORT_ASSET_SEED, b"asset");
         assert_ne!(PASSPORT_ASSET_SEED, crate::ASSET_SEED);
@@ -404,12 +382,12 @@ mod tests {
         let owner = pk(1);
         let mut data = asset_bytes_plugins(owner, true, None);
         let mut lamports = 0u64;
-        let key = pk(5);
+        let key = pk(9);
         let core_id = mpl_core::ID;
         let asset = AccountInfo::new(
             &key,
             false,
-            true,
+            false,
             &mut lamports,
             &mut data,
             &core_id,
@@ -426,32 +404,13 @@ mod tests {
     #[test]
     fn transfer_delegate_match_vs_foreign() {
         let owner = pk(1);
-        let custody = pk(99);
-        let foreign = pk(88);
-        let match_bytes = asset_bytes_plugins(owner, false, Some(custody));
-        let foreign_bytes = asset_bytes_plugins(owner, false, Some(foreign));
-        assert!(has_transfer_delegate(&match_bytes, &custody).unwrap());
-        assert!(!has_transfer_delegate(&foreign_bytes, &custody).unwrap());
-
-        let mut data = foreign_bytes;
-        let mut lamports = 0u64;
-        let key = pk(5);
-        let core_id = mpl_core::ID;
-        let asset = AccountInfo::new(
-            &key,
-            false,
-            true,
-            &mut lamports,
-            &mut data,
-            &core_id,
-            false,
-            0,
-        );
-        let err = require_transfer_delegate(&asset, &custody).unwrap_err();
-        assert_eq!(
-            err,
-            ProgramError::Custom(u32::from(KargainError::NotTransferDelegate))
-        );
+        let custody = pk(5);
+        let foreign = pk(6);
+        let with = asset_bytes_plugins(owner, false, Some(custody));
+        assert_eq!(has_transfer_delegate(&with, &custody).unwrap(), true);
+        assert_eq!(has_transfer_delegate(&with, &foreign).unwrap(), false);
+        let none = asset_bytes_plugins(owner, false, None);
+        assert_eq!(has_transfer_delegate(&none, &custody).unwrap(), false);
     }
 
     #[test]

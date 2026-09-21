@@ -11,6 +11,7 @@ members = [
   "crates/kargain-events",
   "crates/kargain-encumbrance",
   "crates/kargain-config-authority",
+  "crates/kargain-passport-asset",
   "crates/kargain-ix-wire",
     "programs/kar-passport",
   "programs/kar-gateway",
@@ -49,3 +50,4 @@ kargain-price = { path = "crates/kargain-price" }
 kargain-events = { path = "crates/kargain-events" }
 kargain-encumbrance = { path = "crates/kargain-encumbrance" }
 kargain-config-authority = { path = "crates/kargain-config-authority" }
+kargain-passport-asset = { path = "crates/kargain-passport-asset" }

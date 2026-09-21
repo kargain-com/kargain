@@ -15,8 +15,7 @@ pub use core_custody::{
     has_transfer_delegate, is_live_core_asset, is_permanently_frozen, passport_asset_pda,
     require_not_frozen, require_passport_core_asset, require_transfer_delegate,
     transfer_custody_to_recipient, transfer_delegate_authority_is_owner,
-    transfer_delegate_to_custody, transfer_owner_to_custody,
-    transfer_owner_to_custody_skip_freeze_gate, PASSPORT_ASSET_SEED,
+    transfer_delegate_to_custody, transfer_owner_to_custody, PASSPORT_ASSET_SEED,
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};

@@ -13,10 +13,10 @@ use kargain_consignment_base::{
     is_escrow_approved, lower_commission, lower_floor, mandate_pda, owner_withdraw_ok, pause,
     passport_asset_pda, recall_pda, release_custody, request_recall,
     require_agented_price_meets_floor, require_can_open, require_config_authority,
-    require_mandate_allows_open, require_not_paused, revoke_mandate, set_price, take_custody,
-    terminate_to_owner, transfer_custody_to_recipient, transfer_delegate_to_custody,
-    transfer_owner_to_custody, transfer_owner_to_custody_skip_freeze_gate, unpause, write_open,
-    CloseReason, CommerceConfig, Compensation, CompensationForm, ConsignmentRecord, Denomination,
+    require_mandate_allows_open, require_not_paused, require_passport_core_asset, revoke_mandate,
+    set_price, take_custody, terminate_to_owner, transfer_custody_to_recipient,
+    transfer_delegate_to_custody, transfer_owner_to_custody, unpause, write_open, CloseReason,
+    CommerceConfig, Compensation, CompensationForm, ConsignmentRecord, Denomination,
     DenominationKind, HarnessAsset, MandateRecord, RecallRecord, ASSET_DISCRIMINATOR, ASSET_SEED,
     CONFIG_SEED, CONSIGNMENT_SEED, MANDATE_SEED, PASSPORT_ASSET_SEED, RECALL_DISCRIMINATOR,
     RECALL_SEED,
@@ -1583,6 +1583,10 @@ fn core_transfer_owner_skip_freeze(
     accounts: &[AccountInfo],
     token_id: [u8; 32],
 ) -> ProgramResult {
+    // Fact-(b) plant: binding + owner signature, then TransferV1 without freeze gate.
+    // Lives here so kargain-consignment-base cannot move Core without require_not_frozen.
+    use mpl_core::instructions::TransferV1CpiBuilder;
+
     let iter = &mut accounts.iter();
     let asset = next_account_info(iter)?;
     let owner = next_account_info(iter)?;
@@ -1590,17 +1594,26 @@ fn core_transfer_owner_skip_freeze(
     let payer = next_account_info(iter)?;
     let core_program = next_account_info(iter)?;
     let system = next_account_info(iter)?;
-    transfer_owner_to_custody_skip_freeze_gate(
-        program_id,
-        program_id,
-        &token_id,
-        asset,
-        owner,
-        custody,
-        payer,
-        core_program,
-        system,
-    )
+
+    require_passport_core_asset(program_id, &token_id, asset)?;
+    if !owner.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let (expected_custody, _) = custody_authority_pda(program_id);
+    if custody.key != &expected_custody {
+        return Err(ProgramError::InvalidSeeds);
+    }
+    if core_program.key != &mpl_core::ID {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    TransferV1CpiBuilder::new(core_program)
+        .asset(asset)
+        .payer(payer)
+        .authority(Some(owner))
+        .new_owner(custody)
+        .system_program(Some(system))
+        .invoke()?;
+    Ok(())
 }
 
 

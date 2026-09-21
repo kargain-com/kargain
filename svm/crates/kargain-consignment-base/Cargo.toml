@@ -12,6 +12,7 @@ kargain-errors = { workspace = true }
 kargain-agented-split = { workspace = true }
 kargain-events = { workspace = true }
 kargain-config-authority = { workspace = true }
+kargain-passport-asset = { workspace = true }
 solana-program = { workspace = true }
 mpl-core = { workspace = true }
 
