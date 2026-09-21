@@ -37,15 +37,6 @@ const ENCODER_REL = "lib/svm/encode-instruction.ts";
 
 const ENTRIES = ixManifestEntries();
 
-/**
- * One-shot intentional retirements vs HEAD append-only.
- * ForceSetCustodyLock was never deployed; deleted to restore gateway ≡ a6b7f9d.
- * Do not re-add under the same (program,index).
- */
-const APPEND_ONLY_ALLOWED_REMOVALS = new Set([
-  "kar-gateway:8:ForceSetCustodyLock",
-]);
-
 function loadWorkingManifest(): IxManifest {
   return JSON.parse(readFileSync(path.join(ROOT, MANIFEST_REL), "utf8")) as IxManifest;
 }
@@ -66,6 +57,60 @@ function loadHeadManifest(): IxManifest | null {
 
 function entryKey(e: Pick<IxManifestEntry, "program" | "index">): string {
   return `${e.program}:${e.index}`;
+}
+
+/**
+ * Append-only vs a prior manifest: existing (program,index) names stable;
+ * new indices contiguous after prior max. Pure — used for HEAD check and plants.
+ */
+export function assertAppendOnlyVsPrior(
+  prior: IxManifest,
+  working: IxManifest,
+): void {
+  const workingByKey = new Map(
+    working.entries.map((e) => [entryKey(e), e] as const),
+  );
+  const priorMax = new Map<string, number>();
+  for (const e of prior.entries) {
+    const prev = priorMax.get(e.program) ?? -1;
+    if (e.index > prev) priorMax.set(e.program, e.index);
+    const cur = workingByKey.get(entryKey(e));
+    assert.ok(
+      cur,
+      `append_only_removed:${e.program}:${e.index}:${e.name}`,
+    );
+    assert.equal(
+      cur!.name,
+      e.name,
+      `append_only_renamed:${e.program}:${e.index}:was_${e.name}_now_${cur!.name}`,
+    );
+  }
+  for (const e of working.entries) {
+    const max = priorMax.get(e.program);
+    if (max == null) continue;
+    const priorHad = prior.entries.some(
+      (p) => p.program === e.program && p.index === e.index,
+    );
+    if (!priorHad) {
+      assert.ok(
+        e.index === max + 1 || e.index > max,
+        `append_only_gap_insert:${e.program}:${e.index}:prior_max_${max}`,
+      );
+    }
+  }
+  for (const [program, max] of priorMax) {
+    const newIndices = working.entries
+      .filter((e) => e.program === program && e.index > max)
+      .map((e) => e.index)
+      .sort((a, b) => a - b);
+    for (let i = 0; i < newIndices.length; i++) {
+      assert.equal(
+        newIndices[i],
+        max + 1 + i,
+        `append_only_non_contiguous:${program}:want_${max + 1 + i}_got_${newIndices[i]}`,
+      );
+    }
+  }
 }
 
 /** Hand-rolled commercial ix tag / second encoder outside the sole owner. */
@@ -192,56 +237,32 @@ describe("svm instruction encoder policy", () => {
       return;
     }
     const working = loadWorkingManifest();
-    const workingByKey = new Map(
-      working.entries.map((e) => [entryKey(e), e] as const),
+    assertAppendOnlyVsPrior(prior, working);
+  });
+
+  it("append-only: in-memory removal of one entry is red; intact copy is green", () => {
+    const prior = loadWorkingManifest();
+    assert.ok(prior.entries.length > 0, "manifest must have entries");
+    // Green: identical prior/working.
+    assertAppendOnlyVsPrior(prior, {
+      version: prior.version,
+      entries: prior.entries.map((e) => ({ ...e })),
+    });
+    // Red: drop one entry (in-memory only — no file plant).
+    const removed = prior.entries[prior.entries.length - 1]!;
+    const dirty: IxManifest = {
+      version: prior.version,
+      entries: prior.entries.slice(0, -1).map((e) => ({ ...e })),
+    };
+    assert.throws(
+      () => assertAppendOnlyVsPrior(prior, dirty),
+      (err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        return msg.includes(
+          `append_only_removed:${removed.program}:${removed.index}:${removed.name}`,
+        );
+      },
     );
-    const priorMax = new Map<string, number>();
-    for (const e of prior.entries) {
-      const prev = priorMax.get(e.program) ?? -1;
-      if (e.index > prev) priorMax.set(e.program, e.index);
-      const cur = workingByKey.get(entryKey(e));
-      if (!cur) {
-        assert.ok(
-          APPEND_ONLY_ALLOWED_REMOVALS.has(`${e.program}:${e.index}:${e.name}`),
-          `append_only_removed:${e.program}:${e.index}:${e.name}`,
-        );
-        continue;
-      }
-      assert.equal(
-        cur.name,
-        e.name,
-        `append_only_renamed:${e.program}:${e.index}:was_${e.name}_now_${cur.name}`,
-      );
-    }
-    for (const e of working.entries) {
-      const max = priorMax.get(e.program);
-      if (max == null) continue;
-      const priorHad = prior.entries.some(
-        (p) => p.program === e.program && p.index === e.index,
-      );
-      if (!priorHad) {
-        assert.ok(
-          e.index === max + 1 || e.index > max,
-          `append_only_gap_insert:${e.program}:${e.index}:prior_max_${max}`,
-        );
-        // Strict append: new indices must be exactly contiguous after prior max.
-        // Allow a contiguous run starting at max+1.
-      }
-    }
-    // New indices for a program must form {max+1, max+2, ...} with no holes below.
-    for (const [program, max] of priorMax) {
-      const newIndices = working.entries
-        .filter((e) => e.program === program && e.index > max)
-        .map((e) => e.index)
-        .sort((a, b) => a - b);
-      for (let i = 0; i < newIndices.length; i++) {
-        assert.equal(
-          newIndices[i],
-          max + 1 + i,
-          `append_only_non_contiguous:${program}:want_${max + 1 + i}_got_${newIndices[i]}`,
-        );
-      }
-    }
   });
 
   it("product graph has no hand-rolled ix tag outside the encoder", () => {

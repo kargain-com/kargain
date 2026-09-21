@@ -335,8 +335,37 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.equal(fp.leaveChainAfterClose, null);
       assert.equal(fp.revokeOpenCode, 84); // NoMandate
       assert.equal(fp.transferDelegateAfterRevoke, true);
+      {
+        const owed = [
+          "Bind",
+          "OpenDirect",
+          "OpenFromMandate",
+          "Grant",
+          "Revoke",
+          "SetPrice",
+          "LowerFloor",
+          "LowerCommission",
+          "RequestRecall",
+          "ForceRecall",
+          "OwnerWithdraw",
+          "AgentWithdraw",
+          "Buy native direct",
+          "Buy SPL direct",
+          "Buy native agented",
+          "Buy SPL agented",
+          "ConfirmExternalPayment",
+        ] as const;
+        for (const name of owed) {
+          assert.ok(fp.ixBudget[name], `ixBudget missing ${name}`);
+          assert.ok(fp.ixBudget[name]!.accounts > 0);
+          assert.ok(fp.ixBudget[name]!.legacyTx > 0);
+        }
+        assert.equal(fp.ixBudgetHeaviest, "Buy SPL agented");
+        assert.ok(fp.ixBudget["Buy SPL agented"]!.legacyTx > 1232);
+        assert.ok(fp.ixBudget["Buy SPL agented"]!.versionedTx != null);
+      }
       console.warn(
-        `\n[svm-stand] fixed-price PASS native / fiat gates+fresh / agented D-27 / external / pause / soft-revoke / admit / delivery / TransferFee / May LeaveChain / Revoke+delegate / corrects unbound·rebind·frozen·registry·retired\n`,
+        `\n[svm-stand] fixed-price PASS native / fiat gates+fresh / agented D-27 / external / pause / soft-revoke / admit / delivery / TransferFee / May LeaveChain / Revoke+delegate / corrects unbound·rebind·frozen·registry·retired / ixBudget\n`,
       );
 
       const ascReady = await probeAscendingValidator("http://127.0.0.1:8899");

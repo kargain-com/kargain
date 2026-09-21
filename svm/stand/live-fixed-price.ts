@@ -32,6 +32,7 @@ import {
   type StandArtifactBindings,
 } from "./stand-artifact-bindings.ts";
 import {
+  CORE_ID,
   ENCUMBRANCE_SEED_PREFIX,
   FP_IX,
   RPC_DEFAULT,
@@ -40,7 +41,6 @@ import {
   addEncumbranceSource,
   addTransferDelegateToCustody,
   answerPdas,
-  bindPassportProgram,
   bindPassportProgramIx,
   buyHeadKeys,
   confirmExternalKeys,
@@ -62,11 +62,14 @@ import {
   openFromMandateKeys,
   passportStateCustodyLocked,
   pda,
+  sendAndMeasure,
   sendIxWithAlt,
   tryGatewaySend,
   withOpenAnswers,
   type Conn,
+  type IxBudgetRow,
   type Kp,
+  type Meta,
   type Pk,
 } from "./stand-passport-commerce.ts";
 
@@ -114,7 +117,40 @@ const ERR = {
 
 const PHASE = { Offered: 1, Closed: 2 } as const;
 const FORM_MARGIN = 0;
+const FORM_COMMISSION = 1;
 const DENOM_FIAT = 1;
+const DENOM_ASSET = 0;
+
+/** Shared terminate metas (ForceRecall / OwnerWithdraw / AgentWithdraw). */
+function terminateKeys(args: {
+  caller: Pk;
+  consign: Pk;
+  recall: Pk;
+  binding: Pk;
+  passportConfig: Pk;
+  asset: Pk;
+  custody: Pk;
+  recipient: Pk;
+  payer: Pk;
+  answerLeave: Pk;
+  answerOpen: Pk;
+}): Meta[] {
+  return [
+    { pubkey: args.caller, isSigner: true, isWritable: false },
+    { pubkey: args.consign, isSigner: false, isWritable: true },
+    { pubkey: args.recall, isSigner: false, isWritable: true },
+    { pubkey: args.binding, isSigner: false, isWritable: false },
+    { pubkey: args.passportConfig, isSigner: false, isWritable: false },
+    { pubkey: args.asset, isSigner: false, isWritable: true },
+    { pubkey: args.custody, isSigner: false, isWritable: false },
+    { pubkey: args.recipient, isSigner: false, isWritable: false },
+    { pubkey: args.payer, isSigner: true, isWritable: true },
+    { pubkey: CORE_ID, isSigner: false, isWritable: false },
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    { pubkey: args.answerLeave, isSigner: false, isWritable: true },
+    { pubkey: args.answerOpen, isSigner: false, isWritable: true },
+  ];
+}
 
 const FIXTURES = path.join(ROOT, "svm/lab/fixtures/price-measure");
 const LAB_FEED_ID = Buffer.from(
@@ -417,6 +453,9 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   leaveChainSendAfterClose: null;
   revokeOpenCode: number;
   transferDelegateAfterRevoke: boolean;
+  /** Per-ix metas/CU/tx on stand with passport registry N=1. */
+  ixBudget: Record<string, IxBudgetRow>;
+  ixBudgetHeaviest: string;
   artifacts: StandArtifactBindings;
 }> {
   const rpc = opts?.rpc ?? RPC;
@@ -479,14 +518,21 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     ERR.PassportProgramUnbound,
   );
 
-  // 2. Bind once (happy short-circuit path)
-  const binding = await bindPassportProgram(
+  // 2. Bind once (measure Bind for budget table)
+  const [binding] = pda(programId, [SEED.passportBind]);
+  const ixBudget: Record<string, IxBudgetRow> = {};
+  ixBudget.Bind = await sendAndMeasure(
     conn,
-    programId,
-    configPda,
-    authority,
     payer,
-    stack.passportProgram,
+    bindPassportProgramIx(
+      programId,
+      configPda,
+      authority.publicKey,
+      payer.publicKey,
+      stack.passportProgram,
+      binding,
+    ),
+    [authority, payer],
   );
 
   // 3. Rebind without early-return → AccountAlreadyInitialized (native)
@@ -1949,6 +1995,901 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     ERR.NoMandate,
   );
 
+  // ---- Per-ix budget table (registry N=1; Bind already measured) ----
+  // Re-fund after heavy earlier paths (opens used seller as default fee payer).
+  for (const k of [authority, guardian, platform, seller, agent, buyer, payer]) {
+    await airdrop(conn, k, 4);
+  }
+  function grantData(
+    tokenId: Buffer,
+    floor: bigint,
+    form: number,
+    commissionBps: number,
+    mintPk?: Pk,
+    denomKind = DENOM_ASSET,
+    currency = Buffer.alloc(32, 0),
+  ): Buffer {
+    return Buffer.concat([
+      Buffer.from([FP_IX.Grant]),
+      tokenId,
+      agent.publicKey.toBuffer(),
+      encU64(0),
+      mintPk ? mintPk.toBuffer() : Buffer.alloc(32, 0),
+      Buffer.from([denomKind]),
+      currency,
+      encU64(floor),
+      Buffer.from([form]),
+      encU16(commissionBps),
+    ]);
+  }
+
+  // Direct: OpenDirect → SetPrice → OwnerWithdraw
+  {
+    const lot = await mintCoreLot(conn, stack, programId, payer, seller);
+    ixBudget.OpenDirect = await sendAndMeasure(
+      conn,
+      payer,
+      ix(
+        programId,
+        withOpenAnswers(
+          openDirectKeys({
+            seller: seller.publicKey,
+            config: configPda,
+            binding,
+            passportConfig: stack.passportConfig,
+            asset: lot.asset,
+            challenge: lot.challenge,
+            mayAnswerOpen: lot.answers.open,
+            consign: lot.consign,
+            custody: custodyPda,
+            payer: payer.publicKey,
+          }),
+          lot.answers.leave,
+          lot.answers.open,
+        ),
+        Buffer.concat([
+          Buffer.from([FP_IX.OpenDirect]),
+          lot.tokenId,
+          Buffer.alloc(32, 0),
+          Buffer.from([0]),
+          Buffer.alloc(32, 0),
+          encU64(1_000),
+        ]),
+      ),
+      [seller, payer],
+    );
+    ixBudget.SetPrice = await sendAndMeasure(
+      conn,
+      payer,
+      ix(
+        programId,
+        [
+          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
+          { pubkey: lot.consign, isSigner: false, isWritable: true },
+        ],
+        Buffer.concat([Buffer.from([FP_IX.SetPrice]), lot.tokenId, encU64(1_100)]),
+      ),
+      [seller],
+    );
+    ixBudget.OwnerWithdraw = await sendAndMeasure(
+      conn,
+      payer,
+      ix(
+        programId,
+        terminateKeys({
+          caller: seller.publicKey,
+          consign: lot.consign,
+          recall: lot.recall,
+          binding,
+          passportConfig: stack.passportConfig,
+          asset: lot.asset,
+          custody: custodyPda,
+          recipient: seller.publicKey,
+          payer: payer.publicKey,
+          answerLeave: lot.answers.leave,
+          answerOpen: lot.answers.open,
+        }),
+        Buffer.concat([Buffer.from([FP_IX.OwnerWithdraw]), lot.tokenId]),
+      ),
+      [seller, payer],
+    );
+  }
+
+  // Grant + Revoke (no open)
+  {
+    const lot = await mintCoreLot(conn, stack, programId, payer, seller);
+    await addTransferDelegateToCustody(conn, seller, payer, lot.asset, custodyPda);
+    const [mandate] = pda(programId, [SEED.mandate, lot.tokenId]);
+    ixBudget.Grant = await sendAndMeasure(
+      conn,
+      payer,
+      ix(
+        programId,
+        grantKeys({
+          owner: seller.publicKey,
+          binding,
+          asset: lot.asset,
+          mandate,
+          consign: lot.consign,
+          custody: custodyPda,
+          payer: payer.publicKey,
+        }),
+        grantData(lot.tokenId, 700n, FORM_MARGIN, 0),
+      ),
+      [seller, payer],
+    );
+    ixBudget.Revoke = await sendAndMeasure(
+      conn,
+      payer,
+      ix(
+        programId,
+        [
+          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
+          { pubkey: binding, isSigner: false, isWritable: false },
+          { pubkey: lot.asset, isSigner: false, isWritable: false },
+          { pubkey: mandate, isSigner: false, isWritable: true },
+          { pubkey: lot.consign, isSigner: false, isWritable: false },
+        ],
+        Buffer.concat([Buffer.from([FP_IX.Revoke]), lot.tokenId]),
+      ),
+      [seller],
+    );
+  }
+
+  // Agented Margin: OpenFromMandate → LowerFloor → AgentWithdraw
+  {
+    const lot = await mintCoreLot(conn, stack, programId, payer, seller);
+    await addTransferDelegateToCustody(conn, seller, payer, lot.asset, custodyPda);
+    const [mandate] = pda(programId, [SEED.mandate, lot.tokenId]);
+    await sendAndConfirmTransaction(
+      conn,
+      new Transaction().add(
+        ix(
+          programId,
+          grantKeys({
+            owner: seller.publicKey,
+            binding,
+            asset: lot.asset,
+            mandate,
+            consign: lot.consign,
+            custody: custodyPda,
+            payer: payer.publicKey,
+          }),
+          grantData(lot.tokenId, 700n, FORM_MARGIN, 0),
+        ),
+      ),
+      [seller, payer],
+    );
+    ixBudget.OpenFromMandate = await sendAndMeasure(
+      conn,
+      payer,
+      ix(
+        programId,
+        openFromMandateKeys({
+          agent: agent.publicKey,
+          config: configPda,
+          mandate,
+          binding,
+          passportConfig: stack.passportConfig,
+          asset: lot.asset,
+          challenge: lot.challenge,
+          mayAnswerOpen: lot.answers.open,
+          consign: lot.consign,
+          custody: custodyPda,
+          payer: payer.publicKey,
+          answerLeave: lot.answers.leave,
+          answerOpen: lot.answers.open,
+        }),
+        Buffer.concat([
+          Buffer.from([FP_IX.OpenFromMandate]),
+          lot.tokenId,
+          Buffer.from([0]),
+          Buffer.alloc(32, 0),
+          encU64(1_000),
+        ]),
+      ),
+      [agent, payer],
+    );
+    ixBudget.LowerFloor = await sendAndMeasure(
+      conn,
+      payer,
+      ix(
+        programId,
+        [
+          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
+          { pubkey: lot.asset, isSigner: false, isWritable: false },
+          { pubkey: lot.consign, isSigner: false, isWritable: true },
+        ],
+        Buffer.concat([Buffer.from([FP_IX.LowerFloor]), lot.tokenId, encU64(500)]),
+      ),
+      [seller],
+    );
+    ixBudget.AgentWithdraw = await sendAndMeasure(
+      conn,
+      payer,
+      ix(
+        programId,
+        terminateKeys({
+          caller: agent.publicKey,
+          consign: lot.consign,
+          recall: lot.recall,
+          binding,
+          passportConfig: stack.passportConfig,
+          asset: lot.asset,
+          custody: custodyPda,
+          recipient: seller.publicKey,
+          payer: payer.publicKey,
+          answerLeave: lot.answers.leave,
+          answerOpen: lot.answers.open,
+        }),
+        Buffer.concat([Buffer.from([FP_IX.AgentWithdraw]), lot.tokenId]),
+      ),
+      [agent, payer],
+    );
+  }
+
+  // Agented Commission: LowerCommission → RequestRecall → warp → ForceRecall
+  {
+    const lot = await mintCoreLot(conn, stack, programId, payer, seller);
+    await addTransferDelegateToCustody(conn, seller, payer, lot.asset, custodyPda);
+    const [mandate] = pda(programId, [SEED.mandate, lot.tokenId]);
+    await sendAndConfirmTransaction(
+      conn,
+      new Transaction().add(
+        ix(
+          programId,
+          grantKeys({
+            owner: seller.publicKey,
+            binding,
+            asset: lot.asset,
+            mandate,
+            consign: lot.consign,
+            custody: custodyPda,
+            payer: payer.publicKey,
+          }),
+          grantData(lot.tokenId, 700n, FORM_COMMISSION, 500),
+        ),
+      ),
+      [seller, payer],
+    );
+    await sendAndConfirmTransaction(
+      conn,
+      new Transaction().add(
+        ix(
+          programId,
+          openFromMandateKeys({
+            agent: agent.publicKey,
+            config: configPda,
+            mandate,
+            binding,
+            passportConfig: stack.passportConfig,
+            asset: lot.asset,
+            challenge: lot.challenge,
+            mayAnswerOpen: lot.answers.open,
+            consign: lot.consign,
+            custody: custodyPda,
+            payer: payer.publicKey,
+            answerLeave: lot.answers.leave,
+            answerOpen: lot.answers.open,
+          }),
+          Buffer.concat([
+            Buffer.from([FP_IX.OpenFromMandate]),
+            lot.tokenId,
+            Buffer.from([0]),
+            Buffer.alloc(32, 0),
+            encU64(1_000),
+          ]),
+        ),
+      ),
+      [agent, payer],
+    );
+    ixBudget.LowerCommission = await sendAndMeasure(
+      conn,
+      payer,
+      ix(
+        programId,
+        [
+          { pubkey: agent.publicKey, isSigner: true, isWritable: false },
+          { pubkey: lot.consign, isSigner: false, isWritable: true },
+        ],
+        Buffer.concat([Buffer.from([FP_IX.LowerCommission]), lot.tokenId, encU16(250)]),
+      ),
+      [agent],
+    );
+    ixBudget.RequestRecall = await sendAndMeasure(
+      conn,
+      payer,
+      ix(
+        programId,
+        [
+          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
+          { pubkey: lot.consign, isSigner: false, isWritable: false },
+          { pubkey: lot.recall, isSigner: false, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+        ],
+        Buffer.concat([Buffer.from([FP_IX.RequestRecall]), lot.tokenId]),
+      ),
+      [seller, payer],
+    );
+    const past = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60 - 10;
+    await sendAndConfirmTransaction(
+      conn,
+      new Transaction().add(
+        ix(
+          programId,
+          [
+            { pubkey: authority.publicKey, isSigner: true, isWritable: false },
+            { pubkey: configPda, isSigner: false, isWritable: false },
+            { pubkey: lot.recall, isSigner: false, isWritable: true },
+          ],
+          Buffer.concat([
+            Buffer.from([FP_IX.ForceRecallRequestedAt]),
+            lot.tokenId,
+            encU64(past),
+          ]),
+        ),
+      ),
+      [authority],
+    );
+    ixBudget.ForceRecall = await sendAndMeasure(
+      conn,
+      payer,
+      ix(
+        programId,
+        terminateKeys({
+          caller: seller.publicKey,
+          consign: lot.consign,
+          recall: lot.recall,
+          binding,
+          passportConfig: stack.passportConfig,
+          asset: lot.asset,
+          custody: custodyPda,
+          recipient: seller.publicKey,
+          payer: payer.publicKey,
+          answerLeave: lot.answers.leave,
+          answerOpen: lot.answers.open,
+        }),
+        Buffer.concat([Buffer.from([FP_IX.ForceRecall]), lot.tokenId]),
+      ),
+      [seller, payer],
+    );
+  }
+
+  // Buy native direct
+  {
+    const lot = await mintCoreLot(conn, stack, programId, payer, seller);
+    await openDirectNative(conn, ctx, lot, 1_000n);
+    ixBudget["Buy native direct"] = await sendAndMeasure(
+      conn,
+      payer,
+      ix(
+        programId,
+        buyHeadKeys({
+          buyer: buyer.publicKey,
+          config: configPda,
+          consign: lot.consign,
+          binding,
+          passportConfig: stack.passportConfig,
+          asset: lot.asset,
+          custody: custodyPda,
+          platform: platform.publicKey,
+          seller: seller.publicKey,
+          agent: agent.publicKey,
+          recall: lot.recall,
+          payer: payer.publicKey,
+          escrow: lot.escrow,
+          answerLeave: lot.answers.leave,
+          answerOpen: lot.answers.open,
+        }),
+        Buffer.concat([Buffer.from([FP_IX.Buy]), lot.tokenId]),
+      ),
+      [buyer, payer],
+    );
+  }
+
+  // Buy SPL direct (fresh asset mint)
+  {
+    const mintBd = Keypair.generate();
+    await sendAndConfirmTransaction(
+      conn,
+      new Transaction().add(
+        SystemProgram.createAccount({
+          fromPubkey: payer.publicKey,
+          newAccountPubkey: mintBd.publicKey,
+          space: 82,
+          lamports: await getMinimumBalanceForRentExemptMint(conn),
+          programId: TOKEN_PROGRAM_ID,
+        }),
+        createInitializeMint2Instruction(mintBd.publicKey, 6, payer.publicKey, null),
+      ),
+      [payer, mintBd],
+    );
+    const [payTokBd] = pda(programId, [SEED.paymentToken, mintBd.publicKey.toBuffer()]);
+    await sendAndConfirmTransaction(
+      conn,
+      new Transaction().add(
+        ix(
+          programId,
+          [
+            { pubkey: authority.publicKey, isSigner: true, isWritable: false },
+            { pubkey: configPda, isSigner: false, isWritable: false },
+            { pubkey: mintBd.publicKey, isSigner: false, isWritable: false },
+            { pubkey: payTokBd, isSigner: false, isWritable: true },
+            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+            { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+          ],
+          encApproveAssetOnly(),
+        ),
+      ),
+      [authority, payer],
+    );
+    const lot = await mintCoreLot(conn, stack, programId, payer, seller);
+    const priceBd = 1_000n;
+    await openDirectSpl(conn, ctx, lot, mintBd.publicKey, payTokBd, 0, Buffer.alloc(32, 0), priceBd);
+    const bAta = Keypair.generate();
+    const eAta = Keypair.generate();
+    const pAta = Keypair.generate();
+    const sAta = Keypair.generate();
+    const [pClaim] = pda(programId, [SEED.claim, platform.publicKey.toBuffer(), mintBd.publicKey.toBuffer()]);
+    const [pClaimAta] = pda(programId, [
+      SEED.claimAta,
+      platform.publicKey.toBuffer(),
+      mintBd.publicKey.toBuffer(),
+    ]);
+    const [sClaim] = pda(programId, [SEED.claim, seller.publicKey.toBuffer(), mintBd.publicKey.toBuffer()]);
+    const [sClaimAta] = pda(programId, [
+      SEED.claimAta,
+      seller.publicKey.toBuffer(),
+      mintBd.publicKey.toBuffer(),
+    ]);
+    await sendAndConfirmTransaction(
+      conn,
+      new Transaction().add(
+        SystemProgram.createAccount({
+          fromPubkey: payer.publicKey,
+          newAccountPubkey: bAta.publicKey,
+          space: 165,
+          lamports: ataRent,
+          programId: TOKEN_PROGRAM_ID,
+        }),
+        createInitializeAccount3Instruction(bAta.publicKey, mintBd.publicKey, buyer.publicKey),
+        SystemProgram.createAccount({
+          fromPubkey: payer.publicKey,
+          newAccountPubkey: eAta.publicKey,
+          space: 165,
+          lamports: ataRent,
+          programId: TOKEN_PROGRAM_ID,
+        }),
+        createInitializeAccount3Instruction(eAta.publicKey, mintBd.publicKey, lot.escrow),
+        createMintToInstruction(mintBd.publicKey, bAta.publicKey, payer.publicKey, Number(priceBd)),
+        SystemProgram.createAccount({
+          fromPubkey: payer.publicKey,
+          newAccountPubkey: pAta.publicKey,
+          space: 165,
+          lamports: ataRent,
+          programId: TOKEN_PROGRAM_ID,
+        }),
+        createInitializeAccount3Instruction(pAta.publicKey, mintBd.publicKey, platform.publicKey),
+        SystemProgram.createAccount({
+          fromPubkey: payer.publicKey,
+          newAccountPubkey: sAta.publicKey,
+          space: 165,
+          lamports: ataRent,
+          programId: TOKEN_PROGRAM_ID,
+        }),
+        createInitializeAccount3Instruction(sAta.publicKey, mintBd.publicKey, seller.publicKey),
+      ),
+      [payer, bAta, eAta, pAta, sAta],
+    );
+    ixBudget["Buy SPL direct"] = await sendAndMeasure(
+      conn,
+      payer,
+      ix(
+        programId,
+        [
+          ...buyHeadKeys({
+            buyer: buyer.publicKey,
+            config: configPda,
+            consign: lot.consign,
+            binding,
+            passportConfig: stack.passportConfig,
+            asset: lot.asset,
+            custody: custodyPda,
+            platform: platform.publicKey,
+            seller: seller.publicKey,
+            agent: agent.publicKey,
+            recall: lot.recall,
+            payer: payer.publicKey,
+            escrow: lot.escrow,
+            answerLeave: lot.answers.leave,
+            answerOpen: lot.answers.open,
+          }),
+          { pubkey: bAta.publicKey, isSigner: false, isWritable: true },
+          { pubkey: eAta.publicKey, isSigner: false, isWritable: true },
+          { pubkey: mintBd.publicKey, isSigner: false, isWritable: false },
+          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+          { pubkey: pAta.publicKey, isSigner: false, isWritable: true },
+          { pubkey: pClaim, isSigner: false, isWritable: true },
+          { pubkey: pClaimAta, isSigner: false, isWritable: true },
+          { pubkey: sAta.publicKey, isSigner: false, isWritable: true },
+          { pubkey: sClaim, isSigner: false, isWritable: true },
+          { pubkey: sClaimAta, isSigner: false, isWritable: true },
+        ],
+        Buffer.concat([Buffer.from([FP_IX.Buy]), lot.tokenId]),
+      ),
+      [buyer, payer],
+    );
+  }
+
+  // Buy native agented
+  {
+    const lot = await mintCoreLot(conn, stack, programId, payer, seller);
+    await addTransferDelegateToCustody(conn, seller, payer, lot.asset, custodyPda);
+    const [mandate] = pda(programId, [SEED.mandate, lot.tokenId]);
+    await sendAndConfirmTransaction(
+      conn,
+      new Transaction().add(
+        ix(
+          programId,
+          grantKeys({
+            owner: seller.publicKey,
+            binding,
+            asset: lot.asset,
+            mandate,
+            consign: lot.consign,
+            custody: custodyPda,
+            payer: payer.publicKey,
+          }),
+          grantData(lot.tokenId, 700n, FORM_MARGIN, 0),
+        ),
+      ),
+      [seller, payer],
+    );
+    await sendAndConfirmTransaction(
+      conn,
+      new Transaction().add(
+        ix(
+          programId,
+          openFromMandateKeys({
+            agent: agent.publicKey,
+            config: configPda,
+            mandate,
+            binding,
+            passportConfig: stack.passportConfig,
+            asset: lot.asset,
+            challenge: lot.challenge,
+            mayAnswerOpen: lot.answers.open,
+            consign: lot.consign,
+            custody: custodyPda,
+            payer: payer.publicKey,
+            answerLeave: lot.answers.leave,
+            answerOpen: lot.answers.open,
+          }),
+          Buffer.concat([
+            Buffer.from([FP_IX.OpenFromMandate]),
+            lot.tokenId,
+            Buffer.from([0]),
+            Buffer.alloc(32, 0),
+            encU64(1_000),
+          ]),
+        ),
+      ),
+      [agent, payer],
+    );
+    ixBudget["Buy native agented"] = await sendAndMeasure(
+      conn,
+      payer,
+      ix(
+        programId,
+        buyHeadKeys({
+          buyer: buyer.publicKey,
+          config: configPda,
+          consign: lot.consign,
+          binding,
+          passportConfig: stack.passportConfig,
+          asset: lot.asset,
+          custody: custodyPda,
+          platform: platform.publicKey,
+          seller: seller.publicKey,
+          agent: agent.publicKey,
+          recall: lot.recall,
+          payer: payer.publicKey,
+          escrow: lot.escrow,
+          answerLeave: lot.answers.leave,
+          answerOpen: lot.answers.open,
+        }),
+        Buffer.concat([Buffer.from([FP_IX.Buy]), lot.tokenId]),
+      ),
+      [buyer, payer],
+    );
+  }
+
+  // Buy SPL agented (fiat Margin — heaviest; ALT when legacy > 1232)
+  {
+    await seedPrice("lab-fresh_narrow.bin", nowUnix);
+    const lot = await mintCoreLot(conn, stack, programId, payer, seller);
+    await addTransferDelegateToCustody(conn, seller, payer, lot.asset, custodyPda);
+    const [mandate] = pda(programId, [SEED.mandate, lot.tokenId]);
+    const floor1e8 = 100_0000_0000n;
+    const price1e8 = 150_0000_0000n;
+    await sendAndConfirmTransaction(
+      conn,
+      new Transaction().add(
+        ix(
+          programId,
+          grantKeys({
+            owner: seller.publicKey,
+            binding,
+            asset: lot.asset,
+            mandate,
+            consign: lot.consign,
+            custody: custodyPda,
+            payer: payer.publicKey,
+          }),
+          grantData(lot.tokenId, floor1e8, FORM_MARGIN, 0, mintFiat.publicKey, DENOM_FIAT, CURRENCY_USD),
+        ),
+      ),
+      [seller, payer],
+    );
+    await sendAndConfirmTransaction(
+      conn,
+      new Transaction().add(
+        ix(
+          programId,
+          openFromMandateKeys({
+            agent: agent.publicKey,
+            config: configPda,
+            mandate,
+            paymentTok: payTokFiat,
+            binding,
+            passportConfig: stack.passportConfig,
+            asset: lot.asset,
+            challenge: lot.challenge,
+            mayAnswerOpen: lot.answers.open,
+            consign: lot.consign,
+            custody: custodyPda,
+            payer: payer.publicKey,
+            answerLeave: lot.answers.leave,
+            answerOpen: lot.answers.open,
+          }),
+          Buffer.concat([
+            Buffer.from([FP_IX.OpenFromMandate]),
+            lot.tokenId,
+            Buffer.from([DENOM_FIAT]),
+            CURRENCY_USD,
+            encU64(price1e8),
+          ]),
+        ),
+      ),
+      [agent, payer],
+    );
+    const bAta = Keypair.generate();
+    const eAta = Keypair.generate();
+    const pAta = Keypair.generate();
+    const sAta = Keypair.generate();
+    const aAta = Keypair.generate();
+    const [pClaim] = pda(programId, [
+      SEED.claim,
+      platform.publicKey.toBuffer(),
+      mintFiat.publicKey.toBuffer(),
+    ]);
+    const [pClaimAta] = pda(programId, [
+      SEED.claimAta,
+      platform.publicKey.toBuffer(),
+      mintFiat.publicKey.toBuffer(),
+    ]);
+    const [sClaim] = pda(programId, [
+      SEED.claim,
+      seller.publicKey.toBuffer(),
+      mintFiat.publicKey.toBuffer(),
+    ]);
+    const [sClaimAta] = pda(programId, [
+      SEED.claimAta,
+      seller.publicKey.toBuffer(),
+      mintFiat.publicKey.toBuffer(),
+    ]);
+    const [aClaim] = pda(programId, [
+      SEED.claim,
+      agent.publicKey.toBuffer(),
+      mintFiat.publicKey.toBuffer(),
+    ]);
+    const [aClaimAta] = pda(programId, [
+      SEED.claimAta,
+      agent.publicKey.toBuffer(),
+      mintFiat.publicKey.toBuffer(),
+    ]);
+    await sendAndConfirmTransaction(
+      conn,
+      new Transaction().add(
+        SystemProgram.createAccount({
+          fromPubkey: payer.publicKey,
+          newAccountPubkey: bAta.publicKey,
+          space: 165,
+          lamports: ataRent,
+          programId: TOKEN_PROGRAM_ID,
+        }),
+        createInitializeAccount3Instruction(bAta.publicKey, mintFiat.publicKey, buyer.publicKey),
+        SystemProgram.createAccount({
+          fromPubkey: payer.publicKey,
+          newAccountPubkey: eAta.publicKey,
+          space: 165,
+          lamports: ataRent,
+          programId: TOKEN_PROGRAM_ID,
+        }),
+        createInitializeAccount3Instruction(eAta.publicKey, mintFiat.publicKey, lot.escrow),
+        createMintToInstruction(mintFiat.publicKey, bAta.publicKey, payer.publicKey, 2_000_000),
+        SystemProgram.createAccount({
+          fromPubkey: payer.publicKey,
+          newAccountPubkey: pAta.publicKey,
+          space: 165,
+          lamports: ataRent,
+          programId: TOKEN_PROGRAM_ID,
+        }),
+        createInitializeAccount3Instruction(pAta.publicKey, mintFiat.publicKey, platform.publicKey),
+        SystemProgram.createAccount({
+          fromPubkey: payer.publicKey,
+          newAccountPubkey: sAta.publicKey,
+          space: 165,
+          lamports: ataRent,
+          programId: TOKEN_PROGRAM_ID,
+        }),
+        createInitializeAccount3Instruction(sAta.publicKey, mintFiat.publicKey, seller.publicKey),
+        SystemProgram.createAccount({
+          fromPubkey: payer.publicKey,
+          newAccountPubkey: aAta.publicKey,
+          space: 165,
+          lamports: ataRent,
+          programId: TOKEN_PROGRAM_ID,
+        }),
+        createInitializeAccount3Instruction(aAta.publicKey, mintFiat.publicKey, agent.publicKey),
+      ),
+      [payer, bAta, eAta, pAta, sAta, aAta],
+    );
+    ixBudget["Buy SPL agented"] = await sendAndMeasure(
+      conn,
+      payer,
+      ix(
+        programId,
+        [
+          ...buyHeadKeys({
+            buyer: buyer.publicKey,
+            config: configPda,
+            consign: lot.consign,
+            binding,
+            passportConfig: stack.passportConfig,
+            asset: lot.asset,
+            custody: custodyPda,
+            platform: platform.publicKey,
+            seller: seller.publicKey,
+            agent: agent.publicKey,
+            recall: lot.recall,
+            payer: payer.publicKey,
+            escrow: lot.escrow,
+            answerLeave: lot.answers.leave,
+            answerOpen: lot.answers.open,
+          }),
+          { pubkey: payTokFiat, isSigner: false, isWritable: false },
+          { pubkey: priceLabPda, isSigner: false, isWritable: false },
+          { pubkey: bAta.publicKey, isSigner: false, isWritable: true },
+          { pubkey: eAta.publicKey, isSigner: false, isWritable: true },
+          { pubkey: mintFiat.publicKey, isSigner: false, isWritable: false },
+          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+          { pubkey: pAta.publicKey, isSigner: false, isWritable: true },
+          { pubkey: pClaim, isSigner: false, isWritable: true },
+          { pubkey: pClaimAta, isSigner: false, isWritable: true },
+          { pubkey: sAta.publicKey, isSigner: false, isWritable: true },
+          { pubkey: sClaim, isSigner: false, isWritable: true },
+          { pubkey: sClaimAta, isSigner: false, isWritable: true },
+          { pubkey: aAta.publicKey, isSigner: false, isWritable: true },
+          { pubkey: aClaim, isSigner: false, isWritable: true },
+          { pubkey: aClaimAta, isSigner: false, isWritable: true },
+        ],
+        Buffer.concat([Buffer.from([FP_IX.Buy]), lot.tokenId]),
+      ),
+      [buyer, payer],
+    );
+  }
+
+  // ConfirmExternalPayment
+  {
+    const lot = await mintCoreLot(conn, stack, programId, payer, seller);
+    const [note] = pda(programId, [SEED.settlementNote, lot.tokenId]);
+    await openDirectNative(conn, ctx, lot, 777n);
+    const noteBytes = Buffer.alloc(256);
+    Buffer.from("budget note").copy(noteBytes);
+    await sendAndConfirmTransaction(
+      conn,
+      new Transaction().add(
+        ix(
+          programId,
+          [
+            { pubkey: seller.publicKey, isSigner: true, isWritable: false },
+            { pubkey: lot.consign, isSigner: false, isWritable: false },
+            { pubkey: note, isSigner: false, isWritable: true },
+            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+            { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+          ],
+          Buffer.concat([
+            Buffer.from([FP_IX.SetSettlementNote]),
+            lot.tokenId,
+            noteBytes,
+            encU32(11),
+          ]),
+        ),
+      ),
+      [seller, payer],
+    );
+    ixBudget.ConfirmExternalPayment = await sendAndMeasure(
+      conn,
+      payer,
+      ix(
+        programId,
+        confirmExternalKeys({
+          caller: seller.publicKey,
+          consign: lot.consign,
+          note,
+          recall: lot.recall,
+          binding,
+          passportConfig: stack.passportConfig,
+          asset: lot.asset,
+          custody: custodyPda,
+          buyer: buyer.publicKey,
+          payer: payer.publicKey,
+          answerLeave: lot.answers.leave,
+          answerOpen: lot.answers.open,
+        }),
+        Buffer.concat([
+          Buffer.from([FP_IX.ConfirmExternalPayment]),
+          lot.tokenId,
+          buyer.publicKey.toBuffer(),
+        ]),
+      ),
+      [seller, payer],
+    );
+  }
+
+  const splAgented = ixBudget["Buy SPL agented"]!;
+  assert.ok(splAgented.legacyTx > 1232, "agented SPL Buy legacy must exceed 1232");
+  assert.ok(splAgented.versionedTx != null, "agented SPL Buy must record versionedTx via ALT");
+
+  let ixBudgetHeaviest = "Bind";
+  let heaviestLegacy = -1;
+  for (const [name, row] of Object.entries(ixBudget)) {
+    if (row.legacyTx > heaviestLegacy) {
+      heaviestLegacy = row.legacyTx;
+      ixBudgetHeaviest = name;
+    }
+  }
+  assert.equal(ixBudgetHeaviest, "Buy SPL agented");
+
+  console.warn("\n[svm-stand] FixedPrice per-ix budget (registry N=1):");
+  console.warn(
+    [
+      "ix".padEnd(28),
+      "accts".padStart(5),
+      "sigs".padStart(5),
+      "wrt".padStart(5),
+      "cu".padStart(8),
+      "legacy".padStart(8),
+      "v0".padStart(8),
+    ].join(" "),
+  );
+  for (const [name, row] of Object.entries(ixBudget)) {
+    console.warn(
+      [
+        name.padEnd(28),
+        String(row.accounts).padStart(5),
+        String(row.signers).padStart(5),
+        String(row.writable).padStart(5),
+        String(row.cu ?? "-").padStart(8),
+        String(row.legacyTx).padStart(8),
+        String(row.versionedTx ?? "-").padStart(8),
+      ].join(" "),
+    );
+  }
+  console.warn(`[svm-stand] heaviest=${ixBudgetHeaviest} legacy=${heaviestLegacy}\n`);
+
   return withStandArtifactBindings({
     unboundOpenCode,
     rebindCode,
@@ -2008,5 +2949,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     leaveChainSendAfterClose,
     revokeOpenCode,
     transferDelegateAfterRevoke,
+    ixBudget,
+    ixBudgetHeaviest,
   });
 }

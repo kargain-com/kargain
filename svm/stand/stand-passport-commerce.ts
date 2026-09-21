@@ -16,6 +16,7 @@ import {
   STAND_SVM_EID,
   STAND_SVM_NAMESPACE,
 } from "./constants.ts";
+import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../../lib/svm/rpc-max-supported-transaction-version.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../lab/package.json"));
@@ -80,6 +81,13 @@ export const FP_IX = {
   Revoke: 6,
   OpenDirect: 7,
   OpenFromMandate: 8,
+  SetPrice: 9,
+  LowerFloor: 10,
+  LowerCommission: 11,
+  RequestRecall: 12,
+  ForceRecall: 13,
+  OwnerWithdraw: 14,
+  AgentWithdraw: 15,
   Pause: 17,
   Unpause: 18,
   ApprovePaymentToken: 19,
@@ -87,6 +95,7 @@ export const FP_IX = {
   Buy: 21,
   SetSettlementNote: 22,
   ConfirmExternalPayment: 23,
+  ForceRecallRequestedAt: 25,
   ForceSeedPriceAccount: 26,
   BindPassportProgram: 27,
 } as const;
@@ -216,6 +225,106 @@ export async function sendIxWithAlt(
   const signature = await conn.sendTransaction(vtx, { skipPreflight: false });
   await conn.confirmTransaction(signature, "confirmed");
   return { signature, legacyWouldBe, versionedSize, alt: altAddress };
+}
+
+/** Per-instruction budget row for FixedPrice LIVE table (registry N from stand). */
+export type IxBudgetRow = {
+  accounts: number;
+  signers: number;
+  writable: number;
+  cu: number | null;
+  legacyTx: number;
+  versionedTx?: number;
+};
+
+function metaFlags(keys: Meta[]): Pick<IxBudgetRow, "accounts" | "signers" | "writable"> {
+  return {
+    accounts: keys.length,
+    signers: keys.filter((k) => k.isSigner).length,
+    writable: keys.filter((k) => k.isWritable).length,
+  };
+}
+
+function probeLegacySize(
+  instruction: InstanceType<typeof TransactionInstruction>,
+  payer: Kp,
+  signers: Kp[],
+  blockhash: string,
+): number {
+  const legacyProbe = new Transaction().add(instruction);
+  legacyProbe.recentBlockhash = blockhash;
+  legacyProbe.feePayer = payer.publicKey;
+  for (const s of signers) legacyProbe.partialSign(s);
+  try {
+    return legacyProbe.serialize({
+      requireAllSignatures: true,
+      verifySignatures: false,
+    }).length;
+  } catch {
+    return legacyProbe.serializeMessage().length + 64 * Math.max(signers.length, 1) + 1;
+  }
+}
+
+/**
+ * Send one instruction and record metas / CU / tx size.
+ * When legacy would exceed 1232 B, uses ALT path and records versioned size.
+ */
+export async function sendAndMeasure(
+  conn: Conn,
+  payer: Kp,
+  instruction: InstanceType<typeof TransactionInstruction>,
+  signers: Kp[],
+): Promise<IxBudgetRow> {
+  const flags = metaFlags(instruction.keys as Meta[]);
+  const { blockhash } = await conn.getLatestBlockhash("confirmed");
+  const legacyTx = probeLegacySize(instruction, payer, signers, blockhash);
+
+  if (legacyTx > 1232) {
+    const alt = await sendIxWithAlt(conn, payer, instruction, signers);
+    const parsed = await conn.getParsedTransaction(alt.signature, {
+      maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
+      commitment: "confirmed",
+    });
+    const cu =
+      parsed?.meta?.computeUnitsConsumed != null
+        ? Number(parsed.meta.computeUnitsConsumed)
+        : null;
+    return {
+      ...flags,
+      cu,
+      legacyTx: alt.legacyWouldBe,
+      versionedTx: alt.versionedSize,
+    };
+  }
+
+  const tx = new Transaction().add(instruction);
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = payer.publicKey;
+  // Fee payer must sign — callers may pass only the instruction's business signers.
+  const sendSigners = signers.some((s) => s.publicKey.equals(payer.publicKey))
+    ? signers
+    : [...signers, payer];
+  const sig = await sendAndConfirmTransaction(conn, tx, sendSigners, {
+    commitment: "confirmed",
+  }).catch(async (err: unknown) => {
+    const logs =
+      err && typeof err === "object" && "logs" in err
+        ? (err as { logs?: string[] }).logs
+        : undefined;
+    if (logs?.length) {
+      console.error("[sendAndMeasure] tx logs:\n" + logs.join("\n"));
+    }
+    throw err;
+  });
+  const parsed = await conn.getParsedTransaction(sig, {
+    maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
+    commitment: "confirmed",
+  });
+  const cu =
+    parsed?.meta?.computeUnitsConsumed != null
+      ? Number(parsed.meta.computeUnitsConsumed)
+      : null;
+  return { ...flags, cu, legacyTx };
 }
 
 export function encU16(n: number): Buffer {
