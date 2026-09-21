@@ -48,4 +48,11 @@ pub enum GatewayIx {
     },
     /// Create `[LzReceiveTypes, gateway_config]` PDA for Executor V2 discovery.
     InitLzReceiveTypes,
+    /// Stand/ops: set passport custody lock + Core PermanentFreeze without Send debit.
+    /// Authority-gated. Accounts: authority(signer) · gateway_config · payer(signer) ·
+    /// passport_program · passport_config · asset · state · freeze · core · system
+    ForceSetCustodyLock {
+        token_id: [u8; 32],
+        locked: bool,
+    },
 }

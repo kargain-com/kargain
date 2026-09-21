@@ -3,7 +3,7 @@
 //! Seeds under the **source** program: `[seed_prefix, token_id, intent]` where
 //! `intent` is a single byte (`LeaveChain = 0`, `OpenConsignment = 1`).
 //! Passport and modes both call [`derive_encumbrance_answer_pda`] — never a
-//! second copy.
+//! second copy. Account SPACE and signer seed lists live here only.
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use kargain_errors::KargainError;
@@ -36,6 +36,11 @@ pub struct EncumbranceAnswer {
     pub allowed: bool,
 }
 
+impl EncumbranceAnswer {
+    /// Borsh size: disc(8) + token_id(32) + intent(1) + allowed(1).
+    pub const SPACE: usize = 8 + 32 + 1 + 1;
+}
+
 pub const ENCUMBRANCE_ANSWER_DISCRIMINATOR: [u8; 8] = *b"enc_ans\0";
 
 /// Refuse empty or oversized `seed_prefix` (Solana seed component rules).
@@ -54,6 +59,34 @@ pub fn require_valid_intent(intent: u8) -> Result<(), KargainError> {
     Ok(())
 }
 
+/// Sole seed recipe for derivation: `[seed_prefix, token_id, intent]`.
+///
+/// `intent_seed` must be `[intent]` kept alive by the caller.
+#[inline]
+pub fn encumbrance_answer_seeds<'a>(
+    seed_prefix: &'a [u8],
+    token_id: &'a [u8; 32],
+    intent_seed: &'a [u8; 1],
+) -> [&'a [u8]; 3] {
+    [seed_prefix, token_id.as_ref(), intent_seed.as_ref()]
+}
+
+/// Signer seeds for create / invoke_signed: recipe + bump.
+#[inline]
+pub fn encumbrance_answer_signer_seeds<'a>(
+    seed_prefix: &'a [u8],
+    token_id: &'a [u8; 32],
+    intent_seed: &'a [u8; 1],
+    bump_seed: &'a [u8; 1],
+) -> [&'a [u8]; 4] {
+    [
+        seed_prefix,
+        token_id.as_ref(),
+        intent_seed.as_ref(),
+        bump_seed.as_ref(),
+    ]
+}
+
 /// Sole answer-PDA derivation: `[seed_prefix, token_id, intent]` under `source_program`.
 pub fn derive_encumbrance_answer_pda(
     source_program: &Pubkey,
@@ -65,7 +98,7 @@ pub fn derive_encumbrance_answer_pda(
     require_valid_intent(intent)?;
     let intent_seed = [intent];
     Ok(Pubkey::find_program_address(
-        &[seed_prefix, token_id, &intent_seed],
+        &encumbrance_answer_seeds(seed_prefix, token_id, &intent_seed),
         source_program,
     ))
 }
@@ -99,6 +132,20 @@ mod tests {
     }
 
     #[test]
+    fn answer_space_matches_borsh() {
+        assert_eq!(EncumbranceAnswer::SPACE, 42);
+        let rec = EncumbranceAnswer {
+            discriminator: ENCUMBRANCE_ANSWER_DISCRIMINATOR,
+            token_id: [1u8; 32],
+            intent: INTENT_LEAVE_CHAIN,
+            allowed: false,
+        };
+        let mut buf = Vec::new();
+        rec.serialize(&mut buf).unwrap();
+        assert_eq!(buf.len(), EncumbranceAnswer::SPACE);
+    }
+
+    #[test]
     fn derive_deterministic_for_ans_prefix() {
         let program = Pubkey::new_from_array([0x11u8; 32]);
         let token = [0x22u8; 32];
@@ -121,5 +168,54 @@ mod tests {
             derive_encumbrance_answer_pda(&program, &[], &[0u8; 32], 0),
             Err(KargainError::InvalidEncumbranceSeed)
         );
+    }
+
+    #[test]
+    fn signer_seeds_match_derivation_recipe() {
+        let program = Pubkey::new_from_array([0x33u8; 32]);
+        let seed_prefix = b"fp";
+        let token = [0x44u8; 32];
+        let intent = INTENT_OPEN_CONSIGNMENT;
+        let (expected, bump) =
+            derive_encumbrance_answer_pda(&program, seed_prefix, &token, intent).unwrap();
+        let intent_seed = [intent];
+        let bump_seed = [bump];
+        let from_signer = Pubkey::create_program_address(
+            &encumbrance_answer_signer_seeds(seed_prefix, &token, &intent_seed, &bump_seed),
+            &program,
+        )
+        .unwrap();
+        assert_eq!(expected, from_signer);
+    }
+
+    #[test]
+    fn diverged_signer_recipe_is_red() {
+        let program = Pubkey::new_from_array([0x55u8; 32]);
+        let seed_prefix = b"fp";
+        let token = [0x66u8; 32];
+        let intent = INTENT_LEAVE_CHAIN;
+        let (expected, bump) =
+            derive_encumbrance_answer_pda(&program, seed_prefix, &token, intent).unwrap();
+        let intent_seed = [intent];
+        let bump_seed = [bump];
+        // Plant: swapped seed order (token before prefix) — must not match derive.
+        let diverged: [&[u8]; 4] = [
+            token.as_ref(),
+            seed_prefix,
+            intent_seed.as_ref(),
+            bump_seed.as_ref(),
+        ];
+        let from_diverged = Pubkey::create_program_address(&diverged, &program);
+        match from_diverged {
+            Ok(pk) => assert_ne!(pk, expected, "diverged recipe must not equal derive PDA"),
+            Err(_) => {} // off-curve / invalid also proves divergence
+        }
+        // Live recipe still matches.
+        let live = Pubkey::create_program_address(
+            &encumbrance_answer_signer_seeds(seed_prefix, &token, &intent_seed, &bump_seed),
+            &program,
+        )
+        .unwrap();
+        assert_eq!(live, expected);
     }
 }

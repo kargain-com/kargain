@@ -27,7 +27,7 @@ fn map_of(pairs: &[(&str, Value)]) -> Map<String, Value> {
 }
 
 pub fn all_entries() -> Vec<ManifestEntry> {
-    let mut out = Vec::with_capacity(101);
+    let mut out = Vec::with_capacity(102);
     out.extend(passport_entries());
     out.extend(gateway_entries());
     out.extend(staking_entries());
@@ -352,7 +352,7 @@ fn layout_and_sample_passport(ix: PassportIx) -> ManifestEntry {
     entry_from_borsh("kar-passport", "PassportIx", name, fields, sample, &ix)
 }
 
-// ---- Gateway (8) ----
+// ---- Gateway (9) ----
 
 fn gateway_entries() -> Vec<ManifestEntry> {
     gateway_samples()
@@ -398,6 +398,10 @@ fn gateway_samples() -> Vec<GatewayIx> {
             peer: b32(0x7a),
         },
         GatewayIx::InitLzReceiveTypes,
+        GatewayIx::ForceSetCustodyLock {
+            token_id: b32(0x7b),
+            locked: true,
+        },
     ]
 }
 
@@ -496,6 +500,14 @@ fn layout_and_sample_gateway(ix: GatewayIx) -> ManifestEntry {
             ]),
         ),
         GatewayIx::InitLzReceiveTypes => ("InitLzReceiveTypes", vec![], Map::new()),
+        GatewayIx::ForceSetCustodyLock { token_id, locked } => (
+            "ForceSetCustodyLock",
+            vec![field_fixed("token_id", 32), field_bool("locked")],
+            map_of(&[
+                ("token_id", sample_bytes(token_id)),
+                ("locked", sample_bool(*locked)),
+            ]),
+        ),
     };
     entry_from_borsh("kar-gateway", "GatewayIx", name, fields, sample, &ix)
 }

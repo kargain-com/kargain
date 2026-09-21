@@ -73,6 +73,8 @@ export const PASSPORT_IX = {
 /** FixedPriceIx — BindPassportProgram appended at 27. */
 export const FP_IX = {
   InitConfig: 0,
+  CreateAsset: 1,
+  ApproveEscrow: 2,
   Grant: 5,
   Revoke: 6,
   OpenDirect: 7,
@@ -86,6 +88,11 @@ export const FP_IX = {
   ConfirmExternalPayment: 23,
   ForceSeedPriceAccount: 26,
   BindPassportProgram: 27,
+} as const;
+
+/** GatewayIx — ForceSetCustodyLock appended after InitLzReceiveTypes (8). */
+export const GATEWAY_IX = {
+  ForceSetCustodyLock: 8,
 } as const;
 
 /** HarnessIx — CoreAddTransferDelegate appended after SkipFreeze (25). */
@@ -281,6 +288,35 @@ export async function expectCustom(
     const got = customErrCode(e);
     assert.equal(got, code, `expected error ${code}, got ${got}: ${e}`);
     return got!;
+  }
+  throw new Error("unreachable");
+}
+
+/**
+ * Solana native ProgramError::AccountAlreadyInitialized — InstructionError name,
+ * not Custom(u32). Assert via logs / message (same class as InvalidSeeds).
+ */
+export async function expectAccountAlreadyInitialized(
+  conn: Conn,
+  tx: InstanceType<typeof Transaction>,
+  signers: Kp[],
+): Promise<"AccountAlreadyInitialized"> {
+  try {
+    await sendAndConfirmTransaction(conn, tx, signers, { commitment: "confirmed" });
+    assert.fail("expected AccountAlreadyInitialized");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const code = customErrCode(e);
+    if (
+      /AccountAlreadyInitialized|already in use|already initialized|requires an uninitialized account/i.test(
+        msg,
+      )
+    ) {
+      return "AccountAlreadyInitialized";
+    }
+    assert.fail(
+      `expected AccountAlreadyInitialized, got custom=${code} msg=${msg}`,
+    );
   }
   throw new Error("unreachable");
 }
@@ -531,9 +567,10 @@ export async function bindPassportProgram(
   authority: Kp,
   payer: Kp,
   passportProgram: Pk,
+  opts?: { force?: boolean },
 ): Promise<Pk> {
   const [binding] = pda(modeProgram, [SEED.passportBind]);
-  if (await conn.getAccountInfo(binding)) return binding;
+  if (!opts?.force && (await conn.getAccountInfo(binding))) return binding;
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
@@ -553,6 +590,73 @@ export async function bindPassportProgram(
     [authority, payer],
   );
   return binding;
+}
+
+/** Bind ix without early-return — for rebind → AccountAlreadyInitialized. */
+export function bindPassportProgramIx(
+  modeProgram: Pk,
+  configPda: Pk,
+  authority: Pk,
+  payer: Pk,
+  passportProgram: Pk,
+  binding: Pk,
+) {
+  return ix(
+    modeProgram,
+    [
+      { pubkey: authority, isSigner: true, isWritable: false },
+      { pubkey: configPda, isSigner: false, isWritable: false },
+      { pubkey: binding, isSigner: false, isWritable: true },
+      { pubkey: passportProgram, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: payer, isSigner: true, isWritable: true },
+    ],
+    Buffer.from([FP_IX.BindPassportProgram]),
+  );
+}
+
+/**
+ * Freeze (or thaw) a live Core passport via gateway ForceSetCustodyLock →
+ * passport SetCustodyLock → Core UpdatePlugin PermanentFreezeDelegate.
+ * PermanentFreeze authority is the gateway freeze PDA (not harness / owner).
+ */
+export async function setPassportPermanentFreeze(
+  conn: Conn,
+  stack: PassportCommerceStack,
+  payer: Kp,
+  tokenId: Buffer,
+  asset: Pk,
+  state: Pk,
+  locked: boolean,
+): Promise<void> {
+  const tid = Buffer.from(tokenId);
+  if (tid.length !== 32) throw new Error("tokenId must be 32 bytes");
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      ix(
+        stack.gatewayProgram,
+        [
+          { pubkey: stack.passportAuthority.publicKey, isSigner: true, isWritable: false },
+          { pubkey: stack.gatewayConfig, isSigner: false, isWritable: false },
+          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: stack.passportProgram, isSigner: false, isWritable: false },
+          { pubkey: stack.passportConfig, isSigner: false, isWritable: true },
+          { pubkey: asset, isSigner: false, isWritable: true },
+          { pubkey: state, isSigner: false, isWritable: true },
+          { pubkey: stack.gatewayFreeze, isSigner: false, isWritable: false },
+          { pubkey: CORE_ID, isSigner: false, isWritable: false },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        ],
+        Buffer.concat([
+          Buffer.from([GATEWAY_IX.ForceSetCustodyLock]),
+          tid,
+          Buffer.from([locked ? 1 : 0]),
+        ]),
+      ),
+    ),
+    [stack.passportAuthority, payer],
+  );
 }
 
 export async function mintPassportAsset(

@@ -2,6 +2,8 @@
  * Local-validator proof: FixedPrice Core + passport path (S8-E step 5).
  *
  * Asserts chain state (never success-only / invented return constants):
+ * - Corrective negatives: unbound OpenDirect(140); rebind AAI; frozen OpenDirect(137);
+ *   registry-miss OpenDirect(71); retired CreateAsset(141)
  * - Native buy: pull → buyer owns Core asset → three-leg deltas = fee snapshot split
  * - SPL buy + soft-revoke then buy still settles (D-31)
  * - Transfer-fee mint refused at admission (TransferFeeExtensionForbidden)
@@ -38,6 +40,7 @@ import {
   addTransferDelegateToCustody,
   answerPdas,
   bindPassportProgram,
+  bindPassportProgramIx,
   buyHeadKeys,
   confirmExternalKeys,
   coreOwner,
@@ -46,6 +49,7 @@ import {
   encU32,
   encU64,
   ensurePassportCommerceStack,
+  expectAccountAlreadyInitialized,
   expectCustom,
   grantKeys,
   hasTransferDelegateAddress,
@@ -56,6 +60,7 @@ import {
   openFromMandateKeys,
   pda,
   sendIxWithAlt,
+  setPassportPermanentFreeze,
   tryMayLeaveChain,
   withOpenAnswers,
   type Conn,
@@ -92,6 +97,7 @@ const RPC = RPC_DEFAULT;
 const ERR = {
   ContractPaused: 76,
   TransferFeeExtensionForbidden: 69,
+  ModeNotEncumbranceSource: 71,
   CurrencyNotAvailableOnChain: 133,
   PaymentTokenFeedRequired: 124,
   StalePrice: 122,
@@ -99,6 +105,9 @@ const ERR = {
   ConfidenceTooWide: 131,
   LeaveChainRefused: 37,
   NoMandate: 84,
+  AssetFrozen: 137,
+  PassportProgramUnbound: 140,
+  HarnessInstructionRetired: 141,
 } as const;
 
 const PHASE = { Offered: 1, Closed: 2 } as const;
@@ -348,6 +357,11 @@ async function openDirectSpl(
 }
 
 export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
+  unboundOpenCode: number;
+  rebindCode: "AccountAlreadyInitialized";
+  frozenOpenCode: number;
+  registryMissCode: number;
+  retiredIxCode: number;
   nativeBuy: {
     phase: number;
     buyerOwns: string;
@@ -417,7 +431,49 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   const stack = await ensurePassportCommerceStack(conn);
   const feeBps = 250;
   const configPda = await initMode(conn, programId, payer, authority, platform, guardian, feeBps);
-  await addEncumbranceSource(conn, stack, programId, ENCUMBRANCE_SEED_PREFIX);
+  const [custodyPda] = pda(programId, [SEED.custody]);
+  const [bindingPda] = pda(programId, [SEED.passportBind]);
+
+  // ---- Corrective negatives (order: unbound → bind → rebind → registry miss → registry → frozen → retired) ----
+
+  // 1. Unbound open: mint + OpenDirect with empty binding PDA → PassportProgramUnbound(140)
+  const lotUnbound = await mintCoreLot(conn, stack, programId, payer, seller);
+  const unboundOpenCode = await expectCustom(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        withOpenAnswers(
+          openDirectKeys({
+            seller: seller.publicKey,
+            config: configPda,
+            binding: bindingPda,
+            passportConfig: stack.passportConfig,
+            asset: lotUnbound.asset,
+            challenge: lotUnbound.challenge,
+            mayAnswerOpen: lotUnbound.answers.open,
+            consign: lotUnbound.consign,
+            custody: custodyPda,
+            payer: payer.publicKey,
+          }),
+          lotUnbound.answers.leave,
+          lotUnbound.answers.open,
+        ),
+        Buffer.concat([
+          Buffer.from([FP_IX.OpenDirect]),
+          lotUnbound.tokenId,
+          Buffer.alloc(32, 0),
+          Buffer.from([0]),
+          Buffer.alloc(32, 0),
+          encU64(100),
+        ]),
+      ),
+    ),
+    [seller, payer],
+    ERR.PassportProgramUnbound,
+  );
+
+  // 2. Bind once (happy short-circuit path)
   const binding = await bindPassportProgram(
     conn,
     programId,
@@ -426,7 +482,125 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     payer,
     stack.passportProgram,
   );
-  const [custodyPda] = pda(programId, [SEED.custody]);
+
+  // 3. Rebind without early-return → AccountAlreadyInitialized (native)
+  const rebindCode = await expectAccountAlreadyInitialized(
+    conn,
+    new Transaction().add(
+      bindPassportProgramIx(
+        programId,
+        configPda,
+        authority.publicKey,
+        payer.publicKey,
+        stack.passportProgram,
+        binding,
+      ),
+    ),
+    [authority, payer],
+  );
+
+  // 4. Registry miss: bind done, skip AddEncumbranceSource → ModeNotEncumbranceSource(71)
+  const lotRegMiss = await mintCoreLot(conn, stack, programId, payer, seller);
+  const registryMissCode = await expectCustom(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        withOpenAnswers(
+          openDirectKeys({
+            seller: seller.publicKey,
+            config: configPda,
+            binding,
+            passportConfig: stack.passportConfig,
+            asset: lotRegMiss.asset,
+            challenge: lotRegMiss.challenge,
+            mayAnswerOpen: lotRegMiss.answers.open,
+            consign: lotRegMiss.consign,
+            custody: custodyPda,
+            payer: payer.publicKey,
+          }),
+          lotRegMiss.answers.leave,
+          lotRegMiss.answers.open,
+        ),
+        Buffer.concat([
+          Buffer.from([FP_IX.OpenDirect]),
+          lotRegMiss.tokenId,
+          Buffer.alloc(32, 0),
+          Buffer.from([0]),
+          Buffer.alloc(32, 0),
+          encU64(100),
+        ]),
+      ),
+    ),
+    [seller, payer],
+    ERR.ModeNotEncumbranceSource,
+  );
+
+  await addEncumbranceSource(conn, stack, programId, ENCUMBRANCE_SEED_PREFIX);
+
+  // 5. Frozen open: mint + ForceSetCustodyLock(true) + OpenDirect → AssetFrozen(137)
+  const lotFrozen = await mintCoreLot(conn, stack, programId, payer, seller);
+  const [frozenState] = pda(stack.passportProgram, [SEED.state, lotFrozen.tokenId]);
+  await setPassportPermanentFreeze(
+    conn,
+    stack,
+    payer,
+    lotFrozen.tokenId,
+    lotFrozen.asset,
+    frozenState,
+    true,
+  );
+  const frozenOpenCode = await expectCustom(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        withOpenAnswers(
+          openDirectKeys({
+            seller: seller.publicKey,
+            config: configPda,
+            binding,
+            passportConfig: stack.passportConfig,
+            asset: lotFrozen.asset,
+            challenge: lotFrozen.challenge,
+            mayAnswerOpen: lotFrozen.answers.open,
+            consign: lotFrozen.consign,
+            custody: custodyPda,
+            payer: payer.publicKey,
+          }),
+          lotFrozen.answers.leave,
+          lotFrozen.answers.open,
+        ),
+        Buffer.concat([
+          Buffer.from([FP_IX.OpenDirect]),
+          lotFrozen.tokenId,
+          Buffer.alloc(32, 0),
+          Buffer.from([0]),
+          Buffer.alloc(32, 0),
+          encU64(100),
+        ]),
+      ),
+    ),
+    [seller, payer],
+    ERR.AssetFrozen,
+  );
+
+  // 6. Retired harness ix CreateAsset → HarnessInstructionRetired(141)
+  const retiredIxCode = await expectCustom(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        [
+          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        ],
+        Buffer.concat([Buffer.from([FP_IX.CreateAsset]), Buffer.alloc(32, 0xee)]),
+      ),
+    ),
+    [payer],
+    ERR.HarnessInstructionRetired,
+  );
 
   const ctx = {
     programId,
@@ -1755,6 +1929,11 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   );
 
   return withStandArtifactBindings({
+    unboundOpenCode,
+    rebindCode,
+    frozenOpenCode,
+    registryMissCode,
+    retiredIxCode,
     nativeBuy: {
       phase: closedN.phase,
       buyerOwns: buyerOwnsN,

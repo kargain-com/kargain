@@ -245,6 +245,20 @@ impl ConsignmentRecord {
     }
 }
 
+/// Consignment liveness from account data — fail closed on undecodable records.
+///
+/// Empty → not live. Non-empty but undecodable → `InvalidAccountData` (never invent
+/// "not live" on a corrupt lot account).
+pub fn consignment_account_is_live(info: &AccountInfo) -> Result<bool, ProgramError> {
+    if info.data_is_empty() {
+        return Ok(false);
+    }
+    let data = info.try_borrow_data()?;
+    let record = ConsignmentRecord::try_from_slice(&data)
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+    Ok(record.is_live())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub struct MandateRecord {
     pub discriminator: [u8; 8],
@@ -1172,5 +1186,33 @@ mod tests {
             0,
         );
         assert!(require_config_authority(&authority, &config, &program_id, &pk(1)).is_ok());
+    }
+
+    #[test]
+    fn consignment_account_is_live_empty_is_false() {
+        let key = Pubkey::new_from_array(pk(9));
+        let owner = Pubkey::new_from_array(pk(1));
+        let mut lamports = 0u64;
+        let mut data: Vec<u8> = vec![];
+        let info = AccountInfo::new(&key, false, false, &mut lamports, &mut data, &owner, false, 0);
+        assert_eq!(consignment_account_is_live(&info).unwrap(), false);
+    }
+
+    #[test]
+    fn consignment_account_is_live_undecodable_is_invalid_account_data() {
+        let key = Pubkey::new_from_array(pk(9));
+        let owner = Pubkey::new_from_array(pk(1));
+        let mut lamports = 1u64;
+        let mut data = vec![0xABu8; 16]; // non-empty, not a ConsignmentRecord
+        // Old soft pattern would invent false; fail-closed refuses.
+        let soft = ConsignmentRecord::try_from_slice(&data)
+            .map(|c| c.is_live())
+            .unwrap_or(false);
+        assert!(!soft, "soft unwrap_or(false) invents not-live (red control)");
+        let info = AccountInfo::new(&key, false, false, &mut lamports, &mut data, &owner, false, 0);
+        assert_eq!(
+            consignment_account_is_live(&info).unwrap_err(),
+            ProgramError::InvalidAccountData,
+        );
     }
 }

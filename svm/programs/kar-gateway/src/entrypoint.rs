@@ -133,6 +133,9 @@ pub fn process_instruction(
             set_peer(program_id, accounts, remote_eid, peer)
         }
         GatewayIx::InitLzReceiveTypes => init_lz_receive_types_accounts(program_id, accounts),
+        GatewayIx::ForceSetCustodyLock { token_id, locked } => {
+            force_set_custody_lock(program_id, accounts, token_id, locked)
+        }
     }
 }
 
@@ -887,6 +890,67 @@ fn set_peer(
         "kar-gateway SetPeer ok remote_eid={} peer={}",
         remote_eid,
         Pubkey::new_from_array(peer)
+    );
+    Ok(())
+}
+
+/// Authority-gated SetCustodyLock without Send debit — stand freeze/thaw of live Core passports.
+fn force_set_custody_lock(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    token_id: [u8; 32],
+    locked: bool,
+) -> ProgramResult {
+    let iter = &mut accounts.iter();
+    let authority = next_account_info(iter)?;
+    let gateway_config = next_account_info(iter)?;
+    let payer = next_account_info(iter)?;
+    let passport_program = next_account_info(iter)?;
+    let passport_config = next_account_info(iter)?;
+    let asset = next_account_info(iter)?;
+    let state = next_account_info(iter)?;
+    let freeze = next_account_info(iter)?;
+    let core = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
+
+    if !authority.is_signer || !payer.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let cfg = load_config(program_id, gateway_config)?;
+    if authority.key.to_bytes() != cfg.authority {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let passport_key = Pubkey::new_from_array(cfg.passport_program);
+    if passport_program.key != &passport_key {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    let (freeze_key, freeze_bump) = freeze_pda(program_id);
+    if freeze.key != &freeze_key {
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    let config_seeds: &[&[u8]] = &[CONFIG_SEED, &[cfg.bump]];
+    let freeze_seeds: &[&[u8]] = &[FREEZE_SEED, &[freeze_bump]];
+    cpi_passport(
+        passport_program,
+        &[
+            passport_config.clone(),
+            gateway_config.clone(),
+            asset.clone(),
+            state.clone(),
+            payer.clone(),
+            freeze.clone(),
+            core.clone(),
+            system.clone(),
+        ],
+        PassportIx::SetCustodyLock { token_id, locked },
+        &[config_seeds, freeze_seeds],
+        &[gateway_config.key, freeze.key],
+    )?;
+    msg!(
+        "kar-gateway ForceSetCustodyLock locked={} token={}",
+        locked,
+        Pubkey::new_from_array(token_id)
     );
     Ok(())
 }

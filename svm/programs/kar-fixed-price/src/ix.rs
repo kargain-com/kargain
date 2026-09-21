@@ -17,17 +17,18 @@ use kargain_claimable_payouts::{
     emit::{emit_payout, PayoutEmitter},
 };
 use kargain_consignment_base::{
-    agent_withdraw_ok, close_lot, compute_split_for_lot, config_pda, consignment_pda,
-    core_asset_owner, custody_authority_pda, enter_committed_not_offered, force_recall_ready,
-    grant_mandate, lower_commission, lower_floor, mandate_pda, owner_withdraw_ok,
-    passport_binding_pda, pause, recall_pda, request_recall, require_agented_price_meets_floor,
-    require_binding_uninitialised, require_bound_passport_program, require_config_authority,
-    require_mandate_allows_open, require_not_paused, require_passport_core_asset,
-    require_transfer_delegate, revoke_mandate, set_price, set_snapshot_floor, terminate_to_owner,
-    transfer_custody_to_recipient, transfer_delegate_to_custody, transfer_owner_to_custody,
-    unpause, write_open, CloseReason, CommerceConfig, Compensation, CompensationForm,
-    ConsignmentRecord, Denomination, DenominationKind, MandateRecord, PassportBinding,
-    RecallRecord, CONFIG_SEED, CONSIGNMENT_SEED, MANDATE_SEED, PASSPORT_BINDING_SEED,
+    agent_withdraw_ok, close_lot, compute_split_for_lot, config_pda, consignment_account_is_live,
+    consignment_pda, core_asset_owner, custody_authority_pda, enter_committed_not_offered,
+    force_recall_ready, grant_mandate, lower_commission, lower_floor, mandate_pda,
+    owner_withdraw_ok, passport_binding_pda, pause, recall_pda, request_recall,
+    require_agented_price_meets_floor, require_binding_uninitialised,
+    require_bound_passport_program, require_config_authority, require_mandate_allows_open,
+    require_not_paused, require_passport_core_asset, require_transfer_delegate, revoke_mandate,
+    set_price, set_snapshot_floor, terminate_to_owner, transfer_custody_to_recipient,
+    transfer_delegate_to_custody, transfer_owner_to_custody, unpause, write_open, CloseReason,
+    CommerceConfig, Compensation, CompensationForm, ConsignmentRecord, Denomination,
+    DenominationKind, MandateRecord, PassportBinding, RecallRecord, CONFIG_SEED, CONSIGNMENT_SEED,
+    MANDATE_SEED, PASSPORT_BINDING_SEED,
     RECALL_DISCRIMINATOR, RECALL_SEED,
     emit::{
         emit_commerce, event_closed, event_commission_lowered, event_floor_lowered,
@@ -36,8 +37,8 @@ use kargain_consignment_base::{
     },
 };
 use kargain_encumbrance::{
-    derive_encumbrance_answer_pda, EncumbranceAnswer, ENCUMBRANCE_ANSWER_DISCRIMINATOR,
-    INTENT_LEAVE_CHAIN, INTENT_OPEN_CONSIGNMENT,
+    derive_encumbrance_answer_pda, encumbrance_answer_signer_seeds, EncumbranceAnswer,
+    ENCUMBRANCE_ANSWER_DISCRIMINATOR, INTENT_LEAVE_CHAIN, INTENT_OPEN_CONSIGNMENT,
 };
 use kargain_errors::KargainError;
 use kargain_events::generated;
@@ -433,9 +434,7 @@ fn set_self_enc(program_id: &Pubkey, accounts: &[AccountInfo], _registered: bool
     refuse_harness(program_id, accounts)
 }
 
-/// Borsh size of `EncumbranceAnswer` (8+32+1+1).
-const ENCUMBRANCE_ANSWER_SPACE: usize = 42;
-
+/// Write encumbrance answer via sole crate SPACE + signer seed recipe.
 fn write_encumbrance_answer<'a>(
     program_id: &Pubkey,
     payer: &AccountInfo<'a>,
@@ -452,14 +451,15 @@ fn write_encumbrance_answer<'a>(
         return Err(ProgramError::InvalidSeeds);
     }
     let intent_seed = [intent];
+    let bump_seed = [bump];
     if answer_info.data_is_empty() {
         create_pda(
             program_id,
             payer,
             answer_info,
             system,
-            ENCUMBRANCE_ANSWER_SPACE,
-            &[seed_prefix, token_id, &intent_seed, &[bump]],
+            EncumbranceAnswer::SPACE,
+            &encumbrance_answer_signer_seeds(seed_prefix, token_id, &intent_seed, &bump_seed),
         )?;
     } else if answer_info.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
@@ -471,10 +471,10 @@ fn write_encumbrance_answer<'a>(
         allowed,
     };
     let mut data = answer_info.try_borrow_mut_data()?;
-    if data.len() < ENCUMBRANCE_ANSWER_SPACE {
+    if data.len() < EncumbranceAnswer::SPACE {
         return Err(ProgramError::AccountDataTooSmall);
     }
-    rec.serialize(&mut &mut data[..ENCUMBRANCE_ANSWER_SPACE])
+    rec.serialize(&mut &mut data[..EncumbranceAnswer::SPACE])
         .map_err(|_| ProgramError::AccountDataTooSmall)?;
     Ok(())
 }
@@ -532,24 +532,17 @@ fn bind_passport_program(program_id: &Pubkey, accounts: &[AccountInfo]) -> Progr
         return Err(ProgramError::InvalidSeeds);
     }
     require_binding_uninitialised(binding)?;
-    if binding.data_is_empty() {
-        create_pda(
-            program_id,
-            payer,
-            binding,
-            system,
-            PassportBinding::SPACE,
-            &[PASSPORT_BINDING_SEED, &[bump]],
-        )?;
-    } else {
-        // Allocated but zeroed — still one-shot slot; write into existing space.
-        if binding.owner != program_id {
-            return Err(ProgramError::IncorrectProgramId);
-        }
-        if binding.data_len() < PassportBinding::SPACE {
-            return Err(ProgramError::AccountDataTooSmall);
-        }
+    if !binding.data_is_empty() {
+        return Err(ProgramError::AccountAlreadyInitialized);
     }
+    create_pda(
+        program_id,
+        payer,
+        binding,
+        system,
+        PassportBinding::SPACE,
+        &[PASSPORT_BINDING_SEED, &[bump]],
+    )?;
     let rec = PassportBinding::new(*passport_program.key, bump);
     let mut data = binding.try_borrow_mut_data()?;
     rec.serialize(&mut &mut data[..PassportBinding::SPACE])
@@ -648,10 +641,7 @@ fn grant(
     }
     // TransferDelegate to custody — named NotTransferDelegate (not EscrowNotApproved).
     require_transfer_delegate(asset_info, &cust_key)?;
-    let is_live = !consignment_info.data_is_empty()
-        && load_consignment(consignment_info)
-            .map(|c| c.is_live())
-            .unwrap_or(false);
+    let is_live = consignment_account_is_live(consignment_info)?;
     let denom = parse_denom(denom_kind, currency_code)?;
     let comp = parse_comp(form, commission_bps)?;
     let (mkey, mbump) = mandate_pda(program_id, &token_id);
@@ -720,10 +710,7 @@ fn revoke(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> 
         let data = mandate_info.try_borrow_data()?;
         MandateRecord::try_from_slice(&data).map_err(|_| ProgramError::InvalidAccountData)?
     };
-    let is_live = !consignment_info.data_is_empty()
-        && load_consignment(consignment_info)
-            .map(|c| c.is_live())
-            .unwrap_or(false);
+    let is_live = consignment_account_is_live(consignment_info)?;
     revoke_mandate(&m, &owner_pk.to_bytes(), &owner.key.to_bytes(), is_live).map_err(into_pe)?;
     let prior_agent = m.agent;
     let mut cleared = m;
@@ -829,10 +816,7 @@ fn open_direct(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    let is_live = !consignment.data_is_empty()
-        && load_consignment(consignment)
-            .map(|c| c.is_live())
-            .unwrap_or(false);
+    let is_live = consignment_account_is_live(consignment)?;
     if is_live {
         return Err(into_pe(KargainError::LiveConsignment));
     }
@@ -955,10 +939,7 @@ fn open_from_mandate(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    let is_live = !consignment.data_is_empty()
-        && load_consignment(consignment)
-            .map(|c| c.is_live())
-            .unwrap_or(false);
+    let is_live = consignment_account_is_live(consignment)?;
     if is_live {
         return Err(into_pe(KargainError::LiveConsignment));
     }
@@ -2403,6 +2384,30 @@ mod config_authority_handler_tests {
         let (bkey, _) = passport_binding_pda(&program_id);
         let mut lamports = 0u64;
         let mut data = vec![];
+        let system = system_program::ID;
+        let info = AccountInfo::new(
+            &bkey,
+            false,
+            false,
+            &mut lamports,
+            &mut data,
+            &system,
+            false,
+            0,
+        );
+        assert_eq!(
+            require_bound_passport_program(&program_id, &info).unwrap_err(),
+            ProgramError::Custom(u32::from(KargainError::PassportProgramUnbound)),
+        );
+    }
+
+    #[test]
+    fn mode_owned_wrong_disc_binding_refuses_unbound() {
+        let program_id = pid();
+        let (bkey, _) = passport_binding_pda(&program_id);
+        let mut lamports = 1u64;
+        let mut data = vec![0u8; PassportBinding::SPACE];
+        data[..8].copy_from_slice(b"notpbind");
         let info = AccountInfo::new(
             &bkey,
             false,
@@ -2420,17 +2425,31 @@ mod config_authority_handler_tests {
     }
 
     #[test]
-    fn answer_derivation_uses_shared_helper_only() {
+    fn answer_signer_seeds_match_shared_derivation() {
+        use kargain_encumbrance::encumbrance_answer_signer_seeds;
         let program_id = pid();
         let token = [9u8; 32];
         let seed = b"fp";
-        let (a, _) =
+        let (expected, bump) =
             derive_encumbrance_answer_pda(&program_id, seed, &token, INTENT_LEAVE_CHAIN).unwrap();
-        let (b, _) =
-            derive_encumbrance_answer_pda(&program_id, seed, &token, INTENT_OPEN_CONSIGNMENT)
-                .unwrap();
-        assert_ne!(a, b);
-        assert_ne!(a, program_id);
+        let intent_seed = [INTENT_LEAVE_CHAIN];
+        let bump_seed = [bump];
+        let from_signer = Pubkey::create_program_address(
+            &encumbrance_answer_signer_seeds(seed, &token, &intent_seed, &bump_seed),
+            &program_id,
+        )
+        .unwrap();
+        assert_eq!(expected, from_signer);
+        // Diverged plant (token before prefix) must not match.
+        let diverged: [&[u8]; 4] = [
+            token.as_ref(),
+            seed,
+            intent_seed.as_ref(),
+            bump_seed.as_ref(),
+        ];
+        if let Ok(pk) = Pubkey::create_program_address(&diverged, &program_id) {
+            assert_ne!(pk, expected);
+        }
     }
 
     #[test]

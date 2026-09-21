@@ -284,6 +284,11 @@ describe("svm-stand live Core CPI round trip", () => {
         fp.nativeBuy.price,
       );
       assert.equal(fp.fiatRefuseCode, 133); // CurrencyNotAvailableOnChain
+      assert.equal(fp.unboundOpenCode, 140); // PassportProgramUnbound
+      assert.equal(fp.rebindCode, "AccountAlreadyInitialized");
+      assert.equal(fp.frozenOpenCode, 137); // AssetFrozen
+      assert.equal(fp.registryMissCode, 71); // ModeNotEncumbranceSource
+      assert.equal(fp.retiredIxCode, 141); // HarnessInstructionRetired
       assert.equal(fp.fiatNoFeedCode, 124); // PaymentTokenFeedRequired
       assert.equal(fp.staleBuyCode, 122);
       assert.equal(fp.wideConfCode, 131);
@@ -327,7 +332,7 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.equal(fp.revokeOpenCode, 84); // NoMandate
       assert.equal(fp.transferDelegateAfterRevoke, true);
       console.warn(
-        `\n[svm-stand] fixed-price PASS native / fiat gates+fresh / agented D-27 / external / pause / soft-revoke / admit / delivery / TransferFee / May LeaveChain / Revoke+delegate\n`,
+        `\n[svm-stand] fixed-price PASS native / fiat gates+fresh / agented D-27 / external / pause / soft-revoke / admit / delivery / TransferFee / May LeaveChain / Revoke+delegate / corrects unbound·rebind·frozen·registry·retired\n`,
       );
 
       const ascReady = await probeAscendingValidator("http://127.0.0.1:8899");
