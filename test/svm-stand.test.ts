@@ -35,6 +35,10 @@ import {
   runLiveConsignmentAutomaton,
 } from "../svm/stand/live-consignment-automaton.ts";
 import {
+  probeValidator as probeCoreCustodyValidator,
+  runLiveCoreCustody,
+} from "../svm/stand/live-core-custody.ts";
+import {
   probeValidator as probeFixedPriceValidator,
   runLiveFixedPrice,
 } from "../svm/stand/live-fixed-price.ts";
@@ -236,6 +240,30 @@ describe("svm-stand live Core CPI round trip", () => {
       console.warn(
         `\n[svm-stand] consignment-automaton PASS open/mandate/amend/concessions/recall/settle ` +
           `P=${consign.settle.platformDelta} O=${consign.settle.sellerDelta} A=${consign.settle.agentDelta}\n`,
+      );
+
+      const coreCustodyReady = await probeCoreCustodyValidator("http://127.0.0.1:8899");
+      if (!coreCustodyReady) {
+        throw new Error("validator lost health before Core custody proof");
+      }
+      const coreCustody = await runLiveCoreCustody();
+      assertStandArtifactBindings(coreCustody.artifacts);
+      assert.equal(
+        coreCustody.artifacts.programs.consignment_harness.sha256,
+        result.artifacts.programs.consignment_harness.sha256,
+      );
+      assert.equal(coreCustody.factB.assetFrozen, 137);
+      assert.equal(coreCustody.factB.coreInvalidAuthority, 9);
+      assert.equal(coreCustody.negatives.foreignDelegate, 138);
+      assert.equal(coreCustody.negatives.wrongToken, "InvalidSeeds");
+      assert.equal(coreCustody.negatives.unsignedOwner, "MissingRequiredSignature");
+      assert.equal(
+        coreCustody.custodyToRecipient.transferDelegateAuthorityType,
+        "Owner",
+      );
+      console.warn(
+        `\n[svm-stand] core-custody PASS owner→custody, delegate→custody, custody→recipient ` +
+          `fact(a)=Owner fact(b)=AssetFrozen+InvalidAuthority negatives ok\n`,
       );
 
       const fpReady = await probeFixedPriceValidator("http://127.0.0.1:8899");

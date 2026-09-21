@@ -571,6 +571,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-mode-config-authority-policy.test.ts"],
   },
   {
+    id: "svm-core-custody",
+    owner: "svm/crates/kargain-consignment-base::core_custody",
+    rule: "Sole Core custody helpers (passport asset PDA binding, AssetFrozen freeze gate before TransferV1, TransferDelegate read, owner/delegate/custody TransferV1 moves); passport keeps its own core_asset door; modes must not TransferV1 until steps 5–6; harness is the validator proof consumer",
+    guardTests: ["svm-core-custody-policy.test.ts"],
+  },
+  {
     id: "svm-fixed-price-price-owner",
     owner: "svm/crates/kargain-price + svm/programs/kar-fixed-price",
     rule: "FixedPrice fiat/oracle only via kargain-price (PriceUpdateV2_msg@41); admit pins feed; buy refuses stale/wide/bad by name; Ascending stays oracle-banned; ApprovePaymentToken proves mint; SPL buy measures delivery; ForceSeedPriceAccount authority-gated for LIVE",

@@ -142,6 +142,9 @@ export const SVM_PROGRAM_ERROR_BY_ORDINAL = [
   "InvalidEncumbranceSeed", // 134
   "EncumbranceConfigGrowthTooLarge", // 135
   "InvalidEncumbranceIntent", // 136
+  "AssetFrozen", // 137
+  "NotTransferDelegate", // 138
+  "NotLiveCoreAsset", // 139
 ] as const;
 
 export type SvmProgramErrorName = (typeof SVM_PROGRAM_ERROR_BY_ORDINAL)[number];

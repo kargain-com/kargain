@@ -319,6 +319,15 @@ pub enum KargainError {
     /// SVM — intent byte not LeaveChain(0) / OpenConsignment(1).
     #[error("InvalidEncumbranceIntent")]
     InvalidEncumbranceIntent = 136,
+    /// SVM — Core PermanentFreezeDelegate is frozen; refuse before TransferV1.
+    #[error("AssetFrozen")]
+    AssetFrozen = 137,
+    /// SVM — TransferDelegate missing or authority ≠ expected custody key.
+    #[error("NotTransferDelegate")]
+    NotTransferDelegate = 138,
+    /// SVM — account is not a live Metaplex Core asset (D-17).
+    #[error("NotLiveCoreAsset")]
+    NotLiveCoreAsset = 139,
 }
 
 impl KargainError {
@@ -462,6 +471,9 @@ impl KargainError {
             Self::InvalidEncumbranceSeed => "InvalidEncumbranceSeed",
             Self::EncumbranceConfigGrowthTooLarge => "EncumbranceConfigGrowthTooLarge",
             Self::InvalidEncumbranceIntent => "InvalidEncumbranceIntent",
+            Self::AssetFrozen => "AssetFrozen",
+            Self::NotTransferDelegate => "NotTransferDelegate",
+            Self::NotLiveCoreAsset => "NotLiveCoreAsset",
         }
     }
 
@@ -605,6 +617,9 @@ impl KargainError {
             InvalidEncumbranceSeed,
             EncumbranceConfigGrowthTooLarge,
             InvalidEncumbranceIntent,
+            AssetFrozen,
+            NotTransferDelegate,
+            NotLiveCoreAsset,
         ]
     }
 }

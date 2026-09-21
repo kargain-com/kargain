@@ -255,6 +255,7 @@ dependencies = [
  "kargain-consignment-base",
  "kargain-errors",
  "kargain-events",
+ "mpl-core",
  "solana-program",
 ]
 
@@ -689,6 +690,7 @@ dependencies = [
  "kargain-config-authority",
  "kargain-errors",
  "kargain-events",
+ "mpl-core",
  "solana-program",
 ]
 

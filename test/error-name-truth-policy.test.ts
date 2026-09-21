@@ -708,6 +708,7 @@ describe("error-name-truth-policy", () => {
       [...SVM_ONLY_ERROR_NAMES].sort(),
       [
         "ArithmeticOverflow",
+        "AssetFrozen",
         "ComposeRequired",
         "ComposeUndecodable",
         "ConfidenceTooWide",
@@ -718,6 +719,8 @@ describe("error-name-truth-policy", () => {
         "MissingAgentRecipient",
         "MissingPlatformRecipient",
         "MissingSellerRecipient",
+        "NotLiveCoreAsset",
+        "NotTransferDelegate",
         "TransferFeeExtensionForbidden",
         "WrongAgentRecipient",
         "WrongPlatformRecipient",

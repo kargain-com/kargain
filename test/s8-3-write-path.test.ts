@@ -159,7 +159,7 @@ describe("svm program error ordinals", () => {
       rust.push({ name: m[1]!, ordinal: Number(m[3]) });
     }
     assert.equal(rust.length, SVM_PROGRAM_ERROR_BY_ORDINAL.length);
-    assert.equal(rust.at(-1)?.ordinal, 136);
+    assert.equal(rust.at(-1)?.ordinal, 139);
     for (const row of rust) {
       assert.equal(svmProgramErrorName(row.ordinal), row.name);
       assert.equal(SVM_PROGRAM_ERROR_BY_ORDINAL[row.ordinal], row.name);

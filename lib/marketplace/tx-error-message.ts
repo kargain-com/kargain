@@ -106,6 +106,9 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   InvalidEncumbranceSeed: "Encumbrance answer seed prefix is empty or too long.",
   EncumbranceConfigGrowthTooLarge: "Encumbrance registry growth exceeds the per-instruction limit.",
   InvalidEncumbranceIntent: "Encumbrance intent must be leave-chain or open-consignment.",
+  AssetFrozen: "This passport asset is frozen and cannot move.",
+  NotTransferDelegate: "Transfer delegate authority does not match the custody key.",
+  NotLiveCoreAsset: "This account is not a live Core passport asset.",
   PaymentTokenNotSupported: "This payment token is not supported.",
   PaymentTokenFeedRequired:
     "Fiat-priced sales in this token need a payment-token price feed.",

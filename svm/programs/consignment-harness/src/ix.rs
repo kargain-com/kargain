@@ -11,12 +11,15 @@ use kargain_consignment_base::{
     agent_withdraw_ok, asset_pda, close_lot, compute_split_for_lot, config_pda, consignment_pda,
     custody_authority_pda, enter_committed_not_offered, force_recall_ready, grant_mandate,
     is_escrow_approved, lower_commission, lower_floor, mandate_pda, owner_withdraw_ok, pause,
-    recall_pda, release_custody, request_recall, require_agented_price_meets_floor,
-    require_can_open, require_config_authority, require_mandate_allows_open, require_not_paused,
-    revoke_mandate, set_price, take_custody, terminate_to_owner, unpause, write_open, CloseReason,
-    CommerceConfig, Compensation, CompensationForm, ConsignmentRecord, Denomination,
+    passport_asset_pda, recall_pda, release_custody, request_recall,
+    require_agented_price_meets_floor, require_can_open, require_config_authority,
+    require_mandate_allows_open, require_not_paused, revoke_mandate, set_price, take_custody,
+    terminate_to_owner, transfer_custody_to_recipient, transfer_delegate_to_custody,
+    transfer_owner_to_custody, transfer_owner_to_custody_skip_freeze_gate, unpause, write_open,
+    CloseReason, CommerceConfig, Compensation, CompensationForm, ConsignmentRecord, Denomination,
     DenominationKind, HarnessAsset, MandateRecord, RecallRecord, ASSET_DISCRIMINATOR, ASSET_SEED,
-    CONFIG_SEED, CONSIGNMENT_SEED, MANDATE_SEED, RECALL_DISCRIMINATOR, RECALL_SEED,
+    CONFIG_SEED, CONSIGNMENT_SEED, MANDATE_SEED, PASSPORT_ASSET_SEED, RECALL_DISCRIMINATOR,
+    RECALL_SEED,
     emit::{
         emit_commerce, event_closed, event_commission_lowered, event_floor_lowered,
         event_mandate_granted, event_opened, event_price_set, event_split_paid, CommerceEmitter,
@@ -105,6 +108,23 @@ pub enum HarnessIx {
         token_id: [u8; 32],
         requested_at: u64,
     },
+    /// S8-E step 4 — create Core asset at passport seed `[b"asset", token_id]` under this program.
+    /// Accounts: asset · payer(signer) · owner · freeze_authority · core · system
+    /// `transfer_delegate_mode`: 0=none, 1=custody authority, 2=owner authority (foreign to custody).
+    CoreCreateAsset {
+        token_id: [u8; 32],
+        frozen: bool,
+        transfer_delegate_mode: u8,
+    },
+    /// Accounts: asset · owner(signer) · custody · payer · core · system
+    CoreTransferOwnerToCustody { token_id: [u8; 32] },
+    /// Accounts: asset · custody · payer · core · system
+    CoreTransferDelegateToCustody { token_id: [u8; 32] },
+    /// Accounts: asset · custody · recipient · payer · core · system
+    CoreTransferCustodyToRecipient { token_id: [u8; 32] },
+    /// Test plant: skip freeze gate — expect Core InvalidAuthority when frozen.
+    /// Accounts: asset · owner(signer) · custody · payer · core · system
+    CoreTransferOwnerSkipFreeze { token_id: [u8; 32] },
 }
 
 /// Per-asset may_open flag stored beside asset (harness stub for passport may).
@@ -192,6 +212,23 @@ pub fn process_instruction(
             token_id,
             requested_at,
         } => force_recall_at(program_id, accounts, token_id, requested_at),
+        HarnessIx::CoreCreateAsset {
+            token_id,
+            frozen,
+            transfer_delegate_mode,
+        } => core_create_asset(program_id, accounts, token_id, frozen, transfer_delegate_mode),
+        HarnessIx::CoreTransferOwnerToCustody { token_id } => {
+            core_transfer_owner_to_custody(program_id, accounts, token_id)
+        }
+        HarnessIx::CoreTransferDelegateToCustody { token_id } => {
+            core_transfer_delegate_to_custody(program_id, accounts, token_id)
+        }
+        HarnessIx::CoreTransferCustodyToRecipient { token_id } => {
+            core_transfer_custody_to_recipient(program_id, accounts, token_id)
+        }
+        HarnessIx::CoreTransferOwnerSkipFreeze { token_id } => {
+            core_transfer_owner_skip_freeze(program_id, accounts, token_id)
+        }
     }
 }
 
@@ -1369,6 +1406,201 @@ fn spl_transfer(
         ],
         data,
     }
+}
+
+// ---------------------------------------------------------------------------
+// S8-E step 4 — Core custody proof IXs (thin wrappers over shared owner)
+// ---------------------------------------------------------------------------
+
+const FREEZE_SEED: &[u8] = b"freeze";
+
+fn freeze_pda(program_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[FREEZE_SEED], program_id)
+}
+
+fn core_create_asset(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    token_id: [u8; 32],
+    frozen: bool,
+    transfer_delegate_mode: u8,
+) -> ProgramResult {
+    use mpl_core::{
+        instructions::CreateV1CpiBuilder,
+        types::{
+            DataState, PermanentFreezeDelegate, Plugin, PluginAuthority, PluginAuthorityPair,
+            TransferDelegate,
+        },
+    };
+    use solana_program::system_program;
+
+    let iter = &mut accounts.iter();
+    let asset = next_account_info(iter)?;
+    let payer = next_account_info(iter)?;
+    let owner = next_account_info(iter)?;
+    let freeze_authority = next_account_info(iter)?;
+    let core_program = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
+
+    let (expected, bump) = passport_asset_pda(program_id, &token_id);
+    if asset.key != &expected {
+        return Err(ProgramError::InvalidSeeds);
+    }
+    let (freeze_key, _) = freeze_pda(program_id);
+    if freeze_authority.key != &freeze_key {
+        return Err(ProgramError::InvalidSeeds);
+    }
+    if !payer.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if core_program.key != &mpl_core::ID {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    if system.key != &system_program::ID {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+
+    let (custody_key, _) = custody_authority_pda(program_id);
+    let mut plugins = vec![PluginAuthorityPair {
+        plugin: Plugin::PermanentFreezeDelegate(PermanentFreezeDelegate { frozen }),
+        authority: Some(PluginAuthority::Address {
+            address: freeze_key,
+        }),
+    }];
+    match transfer_delegate_mode {
+        0 => {}
+        1 => {
+            plugins.push(PluginAuthorityPair {
+                plugin: Plugin::TransferDelegate(TransferDelegate {}),
+                authority: Some(PluginAuthority::Address {
+                    address: custody_key,
+                }),
+            });
+        }
+        2 => {
+            // Foreign to custody — owner address as TransferDelegate authority.
+            plugins.push(PluginAuthorityPair {
+                plugin: Plugin::TransferDelegate(TransferDelegate {}),
+                authority: Some(PluginAuthority::Address {
+                    address: *owner.key,
+                }),
+            });
+        }
+        _ => return Err(ProgramError::InvalidInstructionData),
+    }
+
+    let seeds: &[&[u8]] = &[PASSPORT_ASSET_SEED, &token_id, &[bump]];
+    CreateV1CpiBuilder::new(core_program)
+        .asset(asset)
+        .payer(payer)
+        .owner(Some(owner))
+        .update_authority(Some(payer))
+        .system_program(system)
+        .data_state(DataState::AccountState)
+        .name("core-custody".to_string())
+        .uri("ar://core-custody-proof".to_string())
+        .plugins(plugins)
+        .invoke_signed(&[seeds])?;
+    Ok(())
+}
+
+fn core_transfer_owner_to_custody(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    token_id: [u8; 32],
+) -> ProgramResult {
+    let iter = &mut accounts.iter();
+    let asset = next_account_info(iter)?;
+    let owner = next_account_info(iter)?;
+    let custody = next_account_info(iter)?;
+    let payer = next_account_info(iter)?;
+    let core_program = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
+    // Harness is both mode + passport program for PDA math in this proof.
+    transfer_owner_to_custody(
+        program_id,
+        program_id,
+        &token_id,
+        asset,
+        owner,
+        custody,
+        payer,
+        core_program,
+        system,
+    )
+}
+
+fn core_transfer_delegate_to_custody(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    token_id: [u8; 32],
+) -> ProgramResult {
+    let iter = &mut accounts.iter();
+    let asset = next_account_info(iter)?;
+    let custody = next_account_info(iter)?;
+    let payer = next_account_info(iter)?;
+    let core_program = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
+    transfer_delegate_to_custody(
+        program_id,
+        program_id,
+        &token_id,
+        asset,
+        custody,
+        payer,
+        core_program,
+        system,
+    )
+}
+
+fn core_transfer_custody_to_recipient(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    token_id: [u8; 32],
+) -> ProgramResult {
+    let iter = &mut accounts.iter();
+    let asset = next_account_info(iter)?;
+    let custody = next_account_info(iter)?;
+    let recipient = next_account_info(iter)?;
+    let payer = next_account_info(iter)?;
+    let core_program = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
+    transfer_custody_to_recipient(
+        program_id,
+        program_id,
+        &token_id,
+        asset,
+        custody,
+        recipient,
+        payer,
+        core_program,
+        system,
+    )
+}
+
+fn core_transfer_owner_skip_freeze(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    token_id: [u8; 32],
+) -> ProgramResult {
+    let iter = &mut accounts.iter();
+    let asset = next_account_info(iter)?;
+    let owner = next_account_info(iter)?;
+    let custody = next_account_info(iter)?;
+    let payer = next_account_info(iter)?;
+    let core_program = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
+    transfer_owner_to_custody_skip_freeze_gate(
+        program_id,
+        program_id,
+        &token_id,
+        asset,
+        owner,
+        custody,
+        payer,
+        core_program,
+        system,
+    )
 }
 
 

@@ -45,6 +45,12 @@ export const SVM_ONLY_ERROR_NAMES = [
   "EncumbranceConfigGrowthTooLarge",
   /** S8-E — intent byte not LeaveChain/OpenConsignment. */
   "InvalidEncumbranceIntent",
+  /** S8-E step 4 — Core PermanentFreezeDelegate frozen (pre-CPI). */
+  "AssetFrozen",
+  /** S8-E step 4 — TransferDelegate missing or wrong authority. */
+  "NotTransferDelegate",
+  /** S8-E step 4 — account is not a live Core asset. */
+  "NotLiveCoreAsset",
 ] as const;
 
 /**
