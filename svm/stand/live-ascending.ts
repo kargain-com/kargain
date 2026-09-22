@@ -41,6 +41,9 @@ import {
   addTransferDelegateToCustody,
   airdrop,
   answerPdas,
+  assertAnswersClosed,
+  assertAnswersOpen,
+  ENCUMBRANCE_ANSWER_SPACE,
   bindPassportProgramIx,
   completeReversalAscendingKeys,
   coreOwner,
@@ -133,6 +136,7 @@ const ERR = {
   PassportNotVerified: 121,
   PassportProgramUnbound: 140,
   HarnessInstructionRetired: 141,
+  WrongAnswerFunder: 142,
 } as const;
 
 const PHASE = { Offered: 1, Closed: 2, Returned: 3 } as const;
@@ -177,6 +181,7 @@ type MintedLot = {
   escrow: Pk;
   modeChallenge: Pk;
   answers: { leave: Pk; open: Pk };
+  answerFunder: Pk;
 };
 
 function lotFromMint(
@@ -200,6 +205,7 @@ function lotFromMint(
     escrow,
     modeChallenge,
     answers,
+    answerFunder: PublicKey.default, // set at settle
   };
 }
 
@@ -692,8 +698,6 @@ function openAscendingIx(args: {
     consign: a.consignment,
     custody: a.custody,
     payer: a.payer,
-    answerLeave: a.answers.leave,
-    answerOpen: a.answers.open,
     stake: a.stake,
     stakingProgram: a.stakingProgram,
     auction: a.auction,
@@ -723,6 +727,7 @@ function settleIx(args: {
   payer: Pk;
   escrowAta?: Pk;
 }) {
+  args.lot.answerFunder = args.payer;
   return ix(
     args.programId,
     settleAscendingKeys({
@@ -772,6 +777,7 @@ function confirmKeys(
     passportConfig: stack.passportConfig,
     answerLeave: lot.answers.leave,
     answerOpen: lot.answers.open,
+    answerFunder: lot.answerFunder,
   });
 }
 
@@ -802,6 +808,7 @@ function releaseKeys(
     passportConfig: stack.passportConfig,
     answerLeave: lot.answers.leave,
     answerOpen: lot.answers.open,
+    answerFunder: lot.answerFunder,
   });
 }
 
@@ -837,6 +844,7 @@ function judgeKeys(
     passportConfig: stack.passportConfig,
     answerLeave: lot.answers.leave,
     answerOpen: lot.answers.open,
+    answerFunder: lot.answerFunder,
   });
 }
 
@@ -871,6 +879,7 @@ function completeReversalKeys(
     payer: payerPk,
     answerLeave: lot.answers.leave,
     answerOpen: lot.answers.open,
+    answerFunder: lot.answerFunder,
   });
   if (spl) {
     keys.push(
@@ -910,6 +919,7 @@ function abandonKeys(
     passportConfig: stack.passportConfig,
     answerLeave: lot.answers.leave,
     answerOpen: lot.answers.open,
+    answerFunder: lot.answerFunder,
   });
 }
 
@@ -952,8 +962,11 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   settleRent: {
     auctionBefore: bigint;
     holdAfter: bigint;
+    answerLeaveAfter: bigint;
+    answerOpenAfter: bigint;
     payerDelta: bigint;
     holdRentExempt: bigint;
+    answerRentExempt: bigint;
     settleTxFee: bigint;
     escrowDelta: bigint;
   };
@@ -1532,6 +1545,33 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   assert.equal(lotOpen.phase, PHASE.Offered);
   assert.equal(lotOpen.price, RESERVE);
   assert.equal(lotOpen.feeBps, FEE_BPS);
+  // EVM parity: answers absent during live auction (open must not create them).
+  // Core is in custody so gateway.Send is not the owner probe; May with registry tail is.
+  await assertAnswersClosed(conn, lotA.answers.leave, lotA.answers.open, "lotA after open (pre-settle)");
+  {
+    const mayTx = new Transaction().add(
+      ix(
+        stack.passportProgram,
+        [
+          { pubkey: stack.passportConfig, isSigner: false, isWritable: false },
+          { pubkey: lotA.asset, isSigner: false, isWritable: false },
+          { pubkey: lotA.passportChallenge, isSigner: false, isWritable: false },
+          ...standRegistryMayAnswersLeave(lotA.tokenId).map((a) => ({
+            pubkey: a,
+            isSigner: false,
+            isWritable: false,
+          })),
+        ],
+        Buffer.concat([
+          Buffer.from([4]), // PassportIx::May
+          lotA.tokenId,
+          Buffer.from([0]), // LeaveChain
+        ]),
+      ),
+    );
+    await sendAndConfirmTransaction(conn, mayTx, [payer], { commitment: "confirmed" });
+    negatives.LeaveChainMayPreSettle = 0;
+  }
 
   const fromSeller = await expectCustom(
     conn,
@@ -1711,6 +1751,18 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   assert.equal(holdLamportsAfter, holdRentExempt);
   const holdAfterSettle = readHold(holdInfoAfterSettle!.data as Buffer);
   const assetAfterSettleOwner = coreOwner((await conn.getAccountInfo(lotA.asset))!.data as Buffer);
+  await assertAnswersOpen(conn, lotA.answers.leave, lotA.answers.open, programId, "lotA after settle");
+  const answerRentExempt = BigInt(
+    await conn.getMinimumBalanceForRentExemption(ENCUMBRANCE_ANSWER_SPACE),
+  );
+  const leaveLamportsAfterSettle = BigInt(
+    (await conn.getAccountInfo(lotA.answers.leave))!.lamports,
+  );
+  const openLamportsAfterSettle = BigInt(
+    (await conn.getAccountInfo(lotA.answers.open))!.lamports,
+  );
+  assert.equal(leaveLamportsAfterSettle, answerRentExempt);
+  assert.equal(openLamportsAfterSettle, answerRentExempt);
   const escrowAfterSettle = BigInt(await conn.getBalance(lotA.escrow));
   const payerLamportsAfterSettle = BigInt(await conn.getBalance(payer.publicKey));
   const phaseAfterSettle = readConsignment(
@@ -1723,17 +1775,21 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   assert.equal(assetAfterSettleOwner.toBase58(), bidder2.publicKey.toBase58());
   assert.equal(escrowDeltaSettle, 0n);
   assert.equal(holdAfterSettle.gross, bid2Amt);
-  // payerDelta + holdAfter + settleTxFee === auctionBefore
+  // Settle creates hold + both answer PDAs from payer; auction rent returns via payer.
+  // payerΔ + hold + answers + fee === auctionBefore
   assert.equal(
-    payerDelta + holdLamportsAfter + settleTxFee,
+    payerDelta + holdLamportsAfter + leaveLamportsAfterSettle + openLamportsAfterSettle + settleTxFee,
     auctionLamportsBefore,
-    `settle rent: payerΔ(${payerDelta}) + hold(${holdLamportsAfter}) + fee(${settleTxFee}) !== auctionBefore(${auctionLamportsBefore})`,
+    `settle rent: payerΔ(${payerDelta}) + hold(${holdLamportsAfter}) + answers(${leaveLamportsAfterSettle + openLamportsAfterSettle}) + fee(${settleTxFee}) !== auctionBefore(${auctionLamportsBefore})`,
   );
   const settleRent = {
     auctionBefore: auctionLamportsBefore,
     holdAfter: holdLamportsAfter,
+    answerLeaveAfter: leaveLamportsAfterSettle,
+    answerOpenAfter: openLamportsAfterSettle,
     payerDelta,
     holdRentExempt,
+    answerRentExempt,
     settleTxFee,
     escrowDelta: escrowDeltaSettle,
   };
@@ -1822,6 +1878,14 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   const balP0 = BigInt(await conn.getBalance(platform.publicKey));
   const balS0 = BigInt(await conn.getBalance(seller.publicKey));
   const balAgent0 = BigInt(await conn.getBalance(stranger.publicKey));
+  const leaveLamportsBeforeClear = BigInt(
+    (await conn.getAccountInfo(lotA.answers.leave))!.lamports,
+  );
+  const openLamportsBeforeClear = BigInt(
+    (await conn.getAccountInfo(lotA.answers.open))!.lamports,
+  );
+  assert.equal(leaveLamportsBeforeClear, answerRentExempt);
+  assert.equal(openLamportsBeforeClear, answerRentExempt);
 
   ixBudget.ConfirmReceipt = await sendAndMeasure(
     conn,
@@ -1852,8 +1916,11 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   assert.equal(balP1 - balP0, expectedPlatform);
   assert.equal(balS1 - balS0, expectedSeller);
   assert.equal(balAgent1 - balAgent0, 0n);
+  await assertAnswersClosed(conn, lotA.answers.leave, lotA.answers.open, "lotA after ConfirmReceipt");
+  // Exact funder Δ is fee-entangled (ConfirmReceipt feePayer ≡ settle funder); rent
+  // was proven on the answer accounts above and both accounts are absent after close.
 
-  // After hold-clear, LeaveChain answers are true — gateway Send ok for buyer.
+  // After hold-clear, answers absent → LeaveChain allows; gateway Send ok for buyer.
   const leaveChainSendAfterConfirm = await tryGatewaySend(conn, stack, bidder2, payer, {
     tokenId: lotA.tokenId,
     asset: lotA.asset,
@@ -2863,8 +2930,6 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
             consign: lotN.consign,
             custody: custodyPda,
             payer: payer.publicKey,
-            answerLeave: lotN.answers.leave,
-            answerOpen: lotN.answers.open,
             stake: agentStake,
             stakingProgram,
             auction: lotN.auction,

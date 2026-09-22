@@ -334,6 +334,9 @@ pub enum KargainError {
     /// SVM — FixedPrice harness CreateAsset / ApproveEscrow / SetMayOpen / SetSelfEncumbrance retired.
     #[error("HarnessInstructionRetired")]
     HarnessInstructionRetired = 141,
+    /// SVM — encumbrance answer close: passed funder ≠ recorded rent funder.
+    #[error("WrongAnswerFunder")]
+    WrongAnswerFunder = 142,
 }
 
 impl KargainError {
@@ -482,6 +485,7 @@ impl KargainError {
             Self::NotLiveCoreAsset => "NotLiveCoreAsset",
             Self::PassportProgramUnbound => "PassportProgramUnbound",
             Self::HarnessInstructionRetired => "HarnessInstructionRetired",
+            Self::WrongAnswerFunder => "WrongAnswerFunder",
         }
     }
 
@@ -630,6 +634,7 @@ impl KargainError {
             NotLiveCoreAsset,
             PassportProgramUnbound,
             HarnessInstructionRetired,
+            WrongAnswerFunder,
         ]
     }
 }

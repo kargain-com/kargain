@@ -112,6 +112,8 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   PassportProgramUnbound: "This selling mode has not been bound to a passport program.",
   HarnessInstructionRetired:
     "This harness instruction is retired; use Core passport custody instead.",
+  WrongAnswerFunder:
+    "Encumbrance answer rent can only be reclaimed by the recorded funder.",
   PaymentTokenNotSupported: "This payment token is not supported.",
   PaymentTokenFeedRequired:
     "Fiat-priced sales in this token need a payment-token price feed.",

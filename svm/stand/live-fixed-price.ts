@@ -33,6 +33,7 @@ import {
 } from "./stand-artifact-bindings.ts";
 import {
   CORE_ID,
+  ENCUMBRANCE_ANSWER_SPACE,
   ENCUMBRANCE_SEED_PREFIX,
   FP_IX,
   RPC_DEFAULT,
@@ -41,6 +42,8 @@ import {
   addEncumbranceSource,
   addTransferDelegateToCustody,
   answerPdas,
+  assertAnswersClosed,
+  assertAnswersOpen,
   bindPassportProgramIx,
   buyHeadKeys,
   confirmExternalKeys,
@@ -113,6 +116,7 @@ const ERR = {
   NotPassportOwner: 79,
   PassportProgramUnbound: 140,
   HarnessInstructionRetired: 141,
+  WrongAnswerFunder: 142,
 } as const;
 
 const PHASE = { Offered: 1, Closed: 2 } as const;
@@ -134,6 +138,7 @@ function terminateKeys(args: {
   payer: Pk;
   answerLeave: Pk;
   answerOpen: Pk;
+  answerFunder: Pk;
 }): Meta[] {
   return [
     { pubkey: args.caller, isSigner: true, isWritable: false },
@@ -149,6 +154,7 @@ function terminateKeys(args: {
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     { pubkey: args.answerLeave, isSigner: false, isWritable: true },
     { pubkey: args.answerOpen, isSigner: false, isWritable: true },
+    { pubkey: args.answerFunder, isSigner: false, isWritable: true },
   ];
 }
 
@@ -267,6 +273,8 @@ type Minted = {
   recall: Pk;
   escrow: Pk;
   answers: { leave: Pk; open: Pk };
+  /** Payer at open_obligation — sole reclaim recipient at close. */
+  answerFunder: Pk;
 };
 
 async function mintCoreLot(
@@ -286,7 +294,16 @@ async function mintCoreLot(
   const [recall] = pda(programId, [SEED.recall, tokenId]);
   const [escrow] = pda(programId, [SEED.escrow, tokenId]);
   const answers = answerPdas(programId, tokenId);
-  return { tokenId, asset, challenge, consign, recall, escrow, answers };
+  return {
+    tokenId,
+    asset,
+    challenge,
+    consign,
+    recall,
+    escrow,
+    answers,
+    answerFunder: seller.publicKey,
+  };
 }
 
 async function openDirectNative(
@@ -303,6 +320,7 @@ async function openDirectNative(
   lot: Minted,
   price: bigint,
 ) {
+  lot.answerFunder = ctx.payer.publicKey;
   const keys = withOpenAnswers(
     openDirectKeys({
       seller: ctx.seller.publicKey,
@@ -357,6 +375,7 @@ async function openDirectSpl(
   currency: Buffer,
   price: bigint,
 ) {
+  lot.answerFunder = ctx.payer.publicKey;
   const keys = withOpenAnswers(
     openDirectKeys({
       seller: ctx.seller.publicKey,
@@ -717,6 +736,10 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   const lotN = await mintCoreLot(conn, stack, programId, payer, seller);
   const priceN = 1000n;
   await openDirectNative(conn, ctx, lotN, priceN);
+  await assertAnswersOpen(conn, lotN.answers.leave, lotN.answers.open, programId, "lotN after open");
+  const answerRentExempt = BigInt(
+    await conn.getMinimumBalanceForRentExemption(ENCUMBRANCE_ANSWER_SPACE),
+  );
   const [lotNState] = pda(stack.passportProgram, [SEED.state, lotN.tokenId]);
 
   const leaveChainSendWhileLive = await tryGatewaySend(conn, stack, seller, payer, {
@@ -738,6 +761,15 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   const balP0 = BigInt(await conn.getBalance(platform.publicKey));
   const balS0 = BigInt(await conn.getBalance(seller.publicKey));
   const balA0 = BigInt(await conn.getBalance(agent.publicKey));
+  const leaveLamportsBeforeBuy = BigInt(
+    (await conn.getAccountInfo(lotN.answers.leave))!.lamports,
+  );
+  const openLamportsBeforeBuy = BigInt(
+    (await conn.getAccountInfo(lotN.answers.open))!.lamports,
+  );
+  assert.equal(leaveLamportsBeforeBuy, answerRentExempt);
+  assert.equal(openLamportsBeforeBuy, answerRentExempt);
+  const buyerBalBeforeBuy = BigInt(await conn.getBalance(buyer.publicKey));
 
   await sendAndConfirmTransaction(
     conn,
@@ -760,6 +792,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           escrow: lotN.escrow,
           answerLeave: lotN.answers.leave,
           answerOpen: lotN.answers.open,
+          answerFunder: lotN.answerFunder,
         }),
         Buffer.concat([Buffer.from([FP_IX.Buy]), lotN.tokenId]),
       ),
@@ -777,8 +810,15 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   assert.equal(balP1 - balP0, platformAmt);
   assert.equal(balS1 - balS0, sellerAmt);
   assert.equal(balA1 - balA0, agentAmt);
+  await assertAnswersClosed(conn, lotN.answers.leave, lotN.answers.open, "lotN after buy");
+  // Exact funder reclaim Δ is proven on OwnerWithdraw below (feePayer ≠ funder).
+  const buyerBalAfterBuy = BigInt(await conn.getBalance(buyer.publicKey));
+  assert.ok(
+    buyerBalBeforeBuy - buyerBalAfterBuy >= priceN,
+    "buyer pays at least price (plus tx fee)",
+  );
 
-  // After close answers allow LeaveChain; buyer owns Core → Send succeeds (lock + freeze).
+  // After close answers absent (= Uninitialised allow); buyer owns Core → Send succeeds.
   const leaveChainSendAfterClose = await tryGatewaySend(conn, stack, buyer, payer, {
     tokenId: lotN.tokenId,
     asset: lotN.asset,
@@ -793,6 +833,80 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     true,
     "custody_locked after post-close Send",
   );
+
+  // ---- Answer lifecycle: wrong funder refuse + reopen after OwnerWithdraw ----
+  {
+    const lotLc = await mintCoreLot(conn, stack, programId, payer, seller);
+    await openDirectNative(conn, ctx, lotLc, 500n);
+    await assertAnswersOpen(conn, lotLc.answers.leave, lotLc.answers.open, programId, "lotLc open");
+    const wrongFunderCode = await expectCustom(
+      conn,
+      new Transaction().add(
+        ix(
+          programId,
+          terminateKeys({
+            caller: seller.publicKey,
+            consign: lotLc.consign,
+            recall: lotLc.recall,
+            binding,
+            passportConfig: stack.passportConfig,
+            asset: lotLc.asset,
+            custody: custodyPda,
+            recipient: seller.publicKey,
+            payer: payer.publicKey,
+            answerLeave: lotLc.answers.leave,
+            answerOpen: lotLc.answers.open,
+            answerFunder: buyer.publicKey, // not recorded funder
+          }),
+          Buffer.concat([Buffer.from([FP_IX.OwnerWithdraw]), lotLc.tokenId]),
+        ),
+      ),
+      [seller, payer],
+      ERR.WrongAnswerFunder,
+    );
+    assert.equal(wrongFunderCode, ERR.WrongAnswerFunder);
+    await assertAnswersOpen(
+      conn,
+      lotLc.answers.leave,
+      lotLc.answers.open,
+      programId,
+      "lotLc still open after wrong funder",
+    );
+
+    const funderBeforeWd = BigInt(await conn.getBalance(lotLc.answerFunder));
+    await sendAndConfirmTransaction(
+      conn,
+      new Transaction().add(
+        ix(
+          programId,
+          terminateKeys({
+            caller: seller.publicKey,
+            consign: lotLc.consign,
+            recall: lotLc.recall,
+            binding,
+            passportConfig: stack.passportConfig,
+            asset: lotLc.asset,
+            custody: custodyPda,
+            recipient: seller.publicKey,
+            payer: payer.publicKey,
+            answerLeave: lotLc.answers.leave,
+            answerOpen: lotLc.answers.open,
+            answerFunder: lotLc.answerFunder,
+          }),
+          Buffer.concat([Buffer.from([FP_IX.OwnerWithdraw]), lotLc.tokenId]),
+        ),
+      ),
+      [seller, payer],
+    );
+    await assertAnswersClosed(conn, lotLc.answers.leave, lotLc.answers.open, "lotLc after withdraw");
+    const funderAfterWd = BigInt(await conn.getBalance(lotLc.answerFunder));
+    // Fee payer is first signer (seller) — funder reclaim is exact 2× rent.
+    assert.equal(funderAfterWd - funderBeforeWd, answerRentExempt * 2n);
+
+    // Reopen same token after close → fresh answer accounts.
+    await openDirectNative(conn, ctx, lotLc, 600n);
+    await assertAnswersOpen(conn, lotLc.answers.leave, lotLc.answers.open, programId, "lotLc reopen");
+  }
 
   // ---- Fiat native refuse ----
   const lotF = await mintCoreLot(conn, stack, programId, payer, seller);
@@ -882,6 +996,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           payer: payer.publicKey,
           answerLeave: lotE.answers.leave,
           answerOpen: lotE.answers.open,
+          answerFunder: lotE.answerFunder,
         }),
         Buffer.concat([
           Buffer.from([FP_IX.ConfirmExternalPayment]),
@@ -898,6 +1013,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   const extBuyerOwns = coreOwner((await conn.getAccountInfo(lotE.asset))!.data as Buffer).toBase58();
   assert.equal(closedE.phase, PHASE.Closed);
   assert.equal(extBuyerOwns, buyer.publicKey.toBase58());
+  await assertAnswersClosed(conn, lotE.answers.leave, lotE.answers.open, "lotE after confirm_external");
   const extP1 = BigInt(await conn.getBalance(platform.publicKey));
   const extS1 = BigInt(await conn.getBalance(seller.publicKey));
   const extEsc1 = BigInt((await conn.getAccountInfo(lotE.escrow))?.lamports ?? 0);
@@ -1012,6 +1128,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           escrow: lotPb.escrow,
           answerLeave: lotPb.answers.leave,
           answerOpen: lotPb.answers.open,
+          answerFunder: lotPb.answerFunder,
         }),
         Buffer.concat([Buffer.from([FP_IX.Buy]), lotPb.tokenId]),
       ),
@@ -1062,6 +1179,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           payer: payer.publicKey,
           answerLeave: lotPb.answers.leave,
           answerOpen: lotPb.answers.open,
+          answerFunder: lotPb.answerFunder,
         }),
         Buffer.concat([
           Buffer.from([FP_IX.ConfirmExternalPayment]),
@@ -1256,6 +1374,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
             escrow: lotS.escrow,
             answerLeave: lotS.answers.leave,
             answerOpen: lotS.answers.open,
+          answerFunder: lotS.answerFunder,
           }),
           { pubkey: buyerAta.publicKey, isSigner: false, isWritable: true },
           { pubkey: escrowAta.publicKey, isSigner: false, isWritable: true },
@@ -1537,6 +1656,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
               escrow: lot.escrow,
               answerLeave: lot.answers.leave,
               answerOpen: lot.answers.open,
+            answerFunder: lot.answerFunder,
             }),
             { pubkey: payTokFiat, isSigner: false, isWritable: false },
             { pubkey: priceLabPda, isSigner: false, isWritable: false },
@@ -1674,6 +1794,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
             escrow: lotFresh.escrow,
             answerLeave: lotFresh.answers.leave,
             answerOpen: lotFresh.answers.open,
+          answerFunder: lotFresh.answerFunder,
           }),
           { pubkey: payTokFiat, isSigner: false, isWritable: false },
           { pubkey: priceLabPda, isSigner: false, isWritable: false },
@@ -1749,6 +1870,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     [seller, payer],
   );
 
+  lotAg.answerFunder = payer.publicKey;
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
@@ -1907,6 +2029,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
         escrow: lotAg.escrow,
         answerLeave: lotAg.answers.leave,
         answerOpen: lotAg.answers.open,
+      answerFunder: lotAg.answerFunder,
       }),
       { pubkey: payTokFiat, isSigner: false, isWritable: false },
       { pubkey: priceLabPda, isSigner: false, isWritable: false },
@@ -2065,6 +2188,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   // Direct: OpenDirect → SetPrice → OwnerWithdraw
   {
     const lot = await mintCoreLot(conn, stack, programId, payer, seller);
+    lot.answerFunder = payer.publicKey;
     ixBudget.OpenDirect = await sendAndMeasure(
       conn,
       payer,
@@ -2127,6 +2251,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           payer: payer.publicKey,
           answerLeave: lot.answers.leave,
           answerOpen: lot.answers.open,
+          answerFunder: lot.answerFunder,
         }),
         Buffer.concat([Buffer.from([FP_IX.OwnerWithdraw]), lot.tokenId]),
       ),
@@ -2199,6 +2324,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
       ),
       [seller, payer],
     );
+    lot.answerFunder = payer.publicKey;
     ixBudget.OpenFromMandate = await sendAndMeasure(
       conn,
       payer,
@@ -2260,6 +2386,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           payer: payer.publicKey,
           answerLeave: lot.answers.leave,
           answerOpen: lot.answers.open,
+          answerFunder: lot.answerFunder,
         }),
         Buffer.concat([Buffer.from([FP_IX.AgentWithdraw]), lot.tokenId]),
       ),
@@ -2291,12 +2418,13 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
       ),
       [seller, payer],
     );
+    lot.answerFunder = payer.publicKey;
     await sendAndConfirmTransaction(
       conn,
       new Transaction().add(
         ix(
           programId,
-          openFromMandateKeys({
+        openFromMandateKeys({
             agent: agent.publicKey,
             config: configPda,
             mandate,
@@ -2388,6 +2516,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           payer: payer.publicKey,
           answerLeave: lot.answers.leave,
           answerOpen: lot.answers.open,
+          answerFunder: lot.answerFunder,
         }),
         Buffer.concat([Buffer.from([FP_IX.ForceRecall]), lot.tokenId]),
       ),
@@ -2420,6 +2549,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           escrow: lot.escrow,
           answerLeave: lot.answers.leave,
           answerOpen: lot.answers.open,
+          answerFunder: lot.answerFunder,
         }),
         Buffer.concat([Buffer.from([FP_IX.Buy]), lot.tokenId]),
       ),
@@ -2543,6 +2673,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
             escrow: lot.escrow,
             answerLeave: lot.answers.leave,
             answerOpen: lot.answers.open,
+          answerFunder: lot.answerFunder,
           }),
           { pubkey: bAta.publicKey, isSigner: false, isWritable: true },
           { pubkey: eAta.publicKey, isSigner: false, isWritable: true },
@@ -2585,12 +2716,13 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
       ),
       [seller, payer],
     );
+    lot.answerFunder = payer.publicKey;
     await sendAndConfirmTransaction(
       conn,
       new Transaction().add(
         ix(
           programId,
-          openFromMandateKeys({
+        openFromMandateKeys({
             agent: agent.publicKey,
             config: configPda,
             mandate,
@@ -2637,6 +2769,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           escrow: lot.escrow,
           answerLeave: lot.answers.leave,
           answerOpen: lot.answers.open,
+          answerFunder: lot.answerFunder,
         }),
         Buffer.concat([Buffer.from([FP_IX.Buy]), lot.tokenId]),
       ),
@@ -2671,12 +2804,13 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
       ),
       [seller, payer],
     );
+    lot.answerFunder = payer.publicKey;
     await sendAndConfirmTransaction(
       conn,
       new Transaction().add(
         ix(
           programId,
-          openFromMandateKeys({
+        openFromMandateKeys({
             agent: agent.publicKey,
             config: configPda,
             mandate,
@@ -2807,6 +2941,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
             escrow: lot.escrow,
             answerLeave: lot.answers.leave,
             answerOpen: lot.answers.open,
+          answerFunder: lot.answerFunder,
           }),
           { pubkey: payTokFiat, isSigner: false, isWritable: false },
           { pubkey: priceLabPda, isSigner: false, isWritable: false },
@@ -2877,6 +3012,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           payer: payer.publicKey,
           answerLeave: lot.answers.leave,
           answerOpen: lot.answers.open,
+          answerFunder: lot.answerFunder,
         }),
         Buffer.concat([
           Buffer.from([FP_IX.ConfirmExternalPayment]),

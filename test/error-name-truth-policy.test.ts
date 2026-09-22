@@ -725,6 +725,7 @@ describe("error-name-truth-policy", () => {
         "PassportProgramUnbound",
         "TransferFeeExtensionForbidden",
         "WrongAgentRecipient",
+        "WrongAnswerFunder",
         "WrongPlatformRecipient",
         "WrongSellerRecipient",
       ],

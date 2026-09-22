@@ -394,6 +394,49 @@ mod tests {
     }
 
     #[test]
+    fn legacy_42_byte_blob_is_unanswerable() {
+        // Pre-6c layout (no funder) must not decode as Answer.
+        let legacy = [
+            ENCUMBRANCE_ANSWER_DISCRIMINATOR.as_slice(),
+            &[1u8; 32][..],
+            &[0u8], // LeaveChain
+            &[0u8], // allowed=false
+        ]
+        .concat();
+        assert_eq!(legacy.len(), 42);
+        assert_eq!(
+            classify_answer_data(Some(&legacy), &[1u8; 32], 0, true),
+            SourceAnswerView::Unanswerable
+        );
+    }
+
+    #[test]
+    fn new_layout_allowed_false_is_answer() {
+        let rec = EncumbranceAnswer {
+            discriminator: ENCUMBRANCE_ANSWER_DISCRIMINATOR,
+            token_id: [7u8; 32],
+            intent: 0,
+            allowed: false,
+            funder: [9u8; 32],
+        };
+        let mut buf = Vec::new();
+        borsh::BorshSerialize::serialize(&rec, &mut buf).unwrap();
+        assert_eq!(buf.len(), EncumbranceAnswer::SPACE);
+        assert_eq!(
+            classify_answer_data(Some(&buf), &[7u8; 32], 0, true),
+            SourceAnswerView::Answer { allowed: false }
+        );
+    }
+
+    #[test]
+    fn empty_after_realloc_is_uninitialised() {
+        assert_eq!(
+            classify_answer_data(Some(&[]), &[0u8; 32], 0, true),
+            SourceAnswerView::Uninitialised
+        );
+    }
+
+    #[test]
     fn allowed_answer_passes() {
         let sources = [src()];
         let answers = [SourceAnswerView::Answer { allowed: true }];

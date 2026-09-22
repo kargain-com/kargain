@@ -1,13 +1,28 @@
-//! Encumbrance answer accounts — layout + sole PDA derivation (SPEC §13.7 / D-26).
+//! Encumbrance answer accounts — layout + sole PDA derivation + obligation lifecycle
+//! (SPEC §13.7 / D-26 / D-44 / D-45).
 //!
 //! Seeds under the **source** program: `[seed_prefix, token_id, intent]` where
 //! `intent` is a single byte (`LeaveChain = 0`, `OpenConsignment = 1`).
 //! Passport and modes both call [`derive_encumbrance_answer_pda`] — never a
-//! second copy. Account SPACE and signer seed lists live here only.
+//! second copy. Account SPACE, signer seed lists, and create/close live here only.
+//!
+//! Accounts exist only while an obligation exists: [`open_obligation`] creates
+//! both intents (`allowed = false`, recorded funder); [`close_obligation`]
+//! refunds rent to that funder and reallocates to empty so passport `may`
+//! reads `Uninitialised`.
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use kargain_errors::KargainError;
-use solana_program::pubkey::Pubkey;
+use solana_program::{
+    account_info::AccountInfo,
+    entrypoint::ProgramResult,
+    program::invoke_signed,
+    program_error::ProgramError,
+    pubkey::Pubkey,
+    rent::Rent,
+    system_instruction, system_program,
+    sysvar::Sysvar,
+};
 
 /// Max registered sources (matches EVM / passport `MAX_ENCUMBRANCE_SOURCES`).
 pub const MAX_ENCUMBRANCE_SOURCES: usize = 8;
@@ -27,6 +42,9 @@ pub struct EncumbranceSourceEntry {
 }
 
 /// Answer record layout for encumbrance sources (SPEC §13.7).
+///
+/// Present only while an obligation exists. `allowed` is always `false` at
+/// create; passport treats closed (empty) accounts as no obligation (allow).
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq, Eq)]
 pub struct EncumbranceAnswer {
     pub discriminator: [u8; 8],
@@ -34,14 +52,20 @@ pub struct EncumbranceAnswer {
     pub intent: u8,
     /// `true` = allows; uninitialised account = no obligation.
     pub allowed: bool,
+    /// Rent payer at [`open_obligation`]; sole reclaim recipient at close.
+    pub funder: [u8; 32],
 }
 
 impl EncumbranceAnswer {
-    /// Borsh size: disc(8) + token_id(32) + intent(1) + allowed(1).
-    pub const SPACE: usize = 8 + 32 + 1 + 1;
+    /// Borsh size: disc(8) + token_id(32) + intent(1) + allowed(1) + funder(32).
+    pub const SPACE: usize = 8 + 32 + 1 + 1 + 32;
 }
 
 pub const ENCUMBRANCE_ANSWER_DISCRIMINATOR: [u8; 8] = *b"enc_ans\0";
+
+fn into_pe(e: KargainError) -> ProgramError {
+    ProgramError::Custom(u32::from(e))
+}
 
 /// Refuse empty or oversized `seed_prefix` (Solana seed component rules).
 pub fn require_valid_seed_prefix(seed_prefix: &[u8]) -> Result<(), KargainError> {
@@ -103,9 +127,216 @@ pub fn derive_encumbrance_answer_pda(
     ))
 }
 
+fn require_answer_slot_free(answer_info: &AccountInfo) -> ProgramResult {
+    if !answer_info.data_is_empty() || answer_info.lamports() != 0 {
+        return Err(ProgramError::AccountAlreadyInitialized);
+    }
+    Ok(())
+}
+
+fn create_answer_pda<'a>(
+    program_id: &Pubkey,
+    payer: &AccountInfo<'a>,
+    answer_info: &AccountInfo<'a>,
+    system: &AccountInfo<'a>,
+    seed_prefix: &[u8],
+    token_id: &[u8; 32],
+    intent: u8,
+    funder: [u8; 32],
+) -> ProgramResult {
+    let (expected, bump) =
+        derive_encumbrance_answer_pda(program_id, seed_prefix, token_id, intent).map_err(into_pe)?;
+    if answer_info.key != &expected {
+        return Err(ProgramError::InvalidSeeds);
+    }
+    require_answer_slot_free(answer_info)?;
+    let intent_seed = [intent];
+    let bump_seed = [bump];
+    let rent = Rent::get()?;
+    let lamports = rent.minimum_balance(EncumbranceAnswer::SPACE);
+    invoke_signed(
+        &system_instruction::create_account(
+            payer.key,
+            answer_info.key,
+            lamports,
+            EncumbranceAnswer::SPACE as u64,
+            program_id,
+        ),
+        &[payer.clone(), answer_info.clone(), system.clone()],
+        &[&encumbrance_answer_signer_seeds(
+            seed_prefix,
+            token_id,
+            &intent_seed,
+            &bump_seed,
+        )],
+    )?;
+    let rec = EncumbranceAnswer {
+        discriminator: ENCUMBRANCE_ANSWER_DISCRIMINATOR,
+        token_id: *token_id,
+        intent,
+        allowed: false,
+        funder,
+    };
+    let mut data = answer_info.try_borrow_mut_data()?;
+    if data.len() < EncumbranceAnswer::SPACE {
+        return Err(ProgramError::AccountDataTooSmall);
+    }
+    rec.serialize(&mut &mut data[..EncumbranceAnswer::SPACE])
+        .map_err(|_| ProgramError::AccountDataTooSmall)?;
+    Ok(())
+}
+
+/// Create both intent answer PDAs for a new obligation (`allowed = false`).
+///
+/// Refuses with [`ProgramError::AccountAlreadyInitialized`] if either slot is
+/// already occupied (same native cause used for binding rebind). Payer is the
+/// recorded rent funder.
+pub fn open_obligation<'a>(
+    program_id: &Pubkey,
+    payer: &AccountInfo<'a>,
+    leave_info: &AccountInfo<'a>,
+    open_info: &AccountInfo<'a>,
+    system: &AccountInfo<'a>,
+    seed_prefix: &[u8],
+    token_id: &[u8; 32],
+) -> ProgramResult {
+    require_valid_seed_prefix(seed_prefix).map_err(into_pe)?;
+    // Fail closed before any create: either occupied slot refuses the whole open.
+    require_answer_slot_free(leave_info)?;
+    require_answer_slot_free(open_info)?;
+    let funder = payer.key.to_bytes();
+    create_answer_pda(
+        program_id,
+        payer,
+        leave_info,
+        system,
+        seed_prefix,
+        token_id,
+        INTENT_LEAVE_CHAIN,
+        funder,
+    )?;
+    create_answer_pda(
+        program_id,
+        payer,
+        open_info,
+        system,
+        seed_prefix,
+        token_id,
+        INTENT_OPEN_CONSIGNMENT,
+        funder,
+    )?;
+    Ok(())
+}
+
+fn verify_answer_for_close(
+    program_id: &Pubkey,
+    answer_info: &AccountInfo,
+    seed_prefix: &[u8],
+    token_id: &[u8; 32],
+    intent: u8,
+) -> Result<[u8; 32], ProgramError> {
+    let (expected, _) =
+        derive_encumbrance_answer_pda(program_id, seed_prefix, token_id, intent).map_err(into_pe)?;
+    if answer_info.key != &expected {
+        return Err(ProgramError::InvalidSeeds);
+    }
+    if answer_info.data_is_empty() {
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if answer_info.owner != program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    let data = answer_info.try_borrow_data()?;
+    if data.len() < EncumbranceAnswer::SPACE {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let rec = EncumbranceAnswer::try_from_slice(&data[..EncumbranceAnswer::SPACE])
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+    if rec.discriminator != ENCUMBRANCE_ANSWER_DISCRIMINATOR {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if &rec.token_id != token_id || rec.intent != intent {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    Ok(rec.funder)
+}
+
+/// Drain → zero → realloc(0) → system. Realloc is required so passport `may`
+/// sees empty data as Uninitialised (fill+assign alone leaves non-empty zeros
+/// owned by system → Unanswerable).
+pub fn close_answer_account_to_funder(
+    answer_info: &AccountInfo,
+    funder: &AccountInfo,
+) -> ProgramResult {
+    let lamports = answer_info.lamports();
+    **answer_info.try_borrow_mut_lamports()? = 0;
+    **funder.try_borrow_mut_lamports()? = funder
+        .lamports()
+        .checked_add(lamports)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    {
+        let mut data = answer_info.try_borrow_mut_data()?;
+        data.fill(0);
+    }
+    answer_info.resize(0)?;
+    answer_info.assign(&system_program::ID);
+    Ok(())
+}
+
+/// Close both intent PDAs and refund rent to the recorded funder.
+///
+/// Verifies both accounts before mutating either. Wrong reclaim recipient →
+/// [`KargainError::WrongAnswerFunder`]. Missing either → `UninitializedAccount`.
+pub fn close_obligation<'a>(
+    program_id: &Pubkey,
+    funder: &AccountInfo<'a>,
+    leave_info: &AccountInfo<'a>,
+    open_info: &AccountInfo<'a>,
+    seed_prefix: &[u8],
+    token_id: &[u8; 32],
+) -> ProgramResult {
+    require_valid_seed_prefix(seed_prefix).map_err(into_pe)?;
+    let leave_funder = verify_answer_for_close(
+        program_id,
+        leave_info,
+        seed_prefix,
+        token_id,
+        INTENT_LEAVE_CHAIN,
+    )?;
+    let open_funder = verify_answer_for_close(
+        program_id,
+        open_info,
+        seed_prefix,
+        token_id,
+        INTENT_OPEN_CONSIGNMENT,
+    )?;
+    if leave_funder != open_funder {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if funder.key.to_bytes() != leave_funder {
+        return Err(into_pe(KargainError::WrongAnswerFunder));
+    }
+    if !funder.is_writable {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    close_answer_account_to_funder(leave_info, funder)?;
+    close_answer_account_to_funder(open_info, funder)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sample_answer(funder: [u8; 32]) -> EncumbranceAnswer {
+        EncumbranceAnswer {
+            discriminator: ENCUMBRANCE_ANSWER_DISCRIMINATOR,
+            token_id: [1u8; 32],
+            intent: INTENT_LEAVE_CHAIN,
+            allowed: false,
+            funder,
+        }
+    }
 
     #[test]
     fn empty_seed_prefix_refused() {
@@ -133,16 +364,28 @@ mod tests {
 
     #[test]
     fn answer_space_matches_borsh() {
-        assert_eq!(EncumbranceAnswer::SPACE, 42);
-        let rec = EncumbranceAnswer {
-            discriminator: ENCUMBRANCE_ANSWER_DISCRIMINATOR,
-            token_id: [1u8; 32],
-            intent: INTENT_LEAVE_CHAIN,
-            allowed: false,
-        };
+        let rec = sample_answer([9u8; 32]);
         let mut buf = Vec::new();
         rec.serialize(&mut buf).unwrap();
         assert_eq!(buf.len(), EncumbranceAnswer::SPACE);
+        assert_eq!(EncumbranceAnswer::SPACE, 74);
+        let round = EncumbranceAnswer::try_from_slice(&buf).unwrap();
+        assert_eq!(round.funder, [9u8; 32]);
+        assert!(!round.allowed);
+    }
+
+    #[test]
+    fn legacy_42_byte_blob_does_not_decode() {
+        // Pre-6c layout: disc + token + intent + allowed = 42 — must fail exact slice.
+        let legacy = [
+            ENCUMBRANCE_ANSWER_DISCRIMINATOR.as_slice(),
+            &[1u8; 32][..],
+            &[INTENT_LEAVE_CHAIN],
+            &[0u8],
+        ]
+        .concat();
+        assert_eq!(legacy.len(), 42);
+        assert!(EncumbranceAnswer::try_from_slice(&legacy).is_err());
     }
 
     #[test]
@@ -198,7 +441,6 @@ mod tests {
             derive_encumbrance_answer_pda(&program, seed_prefix, &token, intent).unwrap();
         let intent_seed = [intent];
         let bump_seed = [bump];
-        // Plant: swapped seed order (token before prefix) — must not match derive.
         let diverged: [&[u8]; 4] = [
             token.as_ref(),
             seed_prefix,
@@ -208,14 +450,182 @@ mod tests {
         let from_diverged = Pubkey::create_program_address(&diverged, &program);
         match from_diverged {
             Ok(pk) => assert_ne!(pk, expected, "diverged recipe must not equal derive PDA"),
-            Err(_) => {} // off-curve / invalid also proves divergence
+            Err(_) => {}
         }
-        // Live recipe still matches.
         let live = Pubkey::create_program_address(
             &encumbrance_answer_signer_seeds(seed_prefix, &token, &intent_seed, &bump_seed),
             &program,
         )
         .unwrap();
         assert_eq!(live, expected);
+    }
+
+    #[test]
+    fn wrong_answer_funder_ordinal_is_142() {
+        assert_eq!(u32::from(KargainError::WrongAnswerFunder), 142);
+        assert_eq!(KargainError::WrongAnswerFunder.name(), "WrongAnswerFunder");
+    }
+
+    #[test]
+    fn occupied_slot_refuses_as_already_initialized() {
+        let key = Pubkey::new_unique();
+        let owner = Pubkey::new_unique();
+        let mut lamports = 1u64;
+        let mut data = vec![0u8; EncumbranceAnswer::SPACE];
+        let info = AccountInfo::new(
+            &key,
+            false,
+            true,
+            &mut lamports,
+            &mut data,
+            &owner,
+            false,
+            0,
+        );
+        assert_eq!(
+            require_answer_slot_free(&info),
+            Err(ProgramError::AccountAlreadyInitialized)
+        );
+    }
+
+    #[test]
+    fn free_slot_accepts_empty_system() {
+        let key = Pubkey::new_unique();
+        let owner = system_program::ID;
+        let mut lamports = 0u64;
+        let mut data = vec![];
+        let info = AccountInfo::new(
+            &key,
+            false,
+            true,
+            &mut lamports,
+            &mut data,
+            &owner,
+            false,
+            0,
+        );
+        assert!(require_answer_slot_free(&info).is_ok());
+    }
+
+    /// Plant: fill+assign without realloc leaves non-empty zeros under system —
+    /// the passport classifier treats that as Unanswerable, not Uninitialised.
+    #[test]
+    fn fill_assign_without_realloc_is_not_empty() {
+        let key = Pubkey::new_unique();
+        let mut owner = Pubkey::new_from_array([0xAAu8; 32]);
+        let mut lamports = 1_000_000u64;
+        let mut data = vec![0xFFu8; EncumbranceAnswer::SPACE];
+        let info = AccountInfo::new(
+            &key,
+            false,
+            true,
+            &mut lamports,
+            &mut data,
+            &owner,
+            false,
+            0,
+        );
+        {
+            let mut d = info.try_borrow_mut_data().unwrap();
+            d.fill(0);
+        }
+        // Simulate close_pda without realloc:
+        **info.try_borrow_mut_lamports().unwrap() = 0;
+        info.assign(&system_program::ID);
+        assert!(
+            !info.data_is_empty(),
+            "fill+assign leaves length — Unanswerable to may"
+        );
+        assert_eq!(info.data_len(), EncumbranceAnswer::SPACE);
+    }
+
+    #[test]
+    fn close_answer_resize_zero_is_empty() {
+        let key = Pubkey::new_unique();
+        let program = Pubkey::new_from_array([0xBBu8; 32]);
+        let funder_key = Pubkey::new_unique();
+        let owner = program;
+        let funder_owner = system_program::ID;
+        let mut answer_lamports = 2_000_000u64;
+        let mut funder_lamports = 5_000_000u64;
+        let mut data = {
+            let rec = sample_answer(funder_key.to_bytes());
+            let mut buf = vec![0u8; EncumbranceAnswer::SPACE];
+            rec.serialize(&mut &mut buf[..]).unwrap();
+            buf
+        };
+        let mut funder_data = vec![];
+        let answer = AccountInfo::new(
+            &key,
+            false,
+            true,
+            &mut answer_lamports,
+            &mut data,
+            &owner,
+            false,
+            0,
+        );
+        let funder = AccountInfo::new(
+            &funder_key,
+            false,
+            true,
+            &mut funder_lamports,
+            &mut funder_data,
+            &funder_owner,
+            false,
+            0,
+        );
+        let before = funder.lamports();
+        let refund = answer.lamports();
+        close_answer_account_to_funder(&answer, &funder).unwrap();
+        assert_eq!(funder.lamports(), before + refund);
+        assert_eq!(answer.lamports(), 0);
+        assert!(answer.data_is_empty());
+        assert_eq!(*answer.owner, system_program::ID);
+    }
+
+    #[test]
+    fn verify_close_wrong_funder_path() {
+        let program = Pubkey::new_from_array([0xCCu8; 32]);
+        let seed = b"fp";
+        let token = [0x77u8; 32];
+        let (leave_pk, _) =
+            derive_encumbrance_answer_pda(&program, seed, &token, INTENT_LEAVE_CHAIN).unwrap();
+        let recorded = Pubkey::new_from_array([0x11u8; 32]);
+        let wrong = Pubkey::new_from_array([0x22u8; 32]);
+        let mut owner = program;
+        let mut lamports = 1u64;
+        let mut data = {
+            let rec = EncumbranceAnswer {
+                discriminator: ENCUMBRANCE_ANSWER_DISCRIMINATOR,
+                token_id: token,
+                intent: INTENT_LEAVE_CHAIN,
+                allowed: false,
+                funder: recorded.to_bytes(),
+            };
+            let mut buf = vec![0u8; EncumbranceAnswer::SPACE];
+            rec.serialize(&mut &mut buf[..]).unwrap();
+            buf
+        };
+        let leave = AccountInfo::new(
+            &leave_pk,
+            false,
+            true,
+            &mut lamports,
+            &mut data,
+            &mut owner,
+            false,
+            0,
+        );
+        let got = verify_answer_for_close(
+            &program,
+            &leave,
+            seed,
+            &token,
+            INTENT_LEAVE_CHAIN,
+        )
+        .unwrap();
+        assert_eq!(got, recorded.to_bytes());
+        assert_ne!(got, wrong.to_bytes());
     }
 }

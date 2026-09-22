@@ -55,6 +55,7 @@ export const SVM_ONLY_ERROR_NAMES = [
   "PassportProgramUnbound",
   /** S8-E step 5 — FixedPrice harness CreateAsset / ApproveEscrow / SetMayOpen / SetSelfEncumbrance retired. */
   "HarnessInstructionRetired",
+  "WrongAnswerFunder",
 ] as const;
 
 /**

@@ -1,8 +1,9 @@
-//! FixedPrice mode — asset + fiat (P4 two-layer; S6 #5 / S8-E step 5).
+//! FixedPrice mode — asset + fiat (P4 two-layer; S6 #5 / S8-E step 5 / 6c).
 //!
 //! Custody = Core passport TransferV1 via `kargain-consignment-base::core_custody`.
 //! Trust = passport `resolve_may_accounts` + registry (library, no CPI).
-//! Live lot answers both intents `allowed: false` (EVM `FixedPriceConsignment.may`).
+//! Obligation answers: created at open (`open_obligation`), closed with refund
+//! at every close path (`close_obligation`) — sole owner `kargain-encumbrance`.
 //! Harness CreateAsset / ApproveEscrow / SetMayOpen / SetSelfEncumbrance refuse
 //! with `HarnessInstructionRetired`.
 
@@ -38,8 +39,8 @@ use kargain_consignment_base::{
     },
 };
 use kargain_encumbrance::{
-    derive_encumbrance_answer_pda, encumbrance_answer_signer_seeds, EncumbranceAnswer,
-    ENCUMBRANCE_ANSWER_DISCRIMINATOR, INTENT_LEAVE_CHAIN, INTENT_OPEN_CONSIGNMENT,
+    close_obligation, open_obligation,
+    INTENT_OPEN_CONSIGNMENT,
 };
 use kargain_errors::KargainError;
 use kargain_events::generated;
@@ -435,83 +436,6 @@ fn set_self_enc(program_id: &Pubkey, accounts: &[AccountInfo], _registered: bool
     refuse_harness(program_id, accounts)
 }
 
-/// Write encumbrance answer via sole crate SPACE + signer seed recipe.
-fn write_encumbrance_answer<'a>(
-    program_id: &Pubkey,
-    payer: &AccountInfo<'a>,
-    answer_info: &AccountInfo<'a>,
-    system: &AccountInfo<'a>,
-    seed_prefix: &[u8],
-    token_id: &[u8; 32],
-    intent: u8,
-    allowed: bool,
-) -> ProgramResult {
-    let (expected, bump) =
-        derive_encumbrance_answer_pda(program_id, seed_prefix, token_id, intent).map_err(into_pe)?;
-    if answer_info.key != &expected {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    let intent_seed = [intent];
-    let bump_seed = [bump];
-    if answer_info.data_is_empty() {
-        create_pda(
-            program_id,
-            payer,
-            answer_info,
-            system,
-            EncumbranceAnswer::SPACE,
-            &encumbrance_answer_signer_seeds(seed_prefix, token_id, &intent_seed, &bump_seed),
-        )?;
-    } else if answer_info.owner != program_id {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-    let rec = EncumbranceAnswer {
-        discriminator: ENCUMBRANCE_ANSWER_DISCRIMINATOR,
-        token_id: *token_id,
-        intent,
-        allowed,
-    };
-    let mut data = answer_info.try_borrow_mut_data()?;
-    if data.len() < EncumbranceAnswer::SPACE {
-        return Err(ProgramError::AccountDataTooSmall);
-    }
-    rec.serialize(&mut &mut data[..EncumbranceAnswer::SPACE])
-        .map_err(|_| ProgramError::AccountDataTooSmall)?;
-    Ok(())
-}
-
-fn write_both_answers<'a>(
-    program_id: &Pubkey,
-    payer: &AccountInfo<'a>,
-    leave_info: &AccountInfo<'a>,
-    open_info: &AccountInfo<'a>,
-    system: &AccountInfo<'a>,
-    seed_prefix: &[u8],
-    token_id: &[u8; 32],
-    allowed: bool,
-) -> ProgramResult {
-    write_encumbrance_answer(
-        program_id,
-        payer,
-        leave_info,
-        system,
-        seed_prefix,
-        token_id,
-        INTENT_LEAVE_CHAIN,
-        allowed,
-    )?;
-    write_encumbrance_answer(
-        program_id,
-        payer,
-        open_info,
-        system,
-        seed_prefix,
-        token_id,
-        INTENT_OPEN_CONSIGNMENT,
-        allowed,
-    )
-}
-
 fn bind_passport_program(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let iter = &mut accounts.iter();
     let authority = next_account_info(iter)?;
@@ -856,7 +780,7 @@ fn open_direct(
         bump,
     );
     save_consignment(consignment, &record)?;
-    write_both_answers(
+    open_obligation(
         program_id,
         payer,
         answer_leave,
@@ -864,7 +788,6 @@ fn open_direct(
         system,
         &seed_prefix,
         &token_id,
-        false,
     )?;
     emit_commerce(COMMERCE_EMITTER, &event_opened(&record));
     Ok(())
@@ -975,7 +898,7 @@ fn open_from_mandate(
         bump,
     );
     save_consignment(consignment, &record)?;
-    write_both_answers(
+    open_obligation(
         program_id,
         payer,
         answer_leave,
@@ -983,7 +906,6 @@ fn open_from_mandate(
         system,
         &seed_prefix,
         &token_id,
-        false,
     )?;
     emit_commerce(COMMERCE_EMITTER, &event_opened(&record));
     Ok(())
@@ -1149,6 +1071,7 @@ fn force_recall_ix(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8;
     let system = next_account_info(iter)?;
     let answer_leave = next_account_info(iter)?;
     let answer_open = next_account_info(iter)?;
+    let answer_funder = next_account_info(iter)?;
     if !seller.is_signer || !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -1177,15 +1100,13 @@ fn force_recall_ix(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8;
         core_program,
         system,
     )?;
-    write_both_answers(
+    close_obligation(
         program_id,
-        payer,
+        answer_funder,
         answer_leave,
         answer_open,
-        system,
         &seed_prefix,
         &token_id,
-        true,
     )?;
     c.price = 0;
     c.floor = 0;
@@ -1241,6 +1162,7 @@ fn owner_withdraw_ix(
     let system = next_account_info(iter)?;
     let answer_leave = next_account_info(iter)?;
     let answer_open = next_account_info(iter)?;
+    let answer_funder = next_account_info(iter)?;
     if !seller.is_signer || !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -1267,15 +1189,13 @@ fn owner_withdraw_ix(
         core_program,
         system,
     )?;
-    write_both_answers(
+    close_obligation(
         program_id,
-        payer,
+        answer_funder,
         answer_leave,
         answer_open,
-        system,
         &seed_prefix,
         &token_id,
-        true,
     )?;
     c.price = 0;
     save_consignment(consignment, &c)?;
@@ -1305,6 +1225,7 @@ fn agent_withdraw_ix(
     let system = next_account_info(iter)?;
     let answer_leave = next_account_info(iter)?;
     let answer_open = next_account_info(iter)?;
+    let answer_funder = next_account_info(iter)?;
     if !agent.is_signer || !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -1331,15 +1252,13 @@ fn agent_withdraw_ix(
         core_program,
         system,
     )?;
-    write_both_answers(
+    close_obligation(
         program_id,
-        payer,
+        answer_funder,
         answer_leave,
         answer_open,
-        system,
         &seed_prefix,
         &token_id,
-        true,
     )?;
     c.price = 0;
     save_consignment(consignment, &c)?;
@@ -1433,6 +1352,7 @@ fn buy(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> Pro
     let core_program = next_account_info(iter)?;
     let answer_leave = next_account_info(iter)?;
     let answer_open = next_account_info(iter)?;
+    let answer_funder = next_account_info(iter)?;
     if !buyer.is_signer || !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -1599,15 +1519,13 @@ fn buy(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> Pro
         core_program,
         system,
     )?;
-    write_both_answers(
+    close_obligation(
         program_id,
-        payer,
+        answer_funder,
         answer_leave,
         answer_open,
-        system,
         &seed_prefix,
         &token_id,
-        true,
     )?;
 
     if native {
@@ -2131,6 +2049,7 @@ fn confirm_external(
     let system = next_account_info(iter)?;
     let answer_leave = next_account_info(iter)?;
     let answer_open = next_account_info(iter)?;
+    let answer_funder = next_account_info(iter)?;
     if !caller.is_signer || !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -2176,15 +2095,13 @@ fn confirm_external(
         core_program,
         system,
     )?;
-    write_both_answers(
+    close_obligation(
         program_id,
-        payer,
+        answer_funder,
         answer_leave,
         answer_open,
-        system,
         &seed_prefix,
         &token_id,
-        true,
     )?;
 
     clear_recall(recall_info)?;
@@ -2419,7 +2336,9 @@ mod config_authority_handler_tests {
 
     #[test]
     fn answer_signer_seeds_match_shared_derivation() {
-        use kargain_encumbrance::encumbrance_answer_signer_seeds;
+        use kargain_encumbrance::{
+            derive_encumbrance_answer_pda, encumbrance_answer_signer_seeds, INTENT_LEAVE_CHAIN,
+        };
         let program_id = pid();
         let token = [9u8; 32];
         let seed = b"fp";

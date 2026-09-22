@@ -95,5 +95,22 @@ describe("svm-fixed-price-core-custody-policy", () => {
     assert.ok(ix.includes("resolve_may_accounts"));
     assert.ok(ix.includes("encumbrance_seed_prefix_for_source"));
     assert.ok(ix.includes("HarnessInstructionRetired"));
+    assert.ok(ix.includes("open_obligation"));
+    assert.ok(ix.includes("close_obligation"));
+    assert.ok(!ix.includes("write_encumbrance_answer"));
+    assert.ok(!ix.includes("write_both_answers"));
+    assert.ok(!ix.includes("write_answers_from_binding"));
+  });
+
+  it("plant: modes must not inline create/close answer PDAs", () => {
+    const dirty = [
+      "system_instruction::create_account",
+      "answer_info.resize(0)",
+      "write_both_answers(",
+    ].join("\n");
+    assert.ok(dirty.includes("write_both_answers("));
+    const clean = "open_obligation(\nclose_obligation(";
+    assert.ok(clean.includes("open_obligation"));
+    assert.ok(!clean.includes("write_both_answers"));
   });
 });

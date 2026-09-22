@@ -561,6 +561,9 @@ export function hasTransferDelegateAddress(data: Buffer, expected: Pk): boolean 
   return false;
 }
 
+/** EncumbranceAnswer Borsh SPACE (disc+token+intent+allowed+funder). */
+export const ENCUMBRANCE_ANSWER_SPACE = 74;
+
 /** EncumbranceAnswer.allowed at offset disc(8)+token(32)+intent(1). */
 export function readAnswerAllowed(data: Buffer): boolean {
   return data[8 + 32 + 1]! !== 0;
@@ -574,6 +577,48 @@ export function answerPdas(
   const [leave] = pda(modeProgram, [seedPrefix, tokenId, Buffer.from([INTENT.LeaveChain])]);
   const [open] = pda(modeProgram, [seedPrefix, tokenId, Buffer.from([INTENT.OpenConsignment])]);
   return { leave, open };
+}
+
+/** True when account is absent or empty under system (passport may → Uninitialised). */
+export function answerAccountIsAbsent(
+  info: { lamports: number; data: Buffer; owner: Pk } | null,
+): boolean {
+  if (info == null) return true;
+  if (info.data.length === 0) return true;
+  return info.owner.equals(SystemProgram.programId) && info.data.length === 0;
+}
+
+/** Both intent PDAs must be absent after close_obligation. */
+export async function assertAnswersClosed(
+  conn: InstanceType<typeof Connection>,
+  leave: Pk,
+  open: Pk,
+  label: string,
+): Promise<void> {
+  const leaveInfo = await conn.getAccountInfo(leave);
+  const openInfo = await conn.getAccountInfo(open);
+  assert.ok(answerAccountIsAbsent(leaveInfo), `${label}: leave answer must be absent`);
+  assert.ok(answerAccountIsAbsent(openInfo), `${label}: open answer must be absent`);
+}
+
+/** Both intent PDAs must exist with EncumbranceAnswer SPACE after open_obligation. */
+export async function assertAnswersOpen(
+  conn: InstanceType<typeof Connection>,
+  leave: Pk,
+  open: Pk,
+  modeProgram: Pk,
+  label: string,
+): Promise<void> {
+  const leaveInfo = await conn.getAccountInfo(leave);
+  const openInfo = await conn.getAccountInfo(open);
+  assert.ok(leaveInfo, `${label}: leave answer missing`);
+  assert.ok(openInfo, `${label}: open answer missing`);
+  assert.equal(leaveInfo!.owner.toBase58(), modeProgram.toBase58(), `${label}: leave owner`);
+  assert.equal(openInfo!.owner.toBase58(), modeProgram.toBase58(), `${label}: open owner`);
+  assert.equal(leaveInfo!.data.length, ENCUMBRANCE_ANSWER_SPACE, `${label}: leave SPACE`);
+  assert.equal(openInfo!.data.length, ENCUMBRANCE_ANSWER_SPACE, `${label}: open SPACE`);
+  assert.equal(readAnswerAllowed(leaveInfo!.data as Buffer), false, `${label}: leave allowed`);
+  assert.equal(readAnswerAllowed(openInfo!.data as Buffer), false, `${label}: open allowed`);
 }
 
 /**
@@ -1143,6 +1188,21 @@ export function withOpenAnswers(keys: Meta[], leave: Pk, open: Pk): Meta[] {
   ];
 }
 
+/** Append answer PDAs + recorded funder for close / hold-clear paths. */
+export function withCloseAnswers(
+  keys: Meta[],
+  leave: Pk,
+  open: Pk,
+  funder: Pk,
+): Meta[] {
+  return [
+    ...keys,
+    { pubkey: leave, isSigner: false, isWritable: true },
+    { pubkey: open, isSigner: false, isWritable: true },
+    { pubkey: funder, isSigner: false, isWritable: true },
+  ];
+}
+
 export function grantKeys(args: {
   owner: Pk;
   binding: Pk;
@@ -1222,6 +1282,7 @@ export function buyHeadKeys(args: {
   escrow: Pk;
   answerLeave: Pk;
   answerOpen: Pk;
+  answerFunder: Pk;
 }): Meta[] {
   return [
     { pubkey: args.buyer, isSigner: true, isWritable: true },
@@ -1241,6 +1302,7 @@ export function buyHeadKeys(args: {
     { pubkey: CORE_ID, isSigner: false, isWritable: false },
     { pubkey: args.answerLeave, isSigner: false, isWritable: true },
     { pubkey: args.answerOpen, isSigner: false, isWritable: true },
+    { pubkey: args.answerFunder, isSigner: false, isWritable: true },
   ];
 }
 
@@ -1257,6 +1319,7 @@ export function confirmExternalKeys(args: {
   payer: Pk;
   answerLeave: Pk;
   answerOpen: Pk;
+  answerFunder: Pk;
 }): Meta[] {
   return [
     { pubkey: args.caller, isSigner: true, isWritable: false },
@@ -1273,6 +1336,7 @@ export function confirmExternalKeys(args: {
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     { pubkey: args.answerLeave, isSigner: false, isWritable: true },
     { pubkey: args.answerOpen, isSigner: false, isWritable: true },
+    { pubkey: args.answerFunder, isSigner: false, isWritable: true },
   ];
 }
 
@@ -1282,7 +1346,8 @@ export function confirmExternalKeys(args: {
  * OpenAscendingDirect metas (native or SPL).
  * Order: seller · config · [payment] · binding · passport_config · asset · challenge ·
  * mayAnswers[N] (registry-ordered OpenConsignment) · passport_state · consign · custody ·
- * system · payer · core · answer_leave · answer_open · stake · staking_program · auction
+ * system · payer · core · stake · staking_program · auction
+ * (answers created at Settle, not at open — EVM Ascending may)
  *
  * When FixedPrice then Ascending are both registered (live stand suite), N=2.
  */
@@ -1301,8 +1366,6 @@ export function openAscendingDirectKeys(args: {
   consign: Pk;
   custody: Pk;
   payer: Pk;
-  answerLeave: Pk;
-  answerOpen: Pk;
   stake: Pk;
   stakingProgram: Pk;
   auction: Pk;
@@ -1330,8 +1393,6 @@ export function openAscendingDirectKeys(args: {
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     { pubkey: args.payer, isSigner: true, isWritable: true },
     { pubkey: CORE_ID, isSigner: false, isWritable: false },
-    { pubkey: args.answerLeave, isSigner: false, isWritable: true },
-    { pubkey: args.answerOpen, isSigner: false, isWritable: true },
     { pubkey: args.stake, isSigner: false, isWritable: false },
     { pubkey: args.stakingProgram, isSigner: false, isWritable: false },
     { pubkey: args.auction, isSigner: false, isWritable: true },
@@ -1343,7 +1404,7 @@ export function openAscendingDirectKeys(args: {
  * OpenAscendingFromMandate metas.
  * Order: agent · config · mandate · [payment] · binding · passport_config · asset ·
  * challenge · mayAnswers[N] · passport_state · consign · custody · system · payer ·
- * core · answer_leave · answer_open · stake · staking_program · auction
+ * core · stake · staking_program · auction
  *
  * When FixedPrice then Ascending are both registered (live stand suite), N=2.
  */
@@ -1362,8 +1423,6 @@ export function openAscendingFromMandateKeys(args: {
   consign: Pk;
   custody: Pk;
   payer: Pk;
-  answerLeave: Pk;
-  answerOpen: Pk;
   stake: Pk;
   stakingProgram: Pk;
   auction: Pk;
@@ -1392,8 +1451,6 @@ export function openAscendingFromMandateKeys(args: {
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     { pubkey: args.payer, isSigner: true, isWritable: true },
     { pubkey: CORE_ID, isSigner: false, isWritable: false },
-    { pubkey: args.answerLeave, isSigner: false, isWritable: true },
-    { pubkey: args.answerOpen, isSigner: false, isWritable: true },
     { pubkey: args.stake, isSigner: false, isWritable: false },
     { pubkey: args.stakingProgram, isSigner: false, isWritable: false },
     { pubkey: args.auction, isSigner: false, isWritable: true },
@@ -1459,6 +1516,7 @@ export function holdExitAscendingKeys(args: {
   passportConfig: Pk;
   answerLeave: Pk;
   answerOpen: Pk;
+  answerFunder: Pk;
 }): Meta[] {
   return [
     { pubkey: args.buyerOrCaller, isSigner: args.buyerIsSigner, isWritable: false },
@@ -1476,6 +1534,7 @@ export function holdExitAscendingKeys(args: {
     { pubkey: args.passportConfig, isSigner: false, isWritable: false },
     { pubkey: args.answerLeave, isSigner: false, isWritable: true },
     { pubkey: args.answerOpen, isSigner: false, isWritable: true },
+    { pubkey: args.answerFunder, isSigner: false, isWritable: true },
   ];
 }
 
@@ -1493,6 +1552,7 @@ export function completeReversalAscendingKeys(args: {
   payer: Pk;
   answerLeave: Pk;
   answerOpen: Pk;
+  answerFunder: Pk;
 }): Meta[] {
   return [
     { pubkey: args.buyer, isSigner: true, isWritable: true },
@@ -1509,6 +1569,7 @@ export function completeReversalAscendingKeys(args: {
     { pubkey: CORE_ID, isSigner: false, isWritable: false },
     { pubkey: args.answerLeave, isSigner: false, isWritable: true },
     { pubkey: args.answerOpen, isSigner: false, isWritable: true },
+    { pubkey: args.answerFunder, isSigner: false, isWritable: true },
   ];
 }
 
@@ -1527,6 +1588,7 @@ export function abandonReversalAscendingKeys(args: {
   passportConfig: Pk;
   answerLeave: Pk;
   answerOpen: Pk;
+  answerFunder: Pk;
 }): Meta[] {
   return [
     { pubkey: args.caller, isSigner: false, isWritable: false },
@@ -1543,6 +1605,7 @@ export function abandonReversalAscendingKeys(args: {
     { pubkey: args.passportConfig, isSigner: false, isWritable: false },
     { pubkey: args.answerLeave, isSigner: false, isWritable: true },
     { pubkey: args.answerOpen, isSigner: false, isWritable: true },
+    { pubkey: args.answerFunder, isSigner: false, isWritable: true },
   ];
 }
 
@@ -1568,6 +1631,7 @@ export function judgeChallengeAscendingKeys(args: {
   passportConfig: Pk;
   answerLeave: Pk;
   answerOpen: Pk;
+  answerFunder: Pk;
 }): Meta[] {
   return [
     { pubkey: args.judge, isSigner: true, isWritable: false },
@@ -1588,5 +1652,6 @@ export function judgeChallengeAscendingKeys(args: {
     { pubkey: args.passportConfig, isSigner: false, isWritable: false },
     { pubkey: args.answerLeave, isSigner: false, isWritable: true },
     { pubkey: args.answerOpen, isSigner: false, isWritable: true },
+    { pubkey: args.answerFunder, isSigner: false, isWritable: true },
   ];
 }

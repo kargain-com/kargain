@@ -1,8 +1,9 @@
-//! Ascending mode — asset denomination only (S6 #4 / S8-E step 6).
+//! Ascending mode — asset denomination only (S6 #4 / S8-E step 6 / 6c).
 //!
 //! Custody = Core passport TransferV1 via `kargain-consignment-base::core_custody`.
 //! Trust = passport `resolve_may_accounts` + registry; open requires Verified status.
-//! Live lot answers both intents `allowed: false`; hold-clear paths write `true`.
+//! Obligation answers mirror EVM Ascending `may`: created at Settle (`open_obligation`),
+//! closed with refund on hold-clear (`close_obligation`) — sole owner `kargain-encumbrance`.
 //! Harness CreateAsset / ApproveEscrow / SetMayOpen / SetVerified / SetSelfEncumbrance /
 //! ForceAssetOwner refuse with `HarnessInstructionRetired`.
 
@@ -40,8 +41,8 @@ use kargain_consignment_base::{
     },
 };
 use kargain_encumbrance::{
-    derive_encumbrance_answer_pda, encumbrance_answer_signer_seeds, EncumbranceAnswer,
-    ENCUMBRANCE_ANSWER_DISCRIMINATOR, INTENT_LEAVE_CHAIN, INTENT_OPEN_CONSIGNMENT,
+    close_obligation, open_obligation,
+    INTENT_OPEN_CONSIGNMENT,
 };
 use kargain_errors::KargainError;
 use kargain_events::generated;
@@ -485,105 +486,25 @@ fn save_hold(info: &AccountInfo, h: &HoldRecord) -> ProgramResult {
     Ok(())
 }
 
-fn write_encumbrance_answer<'a>(
-    program_id: &Pubkey,
-    payer: &AccountInfo<'a>,
-    answer_info: &AccountInfo<'a>,
-    system: &AccountInfo<'a>,
-    seed_prefix: &[u8],
-    token_id: &[u8; 32],
-    intent: u8,
-    allowed: bool,
-) -> ProgramResult {
-    let (expected, bump) =
-        derive_encumbrance_answer_pda(program_id, seed_prefix, token_id, intent).map_err(into_pe)?;
-    if answer_info.key != &expected {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    let intent_seed = [intent];
-    let bump_seed = [bump];
-    if answer_info.data_is_empty() {
-        create_pda(
-            program_id,
-            payer,
-            answer_info,
-            system,
-            EncumbranceAnswer::SPACE,
-            &encumbrance_answer_signer_seeds(seed_prefix, token_id, &intent_seed, &bump_seed),
-        )?;
-    } else if answer_info.owner != program_id {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-    let rec = EncumbranceAnswer {
-        discriminator: ENCUMBRANCE_ANSWER_DISCRIMINATOR,
-        token_id: *token_id,
-        intent,
-        allowed,
-    };
-    let mut data = answer_info.try_borrow_mut_data()?;
-    if data.len() < EncumbranceAnswer::SPACE {
-        return Err(ProgramError::AccountDataTooSmall);
-    }
-    rec.serialize(&mut &mut data[..EncumbranceAnswer::SPACE])
-        .map_err(|_| ProgramError::AccountDataTooSmall)?;
-    Ok(())
-}
-
-fn write_both_answers<'a>(
-    program_id: &Pubkey,
-    payer: &AccountInfo<'a>,
-    leave_info: &AccountInfo<'a>,
-    open_info: &AccountInfo<'a>,
-    system: &AccountInfo<'a>,
-    seed_prefix: &[u8],
-    token_id: &[u8; 32],
-    allowed: bool,
-) -> ProgramResult {
-    write_encumbrance_answer(
-        program_id,
-        payer,
-        leave_info,
-        system,
-        seed_prefix,
-        token_id,
-        INTENT_LEAVE_CHAIN,
-        allowed,
-    )?;
-    write_encumbrance_answer(
-        program_id,
-        payer,
-        open_info,
-        system,
-        seed_prefix,
-        token_id,
-        INTENT_OPEN_CONSIGNMENT,
-        allowed,
-    )
-}
-
-fn write_answers_from_binding<'a>(
+fn close_answers_from_binding<'a>(
     program_id: &Pubkey,
     binding: &AccountInfo<'a>,
     passport_config: &AccountInfo<'a>,
-    payer: &AccountInfo<'a>,
+    answer_funder: &AccountInfo<'a>,
     answer_leave: &AccountInfo<'a>,
     answer_open: &AccountInfo<'a>,
-    system: &AccountInfo<'a>,
     token_id: &[u8; 32],
-    allowed: bool,
 ) -> ProgramResult {
     let passport_program = require_bound_passport_program(program_id, binding)?;
     let (seed_prefix, _) =
         encumbrance_seed_prefix_for_source(passport_config, &passport_program, program_id)?;
-    write_both_answers(
+    close_obligation(
         program_id,
-        payer,
+        answer_funder,
         answer_leave,
         answer_open,
-        system,
         &seed_prefix,
         token_id,
-        allowed,
     )
 }
 
@@ -1224,7 +1145,7 @@ fn open_ascending_direct(
     let challenge = next_account_info(iter)?;
 
     let passport_program = require_bound_passport_program(program_id, binding)?;
-    let (seed_prefix, registry_len) =
+    let (_seed_prefix, registry_len) =
         encumbrance_seed_prefix_for_source(passport_config, &passport_program, program_id)?;
 
     let mut may_accounts: Vec<AccountInfo> = Vec::with_capacity(3 + registry_len);
@@ -1250,8 +1171,6 @@ fn open_ascending_direct(
     let system = next_account_info(iter)?;
     let payer = next_account_info(iter)?;
     let core_program = next_account_info(iter)?;
-    let answer_leave = next_account_info(iter)?;
-    let answer_open = next_account_info(iter)?;
     let stake_answer = next_account_info(iter)?;
     let staking_program = next_account_info(iter)?;
     let auction_info = next_account_info(iter)?;
@@ -1312,16 +1231,7 @@ fn open_ascending_direct(
         duration,
         protection_window,
     )?;
-    write_both_answers(
-        program_id,
-        payer,
-        answer_leave,
-        answer_open,
-        system,
-        &seed_prefix,
-        &token_id,
-        false,
-    )?;
+    
     emit_commerce(COMMERCE_EMITTER, &event_opened(&record));
     generated::emit_ascending_consignment_ascending_terms_snapshotted(
         token_id,
@@ -1378,7 +1288,7 @@ fn open_ascending_from_mandate(
     let challenge = next_account_info(iter)?;
 
     let passport_program = require_bound_passport_program(program_id, binding)?;
-    let (seed_prefix, registry_len) =
+    let (_seed_prefix, registry_len) =
         encumbrance_seed_prefix_for_source(passport_config, &passport_program, program_id)?;
 
     let mut may_accounts: Vec<AccountInfo> = Vec::with_capacity(3 + registry_len);
@@ -1404,8 +1314,6 @@ fn open_ascending_from_mandate(
     let system = next_account_info(iter)?;
     let payer = next_account_info(iter)?;
     let core_program = next_account_info(iter)?;
-    let answer_leave = next_account_info(iter)?;
-    let answer_open = next_account_info(iter)?;
     let stake_answer = next_account_info(iter)?;
     let staking_program = next_account_info(iter)?;
     let auction_info = next_account_info(iter)?;
@@ -1467,16 +1375,7 @@ fn open_ascending_from_mandate(
         duration,
         protection_window,
     )?;
-    write_both_answers(
-        program_id,
-        payer,
-        answer_leave,
-        answer_open,
-        system,
-        &seed_prefix,
-        &token_id,
-        false,
-    )?;
+    
     emit_commerce(COMMERCE_EMITTER, &event_opened(&record));
     generated::emit_ascending_consignment_ascending_terms_snapshotted(
         token_id,
@@ -1763,7 +1662,7 @@ fn settle(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> 
         core_program,
         system,
     )?;
-    write_both_answers(
+    open_obligation(
         program_id,
         payer,
         answer_leave,
@@ -1771,7 +1670,6 @@ fn settle(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> 
         system,
         &seed_prefix,
         &token_id,
-        false,
     )?;
 
     close_pda(auction_info, payer)?;
@@ -1811,12 +1709,13 @@ fn confirm_receipt(
     let _platform = next_account_info(iter)?;
     let _seller_acc = next_account_info(iter)?;
     let _agent_acc = next_account_info(iter)?;
-    let system = next_account_info(iter)?;
+    let _system = next_account_info(iter)?;
     let payer = next_account_info(iter)?;
     let binding = next_account_info(iter)?;
     let passport_config = next_account_info(iter)?;
     let answer_leave = next_account_info(iter)?;
     let answer_open = next_account_info(iter)?;
+    let answer_funder = next_account_info(iter)?;
     if !buyer.is_signer || !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -1838,16 +1737,14 @@ fn confirm_receipt(
     let hold_buyer = hold.buyer;
     hold.clear();
     save_hold(hold_info, &hold)?;
-    write_answers_from_binding(
+    close_answers_from_binding(
         program_id,
         binding,
         passport_config,
-        payer,
+        answer_funder,
         answer_leave,
         answer_open,
-        system,
         &token_id,
-        true,
     )?;
     generated::emit_ascending_consignment_receipt_confirmed(token_id, hold_buyer);
     pay_split_and_close(
@@ -1885,12 +1782,13 @@ fn release_funds(
     let _platform = next_account_info(iter)?;
     let _seller_acc = next_account_info(iter)?;
     let _agent_acc = next_account_info(iter)?;
-    let system = next_account_info(iter)?;
+    let _system = next_account_info(iter)?;
     let payer = next_account_info(iter)?;
     let binding = next_account_info(iter)?;
     let passport_config = next_account_info(iter)?;
     let answer_leave = next_account_info(iter)?;
     let answer_open = next_account_info(iter)?;
+    let answer_funder = next_account_info(iter)?;
     if !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -1913,16 +1811,14 @@ fn release_funds(
     let hold_buyer = hold.buyer;
     hold.clear();
     save_hold(hold_info, &hold)?;
-    write_answers_from_binding(
+    close_answers_from_binding(
         program_id,
         binding,
         passport_config,
-        payer,
+        answer_funder,
         answer_leave,
         answer_open,
-        system,
         &token_id,
-        true,
     )?;
     generated::emit_ascending_consignment_funds_released(token_id, hold_buyer);
     pay_split_and_close(
@@ -1965,6 +1861,7 @@ fn complete_reversal(
     let core_program = next_account_info(iter)?;
     let answer_leave = next_account_info(iter)?;
     let answer_open = next_account_info(iter)?;
+    let answer_funder = next_account_info(iter)?;
     if !buyer.is_signer || !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -2005,15 +1902,13 @@ fn complete_reversal(
         core_program,
         system,
     )?;
-    write_both_answers(
+    close_obligation(
         program_id,
-        payer,
+        answer_funder,
         answer_leave,
         answer_open,
-        system,
         &seed_prefix,
         &token_id,
-        true,
     )?;
     terminate_to_owner(&mut c, CloseReason::ReversalCompleted);
     c.price = 0;
@@ -2066,12 +1961,13 @@ fn abandon_reversal(
     let _platform = next_account_info(iter)?;
     let _seller_acc = next_account_info(iter)?;
     let _agent_acc = next_account_info(iter)?;
-    let system = next_account_info(iter)?;
+    let _system = next_account_info(iter)?;
     let payer = next_account_info(iter)?;
     let binding = next_account_info(iter)?;
     let passport_config = next_account_info(iter)?;
     let answer_leave = next_account_info(iter)?;
     let answer_open = next_account_info(iter)?;
+    let answer_funder = next_account_info(iter)?;
     if !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -2091,16 +1987,14 @@ fn abandon_reversal(
     let hold_buyer = hold.buyer;
     hold.clear();
     save_hold(hold_info, &hold)?;
-    write_answers_from_binding(
+    close_answers_from_binding(
         program_id,
         binding,
         passport_config,
-        payer,
+        answer_funder,
         answer_leave,
         answer_open,
-        system,
         &token_id,
-        true,
     )?;
     generated::emit_ascending_consignment_reversal_abandoned(token_id, hold_buyer);
     pay_split_and_close(
@@ -2449,12 +2343,13 @@ fn judge_challenge_ix(
     let _platform = next_account_info(iter)?;
     let _seller_acc = next_account_info(iter)?;
     let _agent_acc = next_account_info(iter)?;
-    let system = next_account_info(iter)?;
+    let _system = next_account_info(iter)?;
     let payer = next_account_info(iter)?;
     let binding = next_account_info(iter)?;
     let passport_config = next_account_info(iter)?;
     let answer_leave = next_account_info(iter)?;
     let answer_open = next_account_info(iter)?;
+    let answer_funder = next_account_info(iter)?;
     if !judge.is_signer || !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -2519,16 +2414,14 @@ fn judge_challenge_ix(
     save_hold(hold_info, hooks.hold)?;
     // on_rejected clears hold → write answers true; on_upheld does not flip answers.
     if pending.is_some() {
-        write_answers_from_binding(
+        close_answers_from_binding(
             program_id,
             binding,
             passport_config,
-            payer,
+            answer_funder,
             answer_leave,
             answer_open,
-            system,
             &token_id,
-            true,
         )?;
     }
     if let Some(gross) = pending {
@@ -2570,12 +2463,13 @@ fn conclude_challenge_ix(
     let _platform = next_account_info(iter)?;
     let _seller_acc = next_account_info(iter)?;
     let _agent_acc = next_account_info(iter)?;
-    let system = next_account_info(iter)?;
+    let _system = next_account_info(iter)?;
     let payer = next_account_info(iter)?;
     let binding = next_account_info(iter)?;
     let passport_config = next_account_info(iter)?;
     let answer_leave = next_account_info(iter)?;
     let answer_open = next_account_info(iter)?;
+    let answer_funder = next_account_info(iter)?;
     if !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -2619,16 +2513,14 @@ fn conclude_challenge_ix(
     save_hold(hold_info, hooks.hold)?;
     // on_expired clears hold → write answers true.
     if pending.is_some() {
-        write_answers_from_binding(
+        close_answers_from_binding(
             program_id,
             binding,
             passport_config,
-            payer,
+            answer_funder,
             answer_leave,
             answer_open,
-            system,
             &token_id,
-            true,
         )?;
     }
     if let Some(gross) = pending {

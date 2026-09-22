@@ -335,6 +335,7 @@ export async function runMeasureHeaviestSettle(opts?: {
         escrow: escrowPb,
         answerLeave: answers.leave,
         answerOpen: answers.open,
+        answerFunder: payer.publicKey,
       }),
       { pubkey: buyerAta.publicKey, isSigner: false, isWritable: true },
       { pubkey: escrowAta.publicKey, isSigner: false, isWritable: true },

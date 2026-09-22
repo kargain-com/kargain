@@ -95,7 +95,26 @@ describe("svm-ascending-core-custody-policy", () => {
     assert.ok(ix.includes("encumbrance_seed_prefix_for_source"));
     assert.ok(ix.includes("require_verified_passport_status"));
     assert.ok(ix.includes("HarnessInstructionRetired"));
-    assert.ok(ix.includes("require_verified_passport_status"));
+    assert.ok(ix.includes("open_obligation"));
+    assert.ok(ix.includes("close_obligation"));
+    assert.ok(!ix.includes("write_encumbrance_answer"));
+    assert.ok(!ix.includes("write_both_answers"));
+    assert.ok(!ix.includes("write_answers_from_binding"));
+
+    // Ascending semantic: open paths must not call open_obligation; settle must.
+    const openDirect = ix.slice(
+      ix.indexOf("fn open_ascending_direct("),
+      ix.indexOf("fn open_ascending_from_mandate("),
+    );
+    const openMandate = ix.slice(
+      ix.indexOf("fn open_ascending_from_mandate("),
+      ix.indexOf("// ---- Bid ----"),
+    );
+    const settle = ix.slice(ix.indexOf("fn settle("), ix.indexOf("fn confirm_receipt("));
+    assert.ok(!openDirect.includes("open_obligation"));
+    assert.ok(!openMandate.includes("open_obligation"));
+    assert.ok(settle.includes("open_obligation"));
+
     const may = fs.readFileSync(
       path.join(ROOT, "svm/programs/kar-passport/src/may.rs"),
       "utf8",
