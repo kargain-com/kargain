@@ -29,7 +29,6 @@ const REQUIRED_HANDLERS: ReadonlyArray<{ program: string; fn: string }> = [
   { program: "kar-fixed-price", fn: "force_recall_at" },
   { program: "kar-fixed-price", fn: "unpause_ix" },
   { program: "kar-fixed-price", fn: "approve_payment_token" },
-  { program: "kar-fixed-price", fn: "force_seed_price_account" },
   { program: "kar-fixed-price", fn: "bind_passport_program" },
   { program: "kar-ascending", fn: "bind_passport_program" },
   { program: "kar-ascending", fn: "unpause_ix" },
@@ -43,7 +42,7 @@ const REQUIRED_HANDLERS: ReadonlyArray<{ program: string; fn: string }> = [
   { program: "consignment-harness", fn: "unpause_ix" },
 ];
 
-const HANDLER_FLOOR = 15;
+const HANDLER_FLOOR = 14;
 
 /** Inline authority-key vs config-authority compares (must live only in admit owner). */
 const INLINE_AUTHORITY_EQ =

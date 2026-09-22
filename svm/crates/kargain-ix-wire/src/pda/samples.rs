@@ -13,7 +13,7 @@ use super::{
 };
 use crate::{hex_of, sample_bytes, sample_u32, sample_u8};
 
-/// Closed census of product PDA recipes (floor 31).
+/// Closed census of product PDA recipes (floor 30).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PdaRecipe {
     KarPassportConfig,
@@ -32,7 +32,6 @@ pub enum PdaRecipe {
     KarProPassPassMeta,
     KarFixedPricePaymentToken,
     KarFixedPriceNote,
-    KarFixedPricePriceLab,
     KarAscendingAuction,
     KarAscendingHold,
     KarAscendingPaymentToken,
@@ -51,7 +50,7 @@ pub enum PdaRecipe {
 }
 
 /// Every recipe, in stable owner/name order. Length is the census floor.
-pub fn all_recipes() -> [PdaRecipe; 31] {
+pub fn all_recipes() -> [PdaRecipe; 30] {
     use PdaRecipe::*;
     [
         KarPassportConfig,
@@ -70,7 +69,6 @@ pub fn all_recipes() -> [PdaRecipe; 31] {
         KarProPassPassMeta,
         KarFixedPricePaymentToken,
         KarFixedPriceNote,
-        KarFixedPricePriceLab,
         KarAscendingAuction,
         KarAscendingHold,
         KarAscendingPaymentToken,
@@ -136,9 +134,6 @@ fn sample_holder() -> [u8; 32] {
 }
 fn sample_verifier() -> [u8; 32] {
     [0xdd; 32]
-}
-fn sample_feed_id() -> [u8; 32] {
-    [0xee; 32]
 }
 fn sample_recipient() -> [u8; 32] {
     [0x01; 32]
@@ -377,19 +372,6 @@ fn entry_for(r: PdaRecipe) -> PdaManifestRecipe {
                 kar_fixed_price::ix::NOTE_SEED,
                 vec![dynamic_bytes32("token_id")],
                 map_of(&[("token_id", sample_bytes(&tid))]),
-                addr,
-                bump,
-            )
-        }
-        PdaRecipe::KarFixedPricePriceLab => {
-            let feed = sample_feed_id();
-            let (addr, bump) = kar_fixed_price::ix::price_lab_pda(&program, &feed);
-            recipe(
-                "kar-fixed-price",
-                "price_lab",
-                kar_fixed_price::ix::PRICE_LAB_SEED,
-                vec![dynamic_bytes32("feed_id")],
-                map_of(&[("feed_id", sample_bytes(&feed))]),
                 addr,
                 bump,
             )

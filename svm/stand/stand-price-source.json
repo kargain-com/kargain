@@ -1,0 +1,31 @@
+{
+  "source": "svm/lab/scripts/measure-price-sources.ts + RESULTS.md (S6 #3a / 6d)",
+  "receiverProgramId": "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ",
+  "feedIdHex": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+  "accounts": {
+    "fresh": {
+      "address": "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE",
+      "note": "Devnet sponsored SOL/USD PriceUpdateV2 (receiver-owned); preferred clone target"
+    },
+    "stale": {
+      "address": "BoJspX6FfBp8BUWUv9KW8aZ9L5ckrtrNaEVnZjWLdeQo",
+      "fixture": "lab-stale.bin",
+      "note": "sha256(kargain-stand-price-stale); receiver-owned fixture for StalePrice"
+    },
+    "wide": {
+      "address": "E1wQZCV257kRioQ95tat6f7V4B8iCqFzZJJiWUY2GSh",
+      "fixture": "lab-wide_conf.bin",
+      "note": "sha256(kargain-stand-price-wide); receiver-owned fixture for ConfidenceTooWide"
+    },
+    "bad": {
+      "address": "hLfgRNpRhrzswy2531j8XXAz277ZEdAuffnhT1h5UdA",
+      "fixture": "lab-non_positive.bin",
+      "note": "sha256(kargain-stand-price-bad); receiver-owned fixture for BadOracleAnswer"
+    }
+  },
+  "fixturesDir": "svm/lab/fixtures/price-measure",
+  "freshFixtureBin": "pyth-SOL-USD-sponsored.bin",
+  "devnetRpcDefault": "https://api.devnet.solana.com",
+  "publishTimeOffset": 93,
+  "bootJsonDefault": "/tmp/kargain-svm-stand-price-boot.json"
+}

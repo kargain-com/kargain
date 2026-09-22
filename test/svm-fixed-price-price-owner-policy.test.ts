@@ -88,13 +88,23 @@ describe("svm-fixed-price-price-owner-policy", () => {
     assert.ok(!buyBody.includes("rec.enabled"));
   });
 
-  it("ForceSeedPriceAccount is authority-gated via shared owner", () => {
+  it("ForceSeedPriceAccount is retired to HarnessInstructionRetired", () => {
     const src = fs.readFileSync(FP_IX, "utf8");
     assert.ok(src.includes("ForceSeedPriceAccount"));
-    const fn = src.slice(src.indexOf("fn force_seed_price_account"));
-    const body = fn.slice(0, fn.indexOf("\nfn ") === -1 ? fn.length : fn.indexOf("\nfn "));
-    assert.ok(body.includes("require_config_authority("));
-    assert.ok(body.includes("PRICE_LAB_SEED") || body.includes("price-lab"));
+    assert.ok(!src.includes("fn force_seed_price_account"));
+    assert.ok(!src.includes("PRICE_LAB_SEED") && !src.includes("price-lab"));
+    assert.ok(!src.includes("price_lab_pda"));
+    assert.ok(
+      src.includes("FixedPriceIx::ForceSeedPriceAccount") &&
+        src.includes("refuse_harness(program_id, accounts)"),
+      "ForceSeed must dispatch to refuse_harness",
+    );
+    const dispatch = src.slice(src.indexOf("FixedPriceIx::ForceSeedPriceAccount"));
+    assert.ok(
+      dispatch.slice(0, 120).includes("refuse_harness"),
+      "ForceSeed arm must call refuse_harness",
+    );
+    assert.ok(src.includes("HarnessInstructionRetired"));
   });
 
   it("constructed dual offset parse outside price crate fails scanner", () => {
@@ -114,8 +124,9 @@ describe("svm-fixed-price-price-owner-policy", () => {
     assert.ok(stand.includes("live-fixed-price"));
     assert.ok(stand.includes("runLiveFixedPrice"));
     const live = fs.readFileSync(LIVE, "utf8");
-    assert.ok(live.includes("ForceSeedPriceAccount") || live.includes("ForceSeed"));
-    assert.ok(live.includes("lab-fresh_narrow") || live.includes("price-measure"));
+    assert.ok(live.includes("ForceSeedPriceAccount"));
+    assert.ok(live.includes("STAND_PRICE_RECEIVER") || live.includes("stand-price-source"));
+    assert.ok(live.includes("InvalidFeed"));
   });
 
   it("price crate lives under svm/crates and is a workspace member", () => {

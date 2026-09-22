@@ -227,22 +227,6 @@
       "goldenBump": 251
     },
     {
-      "owner": "kar-fixed-price",
-      "id": "kar-fixed-price/price_lab",
-      "seedTagHex": "70726963652d6c6162",
-      "dynamics": [
-        {
-          "name": "feed_id",
-          "encoding": "bytes32"
-        }
-      ],
-      "sample": {
-        "feed_id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-      },
-      "goldenAddress": "9J5wSbxUQNkxmzMFMNLpMe2Z1KzQgqcYY7Q6KyZCNXsg",
-      "goldenBump": 254
-    },
-    {
       "owner": "kar-ascending",
       "id": "kar-ascending/auction",
       "seedTagHex": "61756374696f6e",

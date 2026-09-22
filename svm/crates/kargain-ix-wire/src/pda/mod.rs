@@ -144,12 +144,12 @@ mod tests {
     }
 
     #[test]
-    fn pda_census_is_thirty_one() {
+    fn pda_census_is_thirty() {
         let m = build_pda_manifest();
         assert_eq!(
             m.recipes.len(),
-            31,
-            "pda census floor: 20 program-local + 11 shared-crate = 31"
+            30,
+            "pda census floor: 19 program-local + 11 shared-crate = 30"
         );
     }
 

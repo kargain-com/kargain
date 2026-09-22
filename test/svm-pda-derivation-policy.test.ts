@@ -127,10 +127,10 @@ export function productPdaBypassPredicate(
 }
 
 describe("svm pda derivation policy", () => {
-  it("pda census recipe count equals the acknowledged floor (31)", () => {
-    assert.equal(RECIPES.length, 31);
+  it("pda census recipe count equals the acknowledged floor (30)", () => {
+    assert.equal(RECIPES.length, 30);
     const working = loadWorkingManifest();
-    assert.equal(working.recipes.length, 31);
+    assert.equal(working.recipes.length, 30);
   });
 
   it("synthetic program id is the documented 0x11×32 constant", () => {

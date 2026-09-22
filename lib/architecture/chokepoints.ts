@@ -600,7 +600,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-fixed-price-price-owner",
     owner: "svm/crates/kargain-price + svm/programs/kar-fixed-price",
-    rule: "FixedPrice fiat/oracle only via kargain-price (PriceUpdateV2_msg@41); admit pins feed; buy refuses stale/wide/bad by name; Ascending stays oracle-banned; ApprovePaymentToken proves mint; SPL buy measures delivery; ForceSeedPriceAccount authority-gated for LIVE",
+    rule: "FixedPrice fiat/oracle only via kargain-price (PriceUpdateV2_msg@41); admit pins price_program+feed; buy refuses stale/wide/bad/InvalidFeed by name; no Kargain program writes a price account (ForceSeedPriceAccount → HarnessInstructionRetired); stand injects receiver-owned accounts; Ascending stays oracle-banned; ApprovePaymentToken proves mint; SPL buy measures delivery",
     guardTests: ["svm-fixed-price-price-owner-policy.test.ts"],
   },
   {
@@ -839,6 +839,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     owner: "lib/architecture/typecheck-projects.ts",
     rule: "Every TypeScript file is a root of exactly one typecheck project; typecheck runs all",
     guardTests: ["typecheck-project-membership-policy.test.ts"],
+  },
+  {
+    id: "ts-nocheck",
+    owner: "lib/architecture/ts-nocheck.ts",
+    rule: "No tracked TypeScript file carries a file-wide @ts-nocheck pragma outside the named exception list",
+    guardTests: ["ts-nocheck-policy.test.ts"],
   },
   {
     id: "ponder-optional-contract-on",

@@ -4,8 +4,8 @@
 //! Trust = passport `resolve_may_accounts` + registry (library, no CPI).
 //! Obligation answers: created at open (`open_obligation`), closed with refund
 //! at every close path (`close_obligation`) — sole owner `kargain-encumbrance`.
-//! Harness CreateAsset / ApproveEscrow / SetMayOpen / SetSelfEncumbrance refuse
-//! with `HarnessInstructionRetired`.
+//! Harness CreateAsset / ApproveEscrow / SetMayOpen / SetSelfEncumbrance /
+//! ForceSeedPriceAccount refuse with `HarnessInstructionRetired`.
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use kargain_agented_split::{agented_floor_scale_base, CompensationForm as SplitForm};
@@ -140,7 +140,7 @@ pub enum FixedPriceIx {
         token_id: [u8; 32],
         requested_at: u64,
     },
-    /// Test: seed lab PriceUpdateV2 bytes under PDA `["price-lab", feed_id]` (authority-gated).
+    /// Retired — refuses with `HarnessInstructionRetired`.
     ForceSeedPriceAccount {
         feed_id: [u8; 32],
         data: [u8; PRICE_UPDATE_V2_LEN],
@@ -152,7 +152,6 @@ pub enum FixedPriceIx {
 
 pub const PAYMENT_TOKEN_SEED: &[u8] = b"payment-token";
 pub const NOTE_SEED: &[u8] = b"settlement-note";
-pub const PRICE_LAB_SEED: &[u8] = b"price-lab";
 pub const PAYMENT_TOKEN_DISC: [u8; 8] = *b"kp_fptk\0";
 pub const NOTE_DISC: [u8; 8] = *b"kp_fpnt\0";
 
@@ -206,10 +205,6 @@ pub fn payment_token_pda(program_id: &Pubkey, mint: &[u8; 32]) -> (Pubkey, u8) {
 
 pub fn note_pda(program_id: &Pubkey, token_id: &[u8; 32]) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[NOTE_SEED, token_id], program_id)
-}
-
-pub fn price_lab_pda(program_id: &Pubkey, feed_id: &[u8; 32]) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[PRICE_LAB_SEED, feed_id], program_id)
 }
 
 /// Retired harness may-flag type — deleted with Core migration.
@@ -313,9 +308,7 @@ pub fn process_instruction(
             token_id,
             requested_at,
         } => force_recall_at(program_id, accounts, token_id, requested_at),
-        FixedPriceIx::ForceSeedPriceAccount { feed_id, data } => {
-            force_seed_price_account(program_id, accounts, feed_id, data)
-        }
+        FixedPriceIx::ForceSeedPriceAccount { .. } => refuse_harness(program_id, accounts),
         FixedPriceIx::BindPassportProgram => bind_passport_program(program_id, accounts),
     }
 }
@@ -2200,51 +2193,6 @@ fn withdraw_claim_ix(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramRe
     Ok(())
 }
 
-/// Authority-gated lab seed: write 134-byte PriceUpdateV2 layout to PDA owned by this program.
-/// LIVE admits with `price_program = FixedPrice program id`. Production pins the real receiver.
-fn force_seed_price_account(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    feed_id: [u8; 32],
-    data: [u8; PRICE_UPDATE_V2_LEN],
-) -> ProgramResult {
-    let iter = &mut accounts.iter();
-    let authority = next_account_info(iter)?;
-    let config = next_account_info(iter)?;
-    let price_info = next_account_info(iter)?;
-    let system = next_account_info(iter)?;
-    let payer = next_account_info(iter)?;
-    if !payer.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-    let cfg = load_config(config)?;
-    require_config_authority(authority, config, program_id, &cfg.authority)?;
-    if feed_id == [0u8; 32] {
-        return Err(into_pe(KargainError::InvalidFeed));
-    }
-    let (key, bump) = price_lab_pda(program_id, &feed_id);
-    if price_info.key != &key {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    if price_info.data_is_empty() {
-        create_pda(
-            program_id,
-            payer,
-            price_info,
-            system,
-            PRICE_UPDATE_V2_LEN,
-            &[PRICE_LAB_SEED, &feed_id, &[bump]],
-        )?;
-    }
-    if price_info.data_len() < PRICE_UPDATE_V2_LEN {
-        return Err(ProgramError::AccountDataTooSmall);
-    }
-    let mut dst = price_info.try_borrow_mut_data()?;
-    dst[..PRICE_UPDATE_V2_LEN].copy_from_slice(&data);
-    Ok(())
-}
-
-
 #[cfg(test)]
 mod config_authority_handler_tests {
     use super::*;
@@ -2286,6 +2234,15 @@ mod config_authority_handler_tests {
         assert_eq!(approve_escrow(&program_id, &[], token).unwrap_err(), err);
         assert_eq!(set_may_open(&program_id, &[], token, true).unwrap_err(), err);
         assert_eq!(set_self_enc(&program_id, &[], true).unwrap_err(), err);
+        let seed_data = FixedPriceIx::ForceSeedPriceAccount {
+            feed_id: [9u8; 32],
+            data: [0xb7; PRICE_UPDATE_V2_LEN],
+        };
+        let bytes = borsh::to_vec(&seed_data).unwrap();
+        assert_eq!(
+            process_instruction(&program_id, &[], &bytes).unwrap_err(),
+            err
+        );
     }
 
     #[test]

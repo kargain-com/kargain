@@ -4,9 +4,13 @@
 # Upgradeable mode (KARGAIN_SVM_STAND_LOAD=upgradeable): Core+noop only —
 #   deploy the four programs afterward with deploy-stand-programs.sh.
 #
-# No Devnet writes.
+# Price accounts: prepare-price-accounts.sh injects receiver-owned PriceUpdateV2
+# (Devnet clone preferred; fixture fallback). No Kargain program writes price.
+#
+# No Devnet writes (clone is read-only).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+STAND="$(cd "$(dirname "$0")" && pwd)"
 FIXTURES="$ROOT/lab/fixtures"
 DEPLOY="$ROOT/target/deploy"
 export PATH="${HOME}/.local/share/solana/install/active_release/bin:${PATH}"
@@ -36,12 +40,18 @@ LEDGER="${SVM_STAND_LEDGER:-/tmp/kargain-svm-stand-ledger}"
 rm -rf "$LEDGER"
 mkdir -p "$LEDGER"
 
+# Outside ledger: --reset wipes the ledger dir before --account-dir is read.
+PRICE_ACCOUNTS="${KARGAIN_SVM_STAND_PRICE_ACCOUNTS:-/tmp/kargain-svm-stand-price-accounts}"
+PRICE_BOOT="${KARGAIN_SVM_STAND_PRICE_BOOT:-/tmp/kargain-svm-stand-price-boot.json}"
+bash "$STAND/prepare-price-accounts.sh" "$PRICE_ACCOUNTS" "$PRICE_BOOT"
+
 ARGS=(
   --ledger "$LEDGER"
   --reset
   --quiet
   --bpf-program "$CORE" "$CORE_SO"
   --bpf-program "$NOOP" "$FIXTURES/spl_noop.so"
+  --account-dir "$PRICE_ACCOUNTS"
 )
 
 if [[ "$LOAD" == "upgradeable" ]]; then

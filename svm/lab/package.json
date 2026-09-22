@@ -8,16 +8,20 @@
     "measure:price": "tsx scripts/measure-price-sources.ts",
     "measure:price:discover": "tsx scripts/measure-price-sources.ts discover",
     "measure:price:sample": "tsx scripts/measure-price-sources.ts sample --seconds 1200 --interval 20",
-    "measure:price:local-five": "tsx scripts/measure-price-sources.ts local-five"
+    "measure:price:local-five": "tsx scripts/measure-price-sources.ts local-five",
+    "measure:litesvm": "tsx scripts/measure-litesvm.ts"
   },
   "dependencies": {
     "@metaplex-foundation/mpl-core": "^1.4.0",
     "@metaplex-foundation/umi": "^1.0.0",
     "@metaplex-foundation/umi-bundle-defaults": "^1.0.0",
     "@metaplex-foundation/umi-signer-wallet-adapters": "^1.0.0",
+    "@solana-program/system": "^0.14",
+    "@solana/kit": "^8",
     "@solana/spl-token": "0.4.13",
     "@solana/web3.js": "^1.98.0",
-    "bs58": "^6.0.0"
+    "bs58": "^6.0.0",
+    "litesvm": "1.4.1"
   },
   "devDependencies": {
     "tsx": "^4.19.0",

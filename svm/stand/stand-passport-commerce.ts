@@ -58,7 +58,6 @@ export const SEED = {
   settlementNote: Buffer.from("settlement-note"),
   paymentToken: Buffer.from("payment-token"),
   passportBind: Buffer.from("passport-bind"),
-  priceLab: Buffer.from("price-lab"),
   claim: Buffer.from("claim"),
   claimAta: Buffer.from("claim-ata"),
   auction: Buffer.from("auction"),

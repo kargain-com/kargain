@@ -392,3 +392,23 @@ Fixtures: `lab-*.bin` + `local-five.json`. Decoder = same offsets as chain.
 
 **Stop rule:** log msg bytes > **10000** or log lines > **64** → redesign encoding (never split settle). Bridge CU ≥ pin → S4b re-pin (report only).
 
+## S8-E 6d-measure — LiteSVM capability (2026-09-22) — **MEASURED**
+
+**Command (one):** `pnpm --dir svm/lab measure:litesvm`  
+**Lab dep:** `litesvm@1.4.1` (Kit API; `@solana/kit`, `@solana-program/system` already in `svm/lab`).  
+**Not** in `test:ci` / `test:verify` / stand. **No** `svm/programs` · `svm/crates` · product tree edits.
+
+| Q | Result |
+|---|--------|
+| **1** Runtime | **Node only** in this repo: `svm/lab` `litesvm@1.4.1` embeds **Agave 4.2.1**. Rust `litesvm` is **not** a `svm/` workspace member. Validator / Devnet pin: **Agave 4.3.0-beta.2**. |
+| **2** Load `.so` | Yes — `kar_fixed_price.so` + `mpl_core_release_0.15.1.so` at real program ids; also passport/gateway/endpoint/staking/harness. |
+| **3** `Clock` | Yes — `setClock(unix_timestamp)`; FixedPrice `RequestRecall` stamps `requested_at` equal to that value (`Clock::get()`). |
+| **4** Inject price owner | Yes — `setAccount` with arbitrary `programAddress`; 134 B `PriceUpdateV2` fixture. `read_price_update` owner gate: `cargo test -p kargain-price` (`fresh_narrow_ok` / `wrong_owner_invalid_feed`) on the same bytes. |
+| **5** Core CPI / OpenDirect | **Partial / STOP** — harness `CoreCreateAsset` (CreateV1) **ok** (~36 884 CU). `CoreTransferOwnerToCustody` / FixedPrice `OpenDirect` → `ProgramFailedToComplete` / **stack access violation** in TransferV1 path. No workaround in this unit. |
+| **6** CU | `RequestRecall`: validator stand **14 923** (`/tmp/svm-stand-live-6c-4.log`) vs LiteSVM **11 923** (Δ **−3 000**). Not equal — runtime skew + setup difference; do not pin. |
+| **7** Missing | Real slot progression; websocket; TPU/1232 wire+ALT as gossip enforces; RPC depth/finality; upgradeable ProgramData; CU≡4.3.0-beta.2; web3.js legacy `Transaction` send (Kit only). |
+
+**Time-dependent proof (no `ForceRecallRequestedAt`):** clock `1700000000` → `RequestRecall` → `ForceRecall` → **ReturnCooldownPending(94)**; `setClock` → `1700604810` (+7d+10s) → past cooldown (next refuse IncorrectProgramId on empty binding). Full `ForceRecall` success after clock blocked by Q5 TransferV1 fault after MintPassport+Bind+OpenDirect attempt.
+
+**Recommendation:** move cooldown / price-owner / Clock-only warp-retirement cases to LiteSVM; keep LIVE stand, ALT/tx-size, upgradeable/UA, CU pins, websocket on validator.
+

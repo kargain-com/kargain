@@ -14,8 +14,9 @@
  * - Pause: open+buy refuse (ContractPaused); external confirm still works
  * - Native Fiat open → CurrencyNotAvailableOnChain (no native USD feed on config)
  * - SPL Fiat without feed → PaymentTokenFeedRequired
- * - SPL Fiat with lab price account: fresh buy converts; stale/wide/bad refuse by name
- * - Agented Margin fiat: Grant → OpenFromMandate → ForceSeed → Buy rewrites floor (D-27)
+ * - SPL Fiat with receiver-owned price account (stand inject): fresh buy converts; stale/wide/bad refuse by name
+ * - ForceSeedPriceAccount → HarnessInstructionRetired(141); wrong-owner price → InvalidFeed
+ * - Agented Margin fiat: Grant → OpenFromMandate → Buy rewrites floor (D-27)
  * - May(LeaveChain) refused while live / allowed after close
  * - After Revoke: TransferDelegate still present; OpenFromMandate → NoMandate (not NotTransferDelegate)
  *
@@ -23,7 +24,6 @@
  */
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,6 +31,19 @@ import {
   withStandArtifactBindings,
   type StandArtifactBindings,
 } from "./stand-artifact-bindings.ts";
+import {
+  STAND_PRICE_BAD,
+  STAND_PRICE_FEED_ID,
+  STAND_PRICE_FRESH,
+  STAND_PRICE_RECEIVER,
+  STAND_PRICE_STALE,
+  STAND_PRICE_WIDE,
+  admitStalenessTolerance,
+  fiatUsd1e8ToTokenAmount,
+  loadStandPriceBoot,
+  readPricePublishTime,
+  readPriceReading,
+} from "./stand-price-source.ts";
 import {
   CORE_ID,
   ENCUMBRANCE_ANSWER_SPACE,
@@ -48,7 +61,6 @@ import {
   buyHeadKeys,
   confirmExternalKeys,
   coreOwner,
-  encI64,
   encU16,
   encU32,
   encU64,
@@ -99,7 +111,6 @@ const {
   getMinimumBalanceForRentExemptAccount,
 } = require("@solana/spl-token") as typeof import("@solana/spl-token");
 
-const ROOT = path.resolve(__dirname, "../..");
 const RPC = RPC_DEFAULT;
 
 const ERR = {
@@ -111,6 +122,7 @@ const ERR = {
   StalePrice: 122,
   BadOracleAnswer: 123,
   ConfidenceTooWide: 131,
+  InvalidFeed: 129,
   LeaveChainRefused: 37,
   NoMandate: 84,
   NotPassportOwner: 79,
@@ -158,11 +170,6 @@ function terminateKeys(args: {
   ];
 }
 
-const FIXTURES = path.join(ROOT, "svm/lab/fixtures/price-measure");
-const LAB_FEED_ID = Buffer.from(
-  "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
-  "hex",
-);
 const CURRENCY_USD = Buffer.concat([Buffer.from("USD"), Buffer.alloc(29)]);
 
 function loadProgramId(): Pk {
@@ -192,12 +199,6 @@ function encApproveWithFeed(
     encU32(staleness),
     encU32(maxConfBps),
   ]);
-}
-
-function patchPublishTime(bin: Buffer, unix: number): Buffer {
-  const out = Buffer.from(bin);
-  encI64(unix).copy(out, 93);
-  return out;
 }
 
 function readConsignment(data: Buffer): {
@@ -422,6 +423,11 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   frozenPermanentFreeze: boolean;
   registryMissCode: number;
   retiredIxCode: number;
+  forceSeedRetiredCode: number;
+  invalidFeedCode: number;
+  pricePath: "clone" | "fixture";
+  pricePublishTime: number;
+  priceStalenessTolerance: number;
   nativeBuy: {
     phase: number;
     buyerOwns: string;
@@ -719,6 +725,30 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
       ),
     ),
     [payer],
+    ERR.HarnessInstructionRetired,
+  );
+
+  // 6b. ForceSeedPriceAccount retired → HarnessInstructionRetired(141)
+  const forceSeedRetiredCode = await expectCustom(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        [
+          { pubkey: authority.publicKey, isSigner: true, isWritable: false },
+          { pubkey: configPda, isSigner: false, isWritable: false },
+          { pubkey: payer.publicKey, isSigner: false, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+        ],
+        Buffer.concat([
+          Buffer.from([FP_IX.ForceSeedPriceAccount]),
+          STAND_PRICE_FEED_ID,
+          Buffer.alloc(134, 0xb7),
+        ]),
+      ),
+    ),
+    [authority, payer],
     ERR.HarnessInstructionRetired,
   );
 
@@ -1529,7 +1559,27 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     ERR.PaymentTokenFeedRequired,
   );
 
-  // ---- Fiat SPL with lab price ----
+  // ---- Fiat SPL with receiver-owned price (stand inject; no program write) ----
+  const priceBoot = loadStandPriceBoot();
+  const priceFreshInfo = await conn.getAccountInfo(STAND_PRICE_FRESH);
+  assert.ok(priceFreshInfo, "stand price fresh account missing — start-validator inject failed");
+  assert.equal(
+    priceFreshInfo.owner.toBase58(),
+    STAND_PRICE_RECEIVER.toBase58(),
+    "fresh price owner must be Pyth receiver",
+  );
+  const pricePublishTime = readPricePublishTime(Buffer.from(priceFreshInfo.data));
+  const slot = await conn.getSlot("confirmed");
+  let nowUnix = await conn.getBlockTime(slot);
+  if (nowUnix == null) nowUnix = Math.floor(Date.now() / 1000);
+  const skew = Math.max(0, nowUnix - pricePublishTime);
+  const priceStalenessTolerance = admitStalenessTolerance(skew);
+  console.warn(
+    `[svm-stand] price path=${priceBoot.path} receiver=${STAND_PRICE_RECEIVER.toBase58()} ` +
+      `account=${STAND_PRICE_FRESH.toBase58()} publish_time=${pricePublishTime} ` +
+      `skew=${skew}s staleness_tolerance=${priceStalenessTolerance}`,
+  );
+
   const mintFiat = Keypair.generate();
   await sendAndConfirmTransaction(
     conn,
@@ -1559,45 +1609,18 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
           { pubkey: payer.publicKey, isSigner: true, isWritable: true },
         ],
-        encApproveWithFeed(programId, LAB_FEED_ID, 3600, 200),
+        encApproveWithFeed(
+          STAND_PRICE_RECEIVER,
+          STAND_PRICE_FEED_ID,
+          priceStalenessTolerance,
+          200,
+        ),
       ),
     ),
     [authority, payer],
   );
 
-  const [priceLabPda] = pda(programId, [SEED.priceLab, LAB_FEED_ID]);
-  const slot = await conn.getSlot("confirmed");
-  let nowUnix = await conn.getBlockTime(slot);
-  if (nowUnix == null) nowUnix = Math.floor(Date.now() / 1000);
-
-  async function seedPrice(fixtureName: string, publishUnix: number) {
-    const raw = readFileSync(path.join(FIXTURES, fixtureName));
-    const data = patchPublishTime(raw, publishUnix);
-    await sendAndConfirmTransaction(
-      conn,
-      new Transaction().add(
-        ix(
-          programId,
-          [
-            { pubkey: authority.publicKey, isSigner: true, isWritable: false },
-            { pubkey: configPda, isSigner: false, isWritable: false },
-            { pubkey: priceLabPda, isSigner: false, isWritable: true },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          ],
-          Buffer.concat([Buffer.from([FP_IX.ForceSeedPriceAccount]), LAB_FEED_ID, data]),
-        ),
-      ),
-      [authority, payer],
-    );
-  }
-
-  async function fiatRefuseBuy(
-    fixture: string,
-    publishUnix: number,
-    errCode: number,
-  ): Promise<number> {
-    await seedPrice(fixture, publishUnix);
+  async function fiatRefuseBuy(priceAcc: Pk, errCode: number): Promise<number> {
     const lot = await mintCoreLot(conn, stack, programId, payer, seller);
     await openDirectSpl(
       conn,
@@ -1630,7 +1653,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           programId: TOKEN_PROGRAM_ID,
         }),
         createInitializeAccount3Instruction(eAta.publicKey, mintFiat.publicKey, lot.escrow),
-        createMintToInstruction(mintFiat.publicKey, bAta.publicKey, payer.publicKey, 2_000_000),
+        createMintToInstruction(mintFiat.publicKey, bAta.publicKey, payer.publicKey, 10_000_000),
       ),
       [payer, bAta, eAta],
     );
@@ -1659,7 +1682,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
             answerFunder: lot.answerFunder,
             }),
             { pubkey: payTokFiat, isSigner: false, isWritable: false },
-            { pubkey: priceLabPda, isSigner: false, isWritable: false },
+            { pubkey: priceAcc, isSigner: false, isWritable: false },
             { pubkey: bAta.publicKey, isSigner: false, isWritable: true },
             { pubkey: eAta.publicKey, isSigner: false, isWritable: true },
             { pubkey: mintFiat.publicKey, isSigner: false, isWritable: false },
@@ -1673,15 +1696,35 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     );
   }
 
-  const staleBuyCode = await fiatRefuseBuy("lab-stale.bin", nowUnix - 1_000_000, ERR.StalePrice);
-  const wideConfCode = await fiatRefuseBuy("lab-wide_conf.bin", nowUnix, ERR.ConfidenceTooWide);
-  const badOracleCode = await fiatRefuseBuy("lab-non_positive.bin", nowUnix, ERR.BadOracleAnswer);
+  const staleBuyCode = await fiatRefuseBuy(STAND_PRICE_STALE, ERR.StalePrice);
+  const wideConfCode = await fiatRefuseBuy(STAND_PRICE_WIDE, ERR.ConfidenceTooWide);
+  const badOracleCode = await fiatRefuseBuy(STAND_PRICE_BAD, ERR.BadOracleAnswer);
 
-  // Fresh fiat settle
-  await seedPrice("lab-fresh_narrow.bin", nowUnix);
+  // Wrong-owner price account (SPL Token program, not admitted receiver) → InvalidFeed
+  const wrongOwnerPrice = Keypair.generate();
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      SystemProgram.createAccount({
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: wrongOwnerPrice.publicKey,
+        space: 134,
+        lamports: await conn.getMinimumBalanceForRentExemption(134),
+        programId: TOKEN_PROGRAM_ID,
+      }),
+    ),
+    [payer, wrongOwnerPrice],
+  );
+  const invalidFeedCode = await fiatRefuseBuy(wrongOwnerPrice.publicKey, ERR.InvalidFeed);
+
+  // Fresh fiat settle (receiver-owned injected account)
   const lotFresh = await mintCoreLot(conn, stack, programId, payer, seller);
   const fiatPrice1e8 = 150_0000_0000n;
-  const expectedAssetAmt = 1_000_000n;
+  const priceReading = readPriceReading(Buffer.from(priceFreshInfo.data));
+  const expectedAssetAmt = fiatUsd1e8ToTokenAmount(fiatPrice1e8, priceReading, 6);
+  assert.ok(expectedAssetAmt > 0n, "quoted fiat→token amount must be positive");
+  // Mint buyer enough for quote (+1% headroom for integer floors on agented reuse).
+  const mintBuyerAmt = expectedAssetAmt + expectedAssetAmt / 100n + 1n;
   await openDirectSpl(
     conn,
     ctx,
@@ -1747,7 +1790,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
         mintFiat.publicKey,
         buyerAtaFresh.publicKey,
         payer.publicKey,
-        Number(expectedAssetAmt),
+        Number(mintBuyerAmt),
       ),
       SystemProgram.createAccount({
         fromPubkey: payer.publicKey,
@@ -1797,7 +1840,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           answerFunder: lotFresh.answerFunder,
           }),
           { pubkey: payTokFiat, isSigner: false, isWritable: false },
-          { pubkey: priceLabPda, isSigner: false, isWritable: false },
+          { pubkey: STAND_PRICE_FRESH, isSigner: false, isWritable: false },
           { pubkey: buyerAtaFresh.publicKey, isSigner: false, isWritable: true },
           { pubkey: escrowAtaFresh.publicKey, isSigner: false, isWritable: true },
           { pubkey: mintFiat.publicKey, isSigner: false, isWritable: false },
@@ -1820,7 +1863,6 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   assert.equal(freshOwner.toBase58(), buyer.publicKey.toBase58());
 
   // ---- Agented Margin fiat + Revoke / TransferDelegate pin ----
-  await seedPrice("lab-fresh_narrow.bin", nowUnix);
   const lotAg = await mintCoreLot(conn, stack, programId, payer, seller);
   await addTransferDelegateToCustody(conn, seller, payer, lotAg.asset, custodyPda);
   assert.ok(
@@ -2032,7 +2074,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
       answerFunder: lotAg.answerFunder,
       }),
       { pubkey: payTokFiat, isSigner: false, isWritable: false },
-      { pubkey: priceLabPda, isSigner: false, isWritable: false },
+      { pubkey: STAND_PRICE_FRESH, isSigner: false, isWritable: false },
       { pubkey: buyerAtaAg.publicKey, isSigner: false, isWritable: true },
       { pubkey: escrowAtaAg.publicKey, isSigner: false, isWritable: true },
       { pubkey: mintFiat.publicKey, isSigner: false, isWritable: false },
@@ -2779,7 +2821,6 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
 
   // Buy SPL agented (fiat Margin — heaviest; ALT when legacy > 1232)
   {
-    await seedPrice("lab-fresh_narrow.bin", nowUnix);
     const lot = await mintCoreLot(conn, stack, programId, payer, seller);
     await addTransferDelegateToCustody(conn, seller, payer, lot.asset, custodyPda);
     const [mandate] = pda(programId, [SEED.mandate, lot.tokenId]);
@@ -2891,7 +2932,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           programId: TOKEN_PROGRAM_ID,
         }),
         createInitializeAccount3Instruction(eAta.publicKey, mintFiat.publicKey, lot.escrow),
-        createMintToInstruction(mintFiat.publicKey, bAta.publicKey, payer.publicKey, 2_000_000),
+        createMintToInstruction(mintFiat.publicKey, bAta.publicKey, payer.publicKey, Number(mintBuyerAmt)),
         SystemProgram.createAccount({
           fromPubkey: payer.publicKey,
           newAccountPubkey: pAta.publicKey,
@@ -2944,7 +2985,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
           answerFunder: lot.answerFunder,
           }),
           { pubkey: payTokFiat, isSigner: false, isWritable: false },
-          { pubkey: priceLabPda, isSigner: false, isWritable: false },
+          { pubkey: STAND_PRICE_FRESH, isSigner: false, isWritable: false },
           { pubkey: bAta.publicKey, isSigner: false, isWritable: true },
           { pubkey: eAta.publicKey, isSigner: false, isWritable: true },
           { pubkey: mintFiat.publicKey, isSigner: false, isWritable: false },
@@ -3074,6 +3115,11 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     frozenPermanentFreeze,
     registryMissCode,
     retiredIxCode,
+    forceSeedRetiredCode,
+    invalidFeedCode,
+    pricePath: priceBoot.path,
+    pricePublishTime,
+    priceStalenessTolerance,
     nativeBuy: {
       phase: closedN.phase,
       buyerOwns: buyerOwnsN,

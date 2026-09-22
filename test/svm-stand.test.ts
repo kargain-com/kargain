@@ -292,6 +292,11 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.equal(fp.frozenPermanentFreeze, true);
       assert.equal(fp.registryMissCode, 71); // ModeNotEncumbranceSource
       assert.equal(fp.retiredIxCode, 141); // HarnessInstructionRetired
+      assert.equal(fp.forceSeedRetiredCode, 141); // ForceSeedPriceAccount retired
+      assert.equal(fp.invalidFeedCode, 129); // InvalidFeed wrong owner
+      assert.ok(fp.pricePath === "clone" || fp.pricePath === "fixture");
+      assert.ok(Number.isFinite(fp.pricePublishTime));
+      assert.ok(fp.priceStalenessTolerance >= 60 && fp.priceStalenessTolerance <= 259_200);
       assert.equal(fp.leaveChainSendWhileLive, 37); // LeaveChainRefused
       assert.equal(fp.leaveChainSendAfterClose, null);
       assert.equal(fp.fiatNoFeedCode, 124); // PaymentTokenFeedRequired
@@ -300,12 +305,12 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.equal(fp.badOracleCode, 123);
       assert.equal(fp.fiatFresh.phase, 2);
       assert.equal(fp.fiatFresh.buyerOwns, true);
-      assert.equal(fp.fiatFresh.expectedAssetAmt, 1_000_000);
+      assert.ok(fp.fiatFresh.expectedAssetAmt > 0);
       // D-27: agented Margin fiat floor rewrite — outer recomputes expectedFloorAsset
       {
         const P = 150_0000_0000n;
         const F = 100_0000_0000n;
-        const A = 1_000_000n;
+        const A = BigInt(fp.fiatAgented.amount);
         const fee = 250n;
         const baseFiat = P - (P * fee) / 10_000n;
         const baseAsset = A - (A * fee) / 10_000n;
