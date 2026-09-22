@@ -1,8 +1,9 @@
 /**
  * Commercial instruction wire — TS encoder vs committed Rust goldens.
  *
- * Limit (append-only): compares the working manifest to `git show HEAD:<path>`
- * only. Protects each commit against the previous one; not a full history audit.
+ * Append-only authority: published trunk tip this change is measured against
+ * (CI push `before` / PR base / local `merge-base HEAD origin/master`) via
+ * `lib/architecture/ix-append-only-baseline` — not `git show HEAD`.
  *
  * Goldens are authored solely by Rust BorshSerialize (`kargain-ix-wire`).
  * This suite never repairs or regenerates them.
@@ -15,6 +16,12 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  assertAppendOnlyVsPrior,
+  loadManifestAtBaseline,
+  resolveAppendOnlyBaseline,
+  type AppendOnlyGitHubEvent,
+} from "@/lib/architecture/ix-append-only-baseline";
+import {
   bytesEqual,
   encodeDeclaredFieldForTests,
   encodeSvmInstruction,
@@ -23,7 +30,6 @@ import {
   sampleFieldsFromManifest,
   type EncodeInstructionCause,
   type IxManifest,
-  type IxManifestEntry,
 } from "@/lib/svm/encode-instruction";
 import {
   assertCleanProductScan,
@@ -41,76 +47,67 @@ function loadWorkingManifest(): IxManifest {
   return JSON.parse(readFileSync(path.join(ROOT, MANIFEST_REL), "utf8")) as IxManifest;
 }
 
-function loadHeadManifest(): IxManifest | null {
+function gitOk(args: string[]): string | null {
   try {
-    const text = execFileSync(
-      "git",
-      ["show", `HEAD:${MANIFEST_REL}`],
-      { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-    );
-    return JSON.parse(text) as IxManifest;
+    return execFileSync("git", args, {
+      cwd: ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
   } catch {
-    // First introduction: no prior committed path.
     return null;
   }
 }
 
-function entryKey(e: Pick<IxManifestEntry, "program" | "index">): string {
-  return `${e.program}:${e.index}`;
+function commitExists(sha: string): boolean {
+  try {
+    execFileSync("git", ["cat-file", "-e", `${sha}^{commit}`], {
+      cwd: ROOT,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-/**
- * Append-only vs a prior manifest: existing (program,index) names stable;
- * new indices contiguous after prior max. Pure — used for HEAD check and plants.
- */
-export function assertAppendOnlyVsPrior(
-  prior: IxManifest,
-  working: IxManifest,
-): void {
-  const workingByKey = new Map(
-    working.entries.map((e) => [entryKey(e), e] as const),
+function readGitHubEvent(): AppendOnlyGitHubEvent | null {
+  const p = process.env.GITHUB_EVENT_PATH;
+  if (p == null || p.length === 0) return null;
+  try {
+    return JSON.parse(readFileSync(p, "utf8")) as AppendOnlyGitHubEvent;
+  } catch {
+    return null;
+  }
+}
+
+function loadPublishedTrunkManifest(): IxManifest {
+  const resolved = resolveAppendOnlyBaseline({
+    eventName: process.env.GITHUB_EVENT_NAME,
+    event: readGitHubEvent(),
+    mergeBaseWithOriginMaster: () =>
+      gitOk(["merge-base", "HEAD", "origin/master"]),
+    commitExists,
+  });
+  if (!resolved.ok) {
+    assert.fail(resolved.cause);
+  }
+  const loaded = loadManifestAtBaseline(
+    resolved.commit,
+    MANIFEST_REL,
+    {
+      commitExists,
+      showPath: (commit, relPath) => gitOk(["show", `${commit}:${relPath}`]),
+    },
+    (text) => JSON.parse(text) as IxManifest,
   );
-  const priorMax = new Map<string, number>();
-  for (const e of prior.entries) {
-    const prev = priorMax.get(e.program) ?? -1;
-    if (e.index > prev) priorMax.set(e.program, e.index);
-    const cur = workingByKey.get(entryKey(e));
-    assert.ok(
-      cur,
-      `append_only_removed:${e.program}:${e.index}:${e.name}`,
-    );
-    assert.equal(
-      cur!.name,
-      e.name,
-      `append_only_renamed:${e.program}:${e.index}:was_${e.name}_now_${cur!.name}`,
-    );
+  if (!loaded.ok) {
+    assert.fail(loaded.cause);
   }
-  for (const e of working.entries) {
-    const max = priorMax.get(e.program);
-    if (max == null) continue;
-    const priorHad = prior.entries.some(
-      (p) => p.program === e.program && p.index === e.index,
-    );
-    if (!priorHad) {
-      assert.ok(
-        e.index === max + 1 || e.index > max,
-        `append_only_gap_insert:${e.program}:${e.index}:prior_max_${max}`,
-      );
-    }
-  }
-  for (const [program, max] of priorMax) {
-    const newIndices = working.entries
-      .filter((e) => e.program === program && e.index > max)
-      .map((e) => e.index)
-      .sort((a, b) => a - b);
-    for (let i = 0; i < newIndices.length; i++) {
-      assert.equal(
-        newIndices[i],
-        max + 1 + i,
-        `append_only_non_contiguous:${program}:want_${max + 1 + i}_got_${newIndices[i]}`,
-      );
-    }
-  }
+  console.log(
+    `svm-instruction-encoder: append-only baseline ${resolved.source}=${resolved.commit.slice(0, 12)}`,
+  );
+  return loaded.manifest;
 }
 
 /** Hand-rolled commercial ix tag / second encoder outside the sole owner. */
@@ -228,14 +225,8 @@ describe("svm instruction encoder policy", () => {
     );
   });
 
-  it("append-only vs HEAD: existing (program,index) names stable; only append after max", () => {
-    const prior = loadHeadManifest();
-    if (prior == null) {
-      console.log(
-        "svm-instruction-encoder: append-only baseline empty (manifest new on this commit)",
-      );
-      return;
-    }
+  it("append-only vs published trunk: existing (program,index) names stable; only append after max", () => {
+    const prior = loadPublishedTrunkManifest();
     const working = loadWorkingManifest();
     assertAppendOnlyVsPrior(prior, working);
   });

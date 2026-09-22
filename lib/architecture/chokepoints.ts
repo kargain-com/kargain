@@ -54,8 +54,17 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-instruction-encoder",
     owner: "lib/svm/encode-instruction.ts · svm/crates/kargain-ix-wire",
-    rule: "Commercial instruction data bytes only via encode-instruction; layout+goldens from Rust BorshSerialize (committed ix.manifest.json)",
-    guardTests: ["svm-instruction-encoder-policy.test.ts"],
+    rule: "Commercial instruction data bytes only via encode-instruction; layout+goldens from Rust BorshSerialize (committed ix.manifest.json); append-only vs published-trunk baseline (not HEAD)",
+    guardTests: [
+      "svm-instruction-encoder-policy.test.ts",
+      "ix-append-only-baseline-policy.test.ts",
+    ],
+  },
+  {
+    id: "ix-append-only-baseline",
+    owner: "lib/architecture/ix-append-only-baseline.ts",
+    rule: "Commercial ix-manifest append-only baseline = published trunk: CI push before / PR base.sha / else merge-base HEAD origin/master; missing baseline or manifest refuses by name (never skip)",
+    guardTests: ["ix-append-only-baseline-policy.test.ts"],
   },
   {
     id: "svm-pda-derivation",

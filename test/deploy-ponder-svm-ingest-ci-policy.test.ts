@@ -187,6 +187,34 @@ concurrency:
     assert.match(yaml, /actions\/setup-node@v5/);
   });
 
+  it("ci.yml checkout is deep so append-only can load published-trunk baseline", () => {
+    const yaml = readFileSync(CI_WF, "utf8");
+    assert.match(
+      yaml,
+      /actions\/checkout@v5[\s\S]*?fetch-depth:\s*0/,
+      "CI checkout must use fetch-depth: 0 for git show <before|base>:manifest",
+    );
+    assert.match(
+      yaml,
+      /git fetch --no-tags origin master:refs\/remotes\/origin\/master/,
+      "CI must ensure origin/master for merge-base fallback (workflow_call)",
+    );
+  });
+
+  it("constructed: shallow CI checkout is red vs live deep checkout", () => {
+    const planted = `
+      - name: Checkout
+        uses: actions/checkout@v5
+`;
+    assert.doesNotMatch(planted, /fetch-depth:\s*0/);
+    const live = readFileSync(CI_WF, "utf8");
+    assert.match(live, /fetch-depth:\s*0/);
+    assert.notEqual(
+      /fetch-depth:\s*0/.test(planted),
+      /fetch-depth:\s*0/.test(live),
+    );
+  });
+
   it("constructed: CI Install without svm/lab is red", () => {
     const planted = `
 jobs:
