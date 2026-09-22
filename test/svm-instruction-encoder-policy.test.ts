@@ -2,8 +2,9 @@
  * Commercial instruction wire — TS encoder vs committed Rust goldens.
  *
  * Append-only authority: published trunk tip this change is measured against
- * (CI push `before` / PR base / local `merge-base HEAD origin/master`) via
+ * (CI push `before` / PR base; local `merge-base HEAD origin/master`) via
  * `lib/architecture/ix-append-only-baseline` — not `git show HEAD`.
+ * Actions never uses merge-base (would be identity on master checkout).
  *
  * Goldens are authored solely by Rust BorshSerialize (`kargain-ix-wire`).
  * This suite never repairs or regenerates them.
@@ -85,6 +86,8 @@ function loadPublishedTrunkManifest(): IxManifest {
   const resolved = resolveAppendOnlyBaseline({
     eventName: process.env.GITHUB_EVENT_NAME,
     event: readGitHubEvent(),
+    inActions: process.env.GITHUB_ACTIONS === "true",
+    headSha: () => gitOk(["rev-parse", "HEAD"]),
     mergeBaseWithOriginMaster: () =>
       gitOk(["merge-base", "HEAD", "origin/master"]),
     commitExists,

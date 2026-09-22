@@ -23,11 +23,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          # Full history so append-only can `git show <push.before|PR base>:ix.manifest.json`
-          # and merge-base HEAD origin/master under workflow_call.
+          # Full history so append-only can `git show <push.before|PR base>:ix.manifest.json`.
+          # workflow_call inherits the caller's push/PR github context (not a merge-base path).
           fetch-depth: 0
 
-      - name: Ensure origin/master for merge-base fallback
+      - name: Ensure origin/master ref present
+        # Local tooling / inspect; Actions append-only uses push before or PR base only.
         run: git fetch --no-tags origin master:refs/remotes/origin/master
 
       - name: Setup Node

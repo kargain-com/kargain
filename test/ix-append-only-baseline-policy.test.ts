@@ -45,6 +45,8 @@ function ports(partial: Partial<AppendOnlyBaselinePorts> & {
   return {
     eventName: partial.eventName,
     event: partial.event ?? null,
+    inActions: partial.inActions ?? false,
+    headSha: partial.headSha ?? (() => null),
     mergeBaseWithOriginMaster:
       partial.mergeBaseWithOriginMaster ?? (() => null),
     commitExists: partial.commitExists ?? (() => true),
@@ -52,12 +54,15 @@ function ports(partial: Partial<AppendOnlyBaselinePorts> & {
 }
 
 describe("ix append-only baseline resolver", () => {
-  it("push with non-zero before → push_before", () => {
+  it("Actions + push with non-zero before → push_before", () => {
     const before = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const head = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     const r = resolveAppendOnlyBaseline(
       ports({
+        inActions: true,
         eventName: "push",
         event: { before },
+        headSha: () => head,
         commitExists: (sha) => sha === before,
       }),
     );
@@ -84,7 +89,7 @@ describe("ix append-only baseline resolver", () => {
     }
   });
 
-  it("all-zero push before falls through to merge-base", () => {
+  it("local: all-zero push before falls through to merge-base", () => {
     const merge = "cccccccccccccccccccccccccccccccccccccccc";
     const r = resolveAppendOnlyBaseline(
       ports({
@@ -101,7 +106,64 @@ describe("ix append-only baseline resolver", () => {
     }
   });
 
-  it("local / workflow_call uses merge-base origin/master", () => {
+  it("Actions + push with zero before → baseline_ci_event_unresolved", () => {
+    const r = resolveAppendOnlyBaseline(
+      ports({
+        inActions: true,
+        eventName: "push",
+        event: { before: ZERO_GITHUB_SHA },
+        mergeBaseWithOriginMaster: () => "cccccccccccccccccccccccccccccccccccccccc",
+      }),
+    );
+    assert.deepEqual(r, { ok: false, cause: "baseline_ci_event_unresolved" });
+  });
+
+  it("Actions + unknown event name → baseline_ci_event_unresolved", () => {
+    const r = resolveAppendOnlyBaseline(
+      ports({
+        inActions: true,
+        eventName: "schedule",
+        event: {},
+        mergeBaseWithOriginMaster: () => "dddddddddddddddddddddddddddddddddddddddd",
+      }),
+    );
+    assert.deepEqual(r, { ok: false, cause: "baseline_ci_event_unresolved" });
+  });
+
+  it("Actions + resolved baseline equal to HEAD → baseline_is_head", () => {
+    const same = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+    const r = resolveAppendOnlyBaseline(
+      ports({
+        inActions: true,
+        eventName: "push",
+        event: { before: same },
+        headSha: () => same,
+        commitExists: (sha) => sha === same,
+      }),
+    );
+    assert.deepEqual(r, { ok: false, cause: "baseline_is_head" });
+  });
+
+  it("local + baseline == HEAD → ok", () => {
+    const same = "ffffffffffffffffffffffffffffffffffffffff";
+    const r = resolveAppendOnlyBaseline(
+      ports({
+        inActions: false,
+        eventName: undefined,
+        event: null,
+        headSha: () => same,
+        mergeBaseWithOriginMaster: () => same,
+        commitExists: (sha) => sha === same,
+      }),
+    );
+    assert.equal(r.ok, true);
+    if (r.ok) {
+      assert.equal(r.commit, same);
+      assert.equal(r.source, "merge_base_origin_master");
+    }
+  });
+
+  it("local uses merge-base origin/master", () => {
     const merge = "dddddddddddddddddddddddddddddddddddddddd";
     const r = resolveAppendOnlyBaseline(
       ports({
@@ -118,11 +180,11 @@ describe("ix append-only baseline resolver", () => {
     }
   });
 
-  it("baseline_not_resolvable when no event tip and no merge-base", () => {
+  it("baseline_not_resolvable when local and no merge-base", () => {
     const r = resolveAppendOnlyBaseline(
       ports({
-        eventName: "workflow_call",
-        event: {},
+        eventName: undefined,
+        event: null,
         mergeBaseWithOriginMaster: () => null,
       }),
     );
@@ -133,8 +195,10 @@ describe("ix append-only baseline resolver", () => {
     const before = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
     const r = resolveAppendOnlyBaseline(
       ports({
+        inActions: true,
         eventName: "push",
         event: { before },
+        headSha: () => "ffffffffffffffffffffffffffffffffffffffff",
         commitExists: () => false,
       }),
     );

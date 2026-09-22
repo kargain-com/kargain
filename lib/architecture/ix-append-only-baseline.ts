@@ -5,7 +5,12 @@
  * Authority is the tip this change is measured against — not local HEAD:
  * - CI push → event.before (non-zero)
  * - CI pull_request → event.pull_request.base.sha
- * - else → git merge-base HEAD origin/master (local + workflow_call)
+ * - else (local only) → git merge-base HEAD origin/master
+ *
+ * Inside GitHub Actions, merge-base is not a valid source (`baseline_ci_event_unresolved`).
+ * A called workflow inherits the caller's push/PR context — it does not need merge-base.
+ * When Actions resolves a baseline equal to HEAD → `baseline_is_head` (vacuous compare).
+ * Local baseline == HEAD remains valid (working tree vs published tip).
  *
  * Missing baseline / commit / manifest refuse by name — never skip.
  */
@@ -19,7 +24,9 @@ export const ZERO_GITHUB_SHA = "0".repeat(40);
 export type AppendOnlyBaselineCause =
   | "baseline_not_resolvable"
   | "baseline_commit_absent"
-  | "baseline_manifest_absent";
+  | "baseline_manifest_absent"
+  | "baseline_ci_event_unresolved"
+  | "baseline_is_head";
 
 export type AppendOnlyBaselineSource =
   | "push_before"
@@ -48,7 +55,11 @@ export type AppendOnlyGitHubEvent = {
 export type AppendOnlyBaselinePorts = {
   eventName: string | undefined;
   event: AppendOnlyGitHubEvent | null;
-  /** git merge-base HEAD origin/master → sha or null when unresolvable. */
+  /** True when running under GitHub Actions (injected; never read env here). */
+  inActions: boolean;
+  /** `git rev-parse HEAD` → full sha, or null when unresolvable. */
+  headSha: () => string | null;
+  /** git merge-base HEAD origin/master → sha or null when unresolvable. Local only. */
   mergeBaseWithOriginMaster: () => string | null;
   /** True when `git cat-file -e <sha>^{commit}` would succeed. */
   commitExists: (sha: string) => boolean;
@@ -57,6 +68,18 @@ export type AppendOnlyBaselinePorts = {
 function isNonZeroSha(sha: string | undefined): sha is string {
   if (sha == null || sha.length === 0) return false;
   return sha !== ZERO_GITHUB_SHA && !/^0+$/.test(sha);
+}
+
+function refuseIfBaselineIsHead(
+  ports: AppendOnlyBaselinePorts,
+  ok: AppendOnlyBaselineOk,
+): AppendOnlyBaselineResult {
+  if (!ports.inActions) return ok;
+  const head = ports.headSha();
+  if (head != null && head === ok.commit) {
+    return { ok: false, cause: "baseline_is_head" };
+  }
+  return ok;
 }
 
 /**
@@ -73,7 +96,11 @@ export function resolveAppendOnlyBaseline(
     if (!ports.commitExists(commit)) {
       return { ok: false, cause: "baseline_commit_absent" };
     }
-    return { ok: true, commit, source: "push_before" };
+    return refuseIfBaselineIsHead(ports, {
+      ok: true,
+      commit,
+      source: "push_before",
+    });
   }
 
   if (ports.eventName === "pull_request") {
@@ -82,8 +109,16 @@ export function resolveAppendOnlyBaseline(
       if (!ports.commitExists(base)) {
         return { ok: false, cause: "baseline_commit_absent" };
       }
-      return { ok: true, commit: base, source: "pull_request_base" };
+      return refuseIfBaselineIsHead(ports, {
+        ok: true,
+        commit: base,
+        source: "pull_request_base",
+      });
     }
+  }
+
+  if (ports.inActions) {
+    return { ok: false, cause: "baseline_ci_event_unresolved" };
   }
 
   const mergeBase = ports.mergeBaseWithOriginMaster();
@@ -91,11 +126,11 @@ export function resolveAppendOnlyBaseline(
     if (!ports.commitExists(mergeBase)) {
       return { ok: false, cause: "baseline_commit_absent" };
     }
-    return {
+    return refuseIfBaselineIsHead(ports, {
       ok: true,
       commit: mergeBase,
       source: "merge_base_origin_master",
-    };
+    });
   }
 
   return { ok: false, cause: "baseline_not_resolvable" };

@@ -197,7 +197,7 @@ concurrency:
     assert.match(
       yaml,
       /git fetch --no-tags origin master:refs\/remotes\/origin\/master/,
-      "CI must ensure origin/master for merge-base fallback (workflow_call)",
+      "CI must fetch origin/master (local-shaped tooling / inspect; Actions append-only uses push/PR)",
     );
   });
 

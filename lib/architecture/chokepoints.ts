@@ -63,7 +63,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "ix-append-only-baseline",
     owner: "lib/architecture/ix-append-only-baseline.ts",
-    rule: "Commercial ix-manifest append-only baseline = published trunk: CI push before / PR base.sha / else merge-base HEAD origin/master; missing baseline or manifest refuses by name (never skip)",
+    rule: "Commercial ix-manifest append-only baseline = published trunk: Actions = push before / PR base.sha only (refuse baseline_ci_event_unresolved / baseline_is_head); local else merge-base HEAD origin/master; missing baseline or manifest refuses by name (never skip)",
     guardTests: ["ix-append-only-baseline-policy.test.ts"],
   },
   {
