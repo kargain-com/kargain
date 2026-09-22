@@ -68,10 +68,15 @@ describe("svm-ascending-asset-only-policy", () => {
 
   it("open requires PassportNotVerified gate and prove_active_verifier", () => {
     const src = fs.readFileSync(ASC_IX, "utf8");
-    assert.ok(src.includes("PassportNotVerified"));
+    assert.ok(src.includes("require_verified_passport_status"));
     assert.ok(src.includes("prove_active_verifier"));
     const open = src.slice(src.indexOf("fn open_ascending_direct"));
-    assert.ok(open.includes("PassportNotVerified"));
+    assert.ok(open.includes("require_verified_passport_status"));
+    const may = fs.readFileSync(
+      path.join(ROOT, "svm/programs/kar-passport/src/may.rs"),
+      "utf8",
+    );
+    assert.ok(may.includes("PassportNotVerified"));
   });
 
   it("constructed oracle violation fails scanner", () => {

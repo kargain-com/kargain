@@ -567,11 +567,13 @@ name = "kar-ascending"
 version = "0.1.0"
 dependencies = [
  "borsh 1.8.1",
+ "kar-passport",
  "kar-pro-staking",
  "kargain-agented-split",
  "kargain-bonded-challenge",
  "kargain-claimable-payouts",
  "kargain-consignment-base",
+ "kargain-encumbrance",
  "kargain-errors",
  "kargain-events",
  "solana-program",

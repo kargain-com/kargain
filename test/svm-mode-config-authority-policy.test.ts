@@ -19,29 +19,31 @@ const ADMIT = path.join(SVM, "crates/kargain-config-authority/src/lib.rs");
 const BASE = path.join(SVM, "crates/kargain-consignment-base/src/lib.rs");
 const PASSPORT_ENTRY = path.join(SVM, "programs/kar-passport/src/entrypoint.rs");
 
-/** Stated floor — every config-authority / trust-warp binder that must call the owner. */
+/**
+ * Stated floor — every config-authority / trust-warp binder that must call the owner.
+ * Ascending SetMayOpen / SetVerified / SetSelfEnc / ForceAssetOwner are unconditional
+ * HarnessInstructionRetired(141) stubs (S8-E step 6) — not in the admit set (mirror
+ * FixedPrice retired harness handlers after step 5).
+ */
 const REQUIRED_HANDLERS: ReadonlyArray<{ program: string; fn: string }> = [
   { program: "kar-fixed-price", fn: "force_recall_at" },
   { program: "kar-fixed-price", fn: "unpause_ix" },
   { program: "kar-fixed-price", fn: "approve_payment_token" },
   { program: "kar-fixed-price", fn: "force_seed_price_account" },
   { program: "kar-fixed-price", fn: "bind_passport_program" },
-  { program: "kar-ascending", fn: "set_may_open" },
-  { program: "kar-ascending", fn: "set_verified" },
-  { program: "kar-ascending", fn: "set_self_enc" },
+  { program: "kar-ascending", fn: "bind_passport_program" },
   { program: "kar-ascending", fn: "unpause_ix" },
   { program: "kar-ascending", fn: "set_challenge_bond" },
   { program: "kar-ascending", fn: "approve_payment_token" },
   { program: "kar-ascending", fn: "force_auction_ends_at" },
   { program: "kar-ascending", fn: "force_hold_clock" },
-  { program: "kar-ascending", fn: "force_asset_owner" },
   { program: "consignment-harness", fn: "set_may_open" },
   { program: "consignment-harness", fn: "set_self_enc" },
   { program: "consignment-harness", fn: "force_recall_at" },
   { program: "consignment-harness", fn: "unpause_ix" },
 ];
 
-const HANDLER_FLOOR = 18;
+const HANDLER_FLOOR = 15;
 
 /** Inline authority-key vs config-authority compares (must live only in admit owner). */
 const INLINE_AUTHORITY_EQ =

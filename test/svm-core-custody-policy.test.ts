@@ -137,7 +137,7 @@ pub fn transfer_owner_to_custody_skip_freeze_gate() {
     }
   });
 
-  it("FixedPrice consumes the three shared movers; Ascending still must not", () => {
+  it("FixedPrice and Ascending consume the three shared movers", () => {
     const fp = searchUnder(
       String.raw`transfer_owner_to_custody|transfer_delegate_to_custody|transfer_custody_to_recipient`,
       path.join(SVM, "programs/kar-fixed-price"),
@@ -152,7 +152,9 @@ pub fn transfer_owner_to_custody_skip_freeze_gate() {
       path.join(SVM, "programs/kar-ascending"),
       ["*.rs"],
     );
-    assert.equal(asc.trim(), "", `Ascending must not consume Core movers until step 6:\n${asc}`);
+    assert.ok(asc.includes("transfer_owner_to_custody"), "Ascending must owner→custody");
+    assert.ok(asc.includes("transfer_delegate_to_custody"), "Ascending must delegate→custody");
+    assert.ok(asc.includes("transfer_custody_to_recipient"), "Ascending must custody→recipient");
   });
 
   it("passport Core door stays passport-only — no custody helper copy", () => {
@@ -162,7 +164,7 @@ pub fn transfer_owner_to_custody_skip_freeze_gate() {
     assert.ok(!src.includes("transfer_owner_to_custody"), "no custody move copy");
   });
 
-  it("bidirectional: harness + FixedPrice consume shared moves; skip-freeze plant is harness-local", () => {
+  it("bidirectional: harness + FixedPrice + Ascending consume shared moves; skip-freeze plant is harness-local", () => {
     const harness = fs.readFileSync(HARNESS_IX, "utf8");
     assert.ok(harness.includes("transfer_owner_to_custody"));
     assert.ok(harness.includes("transfer_delegate_to_custody"));
@@ -179,7 +181,7 @@ pub fn transfer_owner_to_custody_skip_freeze_gate() {
       path.join(SVM, "programs"),
       ["*.rs"],
     );
-    const allowed = ["consignment-harness", "kar-fixed-price"];
+    const allowed = ["consignment-harness", "kar-fixed-price", "kar-ascending"];
     const lines = moveHits
       .split("\n")
       .filter((l) => l.trim() && !allowed.some((a) => l.includes(a)));

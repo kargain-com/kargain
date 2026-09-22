@@ -485,12 +485,16 @@ fn entry_for(r: PdaRecipe) -> PdaManifestRecipe {
             )
         }
         PdaRecipe::ConsignmentBaseAsset => {
+            // Harness-only seed (moved out of commercial base in S8-E step 6).
+            // Recipe enum id kept for wire census stability; bytes unchanged.
+            const HARNESS_ASSET_SEED: &[u8] = b"harness-asset";
             let tid = sample_token_id();
-            let (addr, bump) = kargain_consignment_base::asset_pda(&program, &tid);
+            let (addr, bump) =
+                Pubkey::find_program_address(&[HARNESS_ASSET_SEED, &tid], &program);
             recipe(
-                "kargain-consignment-base",
-                "asset",
-                kargain_consignment_base::ASSET_SEED,
+                "consignment-harness",
+                "harness_asset",
+                HARNESS_ASSET_SEED,
                 vec![dynamic_bytes32("token_id")],
                 map_of(&[("token_id", sample_bytes(&tid))]),
                 addr,

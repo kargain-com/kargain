@@ -1,5 +1,10 @@
-//! Ascending mode — asset denomination only (S6 #4).
-//! Custody via HarnessAsset ownership-move (D-25); auction + hold PDAs; bonded settlement challenge.
+//! Ascending mode — asset denomination only (S6 #4 / S8-E step 6).
+//!
+//! Custody = Core passport TransferV1 via `kargain-consignment-base::core_custody`.
+//! Trust = passport `resolve_may_accounts` + registry; open requires Verified status.
+//! Live lot answers both intents `allowed: false`; hold-clear paths write `true`.
+//! Harness CreateAsset / ApproveEscrow / SetMayOpen / SetVerified / SetSelfEncumbrance /
+//! ForceAssetOwner refuse with `HarnessInstructionRetired`.
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use kargain_agented_split::BPS_DENOM;
@@ -18,22 +23,31 @@ use kargain_claimable_payouts::{
     emit::{emit_payout, PayoutEmitter},
 };
 use kargain_consignment_base::{
-    asset_pda, close_lot, compute_split_for_lot, config_pda, consignment_pda, custody_authority_pda,
-    enter_committed_not_offered, grant_mandate, is_escrow_approved, mandate_pda, pause,
-    refuse_set_price_terms_fixed, refuse_shared_open_path, release_custody, require_agented_price_meets_floor,
-    require_can_open, require_config_authority, require_mandate_allows_open, require_not_paused,
-    revoke_mandate, take_custody, terminate_to_owner, unpause, write_open, CloseReason, CommerceConfig,
-    Compensation, CompensationForm, CONFIG_DISCRIMINATOR, ConsignmentRecord, Denomination,
-    DenominationKind, HarnessAsset, MandateRecord, Phase, ASSET_DISCRIMINATOR, ASSET_SEED, CONFIG_SEED,
-    CONSIGNMENT_SEED, MANDATE_SEED,
+    close_lot, compute_split_for_lot, config_pda, consignment_account_is_live, consignment_pda,
+    core_asset_owner, custody_authority_pda, enter_committed_not_offered, grant_mandate, mandate_pda,
+    passport_binding_pda, pause, refuse_set_price_terms_fixed, refuse_shared_open_path,
+    require_agented_price_meets_floor, require_binding_uninitialised, require_bound_passport_program,
+    require_config_authority, require_mandate_allows_open, require_not_paused,
+    require_passport_core_asset, require_transfer_delegate, revoke_mandate, terminate_to_owner,
+    transfer_custody_to_recipient, transfer_delegate_to_custody, transfer_owner_to_custody,
+    transfer_owner_to_recipient, unpause, write_open, CloseReason, CommerceConfig, Compensation,
+    CompensationForm, CONFIG_DISCRIMINATOR, ConsignmentRecord, Denomination, DenominationKind,
+    MandateRecord, PassportBinding, Phase, CONFIG_SEED, CONSIGNMENT_SEED, MANDATE_SEED,
+    PASSPORT_BINDING_SEED,
     emit::{
-        emit_commerce, event_closed, event_commission_lowered, event_floor_lowered,
-        event_mandate_granted, event_opened, event_price_set, event_split_paid, CommerceEmitter,
-        ConsignmentEvent,
+        emit_commerce, event_closed, event_mandate_granted, event_opened, event_split_paid,
+        CommerceEmitter, ConsignmentEvent,
     },
+};
+use kargain_encumbrance::{
+    derive_encumbrance_answer_pda, encumbrance_answer_signer_seeds, EncumbranceAnswer,
+    ENCUMBRANCE_ANSWER_DISCRIMINATOR, INTENT_LEAVE_CHAIN, INTENT_OPEN_CONSIGNMENT,
 };
 use kargain_errors::KargainError;
 use kargain_events::generated;
+use kar_passport::may::{
+    encumbrance_seed_prefix_for_source, require_verified_passport_status, resolve_may_accounts,
+};
 use kar_pro_staking::prove_active_verifier;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -66,10 +80,6 @@ pub const AUCTION_DISC: [u8; 8] = *b"kp_auct\0";
 pub const HOLD_DISC: [u8; 8] = *b"kp_hold\0";
 pub const PAYMENT_TOKEN_DISC: [u8; 8] = *b"kp_aptk\0";
 
-const ASSET_MAY_OPEN_OFF: usize = HarnessAsset::SPACE;
-const ASSET_VERIFIED_OFF: usize = HarnessAsset::SPACE + 1;
-const ASSET_ACCOUNT_SPACE: usize = HarnessAsset::SPACE + 2;
-
 const COMMERCE_EMITTER: CommerceEmitter = CommerceEmitter::AscendingConsignment;
 const CHALLENGE_EMITTER: ChallengeEmitter = ChallengeEmitter::AscendingConsignment;
 
@@ -82,10 +92,15 @@ pub enum AscendingIx {
         challenge_window: u64,
         staking_program: [u8; 32],
     },
+    /// Retired — refuses with `HarnessInstructionRetired`.
     CreateAsset { token_id: [u8; 32] },
+    /// Retired — refuses with `HarnessInstructionRetired`.
     ApproveEscrow { token_id: [u8; 32] },
+    /// Retired — refuses with `HarnessInstructionRetired`.
     SetMayOpen { token_id: [u8; 32], allowed: bool },
+    /// Retired — refuses with `HarnessInstructionRetired`.
     SetVerified { token_id: [u8; 32], verified: bool },
+    /// Retired — refuses with `HarnessInstructionRetired`.
     SetSelfEncumbrance { registered: bool },
     Grant {
         token_id: [u8; 32],
@@ -151,8 +166,11 @@ pub enum AscendingIx {
         frozen_remaining: u64,
         abandonment_deadline: u64,
     },
-    /// Stand warp: set HarnessAsset.owner (authority-gated) for NotPassportHolder LIVE.
+    /// Retired — refuses with `HarnessInstructionRetired`.
     ForceAssetOwner { token_id: [u8; 32], owner: [u8; 32] },
+    /// One-shot bind of passport program id into mode PDA.
+    /// Accounts: authority(signer) · config · binding · passport_program(executable) · system · payer
+    BindPassportProgram,
 }
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq, Eq)]
@@ -163,7 +181,7 @@ pub struct AscendingConfig {
     pub platform_fee_bps: u16,
     pub guardian: [u8; 32],
     pub paused: bool,
-    pub self_encumbrance_registered: bool,
+    pub self_encumbrance_registered_retired: bool,
     pub staking_program: [u8; 32],
     pub forfeit_recipient: [u8; 32],
     pub challenge_bond: u64,
@@ -183,7 +201,7 @@ impl AscendingConfig {
             platform_fee_bps: self.platform_fee_bps,
             guardian: self.guardian,
             paused: self.paused,
-            self_encumbrance_registered: self.self_encumbrance_registered,
+            self_encumbrance_registered_retired: self.self_encumbrance_registered_retired,
             bump: self.bump,
         }
     }
@@ -410,7 +428,8 @@ pub fn process_instruction(
         ),
         AscendingIx::ForceAssetOwner { token_id, owner } => {
             force_asset_owner(program_id, accounts, token_id, owner)
-        },
+        }
+        AscendingIx::BindPassportProgram => bind_passport_program(program_id, accounts),
     }
 }
 
@@ -442,27 +461,6 @@ fn save_consignment(info: &AccountInfo, c: &ConsignmentRecord) -> ProgramResult 
     Ok(())
 }
 
-fn load_asset(info: &AccountInfo) -> Result<HarnessAsset, ProgramError> {
-    let data = info.try_borrow_data()?;
-    if data.len() < HarnessAsset::SPACE {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    HarnessAsset::try_from_slice(&data[..HarnessAsset::SPACE])
-        .map_err(|_| ProgramError::InvalidAccountData)
-}
-
-fn save_asset_preserving_flags(info: &AccountInfo, a: &HarnessAsset) -> ProgramResult {
-    let may = read_may_open(info);
-    let verified = read_verified(info);
-    {
-        let mut data = info.try_borrow_mut_data()?;
-        a.serialize(&mut &mut data[..HarnessAsset::SPACE])
-            .map_err(|_| ProgramError::AccountDataTooSmall)?;
-    }
-    write_may_open(info, may)?;
-    write_verified(info, verified)
-}
-
 fn load_auction(info: &AccountInfo) -> Result<AuctionTermsRecord, ProgramError> {
     AuctionTermsRecord::try_from_slice(&info.try_borrow_data()?)
         .map_err(|_| ProgramError::InvalidAccountData)
@@ -487,37 +485,144 @@ fn save_hold(info: &AccountInfo, h: &HoldRecord) -> ProgramResult {
     Ok(())
 }
 
-fn read_may_open(asset: &AccountInfo) -> bool {
-    let data = asset.try_borrow_data().ok();
-    match data {
-        Some(d) if d.len() > ASSET_MAY_OPEN_OFF => d[ASSET_MAY_OPEN_OFF] != 0,
-        _ => true,
+fn write_encumbrance_answer<'a>(
+    program_id: &Pubkey,
+    payer: &AccountInfo<'a>,
+    answer_info: &AccountInfo<'a>,
+    system: &AccountInfo<'a>,
+    seed_prefix: &[u8],
+    token_id: &[u8; 32],
+    intent: u8,
+    allowed: bool,
+) -> ProgramResult {
+    let (expected, bump) =
+        derive_encumbrance_answer_pda(program_id, seed_prefix, token_id, intent).map_err(into_pe)?;
+    if answer_info.key != &expected {
+        return Err(ProgramError::InvalidSeeds);
     }
-}
-
-fn write_may_open(asset: &AccountInfo, allowed: bool) -> ProgramResult {
-    let mut data = asset.try_borrow_mut_data()?;
-    if data.len() <= ASSET_MAY_OPEN_OFF {
+    let intent_seed = [intent];
+    let bump_seed = [bump];
+    if answer_info.data_is_empty() {
+        create_pda(
+            program_id,
+            payer,
+            answer_info,
+            system,
+            EncumbranceAnswer::SPACE,
+            &encumbrance_answer_signer_seeds(seed_prefix, token_id, &intent_seed, &bump_seed),
+        )?;
+    } else if answer_info.owner != program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    let rec = EncumbranceAnswer {
+        discriminator: ENCUMBRANCE_ANSWER_DISCRIMINATOR,
+        token_id: *token_id,
+        intent,
+        allowed,
+    };
+    let mut data = answer_info.try_borrow_mut_data()?;
+    if data.len() < EncumbranceAnswer::SPACE {
         return Err(ProgramError::AccountDataTooSmall);
     }
-    data[ASSET_MAY_OPEN_OFF] = u8::from(allowed);
+    rec.serialize(&mut &mut data[..EncumbranceAnswer::SPACE])
+        .map_err(|_| ProgramError::AccountDataTooSmall)?;
     Ok(())
 }
 
-fn read_verified(asset: &AccountInfo) -> bool {
-    let data = asset.try_borrow_data().ok();
-    match data {
-        Some(d) if d.len() > ASSET_VERIFIED_OFF => d[ASSET_VERIFIED_OFF] != 0,
-        _ => false,
-    }
+fn write_both_answers<'a>(
+    program_id: &Pubkey,
+    payer: &AccountInfo<'a>,
+    leave_info: &AccountInfo<'a>,
+    open_info: &AccountInfo<'a>,
+    system: &AccountInfo<'a>,
+    seed_prefix: &[u8],
+    token_id: &[u8; 32],
+    allowed: bool,
+) -> ProgramResult {
+    write_encumbrance_answer(
+        program_id,
+        payer,
+        leave_info,
+        system,
+        seed_prefix,
+        token_id,
+        INTENT_LEAVE_CHAIN,
+        allowed,
+    )?;
+    write_encumbrance_answer(
+        program_id,
+        payer,
+        open_info,
+        system,
+        seed_prefix,
+        token_id,
+        INTENT_OPEN_CONSIGNMENT,
+        allowed,
+    )
 }
 
-fn write_verified(asset: &AccountInfo, verified: bool) -> ProgramResult {
-    let mut data = asset.try_borrow_mut_data()?;
-    if data.len() <= ASSET_VERIFIED_OFF {
-        return Err(ProgramError::AccountDataTooSmall);
+fn write_answers_from_binding<'a>(
+    program_id: &Pubkey,
+    binding: &AccountInfo<'a>,
+    passport_config: &AccountInfo<'a>,
+    payer: &AccountInfo<'a>,
+    answer_leave: &AccountInfo<'a>,
+    answer_open: &AccountInfo<'a>,
+    system: &AccountInfo<'a>,
+    token_id: &[u8; 32],
+    allowed: bool,
+) -> ProgramResult {
+    let passport_program = require_bound_passport_program(program_id, binding)?;
+    let (seed_prefix, _) =
+        encumbrance_seed_prefix_for_source(passport_config, &passport_program, program_id)?;
+    write_both_answers(
+        program_id,
+        payer,
+        answer_leave,
+        answer_open,
+        system,
+        &seed_prefix,
+        token_id,
+        allowed,
+    )
+}
+
+fn bind_passport_program(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+    let iter = &mut accounts.iter();
+    let authority = next_account_info(iter)?;
+    let config = next_account_info(iter)?;
+    let binding = next_account_info(iter)?;
+    let passport_program = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
+    let payer = next_account_info(iter)?;
+    if !payer.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
     }
-    data[ASSET_VERIFIED_OFF] = u8::from(verified);
+    let cfg = load_asc_config(config)?;
+    require_config_authority(authority, config, program_id, &cfg.authority)?;
+    if !passport_program.executable {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let (key, bump) = passport_binding_pda(program_id);
+    if binding.key != &key {
+        return Err(ProgramError::InvalidSeeds);
+    }
+    require_binding_uninitialised(binding)?;
+    if !binding.data_is_empty() {
+        return Err(ProgramError::AccountAlreadyInitialized);
+    }
+    create_pda(
+        program_id,
+        payer,
+        binding,
+        system,
+        PassportBinding::SPACE,
+        &[PASSPORT_BINDING_SEED, &[bump]],
+    )?;
+    let rec = PassportBinding::new(*passport_program.key, bump);
+    let mut data = binding.try_borrow_mut_data()?;
+    rec.serialize(&mut &mut data[..PassportBinding::SPACE])
+        .map_err(|_| ProgramError::AccountDataTooSmall)?;
     Ok(())
 }
 
@@ -670,11 +775,11 @@ fn is_binding(c: &ConsignmentRecord, hold_active: bool) -> bool {
     c.phase == Phase::Offered as u8 && c.committed_not_offered && !hold_active
 }
 
-fn hold_is_active(hold_info: &AccountInfo) -> bool {
+fn hold_is_active(hold_info: &AccountInfo) -> Result<bool, ProgramError> {
     if hold_info.data_is_empty() {
-        return false;
+        return Ok(false);
     }
-    load_hold(hold_info).map(|h| h.is_active()).unwrap_or(false)
+    Ok(load_hold(hold_info)?.is_active())
 }
 
 fn ensure_consignment_account<'a>(
@@ -737,16 +842,14 @@ fn apply_extension(auction: &mut AuctionTermsRecord, now: u64) {
     }
 }
 
-fn is_challenge_active(challenge_info: &AccountInfo) -> bool {
+fn is_challenge_active(challenge_info: &AccountInfo) -> Result<bool, ProgramError> {
     if challenge_info.data_is_empty() {
-        return false;
+        return Ok(false);
     }
-    let Ok(data) = challenge_info.try_borrow_data() else {
-        return false;
-    };
-    ChallengeAccount::try_from_slice(&data)
-        .map(|c| c.is_active())
-        .unwrap_or(false)
+    let data = challenge_info.try_borrow_data()?;
+    Ok(ChallengeAccount::try_from_slice(&data)
+        .map_err(|_| ProgramError::InvalidAccountData)?
+        .is_active())
 }
 
 // ---- Challenge hooks ----
@@ -869,7 +972,7 @@ fn init_config(
         platform_fee_bps: fee_bps,
         guardian: guardian.key.to_bytes(),
         paused: false,
-        self_encumbrance_registered: true,
+        self_encumbrance_registered_retired: true,
         staking_program,
         forfeit_recipient: forfeit.key.to_bytes(),
         challenge_bond,
@@ -891,110 +994,38 @@ fn init_config(
     Ok(())
 }
 
-fn create_asset(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> ProgramResult {
-    let iter = &mut accounts.iter();
-    let payer = next_account_info(iter)?;
-    let asset = next_account_info(iter)?;
-    let owner = next_account_info(iter)?;
-    let system = next_account_info(iter)?;
-    if !payer.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-    let (key, bump) = asset_pda(program_id, &token_id);
-    if asset.key != &key {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    create_pda(
-        program_id,
-        payer,
-        asset,
-        system,
-        ASSET_ACCOUNT_SPACE,
-        &[ASSET_SEED, &token_id, &[bump]],
-    )?;
-    let a = HarnessAsset {
-        discriminator: ASSET_DISCRIMINATOR,
-        token_id,
-        owner: owner.key.to_bytes(),
-        approved_for: [0u8; 32],
-        bump,
-    };
-    {
-        let mut data = asset.try_borrow_mut_data()?;
-        a.serialize(&mut &mut data[..HarnessAsset::SPACE])
-            .map_err(|_| ProgramError::AccountDataTooSmall)?;
-        data[ASSET_MAY_OPEN_OFF] = 1;
-        data[ASSET_VERIFIED_OFF] = 0;
-    }
-    Ok(())
+fn refuse_harness(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult {
+    Err(into_pe(KargainError::HarnessInstructionRetired))
 }
 
-fn approve_escrow(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> ProgramResult {
-    let iter = &mut accounts.iter();
-    let owner = next_account_info(iter)?;
-    let asset_info = next_account_info(iter)?;
-    let spender = next_account_info(iter)?;
-    if !owner.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-    let (key, _) = asset_pda(program_id, &token_id);
-    if asset_info.key != &key {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    let mut a = load_asset(asset_info)?;
-    if a.owner != owner.key.to_bytes() {
-        return Err(into_pe(KargainError::NotPassportOwner));
-    }
-    a.approved_for = spender.key.to_bytes();
-    save_asset_preserving_flags(asset_info, &a)
+fn create_asset(program_id: &Pubkey, accounts: &[AccountInfo], _token_id: [u8; 32]) -> ProgramResult {
+    refuse_harness(program_id, accounts)
+}
+
+fn approve_escrow(program_id: &Pubkey, accounts: &[AccountInfo], _token_id: [u8; 32]) -> ProgramResult {
+    refuse_harness(program_id, accounts)
 }
 
 fn set_may_open(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    token_id: [u8; 32],
-    allowed: bool,
+    _token_id: [u8; 32],
+    _allowed: bool,
 ) -> ProgramResult {
-    let iter = &mut accounts.iter();
-    let authority = next_account_info(iter)?;
-    let config = next_account_info(iter)?;
-    let asset_info = next_account_info(iter)?;
-    let cfg = load_asc_config(config)?;
-    require_config_authority(authority, config, program_id, &cfg.authority)?;
-    let (key, _) = asset_pda(program_id, &token_id);
-    if asset_info.key != &key {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    write_may_open(asset_info, allowed)
+    refuse_harness(program_id, accounts)
 }
 
 fn set_verified(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    token_id: [u8; 32],
-    verified: bool,
+    _token_id: [u8; 32],
+    _verified: bool,
 ) -> ProgramResult {
-    let iter = &mut accounts.iter();
-    let authority = next_account_info(iter)?;
-    let config = next_account_info(iter)?;
-    let asset_info = next_account_info(iter)?;
-    let cfg = load_asc_config(config)?;
-    require_config_authority(authority, config, program_id, &cfg.authority)?;
-    let (key, _) = asset_pda(program_id, &token_id);
-    if asset_info.key != &key {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    write_verified(asset_info, verified)
+    refuse_harness(program_id, accounts)
 }
 
-fn set_self_enc(program_id: &Pubkey, accounts: &[AccountInfo], registered: bool) -> ProgramResult {
-    let iter = &mut accounts.iter();
-    let authority = next_account_info(iter)?;
-    let config = next_account_info(iter)?;
-    let mut cfg = load_asc_config(config)?;
-    require_config_authority(authority, config, program_id, &cfg.authority)?;
-    cfg.self_encumbrance_registered = registered;
-    save_asc_config(config, &cfg)
+fn set_self_enc(program_id: &Pubkey, accounts: &[AccountInfo], _registered: bool) -> ProgramResult {
+    refuse_harness(program_id, accounts)
 }
 
 fn grant(
@@ -1012,6 +1043,7 @@ fn grant(
 ) -> ProgramResult {
     let iter = &mut accounts.iter();
     let owner = next_account_info(iter)?;
+    let binding = next_account_info(iter)?;
     let asset_info = next_account_info(iter)?;
     let mandate_info = next_account_info(iter)?;
     let consignment_info = next_account_info(iter)?;
@@ -1021,20 +1053,15 @@ fn grant(
     if !owner.is_signer || !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
-    let (asset_key, _) = asset_pda(program_id, &token_id);
-    if asset_info.key != &asset_key {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    let a = load_asset(asset_info)?;
+    let passport_program = require_bound_passport_program(program_id, binding)?;
+    require_passport_core_asset(&passport_program, &token_id, asset_info)?;
+    let owner_pk = core_asset_owner(asset_info)?;
     let (cust_key, _) = custody_authority_pda(program_id);
     if custody.key != &cust_key {
         return Err(ProgramError::InvalidSeeds);
     }
-    let is_live = !consignment_info.data_is_empty()
-        && load_consignment(consignment_info)
-            .map(|c| c.is_live())
-            .unwrap_or(false);
-    let approved = is_escrow_approved(&a, &cust_key.to_bytes());
+    require_transfer_delegate(asset_info, &cust_key)?;
+    let is_live = consignment_account_is_live(consignment_info)?;
     let denom = parse_denom(denom_kind, currency_code)?;
     let comp = parse_comp(form, commission_bps)?;
     let (mkey, mbump) = mandate_pda(program_id, &token_id);
@@ -1043,10 +1070,9 @@ fn grant(
     }
     let record = grant_mandate(
         token_id,
-        &a.owner,
+        &owner_pk.to_bytes(),
         &owner.key.to_bytes(),
         is_live,
-        approved,
         agent,
         expiry,
         asset_mint,
@@ -1089,22 +1115,22 @@ fn grant(
 fn revoke(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> ProgramResult {
     let iter = &mut accounts.iter();
     let owner = next_account_info(iter)?;
+    let binding = next_account_info(iter)?;
     let asset_info = next_account_info(iter)?;
     let mandate_info = next_account_info(iter)?;
     let consignment_info = next_account_info(iter)?;
     if !owner.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
-    let a = load_asset(asset_info)?;
+    let passport_program = require_bound_passport_program(program_id, binding)?;
+    require_passport_core_asset(&passport_program, &token_id, asset_info)?;
+    let owner_pk = core_asset_owner(asset_info)?;
     let m = {
         let data = mandate_info.try_borrow_data()?;
         MandateRecord::try_from_slice(&data).map_err(|_| ProgramError::InvalidAccountData)?
     };
-    let is_live = !consignment_info.data_is_empty()
-        && load_consignment(consignment_info)
-            .map(|c| c.is_live())
-            .unwrap_or(false);
-    revoke_mandate(&m, &a.owner, &owner.key.to_bytes(), is_live).map_err(into_pe)?;
+    let is_live = consignment_account_is_live(consignment_info)?;
+    revoke_mandate(&m, &owner_pk.to_bytes(), &owner.key.to_bytes(), is_live).map_err(into_pe)?;
     let prior_agent = m.agent;
     let mut cleared = m;
     cleared.active = false;
@@ -1120,7 +1146,6 @@ fn revoke(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> 
             prior_agent,
         },
     );
-    let _ = program_id;
     Ok(())
 }
 
@@ -1177,56 +1202,88 @@ fn open_ascending_direct(
     let iter = &mut accounts.iter();
     let seller = next_account_info(iter)?;
     let config = next_account_info(iter)?;
-    let asset_info = next_account_info(iter)?;
-    let consignment = next_account_info(iter)?;
-    let custody = next_account_info(iter)?;
-    let system = next_account_info(iter)?;
-    let payer = next_account_info(iter)?;
-    let stake_answer = next_account_info(iter)?;
-    let staking_program = next_account_info(iter)?;
-    let auction_info = next_account_info(iter)?;
-    if !seller.is_signer || !payer.is_signer {
+    if !seller.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
     let cfg = load_asc_config(config)?;
     require_not_paused(&cfg.as_commerce_config()).map_err(into_pe)?;
-    if staking_program.key.to_bytes() != cfg.staking_program {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    require_active_verifier_account(stake_answer, &seller.key.to_bytes(), staking_program.key)?;
+
     let payment_tok = if asset_mint != [0u8; 32] {
         Some(next_account_info(iter)?)
     } else {
         None
     };
     require_payment_token_enabled(program_id, &asset_mint, payment_tok)?;
-    let mut a = load_asset(asset_info)?;
-    if a.owner != seller.key.to_bytes() {
+
+    let binding = next_account_info(iter)?;
+    let passport_config = next_account_info(iter)?;
+    let asset_info = next_account_info(iter)?;
+    let challenge = next_account_info(iter)?;
+
+    let passport_program = require_bound_passport_program(program_id, binding)?;
+    let (seed_prefix, registry_len) =
+        encumbrance_seed_prefix_for_source(passport_config, &passport_program, program_id)?;
+
+    let mut may_accounts: Vec<AccountInfo> = Vec::with_capacity(3 + registry_len);
+    may_accounts.push(passport_config.clone());
+    may_accounts.push(asset_info.clone());
+    may_accounts.push(challenge.clone());
+    for _ in 0..registry_len {
+        may_accounts.push(next_account_info(iter)?.clone());
+    }
+    let allowed = resolve_may_accounts(
+        &passport_program,
+        &may_accounts,
+        token_id,
+        INTENT_OPEN_CONSIGNMENT,
+    )?;
+    if !allowed {
+        return Err(into_pe(KargainError::OpenConsignmentRefused));
+    }
+
+    let passport_state = next_account_info(iter)?;
+    let consignment = next_account_info(iter)?;
+    let custody = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
+    let payer = next_account_info(iter)?;
+    let core_program = next_account_info(iter)?;
+    let answer_leave = next_account_info(iter)?;
+    let answer_open = next_account_info(iter)?;
+    let stake_answer = next_account_info(iter)?;
+    let staking_program = next_account_info(iter)?;
+    let auction_info = next_account_info(iter)?;
+    if !payer.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if staking_program.key.to_bytes() != cfg.staking_program {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    require_active_verifier_account(stake_answer, &seller.key.to_bytes(), staking_program.key)?;
+
+    let is_live = consignment_account_is_live(consignment)?;
+    if is_live {
+        return Err(into_pe(KargainError::LiveConsignment));
+    }
+
+    let owner_pk = core_asset_owner(asset_info)?;
+    if owner_pk != *seller.key {
         return Err(into_pe(KargainError::NotPassportOwner));
     }
-    let (cust_key, _) = custody_authority_pda(program_id);
-    if custody.key != &cust_key {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    let is_live = !consignment.data_is_empty()
-        && load_consignment(consignment)
-            .map(|c| c.is_live())
-            .unwrap_or(false);
-    require_can_open(
-        cfg.self_encumbrance_registered,
-        read_may_open(asset_info),
-        is_live,
-        is_escrow_approved(&a, &cust_key.to_bytes()),
-    )
-    .map_err(into_pe)?;
-    if !read_verified(asset_info) {
-        return Err(into_pe(KargainError::PassportNotVerified));
-    }
+    require_verified_passport_status(&passport_program, &token_id, passport_state)?;
     require_auction_open_params(reserve, duration, protection_window)?;
 
     let bump = ensure_consignment_account(program_id, payer, consignment, system, &token_id)?;
-    take_custody(&mut a, &seller.key.to_bytes(), &cust_key.to_bytes()).map_err(into_pe)?;
-    save_asset_preserving_flags(asset_info, &a)?;
+    transfer_owner_to_custody(
+        program_id,
+        &passport_program,
+        &token_id,
+        asset_info,
+        seller,
+        custody,
+        payer,
+        core_program,
+        system,
+    )?;
 
     let now = Clock::get()?.unix_timestamp as u64;
     let record = write_open(
@@ -1252,6 +1309,16 @@ fn open_ascending_direct(
         duration,
         protection_window,
     )?;
+    write_both_answers(
+        program_id,
+        payer,
+        answer_leave,
+        answer_open,
+        system,
+        &seed_prefix,
+        &token_id,
+        false,
+    )?;
     emit_commerce(COMMERCE_EMITTER, &event_opened(&record));
     generated::emit_ascending_consignment_ascending_terms_snapshotted(
         token_id,
@@ -1276,74 +1343,107 @@ fn open_ascending_from_mandate(
     let iter = &mut accounts.iter();
     let agent = next_account_info(iter)?;
     let config = next_account_info(iter)?;
-    let asset_info = next_account_info(iter)?;
     let mandate_info = next_account_info(iter)?;
-    let consignment = next_account_info(iter)?;
-    let custody = next_account_info(iter)?;
-    let system = next_account_info(iter)?;
-    let payer = next_account_info(iter)?;
-    let stake_answer = next_account_info(iter)?;
-    let staking_program = next_account_info(iter)?;
-    let auction_info = next_account_info(iter)?;
-    if !agent.is_signer || !payer.is_signer {
+    if !agent.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
     let cfg = load_asc_config(config)?;
     require_not_paused(&cfg.as_commerce_config()).map_err(into_pe)?;
-    if staking_program.key.to_bytes() != cfg.staking_program {
-        return Err(ProgramError::InvalidAccountData);
-    }
     let m = {
         let data = mandate_info.try_borrow_data()?;
         MandateRecord::try_from_slice(&data).map_err(|_| ProgramError::InvalidAccountData)?
     };
     let now = Clock::get()?.unix_timestamp as u64;
     require_mandate_allows_open(&m, &asset_denom(), now).map_err(into_pe)?;
-    // Ascending mandate must be asset-denominated (N4).
     if m.denomination.kind != DenominationKind::Asset as u8 {
         return Err(into_pe(KargainError::FiatDenominationRefused));
     }
     if m.agent != agent.key.to_bytes() {
         return Err(into_pe(KargainError::NotConsignmentAgent));
     }
-    require_active_verifier_account(stake_answer, &agent.key.to_bytes(), staking_program.key)?;
+
     let payment_tok = if m.asset != [0u8; 32] {
         Some(next_account_info(iter)?)
     } else {
         None
     };
     require_payment_token_enabled(program_id, &m.asset, payment_tok)?;
-    let mut a = load_asset(asset_info)?;
+
+    let binding = next_account_info(iter)?;
+    let passport_config = next_account_info(iter)?;
+    let asset_info = next_account_info(iter)?;
+    let challenge = next_account_info(iter)?;
+
+    let passport_program = require_bound_passport_program(program_id, binding)?;
+    let (seed_prefix, registry_len) =
+        encumbrance_seed_prefix_for_source(passport_config, &passport_program, program_id)?;
+
+    let mut may_accounts: Vec<AccountInfo> = Vec::with_capacity(3 + registry_len);
+    may_accounts.push(passport_config.clone());
+    may_accounts.push(asset_info.clone());
+    may_accounts.push(challenge.clone());
+    for _ in 0..registry_len {
+        may_accounts.push(next_account_info(iter)?.clone());
+    }
+    let allowed = resolve_may_accounts(
+        &passport_program,
+        &may_accounts,
+        token_id,
+        INTENT_OPEN_CONSIGNMENT,
+    )?;
+    if !allowed {
+        return Err(into_pe(KargainError::OpenConsignmentRefused));
+    }
+
+    let passport_state = next_account_info(iter)?;
+    let consignment = next_account_info(iter)?;
+    let custody = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
+    let payer = next_account_info(iter)?;
+    let core_program = next_account_info(iter)?;
+    let answer_leave = next_account_info(iter)?;
+    let answer_open = next_account_info(iter)?;
+    let stake_answer = next_account_info(iter)?;
+    let staking_program = next_account_info(iter)?;
+    let auction_info = next_account_info(iter)?;
+    if !payer.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if staking_program.key.to_bytes() != cfg.staking_program {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    require_active_verifier_account(stake_answer, &agent.key.to_bytes(), staking_program.key)?;
+
+    let is_live = consignment_account_is_live(consignment)?;
+    if is_live {
+        return Err(into_pe(KargainError::LiveConsignment));
+    }
     let (cust_key, _) = custody_authority_pda(program_id);
     if custody.key != &cust_key {
         return Err(ProgramError::InvalidSeeds);
     }
-    let is_live = !consignment.data_is_empty()
-        && load_consignment(consignment)
-            .map(|c| c.is_live())
-            .unwrap_or(false);
-    require_can_open(
-        cfg.self_encumbrance_registered,
-        read_may_open(asset_info),
-        is_live,
-        is_escrow_approved(&a, &cust_key.to_bytes()),
-    )
-    .map_err(into_pe)?;
-    if !read_verified(asset_info) {
-        return Err(into_pe(KargainError::PassportNotVerified));
-    }
+    require_transfer_delegate(asset_info, &cust_key)?;
+    require_verified_passport_status(&passport_program, &token_id, passport_state)?;
     require_auction_open_params(reserve, duration, protection_window)?;
     require_agented_price_meets_floor(reserve, m.floor, m.compensation, cfg.platform_fee_bps)
         .map_err(into_pe)?;
 
+    let seller = core_asset_owner(asset_info)?;
     let bump = ensure_consignment_account(program_id, payer, consignment, system, &token_id)?;
-    let seller = a.owner;
-    take_custody(&mut a, &seller, &cust_key.to_bytes()).map_err(into_pe)?;
-    save_asset_preserving_flags(asset_info, &a)?;
+    transfer_delegate_to_custody(
+        program_id,
+        &passport_program,
+        &token_id,
+        asset_info,
+        custody,
+        payer,
+        core_program,
+        system,
+    )?;
 
     let record = write_open(
         token_id,
-        seller,
+        seller.to_bytes(),
         m.agent,
         m.asset,
         m.denomination,
@@ -1363,6 +1463,16 @@ fn open_ascending_from_mandate(
         token_id,
         duration,
         protection_window,
+    )?;
+    write_both_answers(
+        program_id,
+        payer,
+        answer_leave,
+        answer_open,
+        system,
+        &seed_prefix,
+        &token_id,
+        false,
     )?;
     emit_commerce(COMMERCE_EMITTER, &event_opened(&record));
     generated::emit_ascending_consignment_ascending_terms_snapshotted(
@@ -1399,7 +1509,7 @@ fn bid(
     }
     let cfg = load_asc_config(config)?;
     require_not_paused(&cfg.as_commerce_config()).map_err(into_pe)?;
-    if hold_is_active(hold_info) {
+    if hold_is_active(hold_info)? {
         return Err(into_pe(KargainError::SettlementPending));
     }
     let (ckey, _) = consignment_pda(program_id, &token_id);
@@ -1546,10 +1656,17 @@ fn settle(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> 
     let consignment = next_account_info(iter)?;
     let auction_info = next_account_info(iter)?;
     let hold_info = next_account_info(iter)?;
+    let binding = next_account_info(iter)?;
+    let passport_config = next_account_info(iter)?;
     let asset_info = next_account_info(iter)?;
+    let custody = next_account_info(iter)?;
+    let buyer_acc = next_account_info(iter)?;
     let escrow = next_account_info(iter)?;
     let system = next_account_info(iter)?;
     let payer = next_account_info(iter)?;
+    let core_program = next_account_info(iter)?;
+    let answer_leave = next_account_info(iter)?;
+    let answer_open = next_account_info(iter)?;
     if !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -1558,7 +1675,7 @@ fn settle(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> 
         return Err(ProgramError::InvalidSeeds);
     }
     let c = load_consignment(consignment)?;
-    if hold_is_active(hold_info) {
+    if hold_is_active(hold_info)? {
         return Err(into_pe(KargainError::SettlementPending));
     }
     if !is_binding(&c, false) {
@@ -1590,16 +1707,19 @@ fn settle(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> 
     };
 
     let buyer = auction.highest_bidder;
+    if buyer_acc.key.to_bytes() != buyer {
+        return Err(ProgramError::InvalidAccountData);
+    }
     let gross = auction.highest_bid;
     let protection_ends_at = now.saturating_add(auction.protection_window);
     let abandon_win = auction.abandonment_window;
 
-    // Create hold first (SystemProgram CPI), then close auction → payer.
-    // Ordering avoids mixing drained-auction state with create_account CPI.
     let (hkey, hbump) = hold_pda(program_id, &token_id);
     if hold_info.key != &hkey {
         return Err(ProgramError::InvalidSeeds);
     }
+    // Create hold first (SystemProgram CPI), then close auction → payer.
+    // Ordering avoids mixing drained-auction state with create_account CPI.
     if hold_info.data_is_empty() {
         create_pda(
             program_id,
@@ -1624,13 +1744,34 @@ fn settle(program_id: &Pubkey, accounts: &[AccountInfo], token_id: [u8; 32]) -> 
     };
     save_hold(hold_info, &hold)?;
 
-    // Close auction PDA (rent → payer).
-    close_pda(auction_info, payer)?;
+    // Core move before closing auction — TransferV1 CPI must not share an ix
+    // with a just-drained System-assigned account (Agave balance conservation).
+    let passport_program = require_bound_passport_program(program_id, binding)?;
+    let (seed_prefix, _) =
+        encumbrance_seed_prefix_for_source(passport_config, &passport_program, program_id)?;
+    transfer_custody_to_recipient(
+        program_id,
+        &passport_program,
+        &token_id,
+        asset_info,
+        custody,
+        buyer_acc,
+        payer,
+        core_program,
+        system,
+    )?;
+    write_both_answers(
+        program_id,
+        payer,
+        answer_leave,
+        answer_open,
+        system,
+        &seed_prefix,
+        &token_id,
+        false,
+    )?;
 
-    // Custody → buyer (no money move).
-    let mut a = load_asset(asset_info)?;
-    release_custody(&mut a, buyer);
-    save_asset_preserving_flags(asset_info, &a)?;
+    close_pda(auction_info, payer)?;
 
     if escrow.lamports() != escrow_lamports_before {
         return Err(ProgramError::InvalidAccountData);
@@ -1667,9 +1808,13 @@ fn confirm_receipt(
     let _platform = next_account_info(iter)?;
     let _seller_acc = next_account_info(iter)?;
     let _agent_acc = next_account_info(iter)?;
-    let _system = next_account_info(iter)?;
-    let _payer = next_account_info(iter)?;
-    if !buyer.is_signer || !_payer.is_signer {
+    let system = next_account_info(iter)?;
+    let payer = next_account_info(iter)?;
+    let binding = next_account_info(iter)?;
+    let passport_config = next_account_info(iter)?;
+    let answer_leave = next_account_info(iter)?;
+    let answer_open = next_account_info(iter)?;
+    if !buyer.is_signer || !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
     let cfg = load_asc_config(config)?;
@@ -1680,7 +1825,7 @@ fn confirm_receipt(
     if buyer.key.to_bytes() != hold.buyer {
         return Err(into_pe(KargainError::NotHoldBuyer));
     }
-    if is_challenge_active(challenge_info) {
+    if is_challenge_active(challenge_info)? {
         return Err(into_pe(KargainError::DisputeActive));
     }
     if hold.reversal_pending {
@@ -1690,6 +1835,17 @@ fn confirm_receipt(
     let hold_buyer = hold.buyer;
     hold.clear();
     save_hold(hold_info, &hold)?;
+    write_answers_from_binding(
+        program_id,
+        binding,
+        passport_config,
+        payer,
+        answer_leave,
+        answer_open,
+        system,
+        &token_id,
+        true,
+    )?;
     generated::emit_ascending_consignment_receipt_confirmed(token_id, hold_buyer);
     pay_split_and_close(
         program_id,
@@ -1702,7 +1858,7 @@ fn confirm_receipt(
             agent: 8,
             system: 9,
             payer: 10,
-            spl_start: 11,
+            spl_start: 15,
         },
         &cfg,
         token_id,
@@ -1726,8 +1882,12 @@ fn release_funds(
     let _platform = next_account_info(iter)?;
     let _seller_acc = next_account_info(iter)?;
     let _agent_acc = next_account_info(iter)?;
-    let _system = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
     let payer = next_account_info(iter)?;
+    let binding = next_account_info(iter)?;
+    let passport_config = next_account_info(iter)?;
+    let answer_leave = next_account_info(iter)?;
+    let answer_open = next_account_info(iter)?;
     if !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -1736,7 +1896,7 @@ fn release_funds(
     if !hold.is_active() {
         return Err(into_pe(KargainError::NoHold));
     }
-    if is_challenge_active(challenge_info) {
+    if is_challenge_active(challenge_info)? {
         return Err(into_pe(KargainError::DisputeActive));
     }
     if hold.reversal_pending {
@@ -1750,6 +1910,17 @@ fn release_funds(
     let hold_buyer = hold.buyer;
     hold.clear();
     save_hold(hold_info, &hold)?;
+    write_answers_from_binding(
+        program_id,
+        binding,
+        passport_config,
+        payer,
+        answer_leave,
+        answer_open,
+        system,
+        &token_id,
+        true,
+    )?;
     generated::emit_ascending_consignment_funds_released(token_id, hold_buyer);
     pay_split_and_close(
         program_id,
@@ -1762,7 +1933,7 @@ fn release_funds(
             agent: 8,
             system: 9,
             payer: 10,
-            spl_start: 11,
+            spl_start: 15,
         },
         &cfg,
         token_id,
@@ -1781,10 +1952,16 @@ fn complete_reversal(
     let config = next_account_info(iter)?;
     let consignment = next_account_info(iter)?;
     let hold_info = next_account_info(iter)?;
+    let binding = next_account_info(iter)?;
+    let passport_config = next_account_info(iter)?;
     let asset_info = next_account_info(iter)?;
+    let seller_acc = next_account_info(iter)?;
     let escrow = next_account_info(iter)?;
     let system = next_account_info(iter)?;
     let payer = next_account_info(iter)?;
+    let core_program = next_account_info(iter)?;
+    let answer_leave = next_account_info(iter)?;
+    let answer_open = next_account_info(iter)?;
     if !buyer.is_signer || !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -1799,25 +1976,47 @@ fn complete_reversal(
     if buyer.key.to_bytes() != hold.buyer {
         return Err(into_pe(KargainError::NotHoldBuyer));
     }
-    let mut a = load_asset(asset_info)?;
-    if a.owner != hold.buyer {
+    let owner_pk = core_asset_owner(asset_info)?;
+    if owner_pk.to_bytes() != hold.buyer {
         return Err(into_pe(KargainError::NotPassportHolder));
     }
     let mut c = load_consignment(consignment)?;
     let seller = c.seller;
+    if seller_acc.key.to_bytes() != seller {
+        return Err(ProgramError::InvalidAccountData);
+    }
     let gross = hold.gross;
     hold.clear();
     save_hold(hold_info, &hold)?;
 
-    // Pull asset from buyer → seller (mode terminates to owner).
-    release_custody(&mut a, seller);
-    save_asset_preserving_flags(asset_info, &a)?;
+    let passport_program = require_bound_passport_program(program_id, binding)?;
+    let (seed_prefix, _) =
+        encumbrance_seed_prefix_for_source(passport_config, &passport_program, program_id)?;
+    transfer_owner_to_recipient(
+        &passport_program,
+        &token_id,
+        asset_info,
+        buyer,
+        seller_acc,
+        payer,
+        core_program,
+        system,
+    )?;
+    write_both_answers(
+        program_id,
+        payer,
+        answer_leave,
+        answer_open,
+        system,
+        &seed_prefix,
+        &token_id,
+        true,
+    )?;
     terminate_to_owner(&mut c, CloseReason::ReversalCompleted);
     c.price = 0;
     c.floor = 0;
     save_consignment(consignment, &c)?;
 
-    // Full gross to buyer (not split).
     let (_, escrow_bump) = escrow_pda(program_id, &token_id);
     if c.asset == [0u8; 32] {
         pay_native_from_pda(escrow, buyer, gross)?;
@@ -1864,8 +2063,12 @@ fn abandon_reversal(
     let _platform = next_account_info(iter)?;
     let _seller_acc = next_account_info(iter)?;
     let _agent_acc = next_account_info(iter)?;
-    let _system = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
     let payer = next_account_info(iter)?;
+    let binding = next_account_info(iter)?;
+    let passport_config = next_account_info(iter)?;
+    let answer_leave = next_account_info(iter)?;
+    let answer_open = next_account_info(iter)?;
     if !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -1885,6 +2088,17 @@ fn abandon_reversal(
     let hold_buyer = hold.buyer;
     hold.clear();
     save_hold(hold_info, &hold)?;
+    write_answers_from_binding(
+        program_id,
+        binding,
+        passport_config,
+        payer,
+        answer_leave,
+        answer_open,
+        system,
+        &token_id,
+        true,
+    )?;
     generated::emit_ascending_consignment_reversal_abandoned(token_id, hold_buyer);
     pay_split_and_close(
         program_id,
@@ -1897,7 +2111,7 @@ fn abandon_reversal(
             agent: 7,
             system: 8,
             payer: 9,
-            spl_start: 10,
+            spl_start: 14,
         },
         &cfg,
         token_id,
@@ -2232,8 +2446,12 @@ fn judge_challenge_ix(
     let _platform = next_account_info(iter)?;
     let _seller_acc = next_account_info(iter)?;
     let _agent_acc = next_account_info(iter)?;
-    let _system = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
     let payer = next_account_info(iter)?;
+    let binding = next_account_info(iter)?;
+    let passport_config = next_account_info(iter)?;
+    let answer_leave = next_account_info(iter)?;
+    let answer_open = next_account_info(iter)?;
     if !judge.is_signer || !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -2296,6 +2514,20 @@ fn judge_challenge_ix(
     }
     let pending = hooks.pending_split_gross;
     save_hold(hold_info, hooks.hold)?;
+    // on_rejected clears hold → write answers true; on_upheld does not flip answers.
+    if pending.is_some() {
+        write_answers_from_binding(
+            program_id,
+            binding,
+            passport_config,
+            payer,
+            answer_leave,
+            answer_open,
+            system,
+            &token_id,
+            true,
+        )?;
+    }
     if let Some(gross) = pending {
         pay_split_and_close(
             program_id,
@@ -2308,7 +2540,7 @@ fn judge_challenge_ix(
                 agent: 11,
                 system: 12,
                 payer: 13,
-                spl_start: 14,
+                spl_start: 18,
             },
             &cfg,
             token_id,
@@ -2335,8 +2567,12 @@ fn conclude_challenge_ix(
     let _platform = next_account_info(iter)?;
     let _seller_acc = next_account_info(iter)?;
     let _agent_acc = next_account_info(iter)?;
-    let _system = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
     let payer = next_account_info(iter)?;
+    let binding = next_account_info(iter)?;
+    let passport_config = next_account_info(iter)?;
+    let answer_leave = next_account_info(iter)?;
+    let answer_open = next_account_info(iter)?;
     if !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -2378,6 +2614,20 @@ fn conclude_challenge_ix(
     }
     let pending = hooks.pending_split_gross;
     save_hold(hold_info, hooks.hold)?;
+    // on_expired clears hold → write answers true.
+    if pending.is_some() {
+        write_answers_from_binding(
+            program_id,
+            binding,
+            passport_config,
+            payer,
+            answer_leave,
+            answer_open,
+            system,
+            &token_id,
+            true,
+        )?;
+    }
     if let Some(gross) = pending {
         pay_split_and_close(
             program_id,
@@ -2390,7 +2640,7 @@ fn conclude_challenge_ix(
                 agent: 9,
                 system: 10,
                 payer: 11,
-                spl_start: 12,
+                spl_start: 16,
             },
             &cfg,
             token_id,
@@ -2664,25 +2914,11 @@ fn force_hold_clock(
 fn force_asset_owner(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    token_id: [u8; 32],
-    owner: [u8; 32],
+    _token_id: [u8; 32],
+    _owner: [u8; 32],
 ) -> ProgramResult {
-    let iter = &mut accounts.iter();
-    let authority = next_account_info(iter)?;
-    let config = next_account_info(iter)?;
-    let asset_info = next_account_info(iter)?;
-    let cfg = load_asc_config(config)?;
-    require_config_authority(authority, config, program_id, &cfg.authority)?;
-    let (key, _) = asset_pda(program_id, &token_id);
-    if asset_info.key != &key {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    let mut a = load_asset(asset_info)?;
-    a.owner = owner;
-    save_asset_preserving_flags(asset_info, &a)
+    refuse_harness(program_id, accounts)
 }
-
-// ---- Money helpers ----
 
 fn pay_native_from_pda(from: &AccountInfo, to: &AccountInfo, amount: u64) -> ProgramResult {
     if amount == 0 {
@@ -2928,7 +3164,7 @@ mod config_authority_handler_tests {
             platform_fee_bps: 100,
             guardian: [4u8; 32],
             paused: false,
-            self_encumbrance_registered: false,
+            self_encumbrance_registered_retired: false,
             staking_program: [5u8; 32],
             forfeit_recipient: [6u8; 32],
             challenge_bond: 1,
@@ -2937,21 +3173,6 @@ mod config_authority_handler_tests {
             bump,
         };
         (key, borsh::to_vec(&cfg).unwrap())
-    }
-
-    fn asset_bytes(program_id: &Pubkey, token: &[u8; 32]) -> (Pubkey, Vec<u8>) {
-        let (key, bump) = asset_pda(program_id, token);
-        let a = HarnessAsset {
-            discriminator: ASSET_DISCRIMINATOR,
-            token_id: *token,
-            owner: [7u8; 32],
-            approved_for: [0u8; 32],
-            bump,
-        };
-        let mut data = vec![0u8; ASSET_ACCOUNT_SPACE];
-        let enc = borsh::to_vec(&a).unwrap();
-        data[..enc.len()].copy_from_slice(&enc);
-        (key, data)
     }
 
     fn auction_bytes(program_id: &Pubkey, token: &[u8; 32], ends_at: u64) -> (Pubkey, Vec<u8>) {
@@ -2973,61 +3194,25 @@ mod config_authority_handler_tests {
     }
 
     #[test]
-    fn set_verified_unsigned_wrong_correct() {
+    fn harness_ixs_retired() {
         let program_id = pid();
-        let authority = auth();
-        let (cfg_key, mut cfg_data) = cfg_bytes(&program_id, &authority);
-        let token = [9u8; 32];
-        let (asset_key, mut asset_data) = asset_bytes(&program_id, &token);
-        let mut al = 0u64; let mut cl = 0u64; let mut asl = 0u64;
-        {
-            let a = AccountInfo::new(&authority, false, false, &mut al, &mut [], &program_id, false, 0);
-            let c = AccountInfo::new(&cfg_key, false, false, &mut cl, &mut cfg_data, &program_id, false, 0);
-            let s = AccountInfo::new(&asset_key, false, true, &mut asl, &mut asset_data, &program_id, false, 0);
-            assert_eq!(set_verified(&program_id, &[a, c, s], token, true).unwrap_err(), ProgramError::MissingRequiredSignature);
-        }
-        {
-            let w = wrong();
-            let a = AccountInfo::new(&w, true, false, &mut al, &mut [], &program_id, false, 0);
-            let c = AccountInfo::new(&cfg_key, false, false, &mut cl, &mut cfg_data, &program_id, false, 0);
-            let s = AccountInfo::new(&asset_key, false, true, &mut asl, &mut asset_data, &program_id, false, 0);
-            assert_eq!(
-                set_verified(&program_id, &[a, c, s], token, true).unwrap_err(),
-                ProgramError::Custom(u32::from(KargainError::NotOwner)),
-            );
-        }
-        {
-            let a = AccountInfo::new(&authority, true, false, &mut al, &mut [], &program_id, false, 0);
-            let c = AccountInfo::new(&cfg_key, false, false, &mut cl, &mut cfg_data, &program_id, false, 0);
-            let s = AccountInfo::new(&asset_key, false, true, &mut asl, &mut asset_data, &program_id, false, 0);
-            set_verified(&program_id, &[a, c, s], token, true).unwrap();
-        }
-        assert_eq!(asset_data[ASSET_VERIFIED_OFF], 1);
+        let err = ProgramError::Custom(u32::from(KargainError::HarnessInstructionRetired));
+        assert_eq!(create_asset(&program_id, &[], [0u8; 32]).unwrap_err(), err);
+        assert_eq!(approve_escrow(&program_id, &[], [0u8; 32]).unwrap_err(), err);
+        assert_eq!(set_may_open(&program_id, &[], [0u8; 32], true).unwrap_err(), err);
+        assert_eq!(set_verified(&program_id, &[], [0u8; 32], true).unwrap_err(), err);
+        assert_eq!(set_self_enc(&program_id, &[], true).unwrap_err(), err);
+        assert_eq!(force_asset_owner(&program_id, &[], [0u8; 32], [0u8; 32]).unwrap_err(), err);
     }
 
     #[test]
-    fn set_may_open_self_enc_force_auction() {
+    fn force_auction_ends_at_authority() {
         let program_id = pid();
         let authority = auth();
         let (cfg_key, mut cfg_data) = cfg_bytes(&program_id, &authority);
         let token = [10u8; 32];
-        let (asset_key, mut asset_data) = asset_bytes(&program_id, &token);
-        let mut al = 0u64; let mut cl = 0u64; let mut asl = 0u64;
-        {
-            let a = AccountInfo::new(&authority, true, false, &mut al, &mut [], &program_id, false, 0);
-            let c = AccountInfo::new(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id, false, 0);
-            let s = AccountInfo::new(&asset_key, false, true, &mut asl, &mut asset_data, &program_id, false, 0);
-            set_may_open(&program_id, &[a, c, s], token, true).unwrap();
-        }
-        assert_eq!(asset_data[ASSET_MAY_OPEN_OFF], 1);
-        {
-            let a = AccountInfo::new(&authority, true, false, &mut al, &mut [], &program_id, false, 0);
-            let c = AccountInfo::new(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id, false, 0);
-            set_self_enc(&program_id, &[a, c], true).unwrap();
-        }
-        assert!(AscendingConfig::try_from_slice(&cfg_data).unwrap().self_encumbrance_registered);
         let (akey, mut auction_data) = auction_bytes(&program_id, &token, 100);
-        let mut aul = 0u64;
+        let mut al = 0u64; let mut cl = 0u64; let mut aul = 0u64;
         {
             let a = AccountInfo::new(&authority, false, false, &mut al, &mut [], &program_id, false, 0);
             let c = AccountInfo::new(&cfg_key, false, false, &mut cl, &mut cfg_data, &program_id, false, 0);

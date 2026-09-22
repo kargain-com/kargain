@@ -16,7 +16,8 @@ pub use core_custody::{
     core_asset_owner, has_transfer_delegate, is_live_core_asset, is_permanently_frozen,
     passport_asset_pda, require_not_frozen, require_passport_core_asset, require_transfer_delegate,
     transfer_custody_to_recipient, transfer_delegate_authority_is_owner,
-    transfer_delegate_to_custody, transfer_owner_to_custody, PASSPORT_ASSET_SEED,
+    transfer_delegate_to_custody, transfer_owner_to_custody, transfer_owner_to_recipient,
+    PASSPORT_ASSET_SEED,
 };
 
 pub use passport_binding::{
@@ -41,14 +42,12 @@ pub const CONFIG_SEED: &[u8] = b"consign-config";
 pub const CONSIGNMENT_SEED: &[u8] = b"consignment";
 pub const MANDATE_SEED: &[u8] = b"mandate";
 pub const RECALL_SEED: &[u8] = b"recall";
-pub const ASSET_SEED: &[u8] = b"harness-asset";
 pub const CUSTODY_SEED: &[u8] = b"custody";
 
 pub const CONFIG_DISCRIMINATOR: [u8; 8] = *b"kp_cfg\0\0";
 pub const CONSIGNMENT_DISCRIMINATOR: [u8; 8] = *b"kp_csg\0\0";
 pub const MANDATE_DISCRIMINATOR: [u8; 8] = *b"kp_mdt\0\0";
 pub const RECALL_DISCRIMINATOR: [u8; 8] = *b"kp_rcl\0\0";
-pub const ASSET_DISCRIMINATOR: [u8; 8] = *b"kp_ast\0\0";
 
 /// Phase ordinals match Solidity `ConsignmentBase.Phase`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -174,7 +173,7 @@ pub struct CommerceConfig {
     pub platform_fee_bps: u16,
     pub guardian: [u8; 32],
     pub paused: bool,
-    pub self_encumbrance_registered: bool,
+    pub self_encumbrance_registered_retired: bool,
     pub bump: u8,
 }
 
@@ -201,7 +200,7 @@ impl CommerceConfig {
             platform_fee_bps,
             guardian,
             paused: false,
-            self_encumbrance_registered: true,
+            self_encumbrance_registered_retired: true,
             bump,
         })
     }
@@ -308,21 +307,6 @@ impl RecallRecord {
     pub const SPACE: usize = 8 + 32 + 8 + 1;
 }
 
-/// Harness / mode asset: ownership is a real field move (not a delegate).
-#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
-pub struct HarnessAsset {
-    pub discriminator: [u8; 8],
-    pub token_id: [u8; 32],
-    pub owner: [u8; 32],
-    /// TransferDelegate analogue — escrow approval carrier (D-09).
-    pub approved_for: [u8; 32],
-    pub bump: u8,
-}
-
-impl HarnessAsset {
-    pub const SPACE: usize = 8 + 32 + 32 + 32 + 1;
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SplitResult {
     pub platform: u64,
@@ -344,10 +328,6 @@ pub fn mandate_pda(program_id: &Pubkey, token_id: &[u8; 32]) -> (Pubkey, u8) {
 
 pub fn recall_pda(program_id: &Pubkey, token_id: &[u8; 32]) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[RECALL_SEED, token_id], program_id)
-}
-
-pub fn asset_pda(program_id: &Pubkey, token_id: &[u8; 32]) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[ASSET_SEED, token_id], program_id)
 }
 
 pub fn custody_authority_pda(program_id: &Pubkey) -> (Pubkey, u8) {
@@ -410,28 +390,6 @@ pub fn set_guardian(
     let previous = cfg.guardian;
     cfg.guardian = new_guardian;
     Ok(previous)
-}
-
-/// `_requireCanOpen` — exact order from ConsignmentBase.sol:509–514.
-pub fn require_can_open(
-    self_encumbrance_registered: bool,
-    may_open: bool,
-    is_live: bool,
-    escrow_approved: bool,
-) -> Result<(), KargainError> {
-    if !self_encumbrance_registered {
-        return Err(KargainError::ModeNotEncumbranceSource);
-    }
-    if !may_open {
-        return Err(KargainError::OpenConsignmentRefused);
-    }
-    if is_live {
-        return Err(KargainError::LiveConsignment);
-    }
-    if !escrow_approved {
-        return Err(KargainError::EscrowNotApproved);
-    }
-    Ok(())
 }
 
 pub fn denomination_eq(a: &Denomination, b: &Denomination) -> bool {
@@ -632,7 +590,6 @@ pub fn grant_mandate(
     passport_owner: &[u8; 32],
     caller: &[u8; 32],
     is_live: bool,
-    escrow_approved: bool,
     agent: [u8; 32],
     expiry: u64,
     asset: [u8; 32],
@@ -646,9 +603,6 @@ pub fn grant_mandate(
     }
     if is_live {
         return Err(KargainError::LiveConsignment);
-    }
-    if !escrow_approved {
-        return Err(KargainError::EscrowNotApproved);
     }
     if agent == [0u8; 32] {
         return Err(KargainError::ZeroAddress);
@@ -762,24 +716,6 @@ pub fn close_lot(c: &mut ConsignmentRecord, _reason: CloseReason) {
     c.phase = Phase::Closed as u8;
 }
 
-pub fn is_escrow_approved(asset: &HarnessAsset, spender: &[u8; 32]) -> bool {
-    asset.approved_for == *spender
-}
-
-pub fn take_custody(asset: &mut HarnessAsset, from: &[u8; 32], custody: &[u8; 32]) -> Result<(), KargainError> {
-    if asset.owner != *from {
-        return Err(KargainError::NotPassportOwner);
-    }
-    asset.owner = *custody;
-    asset.approved_for = [0u8; 32];
-    Ok(())
-}
-
-pub fn release_custody(asset: &mut HarnessAsset, to: [u8; 32]) {
-    asset.owner = to;
-    asset.approved_for = [0u8; 32];
-}
-
 /// Mode boundary: shared open signature refused (Ascending). Modes expose this
 /// as a dedicated instruction body; shared crate keeps the name for parity.
 pub fn refuse_shared_open_path() -> KargainError {
@@ -824,27 +760,6 @@ mod tests {
         assert_eq!(CloseReason::Sold as u8, 1);
         assert_eq!(CloseReason::Recalled as u8, 4);
         assert_eq!(CloseReason::ReversalAbandoned as u8, 6);
-    }
-
-    #[test]
-    fn require_can_open_order() {
-        assert_eq!(
-            require_can_open(false, true, false, true),
-            Err(KargainError::ModeNotEncumbranceSource)
-        );
-        assert_eq!(
-            require_can_open(true, false, false, true),
-            Err(KargainError::OpenConsignmentRefused)
-        );
-        assert_eq!(
-            require_can_open(true, true, true, true),
-            Err(KargainError::LiveConsignment)
-        );
-        assert_eq!(
-            require_can_open(true, true, false, false),
-            Err(KargainError::EscrowNotApproved)
-        );
-        assert!(require_can_open(true, true, false, true).is_ok());
     }
 
     #[test]
@@ -981,25 +896,6 @@ mod tests {
             request_recall(&c, &pk(1), false, t0),
             Err(KargainError::NotOfferedAgented)
         );
-    }
-
-    #[test]
-    fn custody_is_owner_move_not_delegate() {
-        let custody = pk(99);
-        let seller = pk(1);
-        let mut asset = HarnessAsset {
-            discriminator: ASSET_DISCRIMINATOR,
-            token_id: pk(9),
-            owner: seller,
-            approved_for: custody, // approve first
-            bump: 0,
-        };
-        assert!(is_escrow_approved(&asset, &custody));
-        take_custody(&mut asset, &seller, &custody).unwrap();
-        assert_eq!(asset.owner, custody);
-        assert_eq!(asset.approved_for, [0u8; 32]);
-        release_custody(&mut asset, seller);
-        assert_eq!(asset.owner, seller);
     }
 
     #[test]

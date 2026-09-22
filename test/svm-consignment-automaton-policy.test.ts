@@ -21,14 +21,25 @@ const BASE = path.join(SVM, "crates/kargain-consignment-base/src/lib.rs");
 const HARNESS = path.join(SVM, "programs/consignment-harness/src");
 
 describe("svm-consignment-automaton-policy", () => {
-  it("sole crate owns phase / mandate / recall seeds and require_can_open order", () => {
+  it("sole crate owns phase / mandate / recall seeds; harness owns flag open gate", () => {
     const src = fs.readFileSync(BASE, "utf8");
     assert.ok(src.includes('pub const CONSIGNMENT_SEED'), "consignment seed owner");
     assert.ok(src.includes('pub const MANDATE_SEED'), "mandate seed owner");
     assert.ok(src.includes('pub const RECALL_SEED'), "recall seed owner");
-    assert.ok(src.includes("pub fn require_can_open"), "shared open gate");
-    // Check order pinned in source comments + successive returns
-    const fn = src.slice(src.indexOf("pub fn require_can_open"));
+    assert.ok(
+      !src.includes("pub fn require_can_open"),
+      "require_can_open must not remain in commercial base after Core migration",
+    );
+    assert.ok(
+      !src.includes("HarnessAsset") && !src.includes('b"harness-asset"'),
+      "HarnessAsset must not live in commercial base",
+    );
+    const harnessAsset = fs.readFileSync(
+      path.join(HARNESS, "harness_asset.rs"),
+      "utf8",
+    );
+    assert.ok(harnessAsset.includes("pub fn require_can_open"), "lab open gate");
+    const fn = harnessAsset.slice(harnessAsset.indexOf("pub fn require_can_open"));
     const body = fn.slice(0, fn.indexOf("\npub fn "));
     const modeIdx = body.indexOf("ModeNotEncumbranceSource");
     const openIdx = body.indexOf("OpenConsignmentRefused");
@@ -58,7 +69,7 @@ describe("svm-consignment-automaton-policy", () => {
       "FixedPrice consumes shared automaton",
     );
     const other = searchUnder(
-      String.raw`require_can_open|RECALL_COOLDOWN_SECS|write_open\s*\(`,
+      String.raw`RECALL_COOLDOWN_SECS|write_open\s*\(`,
       path.join(SVM, "programs"),
       ["*.rs"],
     );
@@ -82,12 +93,15 @@ describe("svm-consignment-automaton-policy", () => {
     assert.equal(hit.trim(), "", hit);
   });
 
-  it("custody is owner move (take_custody / release_custody), not delegate-as-custody", () => {
-    const src = fs.readFileSync(BASE, "utf8");
+  it("harness custody is owner move (take_custody / release_custody), not in commercial base", () => {
+    const base = fs.readFileSync(BASE, "utf8");
+    assert.ok(!base.includes("pub fn take_custody"));
+    assert.ok(!base.includes("pub fn release_custody"));
+    assert.ok(!base.includes("pub fn is_escrow_approved"));
+    const src = fs.readFileSync(path.join(HARNESS, "harness_asset.rs"), "utf8");
     assert.ok(src.includes("pub fn take_custody"));
     assert.ok(src.includes("pub fn release_custody"));
     assert.ok(src.includes("pub fn is_escrow_approved"));
-    // take_custody must assign asset.owner
     const take = src.slice(src.indexOf("pub fn take_custody"));
     assert.ok(take.includes("asset.owner = *custody"));
   });

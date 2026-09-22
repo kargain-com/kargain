@@ -267,10 +267,11 @@ export const SURFACE_SUPPORT_TABLE: Readonly<
   hold_protection_ends_at: productOwnerOwed(),
   has_unresolved_settlement: productOwnerOwed(),
   challenge_open: productOwnerOwed(),
-  // D-25 cross-program ApproveEscrow — product reader owed
+  // D-25 cross-program ApproveEscrow (retired 141) — product reader owed;
+  // class-A read evidence = Core TransferDelegate via consignment-base Asset parse
   passport_approve: productOwnerOwed(),
   passport_approval_state: productOwnerOwed(),
-  // ERC-721 setApprovalForAll has no SVM counterpart (approval = TransferDelegate / approved_for)
+  // ERC-721 setApprovalForAll has no SVM counterpart (approval = TransferDelegate)
   passport_set_approval_for_all: notInProgramOnSvm(),
   bridge_send: productOwnerOwed(),
   fixed_price_open_direct: productOwnerOwed(),

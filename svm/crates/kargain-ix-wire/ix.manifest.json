@@ -2142,6 +2142,15 @@
         "token_id": "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1"
       },
       "goldenHex": "1fe1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 32,
+      "name": "BindPassportProgram",
+      "fields": [],
+      "sample": {},
+      "goldenHex": "20"
     }
   ]
 }

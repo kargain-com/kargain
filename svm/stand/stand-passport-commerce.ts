@@ -61,6 +61,9 @@ export const SEED = {
   priceLab: Buffer.from("price-lab"),
   claim: Buffer.from("claim"),
   claimAta: Buffer.from("claim-ata"),
+  auction: Buffer.from("auction"),
+  hold: Buffer.from("hold"),
+  stake: Buffer.from("stake"),
 } as const;
 
 /** PassportIx discriminants (append-only). */
@@ -99,6 +102,50 @@ export const FP_IX = {
   ForceSeedPriceAccount: 26,
   BindPassportProgram: 27,
 } as const;
+
+/**
+ * AscendingIx Borsh order — BindPassportProgram = 32 (after ForceAssetOwner=31).
+ * Do not reuse FP_IX.BindPassportProgram for Ascending.
+ */
+export const ASC_IX = {
+  InitConfig: 0,
+  CreateAsset: 1,
+  ApproveEscrow: 2,
+  SetMayOpen: 3,
+  SetVerified: 4,
+  SetSelfEncumbrance: 5,
+  Grant: 6,
+  Revoke: 7,
+  OpenDirect: 8,
+  OpenFromMandate: 9,
+  SetPrice: 10,
+  OpenAscendingDirect: 11,
+  OpenAscendingFromMandate: 12,
+  Bid: 13,
+  Settle: 14,
+  ConfirmReceipt: 15,
+  ReleaseFunds: 16,
+  CompleteReversal: 17,
+  AbandonReversal: 18,
+  OpenChallenge: 19,
+  WithdrawChallenge: 20,
+  JudgeChallenge: 21,
+  ConcludeChallenge: 22,
+  ApprovePaymentToken: 23,
+  RevokePaymentToken: 24,
+  Pause: 25,
+  Unpause: 26,
+  SetChallengeBond: 27,
+  WithdrawClaim: 28,
+  ForceAuctionEndsAt: 29,
+  ForceHoldClock: 30,
+  ForceAssetOwner: 31,
+  BindPassportProgram: 32,
+} as const;
+
+/** PassportIx::VerifyPassport / SetStakingProgram */
+export const PASSPORT_IX_VERIFY = 11;
+export const PASSPORT_IX_SET_STAKING = 10;
 
 /** GatewayIx — Send = 1 (matches kar-gateway instruction enum). */
 export const GATEWAY_IX = {
@@ -712,24 +759,22 @@ export async function bindPassportProgram(
   authority: Kp,
   payer: Kp,
   passportProgram: Pk,
-  opts?: { force?: boolean },
+  opts?: { force?: boolean; bindDisc?: number },
 ): Promise<Pk> {
   const [binding] = pda(modeProgram, [SEED.passportBind]);
   if (!opts?.force && (await conn.getAccountInfo(binding))) return binding;
+  const disc = opts?.bindDisc ?? FP_IX.BindPassportProgram;
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
-      ix(
+      bindPassportProgramIx(
         modeProgram,
-        [
-          { pubkey: authority.publicKey, isSigner: true, isWritable: false },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: binding, isSigner: false, isWritable: true },
-          { pubkey: passportProgram, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-        ],
-        Buffer.from([FP_IX.BindPassportProgram]),
+        configPda,
+        authority.publicKey,
+        payer.publicKey,
+        passportProgram,
+        binding,
+        disc,
       ),
     ),
     [authority, payer],
@@ -737,7 +782,10 @@ export async function bindPassportProgram(
   return binding;
 }
 
-/** Bind ix without early-return — for rebind → AccountAlreadyInitialized. */
+/**
+ * Bind ix without early-return — for rebind → AccountAlreadyInitialized.
+ * `bindDisc` defaults to FixedPrice (27); Ascending must pass ASC_IX.BindPassportProgram (32).
+ */
 export function bindPassportProgramIx(
   modeProgram: Pk,
   configPda: Pk,
@@ -745,6 +793,7 @@ export function bindPassportProgramIx(
   payer: Pk,
   passportProgram: Pk,
   binding: Pk,
+  bindDisc: number = FP_IX.BindPassportProgram,
 ) {
   return ix(
     modeProgram,
@@ -756,8 +805,67 @@ export function bindPassportProgramIx(
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: payer, isSigner: true, isWritable: true },
     ],
-    Buffer.from([FP_IX.BindPassportProgram]),
+    Buffer.from([bindDisc]),
   );
+}
+
+/** Point passport config at real kar_pro_staking (VerifyPassport). Idempotent overwrite. */
+export async function setPassportStakingProgram(
+  conn: Conn,
+  stack: PassportCommerceStack,
+  stakingProgram: Pk,
+): Promise<void> {
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      ix(
+        stack.passportProgram,
+        [
+          { pubkey: stack.passportConfig, isSigner: false, isWritable: true },
+          { pubkey: stack.passportAuthority.publicKey, isSigner: true, isWritable: false },
+        ],
+        Buffer.concat([
+          Buffer.from([PASSPORT_IX_SET_STAKING]),
+          stakingProgram.toBuffer(),
+        ]),
+      ),
+    ),
+    [stack.passportAuthority],
+  );
+}
+
+/** Active verifier verifies a Core passport → status Verified. */
+export async function verifyPassportAsset(
+  conn: Conn,
+  stack: PassportCommerceStack,
+  verifier: Kp,
+  stakePda: Pk,
+  tokenId: Buffer,
+  asset: Pk,
+  state: Pk,
+): Promise<void> {
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(
+      ix(
+        stack.passportProgram,
+        [
+          { pubkey: stack.passportConfig, isSigner: false, isWritable: false },
+          { pubkey: asset, isSigner: false, isWritable: false },
+          { pubkey: state, isSigner: false, isWritable: true },
+          { pubkey: stakePda, isSigner: false, isWritable: false },
+          { pubkey: verifier.publicKey, isSigner: true, isWritable: false },
+        ],
+        Buffer.concat([Buffer.from([PASSPORT_IX_VERIFY]), tokenId]),
+      ),
+    ),
+    [verifier],
+  );
+}
+
+/** PassportState.status at disc(8)+token(32) — 1 = Verified. */
+export function passportStateStatus(data: Buffer): number {
+  return data[8 + 32]!;
 }
 
 /**
@@ -1163,6 +1271,321 @@ export function confirmExternalKeys(args: {
     { pubkey: args.payer, isSigner: true, isWritable: true },
     { pubkey: CORE_ID, isSigner: false, isWritable: false },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    { pubkey: args.answerLeave, isSigner: false, isWritable: true },
+    { pubkey: args.answerOpen, isSigner: false, isWritable: true },
+  ];
+}
+
+// ---- Ascending Core passport account metas (S8-E step 6) ----
+
+/**
+ * OpenAscendingDirect metas (native or SPL).
+ * Order: seller · config · [payment] · binding · passport_config · asset · challenge ·
+ * mayAnswers[N] (registry-ordered OpenConsignment) · passport_state · consign · custody ·
+ * system · payer · core · answer_leave · answer_open · stake · staking_program · auction
+ *
+ * When FixedPrice then Ascending are both registered (live stand suite), N=2.
+ */
+export function openAscendingDirectKeys(args: {
+  seller: Pk;
+  config: Pk;
+  paymentTok?: Pk;
+  binding: Pk;
+  passportConfig: Pk;
+  asset: Pk;
+  /** Passport challenge PDA (may). */
+  passportChallenge: Pk;
+  /** Registry-ordered OpenConsignment may-answer PDAs (length = registry N). */
+  mayAnswers: Pk[];
+  passportState: Pk;
+  consign: Pk;
+  custody: Pk;
+  payer: Pk;
+  answerLeave: Pk;
+  answerOpen: Pk;
+  stake: Pk;
+  stakingProgram: Pk;
+  auction: Pk;
+}): Meta[] {
+  const keys: Meta[] = [
+    { pubkey: args.seller, isSigner: true, isWritable: false },
+    { pubkey: args.config, isSigner: false, isWritable: false },
+  ];
+  if (args.paymentTok) {
+    keys.push({ pubkey: args.paymentTok, isSigner: false, isWritable: false });
+  }
+  keys.push(
+    { pubkey: args.binding, isSigner: false, isWritable: false },
+    { pubkey: args.passportConfig, isSigner: false, isWritable: false },
+    { pubkey: args.asset, isSigner: false, isWritable: true },
+    { pubkey: args.passportChallenge, isSigner: false, isWritable: false },
+  );
+  for (const a of args.mayAnswers) {
+    keys.push({ pubkey: a, isSigner: false, isWritable: false });
+  }
+  keys.push(
+    { pubkey: args.passportState, isSigner: false, isWritable: false },
+    { pubkey: args.consign, isSigner: false, isWritable: true },
+    { pubkey: args.custody, isSigner: false, isWritable: false },
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    { pubkey: args.payer, isSigner: true, isWritable: true },
+    { pubkey: CORE_ID, isSigner: false, isWritable: false },
+    { pubkey: args.answerLeave, isSigner: false, isWritable: true },
+    { pubkey: args.answerOpen, isSigner: false, isWritable: true },
+    { pubkey: args.stake, isSigner: false, isWritable: false },
+    { pubkey: args.stakingProgram, isSigner: false, isWritable: false },
+    { pubkey: args.auction, isSigner: false, isWritable: true },
+  );
+  return keys;
+}
+
+/**
+ * OpenAscendingFromMandate metas.
+ * Order: agent · config · mandate · [payment] · binding · passport_config · asset ·
+ * challenge · mayAnswers[N] · passport_state · consign · custody · system · payer ·
+ * core · answer_leave · answer_open · stake · staking_program · auction
+ *
+ * When FixedPrice then Ascending are both registered (live stand suite), N=2.
+ */
+export function openAscendingFromMandateKeys(args: {
+  agent: Pk;
+  config: Pk;
+  mandate: Pk;
+  paymentTok?: Pk;
+  binding: Pk;
+  passportConfig: Pk;
+  asset: Pk;
+  passportChallenge: Pk;
+  /** Registry-ordered OpenConsignment may-answer PDAs (length = registry N). */
+  mayAnswers: Pk[];
+  passportState: Pk;
+  consign: Pk;
+  custody: Pk;
+  payer: Pk;
+  answerLeave: Pk;
+  answerOpen: Pk;
+  stake: Pk;
+  stakingProgram: Pk;
+  auction: Pk;
+}): Meta[] {
+  const keys: Meta[] = [
+    { pubkey: args.agent, isSigner: true, isWritable: false },
+    { pubkey: args.config, isSigner: false, isWritable: false },
+    { pubkey: args.mandate, isSigner: false, isWritable: false },
+  ];
+  if (args.paymentTok) {
+    keys.push({ pubkey: args.paymentTok, isSigner: false, isWritable: false });
+  }
+  keys.push(
+    { pubkey: args.binding, isSigner: false, isWritable: false },
+    { pubkey: args.passportConfig, isSigner: false, isWritable: false },
+    { pubkey: args.asset, isSigner: false, isWritable: true },
+    { pubkey: args.passportChallenge, isSigner: false, isWritable: false },
+  );
+  for (const a of args.mayAnswers) {
+    keys.push({ pubkey: a, isSigner: false, isWritable: false });
+  }
+  keys.push(
+    { pubkey: args.passportState, isSigner: false, isWritable: false },
+    { pubkey: args.consign, isSigner: false, isWritable: true },
+    { pubkey: args.custody, isSigner: false, isWritable: false },
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    { pubkey: args.payer, isSigner: true, isWritable: true },
+    { pubkey: CORE_ID, isSigner: false, isWritable: false },
+    { pubkey: args.answerLeave, isSigner: false, isWritable: true },
+    { pubkey: args.answerOpen, isSigner: false, isWritable: true },
+    { pubkey: args.stake, isSigner: false, isWritable: false },
+    { pubkey: args.stakingProgram, isSigner: false, isWritable: false },
+    { pubkey: args.auction, isSigner: false, isWritable: true },
+  );
+  return keys;
+}
+
+/** Settle metas (native). Append escrowAta when SPL. */
+export function settleAscendingKeys(args: {
+  caller: Pk;
+  consign: Pk;
+  auction: Pk;
+  hold: Pk;
+  binding: Pk;
+  passportConfig: Pk;
+  asset: Pk;
+  custody: Pk;
+  buyer: Pk;
+  escrow: Pk;
+  payer: Pk;
+  answerLeave: Pk;
+  answerOpen: Pk;
+  escrowAta?: Pk;
+}): Meta[] {
+  const keys: Meta[] = [
+    { pubkey: args.caller, isSigner: false, isWritable: false },
+    { pubkey: args.consign, isSigner: false, isWritable: false },
+    { pubkey: args.auction, isSigner: false, isWritable: true },
+    { pubkey: args.hold, isSigner: false, isWritable: true },
+    { pubkey: args.binding, isSigner: false, isWritable: false },
+    { pubkey: args.passportConfig, isSigner: false, isWritable: false },
+    { pubkey: args.asset, isSigner: false, isWritable: true },
+    { pubkey: args.custody, isSigner: false, isWritable: false },
+    { pubkey: args.buyer, isSigner: false, isWritable: true },
+    { pubkey: args.escrow, isSigner: false, isWritable: false },
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    { pubkey: args.payer, isSigner: true, isWritable: true },
+    { pubkey: CORE_ID, isSigner: false, isWritable: false },
+    { pubkey: args.answerLeave, isSigner: false, isWritable: true },
+    { pubkey: args.answerOpen, isSigner: false, isWritable: true },
+  ];
+  if (args.escrowAta) {
+    keys.push({ pubkey: args.escrowAta, isSigner: false, isWritable: false });
+  }
+  return keys;
+}
+
+/** ConfirmReceipt / ReleaseFunds metas — binding + answers after payer; SPL at end. */
+export function holdExitAscendingKeys(args: {
+  buyerOrCaller: Pk;
+  buyerIsSigner: boolean;
+  config: Pk;
+  consign: Pk;
+  hold: Pk;
+  /** Mode challenge PDA. */
+  modeChallenge: Pk;
+  escrow: Pk;
+  platform: Pk;
+  seller: Pk;
+  agent: Pk;
+  payer: Pk;
+  binding: Pk;
+  passportConfig: Pk;
+  answerLeave: Pk;
+  answerOpen: Pk;
+}): Meta[] {
+  return [
+    { pubkey: args.buyerOrCaller, isSigner: args.buyerIsSigner, isWritable: false },
+    { pubkey: args.config, isSigner: false, isWritable: false },
+    { pubkey: args.consign, isSigner: false, isWritable: true },
+    { pubkey: args.hold, isSigner: false, isWritable: true },
+    { pubkey: args.modeChallenge, isSigner: false, isWritable: false },
+    { pubkey: args.escrow, isSigner: false, isWritable: true },
+    { pubkey: args.platform, isSigner: false, isWritable: true },
+    { pubkey: args.seller, isSigner: false, isWritable: true },
+    { pubkey: args.agent, isSigner: false, isWritable: true },
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    { pubkey: args.payer, isSigner: true, isWritable: true },
+    { pubkey: args.binding, isSigner: false, isWritable: false },
+    { pubkey: args.passportConfig, isSigner: false, isWritable: false },
+    { pubkey: args.answerLeave, isSigner: false, isWritable: true },
+    { pubkey: args.answerOpen, isSigner: false, isWritable: true },
+  ];
+}
+
+/** CompleteReversal metas (native). SPL legs append after answer_open. */
+export function completeReversalAscendingKeys(args: {
+  buyer: Pk;
+  config: Pk;
+  consign: Pk;
+  hold: Pk;
+  binding: Pk;
+  passportConfig: Pk;
+  asset: Pk;
+  seller: Pk;
+  escrow: Pk;
+  payer: Pk;
+  answerLeave: Pk;
+  answerOpen: Pk;
+}): Meta[] {
+  return [
+    { pubkey: args.buyer, isSigner: true, isWritable: true },
+    { pubkey: args.config, isSigner: false, isWritable: false },
+    { pubkey: args.consign, isSigner: false, isWritable: true },
+    { pubkey: args.hold, isSigner: false, isWritable: true },
+    { pubkey: args.binding, isSigner: false, isWritable: false },
+    { pubkey: args.passportConfig, isSigner: false, isWritable: false },
+    { pubkey: args.asset, isSigner: false, isWritable: true },
+    { pubkey: args.seller, isSigner: false, isWritable: false },
+    { pubkey: args.escrow, isSigner: false, isWritable: true },
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    { pubkey: args.payer, isSigner: true, isWritable: true },
+    { pubkey: CORE_ID, isSigner: false, isWritable: false },
+    { pubkey: args.answerLeave, isSigner: false, isWritable: true },
+    { pubkey: args.answerOpen, isSigner: false, isWritable: true },
+  ];
+}
+
+/** AbandonReversal metas (binding + answers after payer). */
+export function abandonReversalAscendingKeys(args: {
+  caller: Pk;
+  config: Pk;
+  consign: Pk;
+  hold: Pk;
+  escrow: Pk;
+  platform: Pk;
+  seller: Pk;
+  agent: Pk;
+  payer: Pk;
+  binding: Pk;
+  passportConfig: Pk;
+  answerLeave: Pk;
+  answerOpen: Pk;
+}): Meta[] {
+  return [
+    { pubkey: args.caller, isSigner: false, isWritable: false },
+    { pubkey: args.config, isSigner: false, isWritable: false },
+    { pubkey: args.consign, isSigner: false, isWritable: true },
+    { pubkey: args.hold, isSigner: false, isWritable: true },
+    { pubkey: args.escrow, isSigner: false, isWritable: true },
+    { pubkey: args.platform, isSigner: false, isWritable: true },
+    { pubkey: args.seller, isSigner: false, isWritable: true },
+    { pubkey: args.agent, isSigner: false, isWritable: true },
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    { pubkey: args.payer, isSigner: true, isWritable: true },
+    { pubkey: args.binding, isSigner: false, isWritable: false },
+    { pubkey: args.passportConfig, isSigner: false, isWritable: false },
+    { pubkey: args.answerLeave, isSigner: false, isWritable: true },
+    { pubkey: args.answerOpen, isSigner: false, isWritable: true },
+  ];
+}
+
+/**
+ * JudgeChallenge metas — stake/staking after bond_recipient; binding+answers after payer.
+ * Rejected path writes answers true (hold-clear) via Rust — stand only supplies metas.
+ */
+export function judgeChallengeAscendingKeys(args: {
+  judge: Pk;
+  config: Pk;
+  consign: Pk;
+  hold: Pk;
+  modeChallenge: Pk;
+  bondRecipient: Pk;
+  stake: Pk;
+  stakingProgram: Pk;
+  escrow: Pk;
+  platform: Pk;
+  seller: Pk;
+  agent: Pk;
+  payer: Pk;
+  binding: Pk;
+  passportConfig: Pk;
+  answerLeave: Pk;
+  answerOpen: Pk;
+}): Meta[] {
+  return [
+    { pubkey: args.judge, isSigner: true, isWritable: false },
+    { pubkey: args.config, isSigner: false, isWritable: false },
+    { pubkey: args.consign, isSigner: false, isWritable: true },
+    { pubkey: args.hold, isSigner: false, isWritable: true },
+    { pubkey: args.modeChallenge, isSigner: false, isWritable: true },
+    { pubkey: args.bondRecipient, isSigner: false, isWritable: true },
+    { pubkey: args.stake, isSigner: false, isWritable: false },
+    { pubkey: args.stakingProgram, isSigner: false, isWritable: false },
+    { pubkey: args.escrow, isSigner: false, isWritable: true },
+    { pubkey: args.platform, isSigner: false, isWritable: true },
+    { pubkey: args.seller, isSigner: false, isWritable: true },
+    { pubkey: args.agent, isSigner: false, isWritable: true },
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    { pubkey: args.payer, isSigner: true, isWritable: true },
+    { pubkey: args.binding, isSigner: false, isWritable: false },
+    { pubkey: args.passportConfig, isSigner: false, isWritable: false },
     { pubkey: args.answerLeave, isSigner: false, isWritable: true },
     { pubkey: args.answerOpen, isSigner: false, isWritable: true },
   ];

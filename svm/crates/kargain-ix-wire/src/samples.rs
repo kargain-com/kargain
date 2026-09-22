@@ -1150,6 +1150,7 @@ fn ascending_samples() -> Vec<AscendingIx> {
             token_id: b32(0xe1),
             owner: b32(0xe2),
         },
+        AscendingIx::BindPassportProgram,
     ]
 }
 
@@ -1446,6 +1447,7 @@ fn layout_and_sample_ascending(ix: AscendingIx) -> ManifestEntry {
                 ("owner", sample_bytes(owner)),
             ]),
         ),
+        AscendingIx::BindPassportProgram => ("BindPassportProgram", vec![], Map::new()),
     };
     entry_from_borsh("kar-ascending", "AscendingIx", name, fields, sample, &ix)
 }

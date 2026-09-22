@@ -348,8 +348,8 @@
       "goldenBump": 255
     },
     {
-      "owner": "kargain-consignment-base",
-      "id": "kargain-consignment-base/asset",
+      "owner": "consignment-harness",
+      "id": "consignment-harness/harness_asset",
       "seedTagHex": "6861726e6573732d6173736574",
       "dynamics": [
         {

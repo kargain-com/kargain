@@ -1931,8 +1931,12 @@ export const SURFACE_CENSUS_CAPABILITY_META: SurfaceCensusCapabilityMeta[] = [
     "kind": "read_fact",
     "evmSource": "see consuming files",
     "evidence": {
-      "source": "struct_field",
-      "item": "HarnessAsset.approved_for"
+      "source": "foreign_field",
+      "item": {
+        "program": "mpl_core",
+        "type": "Asset",
+        "field": "transfer_delegate"
+      }
     },
     "svmReader": "owed",
     "observedSvmBehaviour": "hidden"

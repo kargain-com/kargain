@@ -8,23 +8,25 @@ use kargain_claimable_payouts::{
     emit::{emit_payout, PayoutEmitter},
 };
 use kargain_consignment_base::{
-    agent_withdraw_ok, asset_pda, close_lot, compute_split_for_lot, config_pda, consignment_pda,
+    agent_withdraw_ok, close_lot, compute_split_for_lot, config_pda, consignment_pda,
     custody_authority_pda, enter_committed_not_offered, force_recall_ready, grant_mandate,
-    is_escrow_approved, lower_commission, lower_floor, mandate_pda, owner_withdraw_ok, pause,
-    passport_asset_pda, recall_pda, release_custody, request_recall,
-    require_agented_price_meets_floor, require_can_open, require_config_authority,
+    lower_commission, lower_floor, mandate_pda, owner_withdraw_ok, pause, passport_asset_pda,
+    recall_pda, request_recall, require_agented_price_meets_floor, require_config_authority,
     require_mandate_allows_open, require_not_paused, require_passport_core_asset, revoke_mandate,
-    set_price, take_custody, terminate_to_owner, transfer_custody_to_recipient,
-    transfer_delegate_to_custody, transfer_owner_to_custody, unpause, write_open, CloseReason,
-    CommerceConfig, Compensation, CompensationForm, ConsignmentRecord, Denomination,
-    DenominationKind, HarnessAsset, MandateRecord, RecallRecord, ASSET_DISCRIMINATOR, ASSET_SEED,
-    CONFIG_SEED, CONSIGNMENT_SEED, MANDATE_SEED, PASSPORT_ASSET_SEED, RECALL_DISCRIMINATOR,
-    RECALL_SEED,
+    set_price, terminate_to_owner, transfer_custody_to_recipient, transfer_delegate_to_custody,
+    transfer_owner_to_custody, unpause, write_open, CloseReason, CommerceConfig, Compensation,
+    CompensationForm, ConsignmentRecord, Denomination, DenominationKind, MandateRecord,
+    RecallRecord, CONFIG_SEED, CONSIGNMENT_SEED, MANDATE_SEED, PASSPORT_ASSET_SEED,
+    RECALL_DISCRIMINATOR, RECALL_SEED,
     emit::{
         emit_commerce, event_closed, event_commission_lowered, event_floor_lowered,
         event_mandate_granted, event_opened, event_price_set, event_split_paid, CommerceEmitter,
         ConsignmentEvent,
     },
+};
+use crate::{
+    asset_pda, is_escrow_approved, release_custody, require_can_open, take_custody, HarnessAsset,
+    ASSET_DISCRIMINATOR, ASSET_SEED,
 };
 use kargain_errors::KargainError;
 use solana_program::{
@@ -444,7 +446,7 @@ fn set_self_enc(program_id: &Pubkey, accounts: &[AccountInfo], registered: bool)
     let config = next_account_info(iter)?;
     let mut cfg = load_config(config)?;
     require_config_authority(authority, config, program_id, &cfg.authority)?;
-    cfg.self_encumbrance_registered = registered;
+    cfg.self_encumbrance_registered_retired = registered;
     save_config(config, &cfg)
 }
 
@@ -506,6 +508,9 @@ fn grant(
             .map(|c| c.is_live())
             .unwrap_or(false);
     let approved = is_escrow_approved(&a, &cust_key.to_bytes());
+    if !approved {
+        return Err(into_pe(KargainError::EscrowNotApproved));
+    }
     let denom = parse_denom(denom_kind, currency_code)?;
     let comp = parse_comp(form, commission_bps)?;
     let (mkey, mbump) = mandate_pda(program_id, &token_id);
@@ -517,7 +522,6 @@ fn grant(
         &a.owner,
         &owner.key.to_bytes(),
         is_live,
-        approved,
         agent,
         expiry,
         asset_mint,
@@ -655,7 +659,7 @@ fn open_direct(
             .map(|c| c.is_live())
             .unwrap_or(false);
     require_can_open(
-        cfg.self_encumbrance_registered,
+        cfg.self_encumbrance_registered_retired,
         read_may_open(asset_info),
         is_live,
         is_escrow_approved(&a, &cust_key.to_bytes()),
@@ -731,7 +735,7 @@ fn open_from_mandate(
             .map(|c| c.is_live())
             .unwrap_or(false);
     require_can_open(
-        cfg.self_encumbrance_registered,
+        cfg.self_encumbrance_registered_retired,
         read_may_open(asset_info),
         is_live,
         is_escrow_approved(&a, &cust_key.to_bytes()),
@@ -1742,6 +1746,6 @@ mod config_authority_handler_tests {
             let c = AccountInfo::new(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id, false, 0);
             set_self_enc(&program_id, &[a, c], true).unwrap();
         }
-        assert!(CommerceConfig::try_from_slice(&cfg_data).unwrap().self_encumbrance_registered);
+        assert!(CommerceConfig::try_from_slice(&cfg_data).unwrap().self_encumbrance_registered_retired);
     }
 }

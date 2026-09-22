@@ -1,23 +1,23 @@
 /**
- * Local-validator proof: Ascending asset-denomination mode (S6 #4).
+ * Local-validator proof: Ascending Core passport commerce (S8-E step 6).
  *
  * Asserts chain observations (never ERR/PHASE literals as sole proof):
- * - OpenAscendingDirect with verified + active verifier; PassportNotVerified /
- *   BadDuration / ProtectionOutOfBounds / BadReserve refuses
+ * - Corrective: unbound(140) · bind · rebind · registry miss(71) · retired harness(141)
+ * - OpenAscendingDirect requires Verified passport; PassportNotVerified / duration / protection / reserve refuses
  * - Stub OpenDirect → AscendingOpenPath; SetPrice → TermsFixed
  * - First bid starts clock; BidFromSeller / BidTooLow; higher bid refunds prev
- * - ForceAuctionEndsAt → Settle: auction closed, hold present, buyer owns asset,
- *   escrow lamports unchanged
+ * - ForceAuctionEndsAt → Settle: auction closed, hold present, buyer owns Core asset, escrow unchanged
+ * - Gateway Send while hold → LeaveChainRefused(37)
  * - Challenge freeze/thaw clock; ConfirmReceipt three-leg split = fee snapshot
- * - Challenge path: NotEligibleChallenger / CannotResolveOwnDispute /
- *   uphold → reversal → completeReversal
+ * - Challenge path: uphold → reversal → completeReversal (NotPassportHolder via stranger Core asset)
  * - Pause: open/bid refuse ContractPaused
  *
- * Requires: local validator, kar_ascending.so + kar_pro_staking + kar_pro_pass.
+ * Requires: local validator, kar_ascending + kar_passport + kar_gateway + consignment_harness +
+ * kar_pro_staking + kar_pro_pass .so preloaded.
  */
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -30,6 +30,47 @@ import {
   type StandArtifactBindings,
 } from "./stand-artifact-bindings.ts";
 import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../../lib/svm/rpc-max-supported-transaction-version.ts";
+import {
+  ASC_IX,
+  CORE_ID,
+  ENCUMBRANCE_SEED_PREFIX,
+  RPC_DEFAULT,
+  SEED,
+  abandonReversalAscendingKeys,
+  addEncumbranceSource,
+  addTransferDelegateToCustody,
+  airdrop,
+  answerPdas,
+  bindPassportProgramIx,
+  completeReversalAscendingKeys,
+  coreOwner,
+  encU16,
+  encU64,
+  ensurePassportCommerceStack,
+  expectAccountAlreadyInitialized,
+  expectCustom,
+  grantKeys,
+  holdExitAscendingKeys,
+  ix,
+  judgeChallengeAscendingKeys,
+  loadDeployProgramId,
+  mintPassportAsset,
+  openAscendingDirectKeys,
+  openAscendingFromMandateKeys,
+  pda,
+  passportStateStatus,
+  sendAndMeasure,
+  settleAscendingKeys,
+  setPassportStakingProgram,
+  tryGatewaySend,
+  verifyPassportAsset,
+  type Conn,
+  type IxBudgetRow,
+  type Kp,
+  type Meta,
+  type PassportCommerceStack,
+  type Pk,
+} from "./stand-passport-commerce.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../lab/package.json"));
@@ -39,7 +80,6 @@ const {
   PublicKey,
   SystemProgram,
   Transaction,
-  TransactionInstruction,
   sendAndConfirmTransaction,
 } = require("@solana/web3.js") as typeof import("@solana/web3.js");
 const {
@@ -53,9 +93,8 @@ const {
 } = require("@solana/spl-token") as typeof import("@solana/spl-token");
 
 const ROOT = path.resolve(__dirname, "../..");
-const RPC = process.env.SVM_STAND_RPC ?? "http://127.0.0.1:8899";
+const RPC = RPC_DEFAULT;
 const DEPLOY = path.join(ROOT, "svm/target/deploy");
-const CORE_ID = new PublicKey("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
 
 const ERR = {
   NotActiveVerifier: 2,
@@ -65,9 +104,11 @@ const ERR = {
   CannotResolveOwnDispute: 26,
   NotEligibleChallenger: 28,
   CannotRouteBondToJudge: 30,
+  LeaveChainRefused: 37,
   WrongPlatformRecipient: 63,
   ShortDelivery: 58,
   TransferFeeExtensionForbidden: 69,
+  ModeNotEncumbranceSource: 71,
   ContractPaused: 76,
   AscendingOpenPath: 95,
   TermsFixed: 96,
@@ -89,45 +130,14 @@ const ERR = {
   SettlementPending: 119,
   NotPassportHolder: 120,
   PassportNotVerified: 121,
+  PassportProgramUnbound: 140,
+  HarnessInstructionRetired: 141,
 } as const;
 
 const PHASE = { Offered: 1, Closed: 2, Returned: 3 } as const;
 
-/** Borsh enum tags — AscendingIx order in ix.rs */
-const IX = {
-  InitConfig: 0,
-  CreateAsset: 1,
-  ApproveEscrow: 2,
-  SetMayOpen: 3,
-  SetVerified: 4,
-  SetSelfEncumbrance: 5,
-  Grant: 6,
-  Revoke: 7,
-  OpenDirect: 8,
-  OpenFromMandate: 9,
-  SetPrice: 10,
-  OpenAscendingDirect: 11,
-  OpenAscendingFromMandate: 12,
-  Bid: 13,
-  Settle: 14,
-  ConfirmReceipt: 15,
-  ReleaseFunds: 16,
-  CompleteReversal: 17,
-  AbandonReversal: 18,
-  OpenChallenge: 19,
-  WithdrawChallenge: 20,
-  JudgeChallenge: 21,
-  ConcludeChallenge: 22,
-  ApprovePaymentToken: 23,
-  RevokePaymentToken: 24,
-  Pause: 25,
-  Unpause: 26,
-  SetChallengeBond: 27,
-  WithdrawClaim: 28,
-  ForceAuctionEndsAt: 29,
-  ForceHoldClock: 30,
-  ForceAssetOwner: 31,
-} as const;
+/** Borsh enum tags — AscendingIx order in ix.rs (BindPassportProgram = 32). */
+const IX = { ...ASC_IX } as typeof ASC_IX;
 
 const MIN_DURATION = 3 * 24 * 60 * 60;
 const MIN_PROTECTION = 7 * 24 * 60 * 60;
@@ -139,54 +149,14 @@ const CHALLENGE_BOND = 100_000n;
 const CHALLENGE_WINDOW = 3_600n;
 const STAND_UNBONDING_SECS = 2n;
 const HOLD_SPACE = 114;
-const AUCTION_SPACE = 123;
-const CLAIM_SPACE = 81; // ClaimAccount::SPACE = 8+32+32+8+1
+const CLAIM_SPACE = 81;
 const TOKEN_ACCOUNT_SPACE = 165;
 const ABANDONMENT_WINDOW = 30n * 24n * 60n * 60n;
 
-const ASSET_SPACE = 8 + 32 + 32 + 32 + 1; // HarnessAsset::SPACE
-const ASSET_VERIFIED_OFF = ASSET_SPACE + 1;
-
-function loadProgramId(name: string): InstanceType<typeof PublicKey> {
-  const kpPath = path.join(DEPLOY, `${name}-keypair.json`);
-  if (!existsSync(kpPath)) {
-    throw new Error(`missing ${kpPath} — build with cargo-build-sbf`);
-  }
-  const secret = Uint8Array.from(JSON.parse(readFileSync(kpPath, "utf8")));
-  return Keypair.fromSecretKey(secret).publicKey;
+function loadProgramId(name: string): Pk {
+  return loadDeployProgramId(name);
 }
 
-async function airdrop(
-  conn: InstanceType<typeof Connection>,
-  kp: InstanceType<typeof Keypair>,
-  sol = 20,
-) {
-  const sig = await conn.requestAirdrop(kp.publicKey, sol * 1e9);
-  await conn.confirmTransaction(sig, "confirmed");
-}
-
-function pda(programId: InstanceType<typeof PublicKey>, seeds: (Buffer | Uint8Array)[]) {
-  return PublicKey.findProgramAddressSync(seeds, programId);
-}
-
-function ix(
-  programId: InstanceType<typeof PublicKey>,
-  keys: { pubkey: InstanceType<typeof PublicKey>; isSigner: boolean; isWritable: boolean }[],
-  data: Buffer,
-) {
-  return new TransactionInstruction({ programId, keys, data });
-}
-
-function encU16(n: number): Buffer {
-  const b = Buffer.alloc(2);
-  b.writeUInt16LE(n, 0);
-  return b;
-}
-function encU64(n: bigint | number): Buffer {
-  const b = Buffer.alloc(8);
-  b.writeBigUInt64LE(BigInt(n), 0);
-  return b;
-}
 function encodeString(s: string): Buffer {
   const body = Buffer.from(s, "utf8");
   const out = Buffer.alloc(4 + body.length);
@@ -195,38 +165,70 @@ function encodeString(s: string): Buffer {
   return out;
 }
 
-function customErrCode(e: unknown): number | null {
-  const msg = e instanceof Error ? e.message : String(e);
-  const m = msg.match(/custom program error: (0x[0-9a-fA-F]+|\d+)/);
-  if (!m) return null;
-  const raw = m[1]!;
-  return raw.startsWith("0x") ? parseInt(raw, 16) : parseInt(raw, 10);
+type MintedLot = {
+  tokenId: Buffer;
+  asset: Pk;
+  state: Pk;
+  passportChallenge: Pk;
+  consign: Pk;
+  auction: Pk;
+  hold: Pk;
+  escrow: Pk;
+  modeChallenge: Pk;
+  answers: { leave: Pk; open: Pk };
+};
+
+function lotFromMint(
+  programId: Pk,
+  m: { tokenId: Buffer; asset: Pk; state: Pk; challenge: Pk },
+): MintedLot {
+  const [consign] = pda(programId, [SEED.consignment, m.tokenId]);
+  const [auction] = pda(programId, [SEED.auction, m.tokenId]);
+  const [hold] = pda(programId, [SEED.hold, m.tokenId]);
+  const [escrow] = pda(programId, [SEED.escrow, m.tokenId]);
+  const [modeChallenge] = pda(programId, [SEED.challenge, m.tokenId]);
+  const answers = answerPdas(programId, m.tokenId);
+  return {
+    tokenId: m.tokenId,
+    asset: m.asset,
+    state: m.state,
+    passportChallenge: m.challenge,
+    consign,
+    auction,
+    hold,
+    escrow,
+    modeChallenge,
+    answers,
+  };
 }
 
-async function expectCustom(
-  conn: InstanceType<typeof Connection>,
-  tx: InstanceType<typeof Transaction>,
-  signers: InstanceType<typeof Keypair>[],
-  code: number,
-): Promise<number> {
-  try {
-    await sendAndConfirmTransaction(conn, tx, signers, { commitment: "confirmed" });
-    assert.fail(`expected custom error ${code}`);
-  } catch (e) {
-    const got = customErrCode(e);
-    assert.equal(got, code, `expected error ${code}, got ${got}: ${e}`);
-    return got!;
+async function mintCoreLot(
+  conn: Conn,
+  stack: PassportCommerceStack,
+  programId: Pk,
+  payer: Kp,
+  owner: Kp,
+  /** Stake PDA + signer used for VerifyPassport (may differ from owner). */
+  verifier: Kp,
+  verifierStake: Pk,
+  verified: boolean,
+): Promise<MintedLot> {
+  const m = await mintPassportAsset(conn, stack, payer, owner.publicKey, "ar://asc-stand-core");
+  const lot = lotFromMint(programId, m);
+  if (verified) {
+    await verifyPassportAsset(
+      conn,
+      stack,
+      verifier,
+      verifierStake,
+      m.tokenId,
+      m.asset,
+      m.state,
+    );
+    const st = await conn.getAccountInfo(m.state);
+    assert.equal(passportStateStatus(st!.data as Buffer), 1, "Verified after verify");
   }
-  throw new Error("unreachable");
-}
-
-function readAsset(data: Buffer): {
-  owner: InstanceType<typeof PublicKey>;
-  verified: boolean;
-} {
-  const owner = new PublicKey(data.subarray(8 + 32, 8 + 64));
-  const verified = data.length > ASSET_VERIFIED_OFF && data[ASSET_VERIFIED_OFF]! !== 0;
-  return { owner, verified };
+  return lot;
 }
 
 function readConsignment(data: Buffer): {
@@ -235,14 +237,14 @@ function readConsignment(data: Buffer): {
   feeBps: number;
   committed: boolean;
 } {
-  let o = 8 + 32 + 32 + 32 + 32; // disc + token + seller + agent + asset
-  o += 1 + 32; // denom
-  o += 8; // floor
-  o += 1 + 2; // form + commission
+  let o = 8 + 32 + 32 + 32 + 32;
+  o += 1 + 32;
+  o += 8;
+  o += 1 + 2;
   const feeBps = data.readUInt16LE(o);
   o += 2;
   const price = data.readBigUInt64LE(o);
-  o += 8 + 8; // price + opened_at
+  o += 8 + 8;
   const phase = data[o]!;
   const committed = data[o + 1]! !== 0;
   return { price, phase, feeBps, committed };
@@ -252,15 +254,15 @@ function readAuction(data: Buffer): {
   endsAt: bigint;
   duration: bigint;
   highestBid: bigint;
-  highestBidder: InstanceType<typeof PublicKey>;
+  highestBidder: Pk;
 } {
-  let o = 8 + 32; // disc + token
+  let o = 8 + 32;
   const duration = data.readBigUInt64LE(o);
   o += 8;
   const endsAt = data.readBigUInt64LE(o);
   o += 8;
-  o += 8 * 3; // extension, protection, abandonment
-  o += 2; // min_increment_bps
+  o += 8 * 3;
+  o += 2;
   const highestBidder = new PublicKey(data.subarray(o, o + 32));
   o += 32;
   const highestBid = data.readBigUInt64LE(o);
@@ -268,7 +270,7 @@ function readAuction(data: Buffer): {
 }
 
 function readHold(data: Buffer): {
-  buyer: InstanceType<typeof PublicKey>;
+  buyer: Pk;
   gross: bigint;
   protectionEndsAt: bigint;
   frozenRemaining: bigint;
@@ -277,7 +279,7 @@ function readHold(data: Buffer): {
   abandonmentWindow: bigint;
   active: boolean;
 } {
-  let o = 8 + 32; // disc + token
+  let o = 8 + 32;
   const buyer = new PublicKey(data.subarray(o, o + 32));
   o += 32;
   const gross = data.readBigUInt64LE(o);
@@ -304,7 +306,7 @@ function readHold(data: Buffer): {
   };
 }
 
-async function blockTime(conn: InstanceType<typeof Connection>): Promise<bigint> {
+async function blockTime(conn: Conn): Promise<bigint> {
   const slot = await conn.getSlot("confirmed");
   const t = await conn.getBlockTime(slot);
   if (t == null) throw new Error("getBlockTime returned null");
@@ -312,10 +314,10 @@ async function blockTime(conn: InstanceType<typeof Connection>): Promise<bigint>
 }
 
 function forceAuctionEndsAtIx(
-  programId: InstanceType<typeof PublicKey>,
-  authority: InstanceType<typeof PublicKey>,
-  config: InstanceType<typeof PublicKey>,
-  auction: InstanceType<typeof PublicKey>,
+  programId: Pk,
+  authority: Pk,
+  config: Pk,
+  auction: Pk,
   tokenId: Buffer,
   endsAt: bigint | number,
 ) {
@@ -331,10 +333,10 @@ function forceAuctionEndsAtIx(
 }
 
 function forceHoldClockIx(
-  programId: InstanceType<typeof PublicKey>,
-  authority: InstanceType<typeof PublicKey>,
-  config: InstanceType<typeof PublicKey>,
-  hold: InstanceType<typeof PublicKey>,
+  programId: Pk,
+  authority: Pk,
+  config: Pk,
+  hold: Pk,
   tokenId: Buffer,
   protectionEndsAt: bigint | number,
   frozenRemaining: bigint | number,
@@ -353,29 +355,6 @@ function forceHoldClockIx(
       encU64(protectionEndsAt),
       encU64(frozenRemaining),
       encU64(abandonmentDeadline),
-    ]),
-  );
-}
-
-function forceAssetOwnerIx(
-  programId: InstanceType<typeof PublicKey>,
-  authority: InstanceType<typeof PublicKey>,
-  config: InstanceType<typeof PublicKey>,
-  asset: InstanceType<typeof PublicKey>,
-  tokenId: Buffer,
-  owner: InstanceType<typeof PublicKey>,
-) {
-  return ix(
-    programId,
-    [
-      { pubkey: authority, isSigner: true, isWritable: false },
-      { pubkey: config, isSigner: false, isWritable: false },
-      { pubkey: asset, isSigner: false, isWritable: true },
-    ],
-    Buffer.concat([
-      Buffer.from([IX.ForceAssetOwner]),
-      tokenId,
-      Buffer.from(owner.toBytes()),
     ]),
   );
 }
@@ -557,7 +536,7 @@ async function initAscending(
   forfeit: InstanceType<typeof Keypair>,
   stakingProgram: InstanceType<typeof PublicKey>,
 ) {
-  const [configPda] = pda(programId, [Buffer.from("consign-config")]);
+  const [configPda] = pda(programId, [SEED.consignConfig]);
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
@@ -584,129 +563,6 @@ async function initAscending(
     [payer, authority],
   );
   return configPda;
-}
-
-async function createAsset(
-  conn: InstanceType<typeof Connection>,
-  programId: InstanceType<typeof PublicKey>,
-  payer: InstanceType<typeof Keypair>,
-  seller: InstanceType<typeof Keypair>,
-  tokenId: Buffer,
-  custodyPda: InstanceType<typeof PublicKey>,
-  verified: boolean,
-  authority: InstanceType<typeof Keypair>,
-  configPda: InstanceType<typeof PublicKey>,
-) {
-  const [asset] = pda(programId, [Buffer.from("harness-asset"), tokenId]);
-  await sendAndConfirmTransaction(
-    conn,
-    new Transaction().add(
-      ix(
-        programId,
-        [
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: asset, isSigner: false, isWritable: true },
-          { pubkey: seller.publicKey, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-        ],
-        Buffer.concat([Buffer.from([IX.CreateAsset]), tokenId]),
-      ),
-    ),
-    [payer],
-  );
-  await sendAndConfirmTransaction(
-    conn,
-    new Transaction().add(
-      ix(
-        programId,
-        [
-          { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-          { pubkey: asset, isSigner: false, isWritable: true },
-          { pubkey: custodyPda, isSigner: false, isWritable: false },
-        ],
-        Buffer.concat([Buffer.from([IX.ApproveEscrow]), tokenId]),
-      ),
-    ),
-    [seller],
-  );
-  if (verified) {
-    await sendAndConfirmTransaction(
-      conn,
-      new Transaction().add(
-        ix(
-          programId,
-          [
-            { pubkey: authority.publicKey, isSigner: true, isWritable: false },
-            { pubkey: configPda, isSigner: false, isWritable: false },
-            { pubkey: asset, isSigner: false, isWritable: true },
-          ],
-          Buffer.concat([Buffer.from([IX.SetVerified]), tokenId, Buffer.from([1])]),
-        ),
-      ),
-      [authority],
-    );
-  }
-  return asset;
-}
-
-function lotPdas(programId: InstanceType<typeof PublicKey>, tokenId: Buffer) {
-  const [consignment] = pda(programId, [Buffer.from("consignment"), tokenId]);
-  const [auction] = pda(programId, [Buffer.from("auction"), tokenId]);
-  const [hold] = pda(programId, [Buffer.from("hold"), tokenId]);
-  const [escrow] = pda(programId, [Buffer.from("escrow"), tokenId]);
-  const [challenge] = pda(programId, [Buffer.from("challenge"), tokenId]);
-  const [custody] = pda(programId, [Buffer.from("custody")]);
-  return { consignment, auction, hold, escrow, challenge, custody };
-}
-
-function openAscendingIx(args: {
-  programId: InstanceType<typeof PublicKey>;
-  seller: InstanceType<typeof PublicKey>;
-  config: InstanceType<typeof PublicKey>;
-  asset: InstanceType<typeof PublicKey>;
-  consignment: InstanceType<typeof PublicKey>;
-  custody: InstanceType<typeof PublicKey>;
-  payer: InstanceType<typeof PublicKey>;
-  stake: InstanceType<typeof PublicKey>;
-  stakingProgram: InstanceType<typeof PublicKey>;
-  auction: InstanceType<typeof PublicKey>;
-  tokenId: Buffer;
-  reserve: bigint;
-  duration: number;
-  protection: number;
-  /** Native = zeros; SPL = mint pubkey bytes. Optional payment-token PDA when SPL. */
-  assetMint?: InstanceType<typeof PublicKey>;
-  paymentToken?: InstanceType<typeof PublicKey>;
-}) {
-  const a = args;
-  const mintBuf = a.assetMint ? Buffer.from(a.assetMint.toBytes()) : Buffer.alloc(32, 0);
-  const keys = [
-    { pubkey: a.seller, isSigner: true, isWritable: false },
-    { pubkey: a.config, isSigner: false, isWritable: false },
-    { pubkey: a.asset, isSigner: false, isWritable: true },
-    { pubkey: a.consignment, isSigner: false, isWritable: true },
-    { pubkey: a.custody, isSigner: false, isWritable: false },
-    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    { pubkey: a.payer, isSigner: true, isWritable: true },
-    { pubkey: a.stake, isSigner: false, isWritable: false },
-    { pubkey: a.stakingProgram, isSigner: false, isWritable: false },
-    { pubkey: a.auction, isSigner: false, isWritable: true },
-  ];
-  if (a.paymentToken) {
-    keys.push({ pubkey: a.paymentToken, isSigner: false, isWritable: false });
-  }
-  return ix(
-    a.programId,
-    keys,
-    Buffer.concat([
-      Buffer.from([IX.OpenAscendingDirect]),
-      a.tokenId,
-      mintBuf,
-      encU64(a.reserve),
-      encU64(a.duration),
-      encU64(a.protection),
-    ]),
-  );
 }
 
 function bidIx(args: {
@@ -766,6 +622,311 @@ function bidIx(args: {
     keys,
     Buffer.concat([Buffer.from([IX.Bid]), args.tokenId, encU64(args.amount)]),
   );
+}
+
+function lotPdas(programId: Pk, tokenId: Buffer) {
+  const [consignment] = pda(programId, [SEED.consignment, tokenId]);
+  const [auction] = pda(programId, [SEED.auction, tokenId]);
+  const [hold] = pda(programId, [SEED.hold, tokenId]);
+  const [escrow] = pda(programId, [SEED.escrow, tokenId]);
+  const [modeChallenge] = pda(programId, [SEED.challenge, tokenId]);
+  const [custody] = pda(programId, [SEED.custody]);
+  return { consignment, auction, hold, escrow, challenge: modeChallenge, custody };
+}
+
+/**
+ * Registry-ordered may answers for the live stand suite after FixedPrice then
+ * Ascending AddEncumbranceSource (registry N=2). Empty FixedPrice answer PDAs
+ * are Uninitialised → may allows. Order matches add order on the shared passport config.
+ */
+function standRegistryMayAnswersOpen(tokenId: Buffer): Pk[] {
+  const fpProgram = loadDeployProgramId("kar_fixed_price");
+  const ascendingProgram = loadDeployProgramId("kar_ascending");
+  return [answerPdas(fpProgram, tokenId).open, answerPdas(ascendingProgram, tokenId).open];
+}
+
+function standRegistryMayAnswersLeave(tokenId: Buffer): Pk[] {
+  const fpProgram = loadDeployProgramId("kar_fixed_price");
+  const ascendingProgram = loadDeployProgramId("kar_ascending");
+  return [answerPdas(fpProgram, tokenId).leave, answerPdas(ascendingProgram, tokenId).leave];
+}
+
+function openAscendingIx(args: {
+  programId: Pk;
+  binding: Pk;
+  stack: PassportCommerceStack;
+  seller: Pk;
+  config: Pk;
+  asset: Pk;
+  passportChallenge: Pk;
+  passportState: Pk;
+  answers: { leave: Pk; open: Pk };
+  /** Registry-ordered OpenConsignment may answers (N=2 after both modes registered). */
+  mayAnswers: Pk[];
+  consignment: Pk;
+  custody: Pk;
+  payer: Pk;
+  stake: Pk;
+  stakingProgram: Pk;
+  auction: Pk;
+  tokenId: Buffer;
+  reserve: bigint;
+  duration: number;
+  protection: number;
+  assetMint?: Pk;
+  paymentToken?: Pk;
+}) {
+  const a = args;
+  const mintBuf = a.assetMint ? Buffer.from(a.assetMint.toBytes()) : Buffer.alloc(32, 0);
+  const keys = openAscendingDirectKeys({
+    seller: a.seller,
+    config: a.config,
+    paymentTok: a.paymentToken,
+    binding: a.binding,
+    passportConfig: a.stack.passportConfig,
+    asset: a.asset,
+    passportChallenge: a.passportChallenge,
+    mayAnswers: a.mayAnswers,
+    passportState: a.passportState,
+    consign: a.consignment,
+    custody: a.custody,
+    payer: a.payer,
+    answerLeave: a.answers.leave,
+    answerOpen: a.answers.open,
+    stake: a.stake,
+    stakingProgram: a.stakingProgram,
+    auction: a.auction,
+  });
+  return ix(
+    a.programId,
+    keys,
+    Buffer.concat([
+      Buffer.from([IX.OpenAscendingDirect]),
+      a.tokenId,
+      mintBuf,
+      encU64(a.reserve),
+      encU64(a.duration),
+      encU64(a.protection),
+    ]),
+  );
+}
+
+function settleIx(args: {
+  programId: Pk;
+  caller: Pk;
+  lot: MintedLot;
+  binding: Pk;
+  stack: PassportCommerceStack;
+  custody: Pk;
+  buyer: Pk;
+  payer: Pk;
+  escrowAta?: Pk;
+}) {
+  return ix(
+    args.programId,
+    settleAscendingKeys({
+      caller: args.caller,
+      consign: args.lot.consign,
+      auction: args.lot.auction,
+      hold: args.lot.hold,
+      binding: args.binding,
+      passportConfig: args.stack.passportConfig,
+      asset: args.lot.asset,
+      custody: args.custody,
+      buyer: args.buyer,
+      escrow: args.lot.escrow,
+      payer: args.payer,
+      answerLeave: args.lot.answers.leave,
+      answerOpen: args.lot.answers.open,
+      escrowAta: args.escrowAta,
+    }),
+    Buffer.concat([Buffer.from([IX.Settle]), args.lot.tokenId]),
+  );
+}
+
+function confirmKeys(
+  buyerPk: Pk,
+  lot: MintedLot,
+  binding: Pk,
+  stack: PassportCommerceStack,
+  configPda: Pk,
+  platformPk: Pk,
+  sellerPk: Pk,
+  agentPk: Pk,
+  payerPk: Pk,
+): Meta[] {
+  return holdExitAscendingKeys({
+    buyerOrCaller: buyerPk,
+    buyerIsSigner: true,
+    config: configPda,
+    consign: lot.consign,
+    hold: lot.hold,
+    modeChallenge: lot.modeChallenge,
+    escrow: lot.escrow,
+    platform: platformPk,
+    seller: sellerPk,
+    agent: agentPk,
+    payer: payerPk,
+    binding,
+    passportConfig: stack.passportConfig,
+    answerLeave: lot.answers.leave,
+    answerOpen: lot.answers.open,
+  });
+}
+
+function releaseKeys(
+  lot: MintedLot,
+  binding: Pk,
+  stack: PassportCommerceStack,
+  configPda: Pk,
+  platformPk: Pk,
+  sellerPk: Pk,
+  agentPk: Pk,
+  payerPk: Pk,
+  caller: Pk,
+): Meta[] {
+  return holdExitAscendingKeys({
+    buyerOrCaller: caller,
+    buyerIsSigner: false,
+    config: configPda,
+    consign: lot.consign,
+    hold: lot.hold,
+    modeChallenge: lot.modeChallenge,
+    escrow: lot.escrow,
+    platform: platformPk,
+    seller: sellerPk,
+    agent: agentPk,
+    payer: payerPk,
+    binding,
+    passportConfig: stack.passportConfig,
+    answerLeave: lot.answers.leave,
+    answerOpen: lot.answers.open,
+  });
+}
+
+function judgeKeys(
+  judgePk: Pk,
+  lot: MintedLot,
+  binding: Pk,
+  stack: PassportCommerceStack,
+  configPda: Pk,
+  bondRecipient: Pk,
+  stake: Pk,
+  stakingProgram: Pk,
+  platformPk: Pk,
+  sellerPk: Pk,
+  agentPk: Pk,
+  payerPk: Pk,
+): Meta[] {
+  return judgeChallengeAscendingKeys({
+    judge: judgePk,
+    config: configPda,
+    consign: lot.consign,
+    hold: lot.hold,
+    modeChallenge: lot.modeChallenge,
+    bondRecipient,
+    stake,
+    stakingProgram,
+    escrow: lot.escrow,
+    platform: platformPk,
+    seller: sellerPk,
+    agent: agentPk,
+    payer: payerPk,
+    binding,
+    passportConfig: stack.passportConfig,
+    answerLeave: lot.answers.leave,
+    answerOpen: lot.answers.open,
+  });
+}
+
+function completeReversalKeys(
+  buyerPk: Pk,
+  lot: MintedLot,
+  binding: Pk,
+  stack: PassportCommerceStack,
+  configPda: Pk,
+  sellerPk: Pk,
+  payerPk: Pk,
+  spl?: {
+    buyerAta: Pk;
+    escrowAta: Pk;
+    mint: Pk;
+    claim: Pk;
+    claimAta: Pk;
+  },
+  /** Plant override: Core asset whose owner ≠ hold.buyer → NotPassportHolder. */
+  assetOverride?: Pk,
+): Meta[] {
+  const keys = completeReversalAscendingKeys({
+    buyer: buyerPk,
+    config: configPda,
+    consign: lot.consign,
+    hold: lot.hold,
+    binding,
+    passportConfig: stack.passportConfig,
+    asset: assetOverride ?? lot.asset,
+    seller: sellerPk,
+    escrow: lot.escrow,
+    payer: payerPk,
+    answerLeave: lot.answers.leave,
+    answerOpen: lot.answers.open,
+  });
+  if (spl) {
+    keys.push(
+      { pubkey: spl.buyerAta, isSigner: false, isWritable: true },
+      { pubkey: spl.escrowAta, isSigner: false, isWritable: true },
+      { pubkey: spl.mint, isSigner: false, isWritable: false },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: spl.claim, isSigner: false, isWritable: true },
+      { pubkey: spl.claimAta, isSigner: false, isWritable: true },
+    );
+  }
+  return keys;
+}
+
+function abandonKeys(
+  lot: MintedLot,
+  binding: Pk,
+  stack: PassportCommerceStack,
+  configPda: Pk,
+  platformPk: Pk,
+  sellerPk: Pk,
+  agentPk: Pk,
+  payerPk: Pk,
+  caller: Pk,
+): Meta[] {
+  return abandonReversalAscendingKeys({
+    caller,
+    config: configPda,
+    consign: lot.consign,
+    hold: lot.hold,
+    escrow: lot.escrow,
+    platform: platformPk,
+    seller: sellerPk,
+    agent: agentPk,
+    payer: payerPk,
+    binding,
+    passportConfig: stack.passportConfig,
+    answerLeave: lot.answers.leave,
+    answerOpen: lot.answers.open,
+  });
+}
+
+function openChallengeKeys(
+  challenger: Pk,
+  configPda: Pk,
+  lot: MintedLot,
+  payer: Pk,
+): Meta[] {
+  return [
+    { pubkey: challenger, isSigner: true, isWritable: true },
+    { pubkey: configPda, isSigner: false, isWritable: false },
+    { pubkey: lot.consign, isSigner: false, isWritable: false },
+    { pubkey: lot.hold, isSigner: false, isWritable: true },
+    { pubkey: lot.modeChallenge, isSigner: false, isWritable: true },
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    { pubkey: payer, isSigner: true, isWritable: true },
+  ];
 }
 
 export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
@@ -850,9 +1011,11 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     escrowSplAfterComplete: bigint;
   };
   pause: { openCode: number; bidCode: number };
+  ixBudget: Record<string, IxBudgetRow>;
+  ixBudgetHeaviest: string;
   artifacts: StandArtifactBindings;
 }> {
-  for (const name of ["kar_ascending", "kar_pro_staking", "kar_pro_pass"] as const) {
+  for (const name of ["kar_ascending", "kar_pro_staking", "kar_pro_pass", "kar_passport", "kar_gateway", "consignment_harness"] as const) {
     if (!existsSync(path.join(DEPLOY, `${name}.so`))) {
       throw new Error(`missing ${name}.so — build stand programs first`);
     }
@@ -862,6 +1025,9 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   const programId = loadProgramId("kar_ascending");
   const stakingProgram = loadProgramId("kar_pro_staking");
   const passProgram = loadProgramId("kar_pro_pass");
+
+  const stack = await ensurePassportCommerceStack(conn);
+  await setPassportStakingProgram(conn, stack, stakingProgram);
 
   const payer = Keypair.generate();
   const authority = Keypair.generate();
@@ -965,38 +1131,172 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     forfeit,
     stakingProgram,
   );
-  const [custodyPda] = pda(programId, [Buffer.from("custody")]);
+  const [custodyPda] = pda(programId, [SEED.custody]);
+
+  const [bindingPda] = pda(programId, [SEED.passportBind]);
+  const ixBudget: Record<string, IxBudgetRow> = {};
+  const negatives: Record<string, number> = {};
+
+  // ---- Corrective negatives (before AddEncumbranceSource) ----
+  const lotUnbound = await mintCoreLot(conn, stack, programId, payer, seller, judge, judgeStake, true);
+  negatives.PassportProgramUnbound = await expectCustom(
+    conn,
+    new Transaction().add(
+      openAscendingIx({
+        programId,
+        binding: bindingPda,
+        stack,
+        seller: seller.publicKey,
+        config: configPda,
+        asset: lotUnbound.asset,
+        passportChallenge: lotUnbound.passportChallenge,
+        passportState: lotUnbound.state,
+        answers: lotUnbound.answers,
+        mayAnswers: standRegistryMayAnswersOpen(lotUnbound.tokenId),
+        consignment: lotUnbound.consign,
+        custody: custodyPda,
+        payer: payer.publicKey,
+        stake: sellerStake,
+        stakingProgram,
+        auction: lotUnbound.auction,
+        tokenId: lotUnbound.tokenId,
+        reserve: RESERVE,
+        duration: MIN_DURATION,
+        protection: MIN_PROTECTION,
+      }),
+    ),
+    [seller, payer],
+    ERR.PassportProgramUnbound,
+  );
+
+  const [binding] = pda(programId, [SEED.passportBind]);
+  ixBudget.Bind = await sendAndMeasure(
+    conn,
+    payer,
+    bindPassportProgramIx(
+      programId,
+      configPda,
+      authority.publicKey,
+      payer.publicKey,
+      stack.passportProgram,
+      binding,
+      ASC_IX.BindPassportProgram,
+    ),
+    [authority, payer],
+  );
+
+  await expectAccountAlreadyInitialized(
+    conn,
+    new Transaction().add(
+      bindPassportProgramIx(
+        programId,
+        configPda,
+        authority.publicKey,
+        payer.publicKey,
+        stack.passportProgram,
+        binding,
+        ASC_IX.BindPassportProgram,
+      ),
+    ),
+    [authority, payer],
+  );
+
+  const lotRegMiss = await mintCoreLot(conn, stack, programId, payer, seller, judge, judgeStake, true);
+  negatives.ModeNotEncumbranceSource = await expectCustom(
+    conn,
+    new Transaction().add(
+      openAscendingIx({
+        programId,
+        binding,
+        stack,
+        seller: seller.publicKey,
+        config: configPda,
+        asset: lotRegMiss.asset,
+        passportChallenge: lotRegMiss.passportChallenge,
+        passportState: lotRegMiss.state,
+        answers: lotRegMiss.answers,
+        mayAnswers: standRegistryMayAnswersOpen(lotRegMiss.tokenId),
+        consignment: lotRegMiss.consign,
+        custody: custodyPda,
+        payer: payer.publicKey,
+        stake: sellerStake,
+        stakingProgram,
+        auction: lotRegMiss.auction,
+        tokenId: lotRegMiss.tokenId,
+        reserve: RESERVE,
+        duration: MIN_DURATION,
+        protection: MIN_PROTECTION,
+      }),
+    ),
+    [seller, payer],
+    ERR.ModeNotEncumbranceSource,
+  );
+
+  await addEncumbranceSource(conn, stack, programId, ENCUMBRANCE_SEED_PREFIX);
+
+  const lotRetire = await mintCoreLot(conn, stack, programId, payer, seller, judge, judgeStake, true);
+  negatives.HarnessInstructionRetired = await expectCustom(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        [
+          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+          { pubkey: lotRetire.asset, isSigner: false, isWritable: true },
+          { pubkey: seller.publicKey, isSigner: false, isWritable: false },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        ],
+        Buffer.concat([Buffer.from([IX.CreateAsset]), lotRetire.tokenId]),
+      ),
+    ),
+    [payer],
+    ERR.HarnessInstructionRetired,
+  );
+  await expectCustom(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        [
+          { pubkey: authority.publicKey, isSigner: true, isWritable: false },
+          { pubkey: configPda, isSigner: false, isWritable: false },
+          { pubkey: lotRetire.asset, isSigner: false, isWritable: true },
+        ],
+        Buffer.concat([
+          Buffer.from([IX.ForceAssetOwner]),
+          lotRetire.tokenId,
+          Buffer.from(stranger.publicKey.toBytes()),
+        ]),
+      ),
+    ),
+    [authority],
+    ERR.HarnessInstructionRetired,
+  );
+
 
   // ---------- Lot A: open refuses + happy path through confirm ----------
-  const tokenA = randomTokenId(0xa1);
-  const pdasA = lotPdas(programId, tokenA);
-
-  // PassportNotVerified
-  const assetUnverified = await createAsset(
-    conn,
-    programId,
-    payer,
-    seller,
-    tokenA,
-    custodyPda,
-    false,
-    authority,
-    configPda,
-  );
+  const lotA = await mintCoreLot(conn, stack, programId, payer, seller, seller, sellerStake, false);
+  const tokenA = lotA.tokenId;
   const passportNotVerified = await expectCustom(
     conn,
     new Transaction().add(
       openAscendingIx({
         programId,
+        binding,
+        stack,
         seller: seller.publicKey,
         config: configPda,
-        asset: assetUnverified,
-        consignment: pdasA.consignment,
+        asset: lotA.asset,
+        passportChallenge: lotA.passportChallenge,
+        passportState: lotA.state,
+        answers: lotA.answers,
+        mayAnswers: standRegistryMayAnswersOpen(lotA.tokenId),
+        consignment: lotA.consign,
         custody: custodyPda,
         payer: payer.publicKey,
         stake: sellerStake,
         stakingProgram,
-        auction: pdasA.auction,
+        auction: lotA.auction,
         tokenId: tokenA,
         reserve: RESERVE,
         duration: MIN_DURATION,
@@ -1007,36 +1307,37 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     ERR.PassportNotVerified,
   );
 
-  await sendAndConfirmTransaction(
+  await verifyPassportAsset(
     conn,
-    new Transaction().add(
-      ix(
-        programId,
-        [
-          { pubkey: authority.publicKey, isSigner: true, isWritable: false },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: assetUnverified, isSigner: false, isWritable: true },
-        ],
-        Buffer.concat([Buffer.from([IX.SetVerified]), tokenA, Buffer.from([1])]),
-      ),
-    ),
-    [authority],
+    stack,
+    judge,
+    judgeStake,
+    tokenA,
+    lotA.asset,
+    lotA.state,
   );
+  assert.equal(passportStateStatus((await conn.getAccountInfo(lotA.state))!.data as Buffer), 1);
 
   const badDuration = await expectCustom(
     conn,
     new Transaction().add(
       openAscendingIx({
         programId,
+        binding,
+        stack,
         seller: seller.publicKey,
         config: configPda,
-        asset: assetUnverified,
-        consignment: pdasA.consignment,
+        asset: lotA.asset,
+        passportChallenge: lotA.passportChallenge,
+        passportState: lotA.state,
+        answers: lotA.answers,
+        mayAnswers: standRegistryMayAnswersOpen(lotA.tokenId),
+        consignment: lotA.consign,
         custody: custodyPda,
         payer: payer.publicKey,
         stake: sellerStake,
         stakingProgram,
-        auction: pdasA.auction,
+        auction: lotA.auction,
         tokenId: tokenA,
         reserve: RESERVE,
         duration: 1,
@@ -1052,15 +1353,21 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     new Transaction().add(
       openAscendingIx({
         programId,
+        binding,
+        stack,
         seller: seller.publicKey,
         config: configPda,
-        asset: assetUnverified,
-        consignment: pdasA.consignment,
+        asset: lotA.asset,
+        passportChallenge: lotA.passportChallenge,
+        passportState: lotA.state,
+        answers: lotA.answers,
+        mayAnswers: standRegistryMayAnswersOpen(lotA.tokenId),
+        consignment: lotA.consign,
         custody: custodyPda,
         payer: payer.publicKey,
         stake: sellerStake,
         stakingProgram,
-        auction: pdasA.auction,
+        auction: lotA.auction,
         tokenId: tokenA,
         reserve: RESERVE,
         duration: MIN_DURATION,
@@ -1076,15 +1383,21 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     new Transaction().add(
       openAscendingIx({
         programId,
+        binding,
+        stack,
         seller: seller.publicKey,
         config: configPda,
-        asset: assetUnverified,
-        consignment: pdasA.consignment,
+        asset: lotA.asset,
+        passportChallenge: lotA.passportChallenge,
+        passportState: lotA.state,
+        answers: lotA.answers,
+        mayAnswers: standRegistryMayAnswersOpen(lotA.tokenId),
+        consignment: lotA.consign,
         custody: custodyPda,
         payer: payer.publicKey,
         stake: sellerStake,
         stakingProgram,
-        auction: pdasA.auction,
+        auction: lotA.auction,
         tokenId: tokenA,
         reserve: 0n,
         duration: MIN_DURATION,
@@ -1103,8 +1416,8 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
         [
           { pubkey: seller.publicKey, isSigner: true, isWritable: false },
           { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: assetUnverified, isSigner: false, isWritable: true },
-          { pubkey: pdasA.consignment, isSigner: false, isWritable: true },
+          { pubkey: lotA.asset, isSigner: false, isWritable: true },
+          { pubkey: lotA.consign, isSigner: false, isWritable: true },
           { pubkey: custodyPda, isSigner: false, isWritable: false },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
           { pubkey: payer.publicKey, isSigner: true, isWritable: true },
@@ -1130,7 +1443,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
         programId,
         [
           { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-          { pubkey: pdasA.consignment, isSigner: false, isWritable: true },
+          { pubkey: lotA.consign, isSigner: false, isWritable: true },
         ],
         Buffer.concat([Buffer.from([IX.SetPrice]), tokenA, encU64(2000)]),
       ),
@@ -1139,30 +1452,35 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     ERR.TermsFixed,
   );
 
-  await sendAndConfirmTransaction(
+  ixBudget.OpenAscendingDirect = await sendAndMeasure(
     conn,
-    new Transaction().add(
-      openAscendingIx({
-        programId,
-        seller: seller.publicKey,
-        config: configPda,
-        asset: assetUnverified,
-        consignment: pdasA.consignment,
-        custody: custodyPda,
-        payer: payer.publicKey,
-        stake: sellerStake,
-        stakingProgram,
-        auction: pdasA.auction,
-        tokenId: tokenA,
-        reserve: RESERVE,
-        duration: MIN_DURATION,
-        protection: MIN_PROTECTION,
-      }),
-    ),
+    payer,
+    openAscendingIx({
+      programId,
+      binding,
+      stack,
+      seller: seller.publicKey,
+      config: configPda,
+      asset: lotA.asset,
+      passportChallenge: lotA.passportChallenge,
+      passportState: lotA.state,
+      answers: lotA.answers,
+      mayAnswers: standRegistryMayAnswersOpen(lotA.tokenId),
+      consignment: lotA.consign,
+      custody: custodyPda,
+      payer: payer.publicKey,
+      stake: sellerStake,
+      stakingProgram,
+      auction: lotA.auction,
+      tokenId: tokenA,
+      reserve: RESERVE,
+      duration: MIN_DURATION,
+      protection: MIN_PROTECTION,
+    }),
     [seller, payer],
   );
 
-  const lotOpen = readConsignment((await conn.getAccountInfo(pdasA.consignment))!.data as Buffer);
+  const lotOpen = readConsignment((await conn.getAccountInfo(lotA.consign))!.data as Buffer);
   assert.equal(lotOpen.phase, PHASE.Offered);
   assert.equal(lotOpen.price, RESERVE);
   assert.equal(lotOpen.feeBps, FEE_BPS);
@@ -1174,10 +1492,10 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
         programId,
         bidder: seller.publicKey,
         config: configPda,
-        consignment: pdasA.consignment,
-        auction: pdasA.auction,
-        hold: pdasA.hold,
-        escrow: pdasA.escrow,
+        consignment: lotA.consign,
+        auction: lotA.auction,
+        hold: lotA.hold,
+        escrow: lotA.escrow,
         payer: payer.publicKey,
         tokenId: tokenA,
         amount: RESERVE,
@@ -1194,10 +1512,10 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
         programId,
         bidder: bidder1.publicKey,
         config: configPda,
-        consignment: pdasA.consignment,
-        auction: pdasA.auction,
-        hold: pdasA.hold,
-        escrow: pdasA.escrow,
+        consignment: lotA.consign,
+        auction: lotA.auction,
+        hold: lotA.hold,
+        escrow: lotA.escrow,
         payer: payer.publicKey,
         tokenId: tokenA,
         amount: RESERVE - 1n,
@@ -1214,10 +1532,10 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
         programId,
         bidder: bidder1.publicKey,
         config: configPda,
-        consignment: pdasA.consignment,
-        auction: pdasA.auction,
-        hold: pdasA.hold,
-        escrow: pdasA.escrow,
+        consignment: lotA.consign,
+        auction: lotA.auction,
+        hold: lotA.hold,
+        escrow: lotA.escrow,
         payer: payer.publicKey,
         tokenId: tokenA,
         amount: RESERVE,
@@ -1226,10 +1544,10 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     [bidder1, payer],
   );
 
-  const auctionAfterFirst = readAuction((await conn.getAccountInfo(pdasA.auction))!.data as Buffer);
+  const auctionAfterFirst = readAuction((await conn.getAccountInfo(lotA.auction))!.data as Buffer);
   assert.ok(auctionAfterFirst.endsAt > 0n, "first bid must start clock");
   const firstBidEndsAt = auctionAfterFirst.endsAt;
-  const committed = readConsignment((await conn.getAccountInfo(pdasA.consignment))!.data as Buffer);
+  const committed = readConsignment((await conn.getAccountInfo(lotA.consign))!.data as Buffer);
   assert.equal(committed.committed, true);
 
   const bid2Amt = minNextBid(RESERVE);
@@ -1241,10 +1559,10 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
         programId,
         bidder: bidder2.publicKey,
         config: configPda,
-        consignment: pdasA.consignment,
-        auction: pdasA.auction,
-        hold: pdasA.hold,
-        escrow: pdasA.escrow,
+        consignment: lotA.consign,
+        auction: lotA.auction,
+        hold: lotA.hold,
+        escrow: lotA.escrow,
         payer: payer.publicKey,
         tokenId: tokenA,
         amount: bid2Amt,
@@ -1257,8 +1575,8 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   const refundDelta = balB1After - balB1Before;
   assert.equal(refundDelta, RESERVE);
 
-  const escrowBeforeSettle = BigInt(await conn.getBalance(pdasA.escrow));
-  const holdAbsentBefore = (await conn.getAccountInfo(pdasA.hold)) == null;
+  const escrowBeforeSettle = BigInt(await conn.getBalance(lotA.escrow));
+  const holdAbsentBefore = (await conn.getAccountInfo(lotA.hold)) == null;
   assert.ok(holdAbsentBefore);
   const holdRentExempt = BigInt(await conn.getMinimumBalanceForRentExemption(HOLD_SPACE));
 
@@ -1269,7 +1587,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
         programId,
         authority.publicKey,
         configPda,
-        pdasA.auction,
+        lotA.auction,
         tokenA,
         1,
       ),
@@ -1279,7 +1597,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
 
   // Snapshot immediately before Settle (after ForceAuctionEndsAt) — fee isolation needs Settle-only Δ.
   const auctionLamportsBefore = BigInt(
-    (await conn.getAccountInfo(pdasA.auction))?.lamports ?? 0,
+    (await conn.getAccountInfo(lotA.auction))?.lamports ?? 0,
   );
   const payerLamportsBeforeSettle = BigInt(await conn.getBalance(payer.publicKey));
   assert.ok(auctionLamportsBefore > 0n);
@@ -1287,20 +1605,16 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   const settleSig = await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
-      ix(
+      settleIx({
         programId,
-        [
-          { pubkey: stranger.publicKey, isSigner: false, isWritable: false },
-          { pubkey: pdasA.consignment, isSigner: false, isWritable: false },
-          { pubkey: pdasA.auction, isSigner: false, isWritable: true },
-          { pubkey: pdasA.hold, isSigner: false, isWritable: true },
-          { pubkey: assetUnverified, isSigner: false, isWritable: true },
-          { pubkey: pdasA.escrow, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-        ],
-        Buffer.concat([Buffer.from([IX.Settle]), tokenA]),
-      ),
+        caller: stranger.publicKey,
+        lot: lotA,
+        binding,
+        stack,
+        custody: custodyPda,
+        buyer: bidder2.publicKey,
+        payer: payer.publicKey,
+      }),
     ),
     [payer],
   );
@@ -1309,29 +1623,56 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
   });
   const settleTxFee = BigInt(settleParsed?.meta?.fee ?? 0);
+  {
+    const settleKeys = settleAscendingKeys({
+      caller: stranger.publicKey,
+      consign: lotA.consign,
+      auction: lotA.auction,
+      hold: lotA.hold,
+      binding,
+      passportConfig: stack.passportConfig,
+      asset: lotA.asset,
+      custody: custodyPda,
+      buyer: bidder2.publicKey,
+      escrow: lotA.escrow,
+      payer: payer.publicKey,
+      answerLeave: lotA.answers.leave,
+      answerOpen: lotA.answers.open,
+    });
+    ixBudget.Settle = {
+      accounts: settleKeys.length,
+      signers: settleKeys.filter((k) => k.isSigner).length,
+      writable: settleKeys.filter((k) => k.isWritable).length,
+      cu:
+        settleParsed?.meta?.computeUnitsConsumed != null
+          ? Number(settleParsed.meta.computeUnitsConsumed)
+          : null,
+      legacyTx: 0,
+    };
+  }
 
-  const auctionInfoAfter = await conn.getAccountInfo(pdasA.auction);
+  const auctionInfoAfter = await conn.getAccountInfo(lotA.auction);
   const auctionClosed =
     auctionInfoAfter == null ||
     auctionInfoAfter.lamports === 0 ||
     auctionInfoAfter.data.length === 0 ||
     auctionInfoAfter.owner.equals(SystemProgram.programId);
-  const holdInfoAfterSettle = await conn.getAccountInfo(pdasA.hold);
+  const holdInfoAfterSettle = await conn.getAccountInfo(lotA.hold);
   assert.ok(holdInfoAfterSettle);
   const holdLamportsAfter = BigInt(holdInfoAfterSettle!.lamports);
   assert.equal(holdLamportsAfter, holdRentExempt);
   const holdAfterSettle = readHold(holdInfoAfterSettle!.data as Buffer);
-  const assetAfterSettle = readAsset((await conn.getAccountInfo(assetUnverified))!.data as Buffer);
-  const escrowAfterSettle = BigInt(await conn.getBalance(pdasA.escrow));
+  const assetAfterSettleOwner = coreOwner((await conn.getAccountInfo(lotA.asset))!.data as Buffer);
+  const escrowAfterSettle = BigInt(await conn.getBalance(lotA.escrow));
   const payerLamportsAfterSettle = BigInt(await conn.getBalance(payer.publicKey));
   const phaseAfterSettle = readConsignment(
-    (await conn.getAccountInfo(pdasA.consignment))!.data as Buffer,
+    (await conn.getAccountInfo(lotA.consign))!.data as Buffer,
   ).phase;
   const payerDelta = payerLamportsAfterSettle - payerLamportsBeforeSettle;
   const escrowDeltaSettle = escrowAfterSettle - escrowBeforeSettle;
   assert.ok(auctionClosed);
   assert.ok(holdAfterSettle.active);
-  assert.equal(assetAfterSettle.owner.toBase58(), bidder2.publicKey.toBase58());
+  assert.equal(assetAfterSettleOwner.toBase58(), bidder2.publicKey.toBase58());
   assert.equal(escrowDeltaSettle, 0n);
   assert.equal(holdAfterSettle.gross, bid2Amt);
   // payerDelta + holdAfter + settleTxFee === auctionBefore
@@ -1356,8 +1697,19 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     moneyCrateMissingUnit: true,
   };
 
+
+  const leaveChainSendWhileHold = await tryGatewaySend(conn, stack, bidder2, payer, {
+    tokenId: lotA.tokenId,
+    asset: lotA.asset,
+    state: lotA.state,
+    challenge: lotA.passportChallenge,
+    mayAnswers: standRegistryMayAnswersLeave(lotA.tokenId),
+  });
+  assert.equal(leaveChainSendWhileHold, ERR.LeaveChainRefused);
+  negatives.LeaveChainSendWhileHold = leaveChainSendWhileHold!;
+
   // Challenge freeze / thaw
-  const holdBeforeChallenge = readHold((await conn.getAccountInfo(pdasA.hold))!.data as Buffer);
+  const holdBeforeChallenge = readHold((await conn.getAccountInfo(lotA.hold))!.data as Buffer);
   const tOpen = await blockTime(conn);
   await sendAndConfirmTransaction(
     conn,
@@ -1367,9 +1719,9 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
         [
           { pubkey: bidder2.publicKey, isSigner: true, isWritable: true },
           { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: pdasA.consignment, isSigner: false, isWritable: false },
-          { pubkey: pdasA.hold, isSigner: false, isWritable: true },
-          { pubkey: pdasA.challenge, isSigner: false, isWritable: true },
+          { pubkey: lotA.consign, isSigner: false, isWritable: false },
+          { pubkey: lotA.hold, isSigner: false, isWritable: true },
+          { pubkey: lotA.modeChallenge, isSigner: false, isWritable: true },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
           { pubkey: payer.publicKey, isSigner: true, isWritable: true },
         ],
@@ -1378,7 +1730,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     ),
     [bidder2, payer],
   );
-  const holdFrozen = readHold((await conn.getAccountInfo(pdasA.hold))!.data as Buffer);
+  const holdFrozen = readHold((await conn.getAccountInfo(lotA.hold))!.data as Buffer);
   assert.equal(holdFrozen.protectionEndsAt, holdBeforeChallenge.protectionEndsAt);
   assert.equal(holdBeforeChallenge.frozenRemaining, 0n);
   assert.ok(holdFrozen.frozenRemaining > 0n);
@@ -1392,16 +1744,16 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
         [
           { pubkey: bidder2.publicKey, isSigner: true, isWritable: true },
           { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: pdasA.consignment, isSigner: false, isWritable: false },
-          { pubkey: pdasA.hold, isSigner: false, isWritable: true },
-          { pubkey: pdasA.challenge, isSigner: false, isWritable: true },
+          { pubkey: lotA.consign, isSigner: false, isWritable: false },
+          { pubkey: lotA.hold, isSigner: false, isWritable: true },
+          { pubkey: lotA.modeChallenge, isSigner: false, isWritable: true },
         ],
         Buffer.concat([Buffer.from([IX.WithdrawChallenge]), tokenA]),
       ),
     ),
     [bidder2],
   );
-  const holdThawed = readHold((await conn.getAccountInfo(pdasA.hold))!.data as Buffer);
+  const holdThawed = readHold((await conn.getAccountInfo(lotA.hold))!.data as Buffer);
   assert.equal(holdThawed.frozenRemaining, 0n);
   assert.ok(holdThawed.protectionEndsAt > 0n);
 
@@ -1423,31 +1775,28 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   const balS0 = BigInt(await conn.getBalance(seller.publicKey));
   const balAgent0 = BigInt(await conn.getBalance(stranger.publicKey));
 
-  await sendAndConfirmTransaction(
+  ixBudget.ConfirmReceipt = await sendAndMeasure(
     conn,
-    new Transaction().add(
-      ix(
-        programId,
-        [
-          { pubkey: bidder2.publicKey, isSigner: true, isWritable: false },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: pdasA.consignment, isSigner: false, isWritable: true },
-          { pubkey: pdasA.hold, isSigner: false, isWritable: true },
-          { pubkey: pdasA.challenge, isSigner: false, isWritable: false },
-          { pubkey: pdasA.escrow, isSigner: false, isWritable: true },
-          { pubkey: platform.publicKey, isSigner: false, isWritable: true },
-          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-          { pubkey: stranger.publicKey, isSigner: false, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-        ],
-        Buffer.concat([Buffer.from([IX.ConfirmReceipt]), tokenA]),
+    payer,
+    ix(
+      programId,
+      confirmKeys(
+        bidder2.publicKey,
+        lotA,
+        binding,
+        stack,
+        configPda,
+        platform.publicKey,
+        seller.publicKey,
+        stranger.publicKey,
+        payer.publicKey,
       ),
+      Buffer.concat([Buffer.from([IX.ConfirmReceipt]), tokenA]),
     ),
     [bidder2, payer],
   );
 
-  const closedA = readConsignment((await conn.getAccountInfo(pdasA.consignment))!.data as Buffer);
+  const closedA = readConsignment((await conn.getAccountInfo(lotA.consign))!.data as Buffer);
   const balP1 = BigInt(await conn.getBalance(platform.publicKey));
   const balS1 = BigInt(await conn.getBalance(seller.publicKey));
   const balAgent1 = BigInt(await conn.getBalance(stranger.publicKey));
@@ -1456,25 +1805,40 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   assert.equal(balS1 - balS0, expectedSeller);
   assert.equal(balAgent1 - balAgent0, 0n);
 
-  // ---------- Lot B: challenge uphold + reversal ----------
-  const tokenB = randomTokenId(0xb2);
-  const pdasB = lotPdas(programId, tokenB);
-  const assetB = await createAsset(conn, programId, payer, seller, tokenB, custodyPda, true, authority, configPda);
+  // After hold-clear, LeaveChain answers are true — gateway Send ok for buyer.
+  const leaveChainSendAfterConfirm = await tryGatewaySend(conn, stack, bidder2, payer, {
+    tokenId: lotA.tokenId,
+    asset: lotA.asset,
+    state: lotA.state,
+    challenge: lotA.passportChallenge,
+    mayAnswers: standRegistryMayAnswersLeave(lotA.tokenId),
+  });
+  assert.equal(leaveChainSendAfterConfirm, null, "Send ok after ConfirmReceipt hold-clear");
+  negatives.LeaveChainSendAfterConfirm = 0;
 
+  // ---------- Lot B: challenge uphold + reversal ----------
+  const lotB = await mintCoreLot(conn, stack, programId, payer, seller, judge, judgeStake, true);
+  const tokenB = lotB.tokenId;
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
       openAscendingIx({
         programId,
+        binding,
+        stack,
         seller: seller.publicKey,
         config: configPda,
-        asset: assetB,
-        consignment: pdasB.consignment,
+        asset: lotB.asset,
+        passportChallenge: lotB.passportChallenge,
+        passportState: lotB.state,
+        answers: lotB.answers,
+        mayAnswers: standRegistryMayAnswersOpen(lotB.tokenId),
+        consignment: lotB.consign,
         custody: custodyPda,
         payer: payer.publicKey,
         stake: sellerStake,
         stakingProgram,
-        auction: pdasB.auction,
+        auction: lotB.auction,
         tokenId: tokenB,
         reserve: RESERVE,
         duration: MIN_DURATION,
@@ -1491,10 +1855,10 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
         programId,
         bidder: bidder1.publicKey,
         config: configPda,
-        consignment: pdasB.consignment,
-        auction: pdasB.auction,
-        hold: pdasB.hold,
-        escrow: pdasB.escrow,
+        consignment: lotB.consign,
+        auction: lotB.auction,
+        hold: lotB.hold,
+        escrow: lotB.escrow,
         payer: payer.publicKey,
         tokenId: tokenB,
         amount: RESERVE,
@@ -1510,7 +1874,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
         programId,
         authority.publicKey,
         configPda,
-        pdasB.auction,
+        lotB.auction,
         tokenB,
         1,
       ),
@@ -1521,20 +1885,16 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
-      ix(
+      settleIx({
         programId,
-        [
-          { pubkey: stranger.publicKey, isSigner: false, isWritable: false },
-          { pubkey: pdasB.consignment, isSigner: false, isWritable: false },
-          { pubkey: pdasB.auction, isSigner: false, isWritable: true },
-          { pubkey: pdasB.hold, isSigner: false, isWritable: true },
-          { pubkey: assetB, isSigner: false, isWritable: true },
-          { pubkey: pdasB.escrow, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-        ],
-        Buffer.concat([Buffer.from([IX.Settle]), tokenB]),
-      ),
+        caller: stranger.publicKey,
+        lot: lotB,
+        binding,
+        stack,
+        custody: custodyPda,
+        buyer: bidder1.publicKey,
+        payer: payer.publicKey,
+      }),
     ),
     [payer],
   );
@@ -1547,9 +1907,9 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
         [
           { pubkey: stranger.publicKey, isSigner: true, isWritable: true },
           { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: pdasB.consignment, isSigner: false, isWritable: false },
-          { pubkey: pdasB.hold, isSigner: false, isWritable: true },
-          { pubkey: pdasB.challenge, isSigner: false, isWritable: true },
+          { pubkey: lotB.consign, isSigner: false, isWritable: false },
+          { pubkey: lotB.hold, isSigner: false, isWritable: true },
+          { pubkey: lotB.modeChallenge, isSigner: false, isWritable: true },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
           { pubkey: payer.publicKey, isSigner: true, isWritable: true },
         ],
@@ -1568,9 +1928,9 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
         [
           { pubkey: bidder1.publicKey, isSigner: true, isWritable: true },
           { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: pdasB.consignment, isSigner: false, isWritable: false },
-          { pubkey: pdasB.hold, isSigner: false, isWritable: true },
-          { pubkey: pdasB.challenge, isSigner: false, isWritable: true },
+          { pubkey: lotB.consign, isSigner: false, isWritable: false },
+          { pubkey: lotB.hold, isSigner: false, isWritable: true },
+          { pubkey: lotB.modeChallenge, isSigner: false, isWritable: true },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
           { pubkey: payer.publicKey, isSigner: true, isWritable: true },
         ],
@@ -1585,16 +1945,15 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     new Transaction().add(
       ix(
         programId,
-        [
-          { pubkey: bidder1.publicKey, isSigner: true, isWritable: true },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: pdasB.consignment, isSigner: false, isWritable: true },
-          { pubkey: pdasB.hold, isSigner: false, isWritable: true },
-          { pubkey: assetB, isSigner: false, isWritable: true },
-          { pubkey: pdasB.escrow, isSigner: false, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-        ],
+        completeReversalKeys(
+          bidder1.publicKey,
+          lotB,
+          binding,
+          stack,
+          configPda,
+          seller.publicKey,
+          payer.publicKey,
+        ),
         Buffer.concat([Buffer.from([IX.CompleteReversal]), tokenB]),
       ),
     ),
@@ -1607,22 +1966,20 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     new Transaction().add(
       ix(
         programId,
-        [
-          { pubkey: bidder1.publicKey, isSigner: true, isWritable: false },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: pdasB.consignment, isSigner: false, isWritable: true },
-          { pubkey: pdasB.hold, isSigner: false, isWritable: true },
-          { pubkey: pdasB.challenge, isSigner: false, isWritable: true },
-          { pubkey: bidder1.publicKey, isSigner: false, isWritable: true },
-          { pubkey: bidder1Stake, isSigner: false, isWritable: false },
-          { pubkey: stakingProgram, isSigner: false, isWritable: false },
-          { pubkey: pdasB.escrow, isSigner: false, isWritable: true },
-          { pubkey: platform.publicKey, isSigner: false, isWritable: true },
-          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-          { pubkey: stranger.publicKey, isSigner: false, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-        ],
+        judgeKeys(
+          bidder1.publicKey,
+          lotB,
+          binding,
+          stack,
+          configPda,
+          bidder1.publicKey,
+          bidder1Stake,
+          stakingProgram,
+          platform.publicKey,
+          seller.publicKey,
+          stranger.publicKey,
+          payer.publicKey,
+        ),
         Buffer.concat([Buffer.from([IX.JudgeChallenge]), tokenB, Buffer.from([0])]),
       ),
     ),
@@ -1630,7 +1987,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     ERR.CannotResolveOwnDispute,
   );
 
-  const holdBeforeUphold = readHold((await conn.getAccountInfo(pdasB.hold))!.data as Buffer);
+  const holdBeforeUphold = readHold((await conn.getAccountInfo(lotB.hold))!.data as Buffer);
   const abandonmentWindow = holdBeforeUphold.abandonmentWindow;
   assert.equal(abandonmentWindow, ABANDONMENT_WINDOW);
   const tUphold = await blockTime(conn);
@@ -1639,50 +1996,47 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     new Transaction().add(
       ix(
         programId,
-        [
-          { pubkey: judge.publicKey, isSigner: true, isWritable: false },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: pdasB.consignment, isSigner: false, isWritable: true },
-          { pubkey: pdasB.hold, isSigner: false, isWritable: true },
-          { pubkey: pdasB.challenge, isSigner: false, isWritable: true },
-          { pubkey: bidder1.publicKey, isSigner: false, isWritable: true }, // bond → challenger on uphold
-          { pubkey: judgeStake, isSigner: false, isWritable: false },
-          { pubkey: stakingProgram, isSigner: false, isWritable: false },
-          { pubkey: pdasB.escrow, isSigner: false, isWritable: true },
-          { pubkey: platform.publicKey, isSigner: false, isWritable: true },
-          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-          { pubkey: stranger.publicKey, isSigner: false, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-        ],
+        judgeKeys(
+          judge.publicKey,
+          lotB,
+          binding,
+          stack,
+          configPda,
+          bidder1.publicKey, // bond → challenger on uphold
+          judgeStake,
+          stakingProgram,
+          platform.publicKey,
+          seller.publicKey,
+          stranger.publicKey,
+          payer.publicKey,
+        ),
         Buffer.concat([Buffer.from([IX.JudgeChallenge]), tokenB, Buffer.from([0])]), // Upheld
       ),
     ),
     [judge, payer],
   );
 
-  const holdAfterUphold = readHold((await conn.getAccountInfo(pdasB.hold))!.data as Buffer);
+  const holdAfterUphold = readHold((await conn.getAccountInfo(lotB.hold))!.data as Buffer);
   assert.equal(holdAfterUphold.reversalPending, true);
   assert.equal(holdAfterUphold.protectionEndsAt, 0n);
   assert.equal(holdAfterUphold.frozenRemaining, 0n);
   assert.ok(holdAfterUphold.abandonmentDeadline > 0n);
 
   const balBuyerBeforeRev = BigInt(await conn.getBalance(bidder1.publicKey));
-  const balEscrowBeforeRev = BigInt(await conn.getBalance(pdasB.escrow));
+  const balEscrowBeforeRev = BigInt(await conn.getBalance(lotB.escrow));
   {
     const tx = new Transaction().add(
       ix(
         programId,
-        [
-          { pubkey: bidder1.publicKey, isSigner: true, isWritable: true },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: pdasB.consignment, isSigner: false, isWritable: true },
-          { pubkey: pdasB.hold, isSigner: false, isWritable: true },
-          { pubkey: assetB, isSigner: false, isWritable: true },
-          { pubkey: pdasB.escrow, isSigner: false, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-        ],
+        completeReversalKeys(
+          bidder1.publicKey,
+          lotB,
+          binding,
+          stack,
+          configPda,
+          seller.publicKey,
+          payer.publicKey,
+        ),
         Buffer.concat([Buffer.from([IX.CompleteReversal]), tokenB]),
       ),
     );
@@ -1690,35 +2044,39 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     await sendAndConfirmTransaction(conn, tx, [payer, bidder1], { commitment: "confirmed" });
   }
   const balBuyerAfterRev = BigInt(await conn.getBalance(bidder1.publicKey));
-  const balEscrowAfterRev = BigInt(await conn.getBalance(pdasB.escrow));
-  const assetAfterRev = readAsset((await conn.getAccountInfo(assetB))!.data as Buffer);
+  const balEscrowAfterRev = BigInt(await conn.getBalance(lotB.escrow));
+  const assetAfterRevOwner = coreOwner((await conn.getAccountInfo(lotB.asset))!.data as Buffer);
   const phaseAfterRev = readConsignment(
-    (await conn.getAccountInfo(pdasB.consignment))!.data as Buffer,
+    (await conn.getAccountInfo(lotB.consign))!.data as Buffer,
   ).phase;
   assert.equal(phaseAfterRev, PHASE.Returned);
-  assert.equal(assetAfterRev.owner.toBase58(), seller.publicKey.toBase58());
+  assert.equal(assetAfterRevOwner.toBase58(), seller.publicKey.toBase58());
   assert.equal(balBuyerAfterRev - balBuyerBeforeRev, RESERVE);
   assert.equal(balEscrowBeforeRev - balEscrowAfterRev, RESERVE);
 
   // ---------- Negatives (expectCustom each name) ----------
-  const negatives: Record<string, number> = {};
-
-  async function openBidForceSettle(tokenId: Buffer, asset: InstanceType<typeof PublicKey>, buyer: InstanceType<typeof Keypair>) {
-    const pdas = lotPdas(programId, tokenId);
+  async function openBidForceSettle(lot: MintedLot, buyer: Kp) {
+    const tokenId = lot.tokenId;
     await sendAndConfirmTransaction(
       conn,
       new Transaction().add(
         openAscendingIx({
           programId,
+          binding,
+          stack,
           seller: seller.publicKey,
           config: configPda,
-          asset,
-          consignment: pdas.consignment,
+          asset: lot.asset,
+          passportChallenge: lot.passportChallenge,
+          passportState: lot.state,
+          answers: lot.answers,
+          mayAnswers: standRegistryMayAnswersOpen(lot.tokenId),
+          consignment: lot.consign,
           custody: custodyPda,
           payer: payer.publicKey,
           stake: sellerStake,
           stakingProgram,
-          auction: pdas.auction,
+          auction: lot.auction,
           tokenId,
           reserve: RESERVE,
           duration: MIN_DURATION,
@@ -1734,10 +2092,10 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
           programId,
           bidder: buyer.publicKey,
           config: configPda,
-          consignment: pdas.consignment,
-          auction: pdas.auction,
-          hold: pdas.hold,
-          escrow: pdas.escrow,
+          consignment: lot.consign,
+          auction: lot.auction,
+          hold: lot.hold,
+          escrow: lot.escrow,
           payer: payer.publicKey,
           tokenId,
           amount: RESERVE,
@@ -1748,99 +2106,54 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     await sendAndConfirmTransaction(
       conn,
       new Transaction().add(
-        forceAuctionEndsAtIx(programId, authority.publicKey, configPda, pdas.auction, tokenId, 1),
+        forceAuctionEndsAtIx(programId, authority.publicKey, configPda, lot.auction, tokenId, 1),
       ),
       [authority],
     );
     await sendAndConfirmTransaction(
       conn,
       new Transaction().add(
-        ix(
+        settleIx({
           programId,
-          [
-            { pubkey: stranger.publicKey, isSigner: false, isWritable: false },
-            { pubkey: pdas.consignment, isSigner: false, isWritable: false },
-            { pubkey: pdas.auction, isSigner: false, isWritable: true },
-            { pubkey: pdas.hold, isSigner: false, isWritable: true },
-            { pubkey: asset, isSigner: false, isWritable: true },
-            { pubkey: pdas.escrow, isSigner: false, isWritable: false },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          ],
-          Buffer.concat([Buffer.from([IX.Settle]), tokenId]),
-        ),
+          caller: stranger.publicKey,
+          lot,
+          binding,
+          stack,
+          custody: custodyPda,
+          buyer: buyer.publicKey,
+          payer: payer.publicKey,
+        }),
       ),
       [payer],
     );
-    return pdas;
   }
 
-  function confirmKeys(
-    buyerPk: InstanceType<typeof PublicKey>,
-    pdas: ReturnType<typeof lotPdas>,
-    platformPk: InstanceType<typeof PublicKey>,
-  ) {
-    return [
-      { pubkey: buyerPk, isSigner: true, isWritable: false },
-      { pubkey: configPda, isSigner: false, isWritable: false },
-      { pubkey: pdas.consignment, isSigner: false, isWritable: true },
-      { pubkey: pdas.hold, isSigner: false, isWritable: true },
-      { pubkey: pdas.challenge, isSigner: false, isWritable: false },
-      { pubkey: pdas.escrow, isSigner: false, isWritable: true },
-      { pubkey: platformPk, isSigner: false, isWritable: true },
-      { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-      { pubkey: stranger.publicKey, isSigner: false, isWritable: true },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-      { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-    ];
-  }
-
-  function releaseKeys(pdas: ReturnType<typeof lotPdas>) {
-    return [
-      { pubkey: stranger.publicKey, isSigner: false, isWritable: false },
-      { pubkey: configPda, isSigner: false, isWritable: false },
-      { pubkey: pdas.consignment, isSigner: false, isWritable: true },
-      { pubkey: pdas.hold, isSigner: false, isWritable: true },
-      { pubkey: pdas.challenge, isSigner: false, isWritable: false },
-      { pubkey: pdas.escrow, isSigner: false, isWritable: true },
-      { pubkey: platform.publicKey, isSigner: false, isWritable: true },
-      { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-      { pubkey: stranger.publicKey, isSigner: false, isWritable: true },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-      { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-    ];
-  }
 
   // Open refuses: inactive stake / wrong stake answer
   {
-    const tokenN = randomTokenId(0xd1);
-    const pdasN = lotPdas(programId, tokenN);
     // Inactive verifier owns asset so stake PDA wallet matches runner
-    const assetN = await createAsset(
-      conn,
-      programId,
-      payer,
-      inactiveVerifier,
-      tokenN,
-      custodyPda,
-      true,
-      authority,
-      configPda,
-    );
+    const lotN = await mintCoreLot(conn, stack, programId, payer, inactiveVerifier, seller, sellerStake, true);
+    const tokenN = lotN.tokenId;
     negatives.NotActiveVerifierOpen = await expectCustom(
       conn,
       new Transaction().add(
         openAscendingIx({
-          programId,
+        programId,
+        binding,
+        stack,
           seller: inactiveVerifier.publicKey,
           config: configPda,
-          asset: assetN,
-          consignment: pdasN.consignment,
+          asset: lotN.asset,
+          passportChallenge: lotN.passportChallenge,
+          passportState: lotN.state,
+          answers: lotN.answers,
+          mayAnswers: standRegistryMayAnswersOpen(lotN.tokenId),
+          consignment: lotN.consign,
           custody: custodyPda,
           payer: payer.publicKey,
           stake: inactiveStake,
           stakingProgram,
-          auction: pdasN.auction,
+          auction: lotN.auction,
           tokenId: tokenN,
           reserve: RESERVE,
           duration: MIN_DURATION,
@@ -1850,23 +2163,28 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
       [inactiveVerifier, payer],
       ERR.NotActiveVerifier,
     );
-    const tokenN2 = randomTokenId(0xd11);
-    const pdasN2 = lotPdas(programId, tokenN2);
-    const assetN2 = await createAsset(conn, programId, payer, seller, tokenN2, custodyPda, true, authority, configPda);
+    const lotN2 = await mintCoreLot(conn, stack, programId, payer, seller, judge, judgeStake, true);
+    const tokenN2 = lotN2.tokenId;
     negatives.SourceUnanswerableOpen = await expectCustom(
       conn,
       new Transaction().add(
         openAscendingIx({
-          programId,
+        programId,
+        binding,
+        stack,
           seller: seller.publicKey,
           config: configPda,
-          asset: assetN2,
-          consignment: pdasN2.consignment,
+          asset: lotN2.asset,
+        passportChallenge: lotN2.passportChallenge,
+        passportState: lotN2.state,
+        answers: lotN2.answers,
+        mayAnswers: standRegistryMayAnswersOpen(lotN2.tokenId),
+          consignment: lotN2.consign,
           custody: custodyPda,
           payer: payer.publicKey,
           stake: SystemProgram.programId,
           stakingProgram,
-          auction: pdasN2.auction,
+          auction: lotN2.auction,
           tokenId: tokenN2,
           reserve: RESERVE,
           duration: MIN_DURATION,
@@ -1880,23 +2198,28 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
 
   // AuctionNotEnded / AuctionEnded / SettlementPending
   {
-    const tokenN = randomTokenId(0xd2);
-    const pdasN = lotPdas(programId, tokenN);
-    const assetN = await createAsset(conn, programId, payer, seller, tokenN, custodyPda, true, authority, configPda);
+    const lotN = await mintCoreLot(conn, stack, programId, payer, seller, judge, judgeStake, true);
+    const tokenN = lotN.tokenId;
     await sendAndConfirmTransaction(
       conn,
       new Transaction().add(
         openAscendingIx({
-          programId,
+        programId,
+        binding,
+        stack,
           seller: seller.publicKey,
           config: configPda,
-          asset: assetN,
-          consignment: pdasN.consignment,
+          asset: lotN.asset,
+        passportChallenge: lotN.passportChallenge,
+        passportState: lotN.state,
+        answers: lotN.answers,
+        mayAnswers: standRegistryMayAnswersOpen(lotN.tokenId),
+          consignment: lotN.consign,
           custody: custodyPda,
           payer: payer.publicKey,
           stake: sellerStake,
           stakingProgram,
-          auction: pdasN.auction,
+          auction: lotN.auction,
           tokenId: tokenN,
           reserve: RESERVE,
           duration: MIN_DURATION,
@@ -1912,10 +2235,10 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
           programId,
           bidder: bidder1.publicKey,
           config: configPda,
-          consignment: pdasN.consignment,
-          auction: pdasN.auction,
-          hold: pdasN.hold,
-          escrow: pdasN.escrow,
+          consignment: lotN.consign,
+          auction: lotN.auction,
+          hold: lotN.hold,
+          escrow: lotN.escrow,
           payer: payer.publicKey,
           tokenId: tokenN,
           amount: RESERVE,
@@ -1926,20 +2249,16 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     negatives.AuctionNotEnded = await expectCustom(
       conn,
       new Transaction().add(
-        ix(
+        settleIx({
           programId,
-          [
-            { pubkey: stranger.publicKey, isSigner: false, isWritable: false },
-            { pubkey: pdasN.consignment, isSigner: false, isWritable: false },
-            { pubkey: pdasN.auction, isSigner: false, isWritable: true },
-            { pubkey: pdasN.hold, isSigner: false, isWritable: true },
-            { pubkey: assetN, isSigner: false, isWritable: true },
-            { pubkey: pdasN.escrow, isSigner: false, isWritable: false },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          ],
-          Buffer.concat([Buffer.from([IX.Settle]), tokenN]),
-        ),
+          caller: stranger.publicKey,
+          lot: lotN,
+          binding,
+          stack,
+          custody: custodyPda,
+          buyer: bidder1.publicKey,
+          payer: payer.publicKey,
+        }),
       ),
       [payer],
       ERR.AuctionNotEnded,
@@ -1947,7 +2266,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     await sendAndConfirmTransaction(
       conn,
       new Transaction().add(
-        forceAuctionEndsAtIx(programId, authority.publicKey, configPda, pdasN.auction, tokenN, 1),
+        forceAuctionEndsAtIx(programId, authority.publicKey, configPda, lotN.auction, tokenN, 1),
       ),
       [authority],
     );
@@ -1958,10 +2277,10 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
           programId,
           bidder: bidder2.publicKey,
           config: configPda,
-          consignment: pdasN.consignment,
-          auction: pdasN.auction,
-          hold: pdasN.hold,
-          escrow: pdasN.escrow,
+          consignment: lotN.consign,
+          auction: lotN.auction,
+          hold: lotN.hold,
+          escrow: lotN.escrow,
           payer: payer.publicKey,
           tokenId: tokenN,
           amount: minNextBid(RESERVE),
@@ -1974,20 +2293,16 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     await sendAndConfirmTransaction(
       conn,
       new Transaction().add(
-        ix(
+        settleIx({
           programId,
-          [
-            { pubkey: stranger.publicKey, isSigner: false, isWritable: false },
-            { pubkey: pdasN.consignment, isSigner: false, isWritable: false },
-            { pubkey: pdasN.auction, isSigner: false, isWritable: true },
-            { pubkey: pdasN.hold, isSigner: false, isWritable: true },
-            { pubkey: assetN, isSigner: false, isWritable: true },
-            { pubkey: pdasN.escrow, isSigner: false, isWritable: false },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          ],
-          Buffer.concat([Buffer.from([IX.Settle]), tokenN]),
-        ),
+          caller: stranger.publicKey,
+          lot: lotN,
+          binding,
+          stack,
+          custody: custodyPda,
+          buyer: bidder1.publicKey,
+          payer: payer.publicKey,
+        }),
       ),
       [payer],
     );
@@ -1998,10 +2313,10 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
           programId,
           bidder: bidder2.publicKey,
           config: configPda,
-          consignment: pdasN.consignment,
-          auction: pdasN.auction,
-          hold: pdasN.hold,
-          escrow: pdasN.escrow,
+          consignment: lotN.consign,
+          auction: lotN.auction,
+          hold: lotN.hold,
+          escrow: lotN.escrow,
           payer: payer.publicKey,
           tokenId: tokenN,
           amount: RESERVE,
@@ -2013,20 +2328,16 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     negatives.SettlementPendingSettle = await expectCustom(
       conn,
       new Transaction().add(
-        ix(
+        settleIx({
           programId,
-          [
-            { pubkey: stranger.publicKey, isSigner: false, isWritable: false },
-            { pubkey: pdasN.consignment, isSigner: false, isWritable: false },
-            { pubkey: pdasN.auction, isSigner: false, isWritable: true },
-            { pubkey: pdasN.hold, isSigner: false, isWritable: true },
-            { pubkey: assetN, isSigner: false, isWritable: true },
-            { pubkey: pdasN.escrow, isSigner: false, isWritable: false },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          ],
-          Buffer.concat([Buffer.from([IX.Settle]), tokenN]),
-        ),
+          caller: stranger.publicKey,
+          lot: lotN,
+          binding,
+          stack,
+          custody: custodyPda,
+          buyer: bidder1.publicKey,
+          payer: payer.publicKey,
+        }),
       ),
       [payer],
       ERR.SettlementPending,
@@ -2034,7 +2345,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     negatives.HoldNotReady = await expectCustom(
       conn,
       new Transaction().add(
-        ix(programId, releaseKeys(pdasN), Buffer.concat([Buffer.from([IX.ReleaseFunds]), tokenN])),
+        ix(programId, releaseKeys(lotN, binding, stack, configPda, platform.publicKey, seller.publicKey, stranger.publicKey, payer.publicKey, stranger.publicKey), Buffer.concat([Buffer.from([IX.ReleaseFunds]), tokenN])),
       ),
       [payer],
       ERR.HoldNotReady,
@@ -2043,16 +2354,16 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
 
   // Hold-path negatives on a dedicated lot
   {
-    const tokenN = randomTokenId(0xd3);
-    const assetN = await createAsset(conn, programId, payer, seller, tokenN, custodyPda, true, authority, configPda);
-    const pdasN = await openBidForceSettle(tokenN, assetN, bidder1);
+    const lotN = await mintCoreLot(conn, stack, programId, payer, seller, judge, judgeStake, true);
+    const tokenN = lotN.tokenId;
+    await openBidForceSettle(lotN, bidder1);
 
     negatives.NotHoldBuyerConfirm = await expectCustom(
       conn,
       new Transaction().add(
         ix(
           programId,
-          confirmKeys(stranger.publicKey, pdasN, platform.publicKey),
+          confirmKeys(stranger.publicKey, lotN, binding, stack, configPda, platform.publicKey, seller.publicKey, stranger.publicKey, payer.publicKey),
           Buffer.concat([Buffer.from([IX.ConfirmReceipt]), tokenN]),
         ),
       ),
@@ -2068,9 +2379,9 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
           [
             { pubkey: bidder1.publicKey, isSigner: true, isWritable: true },
             { pubkey: configPda, isSigner: false, isWritable: false },
-            { pubkey: pdasN.consignment, isSigner: false, isWritable: false },
-            { pubkey: pdasN.hold, isSigner: false, isWritable: true },
-            { pubkey: pdasN.challenge, isSigner: false, isWritable: true },
+            { pubkey: lotN.consign, isSigner: false, isWritable: false },
+            { pubkey: lotN.hold, isSigner: false, isWritable: true },
+            { pubkey: lotN.modeChallenge, isSigner: false, isWritable: true },
             { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
             { pubkey: payer.publicKey, isSigner: true, isWritable: true },
           ],
@@ -2085,7 +2396,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
       new Transaction().add(
         ix(
           programId,
-          confirmKeys(bidder1.publicKey, pdasN, platform.publicKey),
+          confirmKeys(bidder1.publicKey, lotN, binding, stack, configPda, platform.publicKey, seller.publicKey, stranger.publicKey, payer.publicKey),
           Buffer.concat([Buffer.from([IX.ConfirmReceipt]), tokenN]),
         ),
       ),
@@ -2095,7 +2406,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     negatives.DisputeActiveRelease = await expectCustom(
       conn,
       new Transaction().add(
-        ix(programId, releaseKeys(pdasN), Buffer.concat([Buffer.from([IX.ReleaseFunds]), tokenN])),
+        ix(programId, releaseKeys(lotN, binding, stack, configPda, platform.publicKey, seller.publicKey, stranger.publicKey, payer.publicKey, stranger.publicKey), Buffer.concat([Buffer.from([IX.ReleaseFunds]), tokenN])),
       ),
       [payer],
       ERR.DisputeActive,
@@ -2108,9 +2419,9 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
           [
             { pubkey: stranger.publicKey, isSigner: true, isWritable: true },
             { pubkey: configPda, isSigner: false, isWritable: false },
-            { pubkey: pdasN.consignment, isSigner: false, isWritable: false },
-            { pubkey: pdasN.hold, isSigner: false, isWritable: true },
-            { pubkey: pdasN.challenge, isSigner: false, isWritable: true },
+            { pubkey: lotN.consign, isSigner: false, isWritable: false },
+            { pubkey: lotN.hold, isSigner: false, isWritable: true },
+            { pubkey: lotN.modeChallenge, isSigner: false, isWritable: true },
           ],
           Buffer.concat([Buffer.from([IX.WithdrawChallenge]), tokenN]),
         ),
@@ -2123,22 +2434,20 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
       new Transaction().add(
         ix(
           programId,
-          [
-            { pubkey: inactiveVerifier.publicKey, isSigner: true, isWritable: false },
-            { pubkey: configPda, isSigner: false, isWritable: false },
-            { pubkey: pdasN.consignment, isSigner: false, isWritable: true },
-            { pubkey: pdasN.hold, isSigner: false, isWritable: true },
-            { pubkey: pdasN.challenge, isSigner: false, isWritable: true },
-            { pubkey: bidder1.publicKey, isSigner: false, isWritable: true },
-            { pubkey: inactiveStake, isSigner: false, isWritable: false },
-            { pubkey: stakingProgram, isSigner: false, isWritable: false },
-            { pubkey: pdasN.escrow, isSigner: false, isWritable: true },
-            { pubkey: platform.publicKey, isSigner: false, isWritable: true },
-            { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-            { pubkey: stranger.publicKey, isSigner: false, isWritable: true },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          ],
+          judgeKeys(
+            inactiveVerifier.publicKey,
+            lotN,
+            binding,
+            stack,
+            configPda,
+            bidder1.publicKey,
+            inactiveStake,
+            stakingProgram,
+            platform.publicKey,
+            seller.publicKey,
+            stranger.publicKey,
+            payer.publicKey,
+          ),
           Buffer.concat([Buffer.from([IX.JudgeChallenge]), tokenN, Buffer.from([0])]),
         ),
       ),
@@ -2150,22 +2459,20 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
       new Transaction().add(
         ix(
           programId,
-          [
-            { pubkey: judge.publicKey, isSigner: true, isWritable: false },
-            { pubkey: configPda, isSigner: false, isWritable: false },
-            { pubkey: pdasN.consignment, isSigner: false, isWritable: true },
-            { pubkey: pdasN.hold, isSigner: false, isWritable: true },
-            { pubkey: pdasN.challenge, isSigner: false, isWritable: true },
-            { pubkey: bidder1.publicKey, isSigner: false, isWritable: true },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            { pubkey: stakingProgram, isSigner: false, isWritable: false },
-            { pubkey: pdasN.escrow, isSigner: false, isWritable: true },
-            { pubkey: platform.publicKey, isSigner: false, isWritable: true },
-            { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-            { pubkey: stranger.publicKey, isSigner: false, isWritable: true },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          ],
+          judgeKeys(
+            judge.publicKey,
+            lotN,
+            binding,
+            stack,
+            configPda,
+            bidder1.publicKey,
+            SystemProgram.programId, // intentional non-stake
+            stakingProgram,
+            platform.publicKey,
+            seller.publicKey,
+            stranger.publicKey,
+            payer.publicKey,
+          ),
           Buffer.concat([Buffer.from([IX.JudgeChallenge]), tokenN, Buffer.from([0])]),
         ),
       ),
@@ -2177,22 +2484,20 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
       new Transaction().add(
         ix(
           programId,
-          [
-            { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-            { pubkey: configPda, isSigner: false, isWritable: false },
-            { pubkey: pdasN.consignment, isSigner: false, isWritable: true },
-            { pubkey: pdasN.hold, isSigner: false, isWritable: true },
-            { pubkey: pdasN.challenge, isSigner: false, isWritable: true },
-            { pubkey: bidder1.publicKey, isSigner: false, isWritable: true },
-            { pubkey: sellerStake, isSigner: false, isWritable: false },
-            { pubkey: stakingProgram, isSigner: false, isWritable: false },
-            { pubkey: pdasN.escrow, isSigner: false, isWritable: true },
-            { pubkey: platform.publicKey, isSigner: false, isWritable: true },
-            { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-            { pubkey: stranger.publicKey, isSigner: false, isWritable: true },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          ],
+          judgeKeys(
+            seller.publicKey,
+            lotN,
+            binding,
+            stack,
+            configPda,
+            bidder1.publicKey,
+            sellerStake,
+            stakingProgram,
+            platform.publicKey,
+            seller.publicKey,
+            stranger.publicKey,
+            payer.publicKey,
+          ),
           Buffer.concat([Buffer.from([IX.JudgeChallenge]), tokenN, Buffer.from([0])]),
         ),
       ),
@@ -2205,22 +2510,20 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
       new Transaction().add(
         ix(
           programId,
-          [
-            { pubkey: forfeit.publicKey, isSigner: true, isWritable: false },
-            { pubkey: configPda, isSigner: false, isWritable: false },
-            { pubkey: pdasN.consignment, isSigner: false, isWritable: true },
-            { pubkey: pdasN.hold, isSigner: false, isWritable: true },
-            { pubkey: pdasN.challenge, isSigner: false, isWritable: true },
-            { pubkey: forfeit.publicKey, isSigner: false, isWritable: true },
-            { pubkey: forfeitStake, isSigner: false, isWritable: false },
-            { pubkey: stakingProgram, isSigner: false, isWritable: false },
-            { pubkey: pdasN.escrow, isSigner: false, isWritable: true },
-            { pubkey: platform.publicKey, isSigner: false, isWritable: true },
-            { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-            { pubkey: stranger.publicKey, isSigner: false, isWritable: true },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          ],
+          judgeKeys(
+            forfeit.publicKey,
+            lotN,
+            binding,
+            stack,
+            configPda,
+            forfeit.publicKey,
+            forfeitStake,
+            stakingProgram,
+            platform.publicKey,
+            seller.publicKey,
+            stranger.publicKey,
+            payer.publicKey,
+          ),
           Buffer.concat([Buffer.from([IX.JudgeChallenge]), tokenN, Buffer.from([1])]), // Rejected
         ),
       ),
@@ -2234,22 +2537,20 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
       new Transaction().add(
         ix(
           programId,
-          [
-            { pubkey: judge.publicKey, isSigner: true, isWritable: false },
-            { pubkey: configPda, isSigner: false, isWritable: false },
-            { pubkey: pdasN.consignment, isSigner: false, isWritable: true },
-            { pubkey: pdasN.hold, isSigner: false, isWritable: true },
-            { pubkey: pdasN.challenge, isSigner: false, isWritable: true },
-            { pubkey: bidder1.publicKey, isSigner: false, isWritable: true },
-            { pubkey: judgeStake, isSigner: false, isWritable: false },
-            { pubkey: stakingProgram, isSigner: false, isWritable: false },
-            { pubkey: pdasN.escrow, isSigner: false, isWritable: true },
-            { pubkey: platform.publicKey, isSigner: false, isWritable: true },
-            { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-            { pubkey: stranger.publicKey, isSigner: false, isWritable: true },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          ],
+          judgeKeys(
+            judge.publicKey,
+            lotN,
+            binding,
+            stack,
+            configPda,
+            bidder1.publicKey,
+            judgeStake,
+            stakingProgram,
+            platform.publicKey,
+            seller.publicKey,
+            stranger.publicKey,
+            payer.publicKey,
+          ),
           Buffer.concat([Buffer.from([IX.JudgeChallenge]), tokenN, Buffer.from([0])]),
         ),
       ),
@@ -2261,7 +2562,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
       new Transaction().add(
         ix(
           programId,
-          confirmKeys(bidder1.publicKey, pdasN, platform.publicKey),
+          confirmKeys(bidder1.publicKey, lotN, binding, stack, configPda, platform.publicKey, seller.publicKey, stranger.publicKey, payer.publicKey),
           Buffer.concat([Buffer.from([IX.ConfirmReceipt]), tokenN]),
         ),
       ),
@@ -2271,7 +2572,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     negatives.ReversalPendingRelease = await expectCustom(
       conn,
       new Transaction().add(
-        ix(programId, releaseKeys(pdasN), Buffer.concat([Buffer.from([IX.ReleaseFunds]), tokenN])),
+        ix(programId, releaseKeys(lotN, binding, stack, configPda, platform.publicKey, seller.publicKey, stranger.publicKey, payer.publicKey, stranger.publicKey), Buffer.concat([Buffer.from([IX.ReleaseFunds]), tokenN])),
       ),
       [payer],
       ERR.ReversalPending,
@@ -2284,9 +2585,9 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
           [
             { pubkey: bidder1.publicKey, isSigner: true, isWritable: true },
             { pubkey: configPda, isSigner: false, isWritable: false },
-            { pubkey: pdasN.consignment, isSigner: false, isWritable: false },
-            { pubkey: pdasN.hold, isSigner: false, isWritable: true },
-            { pubkey: pdasN.challenge, isSigner: false, isWritable: true },
+            { pubkey: lotN.consign, isSigner: false, isWritable: false },
+            { pubkey: lotN.hold, isSigner: false, isWritable: true },
+            { pubkey: lotN.modeChallenge, isSigner: false, isWritable: true },
             { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
             { pubkey: payer.publicKey, isSigner: true, isWritable: true },
           ],
@@ -2301,18 +2602,17 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
       new Transaction().add(
         ix(
           programId,
-          [
-            { pubkey: stranger.publicKey, isSigner: false, isWritable: false },
-            { pubkey: configPda, isSigner: false, isWritable: false },
-            { pubkey: pdasN.consignment, isSigner: false, isWritable: true },
-            { pubkey: pdasN.hold, isSigner: false, isWritable: true },
-            { pubkey: pdasN.escrow, isSigner: false, isWritable: true },
-            { pubkey: platform.publicKey, isSigner: false, isWritable: true },
-            { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-            { pubkey: stranger.publicKey, isSigner: false, isWritable: true },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          ],
+          abandonKeys(
+            lotN,
+            binding,
+            stack,
+            configPda,
+            platform.publicKey,
+            seller.publicKey,
+            stranger.publicKey,
+            payer.publicKey,
+            stranger.publicKey,
+          ),
           Buffer.concat([Buffer.from([IX.AbandonReversal]), tokenN]),
         ),
       ),
@@ -2324,52 +2624,48 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
       new Transaction().add(
         ix(
           programId,
-          [
-            { pubkey: stranger.publicKey, isSigner: true, isWritable: true },
-            { pubkey: configPda, isSigner: false, isWritable: false },
-            { pubkey: pdasN.consignment, isSigner: false, isWritable: true },
-            { pubkey: pdasN.hold, isSigner: false, isWritable: true },
-            { pubkey: assetN, isSigner: false, isWritable: true },
-            { pubkey: pdasN.escrow, isSigner: false, isWritable: true },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          ],
+          completeReversalKeys(
+            stranger.publicKey,
+            lotN,
+            binding,
+            stack,
+            configPda,
+            seller.publicKey,
+            payer.publicKey,
+          ),
           Buffer.concat([Buffer.from([IX.CompleteReversal]), tokenN]),
         ),
       ),
       [stranger, payer],
       ERR.NotHoldBuyer,
     );
-    // Force asset away from buyer → NotPassportHolder on Complete
-    await sendAndConfirmTransaction(
+    // Stranger-owned Core asset (not lotN) → owner ≠ hold.buyer → NotPassportHolder
+    const lotAway = await mintCoreLot(
       conn,
-      new Transaction().add(
-        forceAssetOwnerIx(
-          programId,
-          authority.publicKey,
-          configPda,
-          assetN,
-          tokenN,
-          stranger.publicKey,
-        ),
-      ),
-      [authority],
+      stack,
+      programId,
+      payer,
+      stranger,
+      judge,
+      judgeStake,
+      true,
     );
     negatives.NotPassportHolder = await expectCustom(
       conn,
       new Transaction().add(
         ix(
           programId,
-          [
-            { pubkey: bidder1.publicKey, isSigner: true, isWritable: true },
-            { pubkey: configPda, isSigner: false, isWritable: false },
-            { pubkey: pdasN.consignment, isSigner: false, isWritable: true },
-            { pubkey: pdasN.hold, isSigner: false, isWritable: true },
-            { pubkey: assetN, isSigner: false, isWritable: true },
-            { pubkey: pdasN.escrow, isSigner: false, isWritable: true },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          ],
+          completeReversalKeys(
+            bidder1.publicKey,
+            lotN,
+            binding,
+            stack,
+            configPda,
+            seller.publicKey,
+            payer.publicKey,
+            undefined,
+            lotAway.asset,
+          ),
           Buffer.concat([Buffer.from([IX.CompleteReversal]), tokenN]),
         ),
       ),
@@ -2380,13 +2676,13 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
 
   // ProtectionElapsed / WrongPlatformRecipient / NoHold / BidFromAgent
   {
-    const tokenN = randomTokenId(0xd4);
-    const assetN = await createAsset(conn, programId, payer, seller, tokenN, custodyPda, true, authority, configPda);
-    const pdasN = await openBidForceSettle(tokenN, assetN, bidder2);
+    const lotN = await mintCoreLot(conn, stack, programId, payer, seller, judge, judgeStake, true);
+    const tokenN = lotN.tokenId;
+    await openBidForceSettle(lotN, bidder2);
     await sendAndConfirmTransaction(
       conn,
       new Transaction().add(
-        forceHoldClockIx(programId, authority.publicKey, configPda, pdasN.hold, tokenN, 1, 0, 0),
+        forceHoldClockIx(programId, authority.publicKey, configPda, lotN.hold, tokenN, 1, 0, 0),
       ),
       [authority],
     );
@@ -2398,9 +2694,9 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
           [
             { pubkey: bidder2.publicKey, isSigner: true, isWritable: true },
             { pubkey: configPda, isSigner: false, isWritable: false },
-            { pubkey: pdasN.consignment, isSigner: false, isWritable: false },
-            { pubkey: pdasN.hold, isSigner: false, isWritable: true },
-            { pubkey: pdasN.challenge, isSigner: false, isWritable: true },
+            { pubkey: lotN.consign, isSigner: false, isWritable: false },
+            { pubkey: lotN.hold, isSigner: false, isWritable: true },
+            { pubkey: lotN.modeChallenge, isSigner: false, isWritable: true },
             { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
             { pubkey: payer.publicKey, isSigner: true, isWritable: true },
           ],
@@ -2419,7 +2715,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
           programId,
           authority.publicKey,
           configPda,
-          pdasN.hold,
+          lotN.hold,
           tokenN,
           now + BigInt(MIN_PROTECTION),
           0,
@@ -2433,7 +2729,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
       new Transaction().add(
         ix(
           programId,
-          confirmKeys(bidder2.publicKey, pdasN, stranger.publicKey),
+          confirmKeys(bidder2.publicKey, lotN, binding, stack, configPda, stranger.publicKey, seller.publicKey, stranger.publicKey, payer.publicKey),
           Buffer.concat([Buffer.from([IX.ConfirmReceipt]), tokenN]),
         ),
       ),
@@ -2445,7 +2741,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
       new Transaction().add(
         ix(
           programId,
-          confirmKeys(bidder2.publicKey, pdasN, platform.publicKey),
+          confirmKeys(bidder2.publicKey, lotN, binding, stack, configPda, platform.publicKey, seller.publicKey, stranger.publicKey, payer.publicKey),
           Buffer.concat([Buffer.from([IX.ConfirmReceipt]), tokenN]),
         ),
       ),
@@ -2456,7 +2752,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
       new Transaction().add(
         ix(
           programId,
-          confirmKeys(bidder2.publicKey, pdasN, platform.publicKey),
+          confirmKeys(bidder2.publicKey, lotN, binding, stack, configPda, platform.publicKey, seller.publicKey, stranger.publicKey, payer.publicKey),
           Buffer.concat([Buffer.from([IX.ConfirmReceipt]), tokenN]),
         ),
       ),
@@ -2467,24 +2763,24 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
 
   // BidFromAgent via Grant + OpenAscendingFromMandate
   {
-    const tokenN = randomTokenId(0xd5);
-    const pdasN = lotPdas(programId, tokenN);
-    const assetN = await createAsset(conn, programId, payer, seller, tokenN, custodyPda, true, authority, configPda);
-    const [mandateN] = pda(programId, [Buffer.from("mandate"), tokenN]);
+    const lotN = await mintCoreLot(conn, stack, programId, payer, seller, judge, judgeStake, true);
+    const tokenN = lotN.tokenId;
+    const [mandateN] = pda(programId, [SEED.mandate, tokenN]);
+    await addTransferDelegateToCustody(conn, seller, payer, lotN.asset, custodyPda);
     await sendAndConfirmTransaction(
       conn,
       new Transaction().add(
         ix(
           programId,
-          [
-            { pubkey: seller.publicKey, isSigner: true, isWritable: false },
-            { pubkey: assetN, isSigner: false, isWritable: false },
-            { pubkey: mandateN, isSigner: false, isWritable: true },
-            { pubkey: pdasN.consignment, isSigner: false, isWritable: false },
-            { pubkey: custodyPda, isSigner: false, isWritable: false },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          ],
+          grantKeys({
+            owner: seller.publicKey,
+            binding,
+            asset: lotN.asset,
+            mandate: mandateN,
+            consign: lotN.consign,
+            custody: custodyPda,
+            payer: payer.publicKey,
+          }),
           Buffer.concat([
             Buffer.from([IX.Grant]),
             tokenN,
@@ -2506,19 +2802,25 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
       new Transaction().add(
         ix(
           programId,
-          [
-            { pubkey: agent.publicKey, isSigner: true, isWritable: false },
-            { pubkey: configPda, isSigner: false, isWritable: false },
-            { pubkey: assetN, isSigner: false, isWritable: true },
-            { pubkey: mandateN, isSigner: false, isWritable: false },
-            { pubkey: pdasN.consignment, isSigner: false, isWritable: true },
-            { pubkey: custodyPda, isSigner: false, isWritable: false },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-            { pubkey: agentStake, isSigner: false, isWritable: false },
-            { pubkey: stakingProgram, isSigner: false, isWritable: false },
-            { pubkey: pdasN.auction, isSigner: false, isWritable: true },
-          ],
+          openAscendingFromMandateKeys({
+            agent: agent.publicKey,
+            config: configPda,
+            mandate: mandateN,
+            binding,
+            passportConfig: stack.passportConfig,
+            asset: lotN.asset,
+            passportChallenge: lotN.passportChallenge,
+            mayAnswers: standRegistryMayAnswersOpen(lotN.tokenId),
+            passportState: lotN.state,
+            consign: lotN.consign,
+            custody: custodyPda,
+            payer: payer.publicKey,
+            answerLeave: lotN.answers.leave,
+            answerOpen: lotN.answers.open,
+            stake: agentStake,
+            stakingProgram,
+            auction: lotN.auction,
+          }),
           Buffer.concat([
             Buffer.from([IX.OpenAscendingFromMandate]),
             tokenN,
@@ -2537,10 +2839,10 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
           programId,
           bidder: agent.publicKey,
           config: configPda,
-          consignment: pdasN.consignment,
-          auction: pdasN.auction,
-          hold: pdasN.hold,
-          escrow: pdasN.escrow,
+          consignment: lotN.consign,
+          auction: lotN.auction,
+          hold: lotN.hold,
+          escrow: lotN.escrow,
           payer: payer.publicKey,
           tokenId: tokenN,
           amount: RESERVE,
@@ -2576,7 +2878,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     ),
     [payer, mint],
   );
-  const [payTok] = pda(programId, [Buffer.from("payment-token"), mint.publicKey.toBuffer()]);
+  const [payTok] = pda(programId, [SEED.paymentToken, mint.publicKey.toBuffer()]);
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
@@ -2596,23 +2898,28 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     [authority, payer],
   );
 
-  const tokenS = randomTokenId(0xe1);
-  const pdasS = lotPdas(programId, tokenS);
-  const assetS = await createAsset(conn, programId, payer, seller, tokenS, custodyPda, true, authority, configPda);
+  const lotS = await mintCoreLot(conn, stack, programId, payer, seller, judge, judgeStake, true);
+  const tokenS = lotS.tokenId;
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
       openAscendingIx({
         programId,
+        binding,
+        stack,
         seller: seller.publicKey,
         config: configPda,
-        asset: assetS,
-        consignment: pdasS.consignment,
+        asset: lotS.asset,
+        passportChallenge: lotS.passportChallenge,
+        passportState: lotS.state,
+        answers: lotS.answers,
+        mayAnswers: standRegistryMayAnswersOpen(lotS.tokenId),
+        consignment: lotS.consign,
         custody: custodyPda,
         payer: payer.publicKey,
         stake: sellerStake,
         stakingProgram,
-        auction: pdasS.auction,
+        auction: lotS.auction,
         tokenId: tokenS,
         reserve: RESERVE,
         duration: MIN_DURATION,
@@ -2658,7 +2965,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
         lamports: ataRent,
         programId: TOKEN_PROGRAM_ID,
       }),
-      createInitializeAccount3Instruction(escrowAta.publicKey, mint.publicKey, pdasS.escrow),
+      createInitializeAccount3Instruction(escrowAta.publicKey, mint.publicKey, lotS.escrow),
       createMintToInstruction(mint.publicKey, bidder1Ata.publicKey, payer.publicKey, Number(RESERVE)),
       createMintToInstruction(
         mint.publicKey,
@@ -2677,10 +2984,10 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
         programId,
         bidder: bidder1.publicKey,
         config: configPda,
-        consignment: pdasS.consignment,
-        auction: pdasS.auction,
-        hold: pdasS.hold,
-        escrow: pdasS.escrow,
+        consignment: lotS.consign,
+        auction: lotS.auction,
+        hold: lotS.hold,
+        escrow: lotS.escrow,
         payer: payer.publicKey,
         tokenId: tokenS,
         amount: RESERVE,
@@ -2715,10 +3022,10 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
         programId,
         bidder: bidder2.publicKey,
         config: configPda,
-        consignment: pdasS.consignment,
-        auction: pdasS.auction,
-        hold: pdasS.hold,
-        escrow: pdasS.escrow,
+        consignment: lotS.consign,
+        auction: lotS.auction,
+        hold: lotS.hold,
+        escrow: lotS.escrow,
         payer: payer.publicKey,
         tokenId: tokenS,
         amount: bid2Spl,
@@ -2803,28 +3110,24 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
-      forceAuctionEndsAtIx(programId, authority.publicKey, configPda, pdasS.auction, tokenS, 1),
+      forceAuctionEndsAtIx(programId, authority.publicKey, configPda, lotS.auction, tokenS, 1),
     ),
     [authority],
   );
   await sendAndConfirmTransaction(
     conn,
     new Transaction().add(
-      ix(
+            settleIx({
         programId,
-        [
-          { pubkey: stranger.publicKey, isSigner: false, isWritable: false },
-          { pubkey: pdasS.consignment, isSigner: false, isWritable: false },
-          { pubkey: pdasS.auction, isSigner: false, isWritable: true },
-          { pubkey: pdasS.hold, isSigner: false, isWritable: true },
-          { pubkey: assetS, isSigner: false, isWritable: true },
-          { pubkey: pdasS.escrow, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: escrowAta.publicKey, isSigner: false, isWritable: false },
-        ],
-        Buffer.concat([Buffer.from([IX.Settle]), tokenS]),
-      ),
+        caller: stranger.publicKey,
+        lot: lotS,
+        binding,
+        stack,
+        custody: custodyPda,
+        buyer: bidder2.publicKey,
+        payer: payer.publicKey,
+        escrowAta: escrowAta.publicKey,
+      }),
     ),
     [payer],
   );
@@ -2839,9 +3142,9 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
         [
           { pubkey: bidder2.publicKey, isSigner: true, isWritable: true },
           { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: pdasS.consignment, isSigner: false, isWritable: false },
-          { pubkey: pdasS.hold, isSigner: false, isWritable: true },
-          { pubkey: pdasS.challenge, isSigner: false, isWritable: true },
+          { pubkey: lotS.consign, isSigner: false, isWritable: false },
+          { pubkey: lotS.hold, isSigner: false, isWritable: true },
+          { pubkey: lotS.modeChallenge, isSigner: false, isWritable: true },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
           { pubkey: payer.publicKey, isSigner: true, isWritable: true },
         ],
@@ -2856,22 +3159,20 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     new Transaction().add(
       ix(
         programId,
-        [
-          { pubkey: judge.publicKey, isSigner: true, isWritable: false },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: pdasS.consignment, isSigner: false, isWritable: true },
-          { pubkey: pdasS.hold, isSigner: false, isWritable: true },
-          { pubkey: pdasS.challenge, isSigner: false, isWritable: true },
-          { pubkey: bidder2.publicKey, isSigner: false, isWritable: true },
-          { pubkey: judgeStake, isSigner: false, isWritable: false },
-          { pubkey: stakingProgram, isSigner: false, isWritable: false },
-          { pubkey: pdasS.escrow, isSigner: false, isWritable: true },
-          { pubkey: platform.publicKey, isSigner: false, isWritable: true },
-          { pubkey: seller.publicKey, isSigner: false, isWritable: true },
-          { pubkey: stranger.publicKey, isSigner: false, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-        ],
+        judgeKeys(
+          judge.publicKey,
+          lotS,
+          binding,
+          stack,
+          configPda,
+          bidder2.publicKey,
+          judgeStake,
+          stakingProgram,
+          platform.publicKey,
+          seller.publicKey,
+          stranger.publicKey,
+          payer.publicKey,
+        ),
         Buffer.concat([Buffer.from([IX.JudgeChallenge]), tokenS, Buffer.from([0])]),
       ),
     ),
@@ -2894,22 +3195,22 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     new Transaction().add(
       ix(
         programId,
-        [
-          { pubkey: bidder2.publicKey, isSigner: true, isWritable: true },
-          { pubkey: configPda, isSigner: false, isWritable: false },
-          { pubkey: pdasS.consignment, isSigner: false, isWritable: true },
-          { pubkey: pdasS.hold, isSigner: false, isWritable: true },
-          { pubkey: assetS, isSigner: false, isWritable: true },
-          { pubkey: pdasS.escrow, isSigner: false, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-          { pubkey: bidder2Ata.publicKey, isSigner: false, isWritable: true },
-          { pubkey: escrowAta.publicKey, isSigner: false, isWritable: true },
-          { pubkey: mint.publicKey, isSigner: false, isWritable: false },
-          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-          { pubkey: buyer2Claim, isSigner: false, isWritable: true },
-          { pubkey: buyer2ClaimAta, isSigner: false, isWritable: true },
-        ],
+        completeReversalKeys(
+          bidder2.publicKey,
+          lotS,
+          binding,
+          stack,
+          configPda,
+          seller.publicKey,
+          payer.publicKey,
+          {
+            buyerAta: bidder2Ata.publicKey,
+            escrowAta: escrowAta.publicKey,
+            mint: mint.publicKey,
+            claim: buyer2Claim,
+            claimAta: buyer2ClaimAta,
+          },
+        ),
         Buffer.concat([Buffer.from([IX.CompleteReversal]), tokenS]),
       ),
     ),
@@ -2946,24 +3247,29 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     [guardian],
   );
 
-  const tokenC = randomTokenId(0xc3);
-  const pdasC = lotPdas(programId, tokenC);
-  const assetC = await createAsset(conn, programId, payer, seller, tokenC, custodyPda, true, authority, configPda);
+  const lotC = await mintCoreLot(conn, stack, programId, payer, seller, judge, judgeStake, true);
+  const tokenC = lotC.tokenId;
 
   const pauseOpenCode = await expectCustom(
     conn,
     new Transaction().add(
       openAscendingIx({
         programId,
+        binding,
+        stack,
         seller: seller.publicKey,
         config: configPda,
-        asset: assetC,
-        consignment: pdasC.consignment,
+        asset: lotC.asset,
+        passportChallenge: lotC.passportChallenge,
+        passportState: lotC.state,
+        answers: lotC.answers,
+        mayAnswers: standRegistryMayAnswersOpen(lotC.tokenId),
+        consignment: lotC.consign,
         custody: custodyPda,
         payer: payer.publicKey,
         stake: sellerStake,
         stakingProgram,
-        auction: pdasC.auction,
+        auction: lotC.auction,
         tokenId: tokenC,
         reserve: RESERVE,
         duration: MIN_DURATION,
@@ -2994,15 +3300,21 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     new Transaction().add(
       openAscendingIx({
         programId,
+        binding,
+        stack,
         seller: seller.publicKey,
         config: configPda,
-        asset: assetC,
-        consignment: pdasC.consignment,
+        asset: lotC.asset,
+        passportChallenge: lotC.passportChallenge,
+        passportState: lotC.state,
+        answers: lotC.answers,
+        mayAnswers: standRegistryMayAnswersOpen(lotC.tokenId),
+        consignment: lotC.consign,
         custody: custodyPda,
         payer: payer.publicKey,
         stake: sellerStake,
         stakingProgram,
-        auction: pdasC.auction,
+        auction: lotC.auction,
         tokenId: tokenC,
         reserve: RESERVE,
         duration: MIN_DURATION,
@@ -3034,10 +3346,10 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
         programId,
         bidder: bidder1.publicKey,
         config: configPda,
-        consignment: pdasC.consignment,
-        auction: pdasC.auction,
-        hold: pdasC.hold,
-        escrow: pdasC.escrow,
+        consignment: lotC.consign,
+        auction: lotC.auction,
+        hold: lotC.hold,
+        escrow: lotC.escrow,
         payer: payer.publicKey,
         tokenId: tokenC,
         amount: RESERVE,
@@ -3047,8 +3359,38 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     ERR.ContractPaused,
   );
 
-  const buyerOwns = assetAfterSettle.owner.toBase58();
-  const assetToSeller = assetAfterRev.owner.toBase58();
+  const buyerOwns = assetAfterSettleOwner.toBase58();
+  const assetToSeller = assetAfterRevOwner.toBase58();
+
+  let ixBudgetHeaviest = "Bind";
+  let heaviestLegacy = -1;
+  for (const [name, row] of Object.entries(ixBudget)) {
+    if (row.legacyTx > heaviestLegacy) {
+      heaviestLegacy = row.legacyTx;
+      ixBudgetHeaviest = name;
+    }
+  }
+
+  console.warn("\n[svm-stand] Ascending per-ix budget (registry N=2):");
+  console.warn(
+    "  name".padEnd(28) +
+      "accts".padStart(6) +
+      "sign".padStart(6) +
+      "wrt".padStart(6) +
+      "cu".padStart(8) +
+      "legacy".padStart(8),
+  );
+  for (const [name, row] of Object.entries(ixBudget)) {
+    console.warn(
+      `  ${name.padEnd(26)}` +
+        `${String(row.accounts).padStart(6)}` +
+        `${String(row.signers).padStart(6)}` +
+        `${String(row.writable).padStart(6)}` +
+        `${String(row.cu ?? "?").padStart(8)}` +
+        `${String(row.legacyTx).padStart(8)}`,
+    );
+  }
+  console.warn(`[svm-stand] heaviest=${ixBudgetHeaviest} legacy=${heaviestLegacy}\n`);
 
   return withStandArtifactBindings({
     openRefuse: {
@@ -3098,5 +3440,7 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
     splOutbidClaim,
     splReversal,
     pause: { openCode: pauseOpenCode, bidCode: pauseBidCode },
+    ixBudget,
+    ixBudgetHeaviest,
   });
 }

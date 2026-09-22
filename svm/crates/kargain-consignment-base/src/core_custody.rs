@@ -222,6 +222,31 @@ pub fn transfer_custody_to_recipient<'info>(
     )
 }
 
+/// Current Core owner signs TransferV1 → named recipient (Ascending CompleteReversal).
+/// Freeze-gated like the other movers. Caller proves `core_asset_owner == expected`
+/// (e.g. hold.buyer) before calling — this helper only requires owner is signer.
+pub fn transfer_owner_to_recipient<'info>(
+    passport_program: &Pubkey,
+    token_id: &[u8; 32],
+    asset: &AccountInfo<'info>,
+    owner: &AccountInfo<'info>,
+    recipient: &AccountInfo<'info>,
+    payer: &AccountInfo<'info>,
+    core_program: &AccountInfo<'info>,
+    system: &AccountInfo<'info>,
+) -> ProgramResult {
+    require_passport_core_asset(passport_program, token_id, asset)?;
+    require_not_frozen(asset)?;
+    if !owner.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let current = core_asset_owner(asset)?;
+    if current != *owner.key {
+        return Err(into_pe(KargainError::NotPassportHolder));
+    }
+    transfer_v1(asset, payer, owner, recipient, core_program, system, None)
+}
+
 /// Read TransferDelegate authority type after a move (stand fact-a pin).
 pub fn transfer_delegate_authority_is_owner(data: &[u8]) -> Result<bool, ProgramError> {
     let asset = Asset::from_bytes(data).map_err(|_| ProgramError::InvalidAccountData)?;
@@ -323,7 +348,7 @@ mod tests {
         let (b, _) = Pubkey::find_program_address(&[PASSPORT_ASSET_SEED, &token], &program);
         assert_eq!(a, b);
         assert_eq!(PASSPORT_ASSET_SEED, b"asset");
-        assert_ne!(PASSPORT_ASSET_SEED, crate::ASSET_SEED);
+        assert_ne!(PASSPORT_ASSET_SEED, b"harness-asset");
     }
 
     #[test]

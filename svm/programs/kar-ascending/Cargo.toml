@@ -23,3 +23,5 @@ kargain-bonded-challenge = { workspace = true }
 kargain-agented-split = { workspace = true }
 kar-pro-staking = { path = "../kar-pro-staking", default-features = false, features = ["no-entrypoint"] }
 kargain-events = { workspace = true }
+kargain-encumbrance = { workspace = true }
+kar-passport = { path = "../kar-passport", default-features = false, features = ["no-entrypoint"] }

@@ -654,7 +654,6 @@ fn grant(
         &owner_pk.to_bytes(),
         &owner.key.to_bytes(),
         is_live,
-        true, // TransferDelegate already proven above
         agent,
         expiry,
         asset_mint,

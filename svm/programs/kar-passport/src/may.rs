@@ -14,8 +14,11 @@ use solana_program::{
 };
 
 use crate::core_asset::is_live_core_asset;
-use crate::seeds::{asset_pda, config_pda};
-use crate::state::{PassportConfig, PASSPORT_CONFIG_DISCRIMINATOR};
+use crate::seeds::{asset_pda, config_pda, state_pda};
+use crate::state::{
+    PassportConfig, PassportState, Status, PASSPORT_CONFIG_DISCRIMINATOR,
+    PASSPORT_STATE_DISCRIMINATOR,
+};
 
 /// Host-visible fact about one registered source's answer account.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -237,6 +240,52 @@ pub fn encumbrance_seed_prefix_for_source(
         .map(|e| e.seed_prefix.clone())
         .ok_or_else(|| into_pe(KargainError::ModeNotEncumbranceSource))?;
     Ok((seed_prefix, registry_len))
+}
+
+/// Public status reader for mode programs (Ascending VERIFIED gate).
+///
+/// Verifies the state PDA `[b"state", token_id]` under `passport_program` and that
+/// the account is owned by that program, then decodes `PassportState.status`.
+/// Modes must never deserialize `PassportState` themselves.
+///
+/// Empty / uninitialised → `UninitializedAccount`. Wrong key → `InvalidSeeds`.
+/// Undecodable → `InvalidAccountData`.
+pub fn require_passport_status(
+    passport_program: &Pubkey,
+    token_id: &[u8; 32],
+    state_ai: &AccountInfo,
+) -> Result<Status, ProgramError> {
+    let (expected, _) = state_pda(passport_program, token_id);
+    if state_ai.key != &expected {
+        return Err(ProgramError::InvalidSeeds);
+    }
+    if state_ai.owner != passport_program || state_ai.data_is_empty() {
+        return Err(ProgramError::UninitializedAccount);
+    }
+    // Fixed PASSPORT_STATE_SPACE with trailing padding — cursor deserialize, not try_from_slice.
+    let data = state_ai.try_borrow_data()?;
+    let mut cursor: &[u8] = &data;
+    let st = PassportState::deserialize(&mut cursor).map_err(|_| ProgramError::InvalidAccountData)?;
+    if st.discriminator != PASSPORT_STATE_DISCRIMINATOR {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if &st.token_id != token_id {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    Ok(st.status)
+}
+
+/// Ascending open gate: status must be Verified → else `PassportNotVerified`.
+pub fn require_verified_passport_status(
+    passport_program: &Pubkey,
+    token_id: &[u8; 32],
+    state_ai: &AccountInfo,
+) -> Result<(), ProgramError> {
+    let status = require_passport_status(passport_program, token_id, state_ai)?;
+    if status != Status::Verified {
+        return Err(into_pe(KargainError::PassportNotVerified));
+    }
+    Ok(())
 }
 
 /// Entrypoint helper — runs resolve and maps false → LeaveChainRefused / OpenConsignmentRefused.
