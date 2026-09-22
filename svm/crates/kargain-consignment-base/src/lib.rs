@@ -585,11 +585,19 @@ pub fn lower_commission(
     Ok(())
 }
 
+/// EVM `Mandate.grant` refuse order (SVM Core names the approval slot
+/// `NotTransferDelegate` instead of `EscrowNotApproved`):
+/// `NotPassportOwner` → `LiveConsignment` → `NotTransferDelegate` → `ZeroAddress`.
+///
+/// `transfer_delegate_ok` is a **measured** fact from the call site
+/// (`has_transfer_delegate` / harness `is_escrow_approved`) — never a literal
+/// in commercial handlers.
 pub fn grant_mandate(
     token_id: [u8; 32],
     passport_owner: &[u8; 32],
     caller: &[u8; 32],
     is_live: bool,
+    transfer_delegate_ok: bool,
     agent: [u8; 32],
     expiry: u64,
     asset: [u8; 32],
@@ -603,6 +611,9 @@ pub fn grant_mandate(
     }
     if is_live {
         return Err(KargainError::LiveConsignment);
+    }
+    if !transfer_delegate_ok {
+        return Err(KargainError::NotTransferDelegate);
     }
     if agent == [0u8; 32] {
         return Err(KargainError::ZeroAddress);
@@ -1161,5 +1172,63 @@ mod tests {
             recall_account_requested_at(&info).unwrap_err(),
             ProgramError::InvalidAccountData,
         );
+    }
+
+    fn grant_ok(
+        owner: [u8; 32],
+        caller: [u8; 32],
+        is_live: bool,
+        transfer_delegate_ok: bool,
+        agent: [u8; 32],
+    ) -> Result<MandateRecord, KargainError> {
+        grant_mandate(
+            pk(9),
+            &owner,
+            &caller,
+            is_live,
+            transfer_delegate_ok,
+            agent,
+            1,
+            pk(8),
+            asset_denom(),
+            100,
+            margin(),
+            1,
+        )
+    }
+
+    /// EVM Mandate.grant order: owner → live → approval → zero agent.
+    #[test]
+    fn grant_mandate_refuse_order() {
+        let owner = pk(1);
+        let agent = pk(2);
+
+        // Non-owner (approval also false) → NotPassportOwner first
+        assert_eq!(
+            grant_ok(owner, pk(3), false, false, agent).unwrap_err(),
+            KargainError::NotPassportOwner,
+        );
+        // Owner+delegate both fail → still NotPassportOwner (order pin)
+        assert_eq!(
+            grant_ok(owner, pk(99), false, false, agent).unwrap_err(),
+            KargainError::NotPassportOwner,
+        );
+        // Live (owner ok, delegate ok)
+        assert_eq!(
+            grant_ok(owner, owner, true, true, agent).unwrap_err(),
+            KargainError::LiveConsignment,
+        );
+        // No delegate (owner ok, not live)
+        assert_eq!(
+            grant_ok(owner, owner, false, false, agent).unwrap_err(),
+            KargainError::NotTransferDelegate,
+        );
+        // Zero agent (all prior ok)
+        assert_eq!(
+            grant_ok(owner, owner, false, true, [0u8; 32]).unwrap_err(),
+            KargainError::ZeroAddress,
+        );
+        // Happy path
+        assert!(grant_ok(owner, owner, false, true, agent).is_ok());
     }
 }

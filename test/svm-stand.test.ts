@@ -287,6 +287,7 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.equal(fp.unboundOpenCode, 140); // PassportProgramUnbound
       assert.equal(fp.rebindCode, "AccountAlreadyInitialized");
       assert.equal(fp.frozenOpenCode, 79); // NotPassportOwner after real Send
+      assert.equal(fp.grantNotPassportOwnerCode, 79); // Grant non-owner without delegate
       assert.equal(fp.frozenCustodyLocked, true);
       assert.equal(fp.frozenPermanentFreeze, true);
       assert.equal(fp.registryMissCode, 71); // ModeNotEncumbranceSource
@@ -453,6 +454,7 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.equal(asc.negatives.SourceUnanswerable, 20);
       assert.equal(asc.negatives.CannotRouteBondToJudge, 30);
       assert.equal(asc.negatives.BidFromAgent, 107);
+      assert.equal(asc.negatives.GrantNotPassportOwner, 79);
       assert.equal(asc.negatives.AuctionNotEnded, 111);
       assert.equal(asc.negatives.AuctionEnded, 110);
       assert.equal(asc.negatives.SettlementPending, 119);

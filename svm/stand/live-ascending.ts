@@ -129,6 +129,7 @@ const ERR = {
   ProtectionElapsed: 118,
   SettlementPending: 119,
   NotPassportHolder: 120,
+  NotPassportOwner: 79,
   PassportNotVerified: 121,
   PassportProgramUnbound: 140,
   HarnessInstructionRetired: 141,
@@ -1233,6 +1234,53 @@ export async function runLiveAscending(opts?: { rpc?: string }): Promise<{
   );
 
   await addEncumbranceSource(conn, stack, programId, ENCUMBRANCE_SEED_PREFIX);
+
+  // Grant by non-owner on asset without TransferDelegate → NotPassportOwner (79),
+  // not NotTransferDelegate (138) — EVM Mandate.grant order.
+  {
+    const lotG = await mintCoreLot(
+      conn,
+      stack,
+      programId,
+      payer,
+      seller,
+      judge,
+      judgeStake,
+      true,
+    );
+    const [mandateG] = pda(programId, [SEED.mandate, lotG.tokenId]);
+    negatives.GrantNotPassportOwner = await expectCustom(
+      conn,
+      new Transaction().add(
+        ix(
+          programId,
+          grantKeys({
+            owner: stranger.publicKey,
+            binding,
+            asset: lotG.asset,
+            mandate: mandateG,
+            consign: lotG.consign,
+            custody: custodyPda,
+            payer: payer.publicKey,
+          }),
+          Buffer.concat([
+            Buffer.from([IX.Grant]),
+            lotG.tokenId,
+            Buffer.from(agent.publicKey.toBytes()),
+            encU64(0),
+            Buffer.alloc(32, 0),
+            Buffer.from([0]),
+            Buffer.alloc(32, 0),
+            encU64(700),
+            Buffer.from([0]),
+            encU16(0),
+          ]),
+        ),
+      ),
+      [stranger, payer],
+      ERR.NotPassportOwner,
+    );
+  }
 
   const lotRetire = await mintCoreLot(conn, stack, programId, payer, seller, judge, judgeStake, true);
   negatives.HarnessInstructionRetired = await expectCustom(

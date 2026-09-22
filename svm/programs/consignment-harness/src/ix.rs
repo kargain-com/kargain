@@ -508,9 +508,6 @@ fn grant(
             .map(|c| c.is_live())
             .unwrap_or(false);
     let approved = is_escrow_approved(&a, &cust_key.to_bytes());
-    if !approved {
-        return Err(into_pe(KargainError::EscrowNotApproved));
-    }
     let denom = parse_denom(denom_kind, currency_code)?;
     let comp = parse_comp(form, commission_bps)?;
     let (mkey, mbump) = mandate_pda(program_id, &token_id);
@@ -522,6 +519,7 @@ fn grant(
         &a.owner,
         &owner.key.to_bytes(),
         is_live,
+        approved,
         agent,
         expiry,
         asset_mint,

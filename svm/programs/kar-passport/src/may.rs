@@ -248,8 +248,9 @@ pub fn encumbrance_seed_prefix_for_source(
 /// the account is owned by that program, then decodes `PassportState.status`.
 /// Modes must never deserialize `PassportState` themselves.
 ///
-/// Empty / uninitialised → `UninitializedAccount`. Wrong key → `InvalidSeeds`.
-/// Undecodable → `InvalidAccountData`.
+/// Wrong key → `InvalidSeeds`. Empty → `UninitializedAccount`. Non-empty with
+/// owner ≠ passport program → `IncorrectProgramId`. Undecodable / wrong
+/// discriminator / wrong token → `InvalidAccountData`.
 pub fn require_passport_status(
     passport_program: &Pubkey,
     token_id: &[u8; 32],
@@ -259,8 +260,11 @@ pub fn require_passport_status(
     if state_ai.key != &expected {
         return Err(ProgramError::InvalidSeeds);
     }
-    if state_ai.owner != passport_program || state_ai.data_is_empty() {
+    if state_ai.data_is_empty() {
         return Err(ProgramError::UninitializedAccount);
+    }
+    if state_ai.owner != passport_program {
+        return Err(ProgramError::IncorrectProgramId);
     }
     // Fixed PASSPORT_STATE_SPACE with trailing padding — cursor deserialize, not try_from_slice.
     let data = state_ai.try_borrow_data()?;
@@ -752,6 +756,83 @@ mod tests {
         assert_eq!(
             resolve_may_accounts(&program_id, &accounts, token_id, 0).unwrap(),
             true
+        );
+    }
+
+    #[test]
+    fn require_passport_status_wrong_owner_is_incorrect_program_id() {
+        use solana_program::system_program;
+
+        let passport = Pubkey::new_from_array([0xCCu8; 32]);
+        let token_id = [0x44u8; 32];
+        let (state_key, _) = state_pda(&passport, &token_id);
+        let foreign = system_program::ID;
+
+        let mut data = vec![0u8; 32]; // non-empty — not UninitializedAccount
+        let mut lamports = 1u64;
+        let ai = AccountInfo::new(
+            &state_key,
+            false,
+            false,
+            &mut lamports,
+            &mut data[..],
+            &foreign,
+            false,
+            0,
+        );
+        // Old conflation: owner≠passport || empty → UninitializedAccount
+        let conflated = ai.owner != &passport || ai.data_is_empty();
+        assert!(conflated);
+        assert_eq!(
+            require_passport_status(&passport, &token_id, &ai).unwrap_err(),
+            ProgramError::IncorrectProgramId,
+            "non-empty foreign-owned state is forgery, not uninitialised",
+        );
+    }
+
+    #[test]
+    fn require_passport_status_empty_is_uninitialized() {
+        let passport = Pubkey::new_from_array([0xDDu8; 32]);
+        let token_id = [0x55u8; 32];
+        let (state_key, _) = state_pda(&passport, &token_id);
+        let mut data: Vec<u8> = vec![];
+        let mut lamports = 0u64;
+        let ai = AccountInfo::new(
+            &state_key,
+            false,
+            false,
+            &mut lamports,
+            &mut data[..],
+            &passport,
+            false,
+            0,
+        );
+        assert_eq!(
+            require_passport_status(&passport, &token_id, &ai).unwrap_err(),
+            ProgramError::UninitializedAccount,
+        );
+    }
+
+    #[test]
+    fn require_passport_status_wrong_key_is_invalid_seeds() {
+        let passport = Pubkey::new_from_array([0xEEu8; 32]);
+        let token_id = [0x66u8; 32];
+        let foreign_key = Pubkey::new_from_array([0xFFu8; 32]);
+        let mut data = vec![0u8; 8];
+        let mut lamports = 1u64;
+        let ai = AccountInfo::new(
+            &foreign_key,
+            false,
+            false,
+            &mut lamports,
+            &mut data[..],
+            &passport,
+            false,
+            0,
+        );
+        assert_eq!(
+            require_passport_status(&passport, &token_id, &ai).unwrap_err(),
+            ProgramError::InvalidSeeds,
         );
     }
 }

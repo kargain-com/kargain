@@ -397,6 +397,7 @@ async function openDirectSpl(
 export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   unboundOpenCode: number;
   rebindCode: "AccountAlreadyInitialized";
+  grantNotPassportOwnerCode: number;
   frozenOpenCode: number;
   frozenCustodyLocked: boolean;
   frozenPermanentFreeze: boolean;
@@ -589,6 +590,44 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   );
 
   await addEncumbranceSource(conn, stack, programId, ENCUMBRANCE_SEED_PREFIX);
+
+  // Grant by non-owner on asset without TransferDelegate → NotPassportOwner (79),
+  // not NotTransferDelegate (138) — EVM Mandate.grant order.
+  const strangerGrant = Keypair.generate();
+  await airdrop(conn, strangerGrant, 2);
+  const lotGrantOrder = await mintCoreLot(conn, stack, programId, payer, seller);
+  const [mandateGrantOrder] = pda(programId, [SEED.mandate, lotGrantOrder.tokenId]);
+  const grantNotPassportOwnerCode = await expectCustom(
+    conn,
+    new Transaction().add(
+      ix(
+        programId,
+        grantKeys({
+          owner: strangerGrant.publicKey,
+          binding,
+          asset: lotGrantOrder.asset,
+          mandate: mandateGrantOrder,
+          consign: lotGrantOrder.consign,
+          custody: custodyPda,
+          payer: payer.publicKey,
+        }),
+        Buffer.concat([
+          Buffer.from([FP_IX.Grant]),
+          lotGrantOrder.tokenId,
+          agent.publicKey.toBuffer(),
+          encU64(0),
+          Buffer.alloc(32, 0),
+          Buffer.from([DENOM_ASSET]),
+          Buffer.alloc(32, 0),
+          encU64(100),
+          Buffer.from([FORM_MARGIN]),
+          encU16(0),
+        ]),
+      ),
+    ),
+    [strangerGrant, payer],
+    ERR.NotPassportOwner,
+  );
 
   // 5. Frozen open via real gateway.Send: mint + Send → custody lock +
   // PermanentFreeze; OpenDirect as seller → NotPassportOwner(79) (owner moved to gateway).
@@ -2893,6 +2932,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   return withStandArtifactBindings({
     unboundOpenCode,
     rebindCode,
+    grantNotPassportOwnerCode,
     frozenOpenCode,
     frozenCustodyLocked,
     frozenPermanentFreeze,

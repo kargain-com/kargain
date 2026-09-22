@@ -28,7 +28,7 @@ use kargain_consignment_base::{
     passport_binding_pda, pause, refuse_set_price_terms_fixed, refuse_shared_open_path,
     require_agented_price_meets_floor, require_binding_uninitialised, require_bound_passport_program,
     require_config_authority, require_mandate_allows_open, require_not_paused,
-    require_passport_core_asset, require_transfer_delegate, revoke_mandate, terminate_to_owner,
+    require_passport_core_asset, has_transfer_delegate, require_transfer_delegate, revoke_mandate, terminate_to_owner,
     transfer_custody_to_recipient, transfer_delegate_to_custody, transfer_owner_to_custody,
     transfer_owner_to_recipient, unpause, write_open, CloseReason, CommerceConfig, Compensation,
     CompensationForm, CONFIG_DISCRIMINATOR, ConsignmentRecord, Denomination, DenominationKind,
@@ -1060,7 +1060,9 @@ fn grant(
     if custody.key != &cust_key {
         return Err(ProgramError::InvalidSeeds);
     }
-    require_transfer_delegate(asset_info, &cust_key)?;
+    let asset_data = asset_info.try_borrow_data()?;
+    let transfer_delegate_ok = has_transfer_delegate(&asset_data, &cust_key)?;
+    drop(asset_data);
     let is_live = consignment_account_is_live(consignment_info)?;
     let denom = parse_denom(denom_kind, currency_code)?;
     let comp = parse_comp(form, commission_bps)?;
@@ -1073,6 +1075,7 @@ fn grant(
         &owner_pk.to_bytes(),
         &owner.key.to_bytes(),
         is_live,
+        transfer_delegate_ok,
         agent,
         expiry,
         asset_mint,
