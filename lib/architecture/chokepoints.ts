@@ -75,7 +75,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-account-state-decode",
     owner: "lib/svm/decode-account-state.ts · svm/crates/kargain-ix-wire",
-    rule: "Commercial SVM account-state decode (PassportState + StakeAccount + ChallengeAccount + partial PassportConfig + EncumbranceAnswer + PassportBinding; census 6) only via decode-account-state; layout+goldens from Rust BorshSerialize (committed state.manifest.json); length fields are goldenByteLength and modelledByteLength (retired accountSpace/payloadLen refuse by name); neither is a rent SPACE unless it equals a program SPACE; cursor decode; u128; remainder_unmodelled terminal (not padding); exact layouts fully-consumed meaningful; PassportConfig deliberately partial (populated-vec golden); product surfaces base58 via encodeSvmPubkeyBytes; no hand offsets; no chrome amounts from StakeAccount",
+    rule: "Commercial SVM account-state decode (PassportState + StakeAccount + ChallengeAccount + full PassportConfig + EncumbranceAnswer + PassportBinding + CommerceConfig + AscendingConfig; census 8) only via decode-account-state; layout+goldens from Rust BorshSerialize (committed state.manifest.json); length fields are goldenByteLength and modelledByteLength (retired accountSpace/payloadLen refuse by name); neither is a rent SPACE unless it equals a program SPACE; cursor decode; u128; vec_encumbrance_source; remainder_unmodelled terminal marker still supported for plants; exact layouts fully-consumed meaningful; product surfaces base58 via encodeSvmPubkeyBytes; encodePassportConfigAccount / encodePassportConfigWithSources sole PassportConfig reshape; no hand offsets; no chrome amounts from StakeAccount",
     guardTests: ["svm-account-state-decode-policy.test.ts"],
   },
   {
@@ -800,7 +800,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-devnet-bind-modes",
     owner: "scripts/svm-devnet-bind-modes.ts",
-    rule: "Sole Devnet mode↔passport bind+register door: BindPassportProgram ×2 + AddEncumbranceSource ×2 via encodeSvmInstruction+deriveSvmPda; state-first skip; foreign binding refuses by name; prefixes fp-ans/asc-ans; dry-run default",
+    rule: "Sole Devnet mode↔passport bind+register door: BindPassportProgram ×2 + AddEncumbranceSource ×2 via encodeSvmInstruction+deriveSvmPda; state-first skip; foreign binding refuses by name; prefixes fp-ans/asc-ans; dry-run default prints measured readback via decodeCommerceConfig/decodeAscendingConfig/decodePassportConfig/decodePassportBinding (no script hand-parse of config bytes); unsettable fields named",
     guardTests: ["svm-devnet-bind-modes-policy.test.ts"],
   },
   {

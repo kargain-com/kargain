@@ -1,6 +1,6 @@
 /**
  * Sole product decoder for commercial SVM account-state layouts needed to
- * assemble instructions or admission facts (U7 / U6.5 / U6.7.3).
+ * assemble instructions or admission facts (U7 / U6.5 / U6.7.3 / S8-E 9.2).
  *
  * Layout + goldens come from Rust `BorshSerialize` via the committed
  * `svm/crates/kargain-ix-wire/state.manifest.json`. This module never authors
@@ -8,11 +8,10 @@
  *
  * Layout honesty:
  * - Fixed-padded (`PassportState`, `StakeAccount`): cursor ignores trailing zeros.
- * - Exact (`ChallengeAccount`, `EncumbranceAnswer`, `PassportBinding`):
- *   modelled == golden == SPACE; fully-consumed pin is meaningful.
- * - Deliberately partial (`PassportConfig`): fields stop at `remainder_unmodelled`;
- *   unmodelled structured tail (next_token_id / vec / bump) is not walked.
- *   Fully-consumed is meaningless on a partial + variable account.
+ * - Exact (`ChallengeAccount`, `EncumbranceAnswer`, `PassportBinding`,
+ *   `CommerceConfig`, `AscendingConfig`): modelled == golden == SPACE.
+ * - Variable (`PassportConfig`): fully modelled including `encumbrance_sources`
+ *   (`vec_encumbrance_source`) + bump; golden length is the sample Borsh size.
  * Length fields are `goldenByteLength` / `modelledByteLength` — never
  * `accountSpace` / `payloadLen`. Neither is a rent SPACE unless it equals a
  * program `SPACE` constant.
@@ -24,7 +23,7 @@
 import stateManifest from "../../svm/crates/kargain-ix-wire/state.manifest.json" with {
   type: "json",
 };
-import { encodeSvmPubkeyBytes } from "@/lib/web3/protocol-address";
+import { encodeSvmPubkeyBytes, svmPubkeyToBytes32 } from "@/lib/web3/protocol-address";
 
 export type StateFieldDecl = {
   name: string;
@@ -154,19 +153,34 @@ export type DecodeChallengeAccountResult =
   | DecodeChallengeAccountErr;
 
 /**
- * Product PassportConfig decode — dispute deposit + forfeit recipient only.
- * Authority / namespace / vec / bump are not exported (partial layout).
+ * Product PassportConfig — full modelled surface (deposit, forfeit, registry).
  */
+export type EncumbranceSourceDecoded = {
+  programId: string;
+  seedPrefix: string;
+  programIdBytes: Uint8Array;
+  seedPrefixBytes: Uint8Array;
+};
+
 export type PassportConfigDecoded = {
+  authority: string;
+  namespace: bigint;
+  localEid: number;
+  endpointProgram: string;
   disputeDeposit: bigint;
+  stakingProgram: string;
+  bridgeGateway: string;
   forfeitRecipient: string;
+  nextTokenId: Uint8Array;
+  encumbranceSources: EncumbranceSourceDecoded[];
+  bump: number;
 };
 
 export type DecodePassportConfigOk = {
   ok: true;
   value: PassportConfigDecoded;
   layout: StateLayoutEntry;
-  /** Bytes through the modelled prefix (stops at remainder_unmodelled). */
+  /** Bytes consumed from the full modelled account. */
   bytesRead: number;
 };
 
@@ -179,6 +193,67 @@ export type DecodePassportConfigErr = {
 export type DecodePassportConfigResult =
   | DecodePassportConfigOk
   | DecodePassportConfigErr;
+
+/** FixedPrice CommerceConfig — exact SPACE. */
+export type CommerceConfigDecoded = {
+  authority: string;
+  platformRecipient: string;
+  platformFeeBps: number;
+  guardian: string;
+  paused: boolean;
+  selfEncumbranceRegisteredRetired: boolean;
+  bump: number;
+};
+
+export type DecodeCommerceConfigOk = {
+  ok: true;
+  value: CommerceConfigDecoded;
+  layout: StateLayoutEntry;
+  bytesRead: number;
+};
+
+export type DecodeCommerceConfigErr = {
+  ok: false;
+  cause: DecodeAccountStateCause;
+  detail: string;
+};
+
+export type DecodeCommerceConfigResult =
+  | DecodeCommerceConfigOk
+  | DecodeCommerceConfigErr;
+
+/** AscendingConfig — exact SPACE. */
+export type AscendingConfigDecoded = {
+  authority: string;
+  platformRecipient: string;
+  platformFeeBps: number;
+  guardian: string;
+  paused: boolean;
+  selfEncumbranceRegisteredRetired: boolean;
+  stakingProgram: string;
+  forfeitRecipient: string;
+  challengeBond: bigint;
+  challengeWindow: bigint;
+  challengeConfigured: boolean;
+  bump: number;
+};
+
+export type DecodeAscendingConfigOk = {
+  ok: true;
+  value: AscendingConfigDecoded;
+  layout: StateLayoutEntry;
+  bytesRead: number;
+};
+
+export type DecodeAscendingConfigErr = {
+  ok: false;
+  cause: DecodeAccountStateCause;
+  detail: string;
+};
+
+export type DecodeAscendingConfigResult =
+  | DecodeAscendingConfigOk
+  | DecodeAscendingConfigErr;
 
 /** Product EncumbranceAnswer — close paths need the recorded funder. */
 export type EncumbranceAnswerDecoded = {
@@ -240,6 +315,8 @@ const CHALLENGE_ACCOUNT_ID = "kargain-bonded-challenge/ChallengeAccount";
 const PASSPORT_CONFIG_ID = "kar-passport/PassportConfig";
 const ENCUMBRANCE_ANSWER_ID = "kargain-encumbrance/EncumbranceAnswer";
 const PASSPORT_BINDING_ID = "kargain-consignment-base/PassportBinding";
+const COMMERCE_CONFIG_ID = "kargain-consignment-base/CommerceConfig";
+const ASCENDING_CONFIG_ID = "kar-ascending/AscendingConfig";
 
 function pubkeyBase58(bytes: Uint8Array): string {
   return encodeSvmPubkeyBytes(bytes);
@@ -293,6 +370,22 @@ export function passportBindingLayout(): StateLayoutEntry {
   const layout = LAYOUTS.get(PASSPORT_BINDING_ID);
   if (!layout) {
     throw new Error(`state_manifest_missing:${PASSPORT_BINDING_ID}`);
+  }
+  return layout;
+}
+
+export function commerceConfigLayout(): StateLayoutEntry {
+  const layout = LAYOUTS.get(COMMERCE_CONFIG_ID);
+  if (!layout) {
+    throw new Error(`state_manifest_missing:${COMMERCE_CONFIG_ID}`);
+  }
+  return layout;
+}
+
+export function ascendingConfigLayout(): StateLayoutEntry {
+  const layout = LAYOUTS.get(ASCENDING_CONFIG_ID);
+  if (!layout) {
+    throw new Error(`state_manifest_missing:${ASCENDING_CONFIG_ID}`);
   }
   return layout;
 }
@@ -719,16 +812,91 @@ export function decodePassportConfig(
   const cursor = decodeLayoutCursor(data, layout);
   if (!cursor.ok) return cursor;
 
-  const forfeitBytes = cursor.fields.forfeit_recipient as Uint8Array;
+  const sources = cursor.fields.encumbrance_sources as EncumbranceSourceDecoded[];
   return {
     ok: true,
     value: {
+      authority: pubkeyBase58(cursor.fields.authority as Uint8Array),
+      namespace: cursor.fields.namespace as bigint,
+      localEid: cursor.fields.local_eid as number,
+      endpointProgram: pubkeyBase58(cursor.fields.endpoint_program as Uint8Array),
       disputeDeposit: cursor.fields.dispute_deposit as bigint,
-      forfeitRecipient: pubkeyBase58(forfeitBytes),
+      stakingProgram: pubkeyBase58(cursor.fields.staking_program as Uint8Array),
+      bridgeGateway: pubkeyBase58(cursor.fields.bridge_gateway as Uint8Array),
+      forfeitRecipient: pubkeyBase58(
+        cursor.fields.forfeit_recipient as Uint8Array,
+      ),
+      nextTokenId: cursor.fields.next_token_id as Uint8Array,
+      encumbranceSources: sources,
+      bump: cursor.fields.bump as number,
     },
     layout,
     bytesRead: cursor.bytesRead,
   };
+}
+
+/**
+ * Borsh-encode a PassportConfig account from decoded/product fields.
+ * Sole owner of the registry reshape used for rent-size planning.
+ */
+export function encodePassportConfigAccount(
+  value: PassportConfigDecoded,
+): Uint8Array {
+  const parts: Uint8Array[] = [];
+  const push = (chunk: Uint8Array) => {
+    parts.push(chunk);
+  };
+  const layout = passportConfigLayout();
+  push(hexToBytes(layout.discriminatorHex));
+  push(decodeBase58To32(value.authority));
+  push(u128LeBytes(value.namespace));
+  push(u32LeBytes(value.localEid));
+  push(decodeBase58To32(value.endpointProgram));
+  push(u64LeBytes(value.disputeDeposit));
+  push(decodeBase58To32(value.stakingProgram));
+  push(decodeBase58To32(value.bridgeGateway));
+  push(decodeBase58To32(value.forfeitRecipient));
+  push(Uint8Array.from(value.nextTokenId));
+  push(u32LeBytes(value.encumbranceSources.length));
+  for (const s of value.encumbranceSources) {
+    push(Uint8Array.from(s.programIdBytes));
+    push(u32LeBytes(s.seedPrefixBytes.length));
+    push(Uint8Array.from(s.seedPrefixBytes));
+  }
+  push(Uint8Array.of(value.bump & 0xff));
+  let len = 0;
+  for (const p of parts) len += p.length;
+  const out = new Uint8Array(len);
+  let off = 0;
+  for (const p of parts) {
+    out.set(p, off);
+    off += p.length;
+  }
+  return out;
+}
+
+/** Replace encumbrance_sources on a live account while preserving other fields. */
+export function encodePassportConfigWithSources(
+  currentData: Uint8Array,
+  sources: readonly {
+    programIdBytes: Uint8Array;
+    seedPrefixBytes: Uint8Array;
+  }[],
+): Uint8Array {
+  const decoded = decodePassportConfig(currentData);
+  if (!decoded.ok) {
+    throw new Error(`encode_passport_config:${decoded.cause}:${decoded.detail}`);
+  }
+  const next: PassportConfigDecoded = {
+    ...decoded.value,
+    encumbranceSources: sources.map((s) => ({
+      programId: pubkeyBase58(s.programIdBytes),
+      seedPrefix: new TextDecoder().decode(s.seedPrefixBytes),
+      programIdBytes: Uint8Array.from(s.programIdBytes),
+      seedPrefixBytes: Uint8Array.from(s.seedPrefixBytes),
+    })),
+  };
+  return encodePassportConfigAccount(next);
 }
 
 /**
@@ -752,20 +920,115 @@ export function decodePassportConfigWithFieldsForTests(
   if (!cursor.ok) return cursor;
   const forfeitBytes = cursor.fields.forfeit_recipient as Uint8Array | undefined;
   const deposit = cursor.fields.dispute_deposit as bigint | undefined;
-  if (deposit == null || forfeitBytes == null) {
+  const authorityBytes = cursor.fields.authority as Uint8Array | undefined;
+  const namespace = cursor.fields.namespace as bigint | undefined;
+  if (deposit == null || forfeitBytes == null || authorityBytes == null || namespace == null) {
     return {
       ok: false,
       cause: "malformed_field",
       detail: "planted_missing_product_fields",
     };
   }
+  const sources =
+    (cursor.fields.encumbrance_sources as EncumbranceSourceDecoded[] | undefined) ??
+    [];
+  const nextTokenId =
+    (cursor.fields.next_token_id as Uint8Array | undefined) ?? new Uint8Array(32);
+  const bump = (cursor.fields.bump as number | undefined) ?? 0;
+  const endpoint =
+    (cursor.fields.endpoint_program as Uint8Array | undefined) ?? new Uint8Array(32);
+  const staking =
+    (cursor.fields.staking_program as Uint8Array | undefined) ?? new Uint8Array(32);
+  const gateway =
+    (cursor.fields.bridge_gateway as Uint8Array | undefined) ?? new Uint8Array(32);
+  const localEid = (cursor.fields.local_eid as number | undefined) ?? 0;
   return {
     ok: true,
     value: {
+      authority: pubkeyBase58(authorityBytes),
+      namespace,
+      localEid,
+      endpointProgram: pubkeyBase58(endpoint),
       disputeDeposit: deposit,
+      stakingProgram: pubkeyBase58(staking),
+      bridgeGateway: pubkeyBase58(gateway),
       forfeitRecipient: pubkeyBase58(forfeitBytes),
+      nextTokenId,
+      encumbranceSources: sources,
+      bump,
     },
     layout: planted,
+    bytesRead: cursor.bytesRead,
+  };
+}
+
+export function decodeCommerceConfig(
+  data: Uint8Array,
+): DecodeCommerceConfigResult {
+  const layout = LAYOUTS.get(COMMERCE_CONFIG_ID);
+  if (!layout) {
+    return {
+      ok: false,
+      cause: "unknown_layout",
+      detail: COMMERCE_CONFIG_ID,
+    };
+  }
+  const cursor = decodeLayoutCursor(data, layout);
+  if (!cursor.ok) return cursor;
+  return {
+    ok: true,
+    value: {
+      authority: pubkeyBase58(cursor.fields.authority as Uint8Array),
+      platformRecipient: pubkeyBase58(
+        cursor.fields.platform_recipient as Uint8Array,
+      ),
+      platformFeeBps: cursor.fields.platform_fee_bps as number,
+      guardian: pubkeyBase58(cursor.fields.guardian as Uint8Array),
+      paused: cursor.fields.paused as boolean,
+      selfEncumbranceRegisteredRetired: cursor.fields
+        .self_encumbrance_registered_retired as boolean,
+      bump: cursor.fields.bump as number,
+    },
+    layout,
+    bytesRead: cursor.bytesRead,
+  };
+}
+
+export function decodeAscendingConfig(
+  data: Uint8Array,
+): DecodeAscendingConfigResult {
+  const layout = LAYOUTS.get(ASCENDING_CONFIG_ID);
+  if (!layout) {
+    return {
+      ok: false,
+      cause: "unknown_layout",
+      detail: ASCENDING_CONFIG_ID,
+    };
+  }
+  const cursor = decodeLayoutCursor(data, layout);
+  if (!cursor.ok) return cursor;
+  return {
+    ok: true,
+    value: {
+      authority: pubkeyBase58(cursor.fields.authority as Uint8Array),
+      platformRecipient: pubkeyBase58(
+        cursor.fields.platform_recipient as Uint8Array,
+      ),
+      platformFeeBps: cursor.fields.platform_fee_bps as number,
+      guardian: pubkeyBase58(cursor.fields.guardian as Uint8Array),
+      paused: cursor.fields.paused as boolean,
+      selfEncumbranceRegisteredRetired: cursor.fields
+        .self_encumbrance_registered_retired as boolean,
+      stakingProgram: pubkeyBase58(cursor.fields.staking_program as Uint8Array),
+      forfeitRecipient: pubkeyBase58(
+        cursor.fields.forfeit_recipient as Uint8Array,
+      ),
+      challengeBond: cursor.fields.challenge_bond as bigint,
+      challengeWindow: cursor.fields.challenge_window as bigint,
+      challengeConfigured: cursor.fields.challenge_configured as boolean,
+      bump: cursor.fields.bump as number,
+    },
+    layout,
     bytesRead: cursor.bytesRead,
   };
 }
@@ -887,6 +1150,54 @@ function decodeField(
         cause: "unsupported_type",
         detail: "remainder_unmodelled_via_decodeField",
       };
+    case "vec_encumbrance_source": {
+      if (offset + 4 > data.length) {
+        return { ok: false, cause: "truncated", detail: "vec_encumbrance_source:count" };
+      }
+      let o = offset;
+      const count = Number(
+        BigInt(data[o]!) |
+          (BigInt(data[o + 1]!) << 8n) |
+          (BigInt(data[o + 2]!) << 16n) |
+          (BigInt(data[o + 3]!) << 24n),
+      );
+      o += 4;
+      const sources: EncumbranceSourceDecoded[] = [];
+      for (let i = 0; i < count; i++) {
+        if (o + 32 + 4 > data.length) {
+          return {
+            ok: false,
+            cause: "truncated",
+            detail: `vec_encumbrance_source:entry:${i}`,
+          };
+        }
+        const programIdBytes = Uint8Array.from(data.subarray(o, o + 32));
+        o += 32;
+        const prefixLen = Number(
+          BigInt(data[o]!) |
+            (BigInt(data[o + 1]!) << 8n) |
+            (BigInt(data[o + 2]!) << 16n) |
+            (BigInt(data[o + 3]!) << 24n),
+        );
+        o += 4;
+        if (o + prefixLen > data.length) {
+          return {
+            ok: false,
+            cause: "truncated",
+            detail: `vec_encumbrance_source:prefix:${i}`,
+          };
+        }
+        const seedPrefixBytes = Uint8Array.from(data.subarray(o, o + prefixLen));
+        o += prefixLen;
+        sources.push({
+          programId: pubkeyBase58(programIdBytes),
+          seedPrefix: new TextDecoder().decode(seedPrefixBytes),
+          programIdBytes,
+          seedPrefixBytes,
+        });
+      }
+      return { ok: true, value: sources, nextOffset: o };
+    }
     default:
       return {
         ok: false,
@@ -918,4 +1229,38 @@ function bytesToHex(bytes: Uint8Array): string {
     s += b.toString(16).padStart(2, "0");
   }
   return s;
+}
+
+function decodeBase58To32(base58: string): Uint8Array {
+  return hexToBytes(svmPubkeyToBytes32(base58).slice(2));
+}
+
+function u32LeBytes(n: number): Uint8Array {
+  const out = new Uint8Array(4);
+  const v = n >>> 0;
+  out[0] = v & 0xff;
+  out[1] = (v >>> 8) & 0xff;
+  out[2] = (v >>> 16) & 0xff;
+  out[3] = (v >>> 24) & 0xff;
+  return out;
+}
+
+function u64LeBytes(n: bigint): Uint8Array {
+  const out = new Uint8Array(8);
+  let v = n;
+  for (let i = 0; i < 8; i++) {
+    out[i] = Number(v & 0xffn);
+    v >>= 8n;
+  }
+  return out;
+}
+
+function u128LeBytes(n: bigint): Uint8Array {
+  const out = new Uint8Array(16);
+  let v = n;
+  for (let i = 0; i < 16; i++) {
+    out[i] = Number(v & 0xffn);
+    v >>= 8n;
+  }
+  return out;
 }

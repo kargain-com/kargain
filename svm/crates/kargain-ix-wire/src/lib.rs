@@ -137,6 +137,16 @@ pub(crate) fn field_vec_u8(name: &str) -> FieldDecl {
         len: None,
     }
 }
+
+/// Borsh `Vec<EncumbranceSourceEntry>` — u32 count × { program_id[32], seed_prefix: Vec<u8> }.
+pub(crate) fn field_vec_encumbrance_source(name: &str) -> FieldDecl {
+    FieldDecl {
+        name: name.into(),
+        ty: "vec_encumbrance_source".into(),
+        len: None,
+    }
+}
+
 pub(crate) fn field_fixed(name: &str, len: usize) -> FieldDecl {
     FieldDecl {
         name: name.into(),

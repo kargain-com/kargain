@@ -214,23 +214,40 @@
           "len": 32
         },
         {
-          "name": "remainder",
-          "type": "remainder_unmodelled"
+          "name": "next_token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "encumbrance_sources",
+          "type": "vec_encumbrance_source"
+        },
+        {
+          "name": "bump",
+          "type": "u8"
         }
       ],
       "sample": {
         "authority": "1111111111111111111111111111111111111111111111111111111111111111",
         "bridge_gateway": "4444444444444444444444444444444444444444444444444444444444444444",
+        "bump": 252,
         "discriminator": "6b705f6366670000",
         "dispute_deposit": "10000000",
+        "encumbrance_sources": [
+          {
+            "program_id": "7777777777777777777777777777777777777777777777777777777777777777",
+            "seed_prefix": "ans"
+          }
+        ],
         "endpoint_program": "2222222222222222222222222222222222222222222222222222222222222222",
         "forfeit_recipient": "5555555555555555555555555555555555555555555555555555555555555555",
         "local_eid": 40168,
         "namespace": "2000040168",
+        "next_token_id": "6666666666666666666666666666666666666666666666666666666666666666",
         "staking_program": "3333333333333333333333333333333333333333333333333333333333333333"
       },
       "goldenHex": "6b705f63666700001111111111111111111111111111111111111111111111111111111111111111e8303677000000000000000000000000e89c000022222222222222222222222222222222222222222222222222222222222222228096980000000000333333333333333333333333333333333333333333333333333333333333333344444444444444444444444444444444444444444444444444444444444444445555555555555555555555555555555555555555555555555555555555555555666666666666666666666666666666666666666666666666666666666666666601000000777777777777777777777777777777777777777777777777777777777777777703000000616e73fc",
-      "modelledByteLength": 196
+      "modelledByteLength": 272
     },
     {
       "id": "kargain-encumbrance/EncumbranceAnswer",
@@ -300,6 +317,145 @@
       },
       "goldenHex": "6b705f7062696e649999999999999999999999999999999999999999999999999999999999999999ff",
       "modelledByteLength": 41
+    },
+    {
+      "id": "kargain-consignment-base/CommerceConfig",
+      "program": "kargain-consignment-base",
+      "goldenByteLength": 109,
+      "discriminatorHex": "6b705f6366670000",
+      "fields": [
+        {
+          "name": "discriminator",
+          "type": "fixed_bytes",
+          "len": 8
+        },
+        {
+          "name": "authority",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "platform_recipient",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "platform_fee_bps",
+          "type": "u16"
+        },
+        {
+          "name": "guardian",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "paused",
+          "type": "bool"
+        },
+        {
+          "name": "self_encumbrance_registered_retired",
+          "type": "bool"
+        },
+        {
+          "name": "bump",
+          "type": "u8"
+        }
+      ],
+      "sample": {
+        "authority": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "bump": 250,
+        "discriminator": "6b705f6366670000",
+        "guardian": "a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3",
+        "paused": false,
+        "platform_fee_bps": 10,
+        "platform_recipient": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+        "self_encumbrance_registered_retired": true
+      },
+      "goldenHex": "6b705f6366670000a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a20a00a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a30001fa",
+      "modelledByteLength": 109
+    },
+    {
+      "id": "kar-ascending/AscendingConfig",
+      "program": "kar-ascending",
+      "goldenByteLength": 190,
+      "discriminatorHex": "6b705f6173636667",
+      "fields": [
+        {
+          "name": "discriminator",
+          "type": "fixed_bytes",
+          "len": 8
+        },
+        {
+          "name": "authority",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "platform_recipient",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "platform_fee_bps",
+          "type": "u16"
+        },
+        {
+          "name": "guardian",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "paused",
+          "type": "bool"
+        },
+        {
+          "name": "self_encumbrance_registered_retired",
+          "type": "bool"
+        },
+        {
+          "name": "staking_program",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "forfeit_recipient",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "challenge_bond",
+          "type": "u64"
+        },
+        {
+          "name": "challenge_window",
+          "type": "u64"
+        },
+        {
+          "name": "challenge_configured",
+          "type": "bool"
+        },
+        {
+          "name": "bump",
+          "type": "u8"
+        }
+      ],
+      "sample": {
+        "authority": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+        "bump": 249,
+        "challenge_bond": "1000000",
+        "challenge_configured": true,
+        "challenge_window": "1209600",
+        "discriminator": "6b705f6173636667",
+        "forfeit_recipient": "b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5",
+        "guardian": "b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3",
+        "paused": false,
+        "platform_fee_bps": 10,
+        "platform_recipient": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+        "self_encumbrance_registered_retired": true,
+        "staking_program": "b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4"
+      },
+      "goldenHex": "6b705f6173636667b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b20a00b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b30001b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b540420f0000000000007512000000000001f9",
+      "modelledByteLength": 190
     }
   ]
 }

@@ -30,6 +30,12 @@ import {
   decodePastRemainderMarkerForTests,
   decodeStakeAccount,
   decodeStakeAccountStrictFullyConsumedForTests,
+  commerceConfigLayout,
+  ascendingConfigLayout,
+  decodeCommerceConfig,
+  decodeAscendingConfig,
+  encodePassportConfigAccount,
+  encodePassportConfigWithSources,
   encumbranceAnswerLayout,
   hexToBytes,
   passportBindingLayout,
@@ -84,6 +90,16 @@ function decodeBindingCounted(data: Uint8Array) {
   return decodePassportBinding(data);
 }
 
+function decodeCommerceCounted(data: Uint8Array) {
+  DECODE_EXERCISED += 1;
+  return decodeCommerceConfig(data);
+}
+
+function decodeAscendingCounted(data: Uint8Array) {
+  DECODE_EXERCISED += 1;
+  return decodeAscendingConfig(data);
+}
+
 function loadManifest(): StateManifest {
   return JSON.parse(
     readFileSync(path.join(ROOT, MANIFEST_REL), "utf8"),
@@ -93,9 +109,9 @@ function loadManifest(): StateManifest {
 const base58Expected = (hex: string) => encodeSvmPubkeyBytes(hexToBytes(hex));
 
 describe("svm account-state decode policy", () => {
-  it("manifest has six layouts including EncumbranceAnswer + PassportBinding", () => {
+  it("manifest has eight layouts including mode configs + full PassportConfig", () => {
     const committed = loadManifest();
-    assert.equal(committed.layouts.length, 6);
+    assert.equal(committed.layouts.length, 8);
     assert.equal(committed.layouts[0]!.id, "kar-passport/PassportState");
     assert.equal(committed.layouts[0]!.goldenByteLength, 256);
     assert.ok(committed.layouts[0]!.modelledByteLength < 256);
@@ -116,13 +132,15 @@ describe("svm account-state decode policy", () => {
         (f) => f.name === "namespace" && f.type === "u128",
       ),
     );
-    assert.equal(
-      committed.layouts[3]!.fields.at(-1)?.type,
-      "remainder_unmodelled",
-    );
     assert.ok(
-      committed.layouts[3]!.modelledByteLength < committed.layouts[3]!.goldenByteLength,
-      "PassportConfig goldenByteLength is variable-sample golden length; payload is modelled prefix",
+      committed.layouts[3]!.fields.some(
+        (f) => f.name === "encumbrance_sources" && f.type === "vec_encumbrance_source",
+      ),
+    );
+    assert.equal(committed.layouts[3]!.fields.at(-1)?.name, "bump");
+    assert.equal(
+      committed.layouts[3]!.modelledByteLength,
+      committed.layouts[3]!.goldenByteLength,
     );
 
     assert.equal(
@@ -138,14 +156,30 @@ describe("svm account-state decode policy", () => {
     assert.equal(committed.layouts[5]!.goldenByteLength, 41);
     assert.equal(committed.layouts[5]!.modelledByteLength, 41);
 
+    assert.equal(
+      committed.layouts[6]!.id,
+      "kargain-consignment-base/CommerceConfig",
+    );
+    assert.equal(
+      committed.layouts[6]!.goldenByteLength,
+      committed.layouts[6]!.modelledByteLength,
+    );
+    assert.equal(committed.layouts[7]!.id, "kar-ascending/AscendingConfig");
+    assert.equal(
+      committed.layouts[7]!.goldenByteLength,
+      committed.layouts[7]!.modelledByteLength,
+    );
+
     const layouts = stateManifestLayouts();
-    assert.equal(layouts.length, 6);
+    assert.equal(layouts.length, 8);
     assert.deepEqual(layouts[0], passportStateLayout());
     assert.deepEqual(layouts[1], stakeAccountLayout());
     assert.deepEqual(layouts[2], challengeAccountLayout());
     assert.deepEqual(layouts[3], passportConfigLayout());
     assert.deepEqual(layouts[4], encumbranceAnswerLayout());
     assert.deepEqual(layouts[5], passportBindingLayout());
+    assert.deepEqual(layouts[6], commerceConfigLayout());
+    assert.deepEqual(layouts[7], ascendingConfigLayout());
 
     const raw = readFileSync(path.join(ROOT, MANIFEST_REL), "utf8");
     assert.doesNotMatch(raw, /"accountSpace"/);
@@ -235,39 +269,37 @@ describe("svm account-state decode policy", () => {
     assert.match(trailing.detail, /trailing_bytes:1/);
   });
 
-  it("partial PassportConfig golden decodes deposit + forfeit; stops at marker", () => {
+  it("full PassportConfig golden decodes authority, namespace, sources, bump", () => {
     const layout = passportConfigLayout();
     const golden = hexToBytes(layout.goldenHex);
     assert.equal(golden.length, layout.goldenByteLength);
-    assert.ok(layout.modelledByteLength < golden.length);
+    assert.equal(layout.modelledByteLength, golden.length);
 
     const decoded = decodeConfigCounted(golden);
     assert.equal(decoded.ok, true);
     if (!decoded.ok) return;
     assert.equal(decoded.bytesRead, layout.modelledByteLength);
-    assert.ok(
-      decoded.bytesRead < golden.length,
-      "unmodelled structured remainder stays unread",
-    );
     assert.equal(decoded.value.disputeDeposit, 10_000_000n);
+    assert.equal(decoded.value.namespace, 2_000_040_168n);
+    assert.equal(decoded.value.bump, 252);
+    assert.equal(decoded.value.encumbranceSources.length, 1);
+    assert.equal(decoded.value.encumbranceSources[0]!.seedPrefix, "ans");
     const expectedForfeit = base58Expected(
       String(layout.sample.forfeit_recipient),
     );
     assert.equal(decoded.value.forfeitRecipient, expectedForfeit);
-    assert.equal(
-      Object.keys(decoded.value).sort().join(","),
-      "disputeDeposit,forfeitRecipient",
-    );
-    assert.equal("authority" in decoded.value, false);
-    assert.equal("namespace" in decoded.value, false);
-    assert.equal("bump" in decoded.value, false);
+    const expectedAuth = base58Expected(String(layout.sample.authority));
+    assert.equal(decoded.value.authority, expectedAuth);
+    const roundTrip = encodePassportConfigAccount(decoded.value);
+    assert.ok(bytesEqual(roundTrip, golden), "encodePassportConfigAccount ≡ golden");
   });
 
   it("planted field after remainder_unmodelled refuses (marker must be terminal)", () => {
     const layout = passportConfigLayout();
     const golden = hexToBytes(layout.goldenHex);
     const planted: StateFieldDecl[] = [
-      ...layout.fields,
+      { name: "discriminator", type: "fixed_bytes", len: 8 },
+      { name: "remainder", type: "remainder_unmodelled" },
       { name: "bump", type: "u8" },
     ];
     const decoded = decodePassportConfigWithFieldsForTests(golden, planted);
@@ -280,8 +312,17 @@ describe("svm account-state decode policy", () => {
   it("planted decode-past-marker walks unmodelled bytes (RED control)", () => {
     const layout = passportConfigLayout();
     const golden = hexToBytes(layout.goldenHex);
+    // Synthetic partial: stop at forfeit, then marker, then next_token_id plant.
     const plantedFields: StateFieldDecl[] = [
-      ...layout.fields.filter((f) => f.type !== "remainder_unmodelled"),
+      { name: "discriminator", type: "fixed_bytes", len: 8 },
+      { name: "authority", type: "fixed_bytes", len: 32 },
+      { name: "namespace", type: "u128" },
+      { name: "local_eid", type: "u32" },
+      { name: "endpoint_program", type: "fixed_bytes", len: 32 },
+      { name: "dispute_deposit", type: "u64" },
+      { name: "staking_program", type: "fixed_bytes", len: 32 },
+      { name: "bridge_gateway", type: "fixed_bytes", len: 32 },
+      { name: "forfeit_recipient", type: "fixed_bytes", len: 32 },
       { name: "remainder", type: "remainder_unmodelled" },
       { name: "next_token_id", type: "fixed_bytes", len: 32 },
     ];
@@ -289,11 +330,11 @@ describe("svm account-state decode policy", () => {
     const past = decodePastRemainderMarkerForTests(golden, plantedLayout);
     assert.equal(past.ok, true, "plant keeps reading after marker");
     if (!past.ok) return;
+    const honestPrefix = 196;
     assert.ok(
-      past.bytesRead > layout.modelledByteLength,
-      "past-marker plant must consume beyond modelled prefix",
+      past.bytesRead > honestPrefix,
+      "past-marker plant must consume beyond forfeit prefix",
     );
-    // Honest product decode must not match the planted bytesRead.
     const honest = decodeConfigCounted(golden);
     assert.equal(honest.ok, true);
     if (!honest.ok) return;
@@ -308,22 +349,53 @@ describe("svm account-state decode policy", () => {
     assert.equal(honest.ok, true);
     if (!honest.ok) return;
 
-    // Plant: drop namespace from the field list so the cursor never advances 16 bytes.
+    // Plant: drop namespace so the cursor never advances 16 bytes — truncates
+    // before bump when the live layout is fully modelled.
     const omitted = layout.fields.filter((f) => f.name !== "namespace");
     const planted = decodePassportConfigWithFieldsForTests(golden, omitted);
-    assert.equal(planted.ok, true, "plant still 'decodes' with wrong offsets");
-    if (!planted.ok) return;
+    assert.equal(planted.ok, false, "omitted-u128 must truncate before bump");
+    if (planted.ok) return;
+    assert.equal(planted.cause, "truncated");
+  });
 
-    assert.notEqual(
-      planted.value.disputeDeposit,
-      honest.value.disputeDeposit,
-      `omitted-u128 must shift dispute_deposit offset (honest=${honest.value.disputeDeposit} planted=${planted.value.disputeDeposit})`,
-    );
-    assert.notEqual(
-      planted.value.forfeitRecipient,
-      honest.value.forfeitRecipient,
-      `omitted-u128 must shift forfeit_recipient offset (honest=${honest.value.forfeitRecipient} planted=${planted.value.forfeitRecipient})`,
-    );
+  it("CommerceConfig + AscendingConfig goldens decode full surfaces", () => {
+    const commerce = commerceConfigLayout();
+    const commerceDecoded = decodeCommerceCounted(hexToBytes(commerce.goldenHex));
+    assert.equal(commerceDecoded.ok, true);
+    if (!commerceDecoded.ok) return;
+    assert.equal(commerceDecoded.value.platformFeeBps, 10);
+    assert.equal(commerceDecoded.value.paused, false);
+    assert.equal(commerceDecoded.value.selfEncumbranceRegisteredRetired, true);
+    assert.equal(commerceDecoded.value.bump, 250);
+
+    const ascending = ascendingConfigLayout();
+    const ascDecoded = decodeAscendingCounted(hexToBytes(ascending.goldenHex));
+    assert.equal(ascDecoded.ok, true);
+    if (!ascDecoded.ok) return;
+    assert.equal(ascDecoded.value.challengeBond, 1_000_000n);
+    assert.equal(ascDecoded.value.challengeWindow, 1_209_600n);
+    assert.equal(ascDecoded.value.challengeConfigured, true);
+    assert.equal(ascDecoded.value.bump, 249);
+  });
+
+  it("encodePassportConfigWithSources round-trips via decoder (no offset dual path)", () => {
+    const layout = passportConfigLayout();
+    const golden = hexToBytes(layout.goldenHex);
+    const decoded = decodePassportConfig(golden);
+    assert.equal(decoded.ok, true);
+    if (!decoded.ok) return;
+    const rebuilt = encodePassportConfigWithSources(golden, [
+      {
+        programIdBytes: decoded.value.encumbranceSources[0]!.programIdBytes,
+        seedPrefixBytes: new TextEncoder().encode("fp-ans"),
+      },
+    ]);
+    const again = decodePassportConfig(rebuilt);
+    assert.equal(again.ok, true);
+    if (!again.ok) return;
+    assert.equal(again.value.encumbranceSources.length, 1);
+    assert.equal(again.value.encumbranceSources[0]!.seedPrefix, "fp-ans");
+    assert.equal(again.value.disputeDeposit, decoded.value.disputeDeposit);
   });
 
   it("planted missing u128 type case refuses namespace as unsupported_type", () => {

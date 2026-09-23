@@ -1,7 +1,8 @@
 /**
- * S8-E 9.1 bind-modes door — in-memory fixtures only (no RPC).
+ * S8-E 9.1 / 9.2 bind-modes door — in-memory fixtures only (no RPC).
  * Pins: four planned actions ≡ encoder+PDA owners; already-registered skip;
- * foreign binding refuses by name; prefixes are the architect-decided ones.
+ * foreign binding refuses by name; prefixes are the architect-decided ones;
+ * measured readback fields come from owning decoders (no script hand-parse).
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -12,7 +13,10 @@ import { requireSvmCommercialActive } from "../lib/web3/commercial-active.ts";
 import { encodeSvmInstruction } from "../lib/svm/encode-instruction.ts";
 import { deriveSvmPda } from "../lib/svm/derive-pda.ts";
 import { systemProgramId } from "../lib/svm/foreign-programs.ts";
-import { encodeSvmPubkeyBytes } from "../lib/web3/protocol-address.ts";
+import {
+  decodePassportConfig,
+  encodePassportConfigAccount,
+} from "../lib/svm/decode-account-state.ts";
 import { POLICY_SCAN_ROOT } from "./policy-scan-helpers.ts";
 import {
   ASCENDING_SEED_PREFIX,
@@ -23,11 +27,11 @@ import {
   MAX_SEED_PREFIX_LEN,
   PASSPORT_BINDING_SPACE,
   PASSPORT_CONFIG_DISCRIMINATOR,
-  PASSPORT_CONFIG_SOURCES_OFFSET,
-  encodePassportConfigWithSources,
+  formatMeasuredReadback,
   planBindModes,
   programIdToBytes,
   type BindModesChainState,
+  type MeasuredReadbackInput,
   type PlannedBindModesAction,
 } from "../scripts/svm-devnet-bind-modes.ts";
 
@@ -39,47 +43,41 @@ const AUTHORITY = "11111111111111111111111111111112";
 const PAYER = "11111111111111111111111111111113";
 const FOREIGN_PASSPORT = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 
-function writeU32Le(n: number): Uint8Array {
-  const out = new Uint8Array(4);
-  out[0] = n & 0xff;
-  out[1] = (n >>> 8) & 0xff;
-  out[2] = (n >>> 16) & 0xff;
-  out[3] = (n >>> 24) & 0xff;
-  return out;
-}
-
-function concat(...parts: Uint8Array[]): Uint8Array {
-  let len = 0;
-  for (const p of parts) len += p.length;
-  const out = new Uint8Array(len);
-  let off = 0;
-  for (const p of parts) {
-    out.set(p, off);
-    off += p.length;
-  }
-  return out;
-}
-
 function fixturePassportConfig(args: {
   authority: string;
   sources?: { programId: string; seedPrefix: string }[];
 }): Uint8Array {
-  const prefix = new Uint8Array(PASSPORT_CONFIG_SOURCES_OFFSET);
-  prefix.set(PASSPORT_CONFIG_DISCRIMINATOR, 0);
-  prefix.set(programIdToBytes(args.authority), 8);
-  const sources = (args.sources ?? []).map((s) => ({
-    programIdBytes: programIdToBytes(s.programId),
-    seedPrefixBytes: new TextEncoder().encode(s.seedPrefix),
-  }));
-  // encodePassportConfigWithSources reads bump from currentData[last]; seed a stub.
-  const stub = concat(prefix, writeU32Le(0), Uint8Array.of(254));
-  return encodePassportConfigWithSources(stub, sources);
+  return encodePassportConfigAccount({
+    authority: args.authority,
+    namespace: BigInt(SVM_NS),
+    localEid: 40168,
+    endpointProgram: AUTHORITY,
+    disputeDeposit: 1_000_000n,
+    stakingProgram: AUTHORITY,
+    bridgeGateway: AUTHORITY,
+    forfeitRecipient: AUTHORITY,
+    nextTokenId: new Uint8Array(32),
+    encumbranceSources: (args.sources ?? []).map((s) => {
+      const programIdBytes = programIdToBytes(s.programId);
+      const seedPrefixBytes = new TextEncoder().encode(s.seedPrefix);
+      return {
+        programId: s.programId,
+        seedPrefix: s.seedPrefix,
+        programIdBytes,
+        seedPrefixBytes,
+      };
+    }),
+    bump: 254,
+  });
 }
 
 function fixtureCommerceConfig(authority: string): Uint8Array {
   const out = new Uint8Array(109);
   out.set(COMMERCE_CONFIG_DISCRIMINATOR, 0);
   out.set(programIdToBytes(authority), 8);
+  // platform_recipient + guardian placeholders (nonzero for ZeroAddress parity)
+  out.set(programIdToBytes(PAYER), 40);
+  out.set(programIdToBytes(PAYER), 74);
   out[108] = 255; // bump
   return out;
 }
@@ -89,6 +87,8 @@ function fixtureAscendingConfig(authority: string): Uint8Array {
   const out = new Uint8Array(190);
   out.set(ASCENDING_CONFIG_DISCRIMINATOR, 0);
   out.set(programIdToBytes(authority), 8);
+  out.set(programIdToBytes(PAYER), 40);
+  out.set(programIdToBytes(PAYER), 74);
   out[189] = 255;
   return out;
 }
@@ -455,6 +455,10 @@ describe("svm-devnet-bind-modes door source policy", () => {
     while ((m = ret.exec(source)) !== null) {
       thrown.add(m[1]!);
     }
+    const namedReturn = /return\s+["']([a-z_]+)["']/g;
+    while ((m = namedReturn.exec(source)) !== null) {
+      thrown.add(m[1]!);
+    }
     for (const cause of BIND_MODES_REFUSAL_CAUSES) {
       assert.ok(thrown.has(cause), `missing cause coverage: ${cause}`);
     }
@@ -466,12 +470,102 @@ describe("svm-devnet-bind-modes door source policy", () => {
     assert.doesNotMatch(planted, /\bencodeSvmInstruction\b/);
     assert.match(clean, /\bencodeSvmInstruction\b/);
   });
+
+  it("measured readback formatter consumes decoder field names (not hand offsets)", () => {
+    const sample: MeasuredReadbackInput = {
+      fixedPriceConfig: {
+        authority: AUTHORITY,
+        platformRecipient: PAYER,
+        platformFeeBps: 10,
+        guardian: AUTHORITY,
+        paused: false,
+        selfEncumbranceRegisteredRetired: true,
+        bump: 1,
+      },
+      ascendingConfig: {
+        authority: AUTHORITY,
+        platformRecipient: PAYER,
+        platformFeeBps: 10,
+        guardian: AUTHORITY,
+        paused: false,
+        selfEncumbranceRegisteredRetired: true,
+        stakingProgram: AUTHORITY,
+        forfeitRecipient: PAYER,
+        challengeBond: 1_000_000n,
+        challengeWindow: 1_209_600n,
+        challengeConfigured: true,
+        bump: 2,
+      },
+      fixedPriceConfigAddress: AUTHORITY,
+      ascendingConfigAddress: PAYER,
+      fixedPriceConfigSize: 109,
+      ascendingConfigSize: 190,
+      passportConfig: {
+        authority: AUTHORITY,
+        namespace: BigInt(SVM_NS),
+        localEid: 40168,
+        endpointProgram: AUTHORITY,
+        disputeDeposit: 1n,
+        stakingProgram: AUTHORITY,
+        bridgeGateway: AUTHORITY,
+        forfeitRecipient: PAYER,
+        nextTokenId: new Uint8Array(32),
+        encumbranceSources: [
+          {
+            programId: FOREIGN_PASSPORT,
+            seedPrefix: FIXED_PRICE_SEED_PREFIX,
+            programIdBytes: programIdToBytes(FOREIGN_PASSPORT),
+            seedPrefixBytes: new TextEncoder().encode(FIXED_PRICE_SEED_PREFIX),
+          },
+        ],
+        bump: 3,
+      },
+      passportConfigAddress: AUTHORITY,
+      passportConfigSize: 272,
+      fixedPriceBinding: {
+        address: AUTHORITY,
+        passportProgram: FOREIGN_PASSPORT,
+        owner: AUTHORITY,
+      },
+      ascendingBinding: null,
+      sampleTokenId: null,
+      sampleTokenNote: "fixture",
+      answerPdas: [],
+    };
+    const text = formatMeasuredReadback(sample);
+    assert.match(text, /platform_fee_bps 10/);
+    assert.match(text, /challenge_bond 1000000/);
+    assert.match(text, /needs SetGuardian/);
+    assert.match(text, /SetChallengeBond \(not sticky\)/);
+    assert.match(text, new RegExp(`seed_prefix=.*${FIXED_PRICE_SEED_PREFIX}`));
+  });
+
+  it("door imports owning decoders; plant that hand-parses config sources is red", () => {
+    const clean = readFileSync(join(ROOT, DOOR_REL), "utf8");
+    assert.match(clean, /decodePassportConfig/);
+    assert.match(clean, /decodeCommerceConfig/);
+    assert.match(clean, /decodeAscendingConfig/);
+    assert.match(clean, /formatMeasuredReadback/);
+    assert.doesNotMatch(clean, /PASSPORT_CONFIG_SOURCES_OFFSET/);
+    assert.doesNotMatch(clean, /parsePassportConfigSources/);
+    assert.doesNotMatch(clean, /authorityBytesFromConfig/);
+
+    // Plant: restore a hand-parse of sources via subarray + readU32Le.
+    const planted = `${clean}\nfunction plantParseSources(data){const o=228;return data.subarray(o,o+4);}\n`;
+    assert.match(planted, /subarray\(o/);
+    assert.doesNotMatch(clean, /subarray\(o/);
+  });
 });
 
 describe("svm-devnet-bind-modes fixtures helpers", () => {
-  it("encodePassportConfigWithSources round-trips empty and one source", () => {
+  it("fixturePassportConfig decodes via owning decoder (no offset dual path)", () => {
     const empty = fixturePassportConfig({ authority: AUTHORITY });
-    assert.equal(empty.length, PASSPORT_CONFIG_SOURCES_OFFSET + 4 + 1);
+    const decodedEmpty = decodePassportConfig(empty);
+    assert.equal(decodedEmpty.ok, true);
+    if (!decodedEmpty.ok) return;
+    assert.equal(decodedEmpty.value.authority, AUTHORITY);
+    assert.equal(decodedEmpty.value.encumbranceSources.length, 0);
+
     const withOne = fixturePassportConfig({
       authority: AUTHORITY,
       sources: [
@@ -481,16 +575,14 @@ describe("svm-devnet-bind-modes fixtures helpers", () => {
         },
       ],
     });
-    const prefixBytes = new TextEncoder().encode(FIXED_PRICE_SEED_PREFIX);
+    const decoded = decodePassportConfig(withOne);
+    assert.equal(decoded.ok, true);
+    if (!decoded.ok) return;
+    assert.equal(decoded.value.encumbranceSources.length, 1);
+    assert.equal(decoded.value.encumbranceSources[0]!.programId, FOREIGN_PASSPORT);
     assert.equal(
-      withOne.length,
-      PASSPORT_CONFIG_SOURCES_OFFSET + 4 + 32 + 4 + prefixBytes.length + 1,
-    );
-    // program id recoverable
-    const offset = PASSPORT_CONFIG_SOURCES_OFFSET + 4;
-    assert.equal(
-      encodeSvmPubkeyBytes(withOne.subarray(offset, offset + 32)),
-      FOREIGN_PASSPORT,
+      decoded.value.encumbranceSources[0]!.seedPrefix,
+      FIXED_PRICE_SEED_PREFIX,
     );
   });
 });

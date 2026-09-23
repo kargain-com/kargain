@@ -1,5 +1,5 @@
 /**
- * S8-E 9.1 — Devnet mode↔passport bind + encumbrance-register ops door.
+ * S8-E 9.1 / 9.2 — Devnet mode↔passport bind + encumbrance-register ops door.
  *
  * Plans four actions (bind FixedPrice, bind Ascending, register FixedPrice
  * with fp-ans, register Ascending with asc-ans). State-first: already-done
@@ -7,10 +7,12 @@
  * program refuses by name (never overwrite).
  *
  * Instruction bytes + PDAs come from product owners (encodeSvmInstruction /
- * deriveSvmPda). Program ids from COMMERCIAL_ACTIVE only. Transport is stand
- * web3.js (scripts class) — product Wallet Standard send is out of unit.
+ * deriveSvmPda). Account bytes decode through decode-account-state owners.
+ * Program ids from COMMERCIAL_ACTIVE only. Transport is stand web3.js
+ * (scripts class) — product Wallet Standard send is out of unit.
  *
- * Dry-run by default. `--live` sends then reads back.
+ * Dry-run by default prints measured on-chain readback (9.2) then the plan.
+ * `--live` sends then reads back.
  *
  *   pnpm svm:bind-modes -- \
  *     --eid 40168 \
@@ -28,12 +30,21 @@ import { requireSvmCommercialActive } from "../lib/web3/commercial-active.ts";
 import { namespaceFromLayerZeroEid } from "../lib/web3/kargain-namespace.ts";
 import { encodeSvmInstruction } from "../lib/svm/encode-instruction.ts";
 import { deriveSvmPda } from "../lib/svm/derive-pda.ts";
-import { decodePassportBinding } from "../lib/svm/decode-account-state.ts";
-import { systemProgramId } from "../lib/svm/foreign-programs.ts";
 import {
-  encodeSvmPubkeyBytes,
-  svmPubkeyToBytes32,
-} from "../lib/web3/protocol-address.ts";
+  decodeAscendingConfig,
+  decodeCommerceConfig,
+  decodePassportBinding,
+  decodePassportConfig,
+  decodePassportState,
+  encodePassportConfigWithSources,
+  type AscendingConfigDecoded,
+  type CommerceConfigDecoded,
+  type EncumbranceSourceDecoded,
+  type PassportConfigDecoded,
+} from "../lib/svm/decode-account-state.ts";
+import { tokenIdFromBytes32 } from "../lib/svm/event-payload-decode.ts";
+import { systemProgramId } from "../lib/svm/foreign-programs.ts";
+import { svmPubkeyToBytes32 } from "../lib/web3/protocol-address.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../svm/lab/package.json"));
@@ -56,23 +67,24 @@ export const MAX_SEED_PREFIX_LEN = 32;
 /** Mirrors `PassportBinding::SPACE`. */
 export const PASSPORT_BINDING_SPACE = 41;
 
-/**
- * Byte offset of `encumbrance_sources` in PassportConfig Borsh layout
- * (disc+authority+namespace+eid+endpoint+deposit+staking+gateway+forfeit+next_token_id).
- */
-export const PASSPORT_CONFIG_SOURCES_OFFSET = 228;
-
 /** Mirrors `kargain_encumbrance::MAX_ENCUMBRANCE_SOURCES`. */
 export const MAX_ENCUMBRANCE_SOURCES = 8;
 
 /** Mirrors passport `resize_config_account` MAX_GROWTH. */
 export const MAX_CONFIG_GROWTH = 10_240;
 
+/** Re-export sole reshape owner — scripts must not hand-parse config bytes. */
+export { encodePassportConfigWithSources };
+
 /** PassportConfig and FixedPrice CommerceConfig use this 8-byte tag on chain. */
 export const PASSPORT_CONFIG_DISCRIMINATOR = Buffer.from("kp_cfg\0\0", "utf8");
 export const COMMERCE_CONFIG_DISCRIMINATOR = PASSPORT_CONFIG_DISCRIMINATOR;
 /** AscendingConfig discriminator (`kp_ascfg`) — not CommerceConfig. */
 export const ASCENDING_CONFIG_DISCRIMINATOR = Buffer.from("kp_ascfg", "utf8");
+
+/** LeaveChain / OpenConsignment intent ordinals (kargain-encumbrance). */
+export const INTENT_LEAVE_CHAIN = 0;
+export const INTENT_OPEN_CONSIGNMENT = 1;
 
 export type BindModesRefusalCause =
   | "mode_id_missing"
@@ -153,12 +165,7 @@ export type BindModesActionOutcome =
   | PlannedBindModesAction
   | AlreadyDoneBindModesAction;
 
-export type EncumbranceSourceParsed = {
-  programId: string;
-  seedPrefix: string;
-  programIdBytes: Uint8Array;
-  seedPrefixBytes: Uint8Array;
-};
+export type EncumbranceSourceParsed = EncumbranceSourceDecoded;
 
 export type BindModesChainState = {
   passportProgramId: string;
@@ -198,32 +205,6 @@ export type BindModesPlanErr = {
 
 export type BindModesPlanResult = BindModesPlanOk | BindModesPlanErr;
 
-function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
-}
-
-function readU32Le(data: Uint8Array, offset: number): number {
-  return (
-    data[offset]! |
-    (data[offset + 1]! << 8) |
-    (data[offset + 2]! << 16) |
-    (data[offset + 3]! << 24)
-  ) >>> 0;
-}
-
-function writeU32Le(n: number): Uint8Array {
-  const out = new Uint8Array(4);
-  out[0] = n & 0xff;
-  out[1] = (n >>> 8) & 0xff;
-  out[2] = (n >>> 16) & 0xff;
-  out[3] = (n >>> 24) & 0xff;
-  return out;
-}
-
 function hexToBytes32(hex: `0x${string}`): Uint8Array {
   const body = hex.slice(2);
   if (body.length !== 64) {
@@ -249,90 +230,6 @@ export function requireValidSeedPrefix(prefix: string): void {
       `len ${bytes.length} (empty or >${MAX_SEED_PREFIX_LEN})`,
     );
   }
-}
-
-/**
- * Ops-local PassportConfig encumbrance_sources walk. Product decode stays
- * partial (remainder_unmodelled) — this door owns the registry list read.
- */
-export function parsePassportConfigSources(
-  data: Uint8Array,
-): EncumbranceSourceParsed[] {
-  if (data.length < PASSPORT_CONFIG_SOURCES_OFFSET + 4 + 1) {
-    throw new BindModesRefusal(
-      "config_cannot_grow",
-      `config too short for sources+bump: ${data.length}`,
-    );
-  }
-  let offset = PASSPORT_CONFIG_SOURCES_OFFSET;
-  const count = readU32Le(data, offset);
-  offset += 4;
-  const sources: EncumbranceSourceParsed[] = [];
-  for (let i = 0; i < count; i++) {
-    if (offset + 32 + 4 > data.length) {
-      throw new BindModesRefusal(
-        "config_cannot_grow",
-        `truncated source entry at index ${i}`,
-      );
-    }
-    const programIdBytes = data.subarray(offset, offset + 32);
-    offset += 32;
-    const prefixLen = readU32Le(data, offset);
-    offset += 4;
-    if (offset + prefixLen > data.length) {
-      throw new BindModesRefusal(
-        "config_cannot_grow",
-        `truncated seed_prefix at index ${i}`,
-      );
-    }
-    const seedPrefixBytes = data.subarray(offset, offset + prefixLen);
-    offset += prefixLen;
-    sources.push({
-      programId: encodeSvmPubkeyBytes(programIdBytes),
-      seedPrefix: new TextDecoder().decode(seedPrefixBytes),
-      programIdBytes: Uint8Array.from(programIdBytes),
-      seedPrefixBytes: Uint8Array.from(seedPrefixBytes),
-    });
-  }
-  if (offset + 1 !== data.length) {
-    // Allow trailing only if bump is last byte; refuse otherwise.
-    if (offset + 1 > data.length) {
-      throw new BindModesRefusal(
-        "config_cannot_grow",
-        `missing bump after sources (offset ${offset}, len ${data.length})`,
-      );
-    }
-  }
-  return sources;
-}
-
-export function encodePassportConfigWithSources(
-  currentData: Uint8Array,
-  sources: readonly {
-    programIdBytes: Uint8Array;
-    seedPrefixBytes: Uint8Array;
-  }[],
-): Uint8Array {
-  const prefix = currentData.subarray(0, PASSPORT_CONFIG_SOURCES_OFFSET);
-  const bump = currentData[currentData.length - 1]!;
-  const parts: Uint8Array[] = [Uint8Array.from(prefix), writeU32Le(sources.length)];
-  for (const s of sources) {
-    parts.push(s.programIdBytes, writeU32Le(s.seedPrefixBytes.length), s.seedPrefixBytes);
-  }
-  parts.push(Uint8Array.of(bump));
-  let len = 0;
-  for (const p of parts) len += p.length;
-  const out = new Uint8Array(len);
-  let off = 0;
-  for (const p of parts) {
-    out.set(p, off);
-    off += p.length;
-  }
-  return out;
-}
-
-function authorityBytesFromConfig(data: Uint8Array): Uint8Array {
-  return data.subarray(8, 40);
 }
 
 function bindingPassportProgram(
@@ -379,6 +276,30 @@ function encodeOrRefuse(
   return encoded.data;
 }
 
+function passportConfigPlanCause(
+  cause: string,
+): Extract<
+  BindModesRefusalCause,
+  "config_discriminator_mismatch" | "config_cannot_grow"
+> {
+  if (cause === "discriminator_mismatch") {
+    return "config_discriminator_mismatch";
+  }
+  return "config_cannot_grow";
+}
+
+function modeConfigPlanCause(
+  cause: string,
+): Extract<
+  BindModesRefusalCause,
+  "mode_config_discriminator_mismatch" | "mode_config_not_found"
+> {
+  if (cause === "discriminator_mismatch") {
+    return "mode_config_discriminator_mismatch";
+  }
+  return "mode_config_not_found";
+}
+
 /**
  * Pure planner — fixtures inject chain state + rent; no RPC.
  * Callers must have already derived PDA addresses into `state`.
@@ -389,55 +310,54 @@ export function planBindModes(state: BindModesChainState): BindModesPlanResult {
     requireValidSeedPrefix(ASCENDING_SEED_PREFIX);
 
     const cfg = state.passportConfig.data;
-    if (
-      cfg.length < 8 ||
-      !bytesEqual(cfg.subarray(0, 8), PASSPORT_CONFIG_DISCRIMINATOR)
-    ) {
+    const passportDecoded = decodePassportConfig(cfg);
+    if (!passportDecoded.ok) {
       return {
         ok: false,
-        cause: "config_discriminator_mismatch",
-        detail: "passport config discriminator",
+        cause: passportConfigPlanCause(passportDecoded.cause),
+        detail: `passport config:${passportDecoded.cause}:${passportDecoded.detail}`,
       };
     }
-    for (const [label, modeCfg, expectedDisc] of [
-      ["fixed_price", state.fixedPriceConfig.data, COMMERCE_CONFIG_DISCRIMINATOR],
-      ["ascending", state.ascendingConfig.data, ASCENDING_CONFIG_DISCRIMINATOR],
-    ] as const) {
-      if (
-        modeCfg.length < 40 ||
-        !bytesEqual(modeCfg.subarray(0, 8), expectedDisc)
-      ) {
-        return {
-          ok: false,
-          cause: "mode_config_discriminator_mismatch",
-          detail: label,
-        };
-      }
+    const fpDecoded = decodeCommerceConfig(state.fixedPriceConfig.data);
+    if (!fpDecoded.ok) {
+      return {
+        ok: false,
+        cause: modeConfigPlanCause(fpDecoded.cause),
+        detail: `fixed_price:${fpDecoded.cause}:${fpDecoded.detail}`,
+      };
+    }
+    const ascDecoded = decodeAscendingConfig(state.ascendingConfig.data);
+    if (!ascDecoded.ok) {
+      return {
+        ok: false,
+        cause: modeConfigPlanCause(ascDecoded.cause),
+        detail: `ascending:${ascDecoded.cause}:${ascDecoded.detail}`,
+      };
     }
 
-    const authorityLocal = programIdToBytes(state.authorityPubkey);
-    const passportAuth = authorityBytesFromConfig(cfg);
-    if (!bytesEqual(passportAuth, authorityLocal)) {
+    if (passportDecoded.value.authority !== state.authorityPubkey) {
       return {
         ok: false,
         cause: "authority_mismatch",
         detail: "passport config authority",
       };
     }
-    for (const [label, modeCfg] of [
-      ["fixed_price", state.fixedPriceConfig.data],
-      ["ascending", state.ascendingConfig.data],
-    ] as const) {
-      if (!bytesEqual(authorityBytesFromConfig(modeCfg), authorityLocal)) {
-        return {
-          ok: false,
-          cause: "authority_mismatch",
-          detail: `${label} commerce config authority`,
-        };
-      }
+    if (fpDecoded.value.authority !== state.authorityPubkey) {
+      return {
+        ok: false,
+        cause: "authority_mismatch",
+        detail: "fixed_price commerce config authority",
+      };
+    }
+    if (ascDecoded.value.authority !== state.authorityPubkey) {
+      return {
+        ok: false,
+        cause: "authority_mismatch",
+        detail: "ascending commerce config authority",
+      };
     }
 
-    const sources = parsePassportConfigSources(cfg);
+    const sources = passportDecoded.value.encumbranceSources;
     const actions: BindModesActionOutcome[] = [];
     const planned: PlannedBindModesAction[] = [];
 
@@ -704,6 +624,176 @@ export function formatBindModesPlan(plan: BindModesPlanOk): string {
   return lines.join("\n");
 }
 
+function priorTokenIdBytes(nextTokenId: Uint8Array): Uint8Array | null {
+  let n = 0n;
+  for (const b of nextTokenId) {
+    n = (n << 8n) | BigInt(b);
+  }
+  if (n === 0n) return null;
+  const prior = n - 1n;
+  const out = new Uint8Array(32);
+  let v = prior;
+  for (let i = 31; i >= 0; i--) {
+    out[i] = Number(v & 0xffn);
+    v >>= 8n;
+  }
+  return out;
+}
+
+export type MeasuredReadbackInput = {
+  fixedPriceConfig: CommerceConfigDecoded;
+  ascendingConfig: AscendingConfigDecoded;
+  fixedPriceConfigAddress: string;
+  ascendingConfigAddress: string;
+  fixedPriceConfigSize: number;
+  ascendingConfigSize: number;
+  passportConfig: PassportConfigDecoded;
+  passportConfigAddress: string;
+  passportConfigSize: number;
+  fixedPriceBinding: {
+    passportProgram: string;
+    owner: string;
+    address: string;
+  } | null;
+  ascendingBinding: {
+    passportProgram: string;
+    owner: string;
+    address: string;
+  } | null;
+  sampleTokenId: string | null;
+  sampleTokenNote: string;
+  answerPdas: {
+    modeProgramId: string;
+    seedPrefix: string;
+    intent: number;
+    intentName: string;
+    address: string | null;
+    recipe: string;
+  }[];
+};
+
+/**
+ * Measured on-chain readback for the ops record — all fields from owning
+ * decoders. Lists values that cannot be rotated without a new instruction.
+ */
+export function formatMeasuredReadback(input: MeasuredReadbackInput): string {
+  const lines: string[] = [];
+  lines.push("svm-devnet-bind-modes measured_readback");
+  lines.push("");
+  lines.push(`fixed_price_config ${input.fixedPriceConfigAddress}`);
+  lines.push(`  size_bytes ${input.fixedPriceConfigSize}`);
+  lines.push(`  discriminator kp_cfg`);
+  lines.push(`  authority ${input.fixedPriceConfig.authority}`);
+  lines.push(`  platform_recipient ${input.fixedPriceConfig.platformRecipient}`);
+  lines.push(`  platform_fee_bps ${input.fixedPriceConfig.platformFeeBps}`);
+  lines.push(`  guardian ${input.fixedPriceConfig.guardian}`);
+  lines.push(`  paused ${input.fixedPriceConfig.paused}`);
+  lines.push(
+    `  self_encumbrance_registered_retired ${input.fixedPriceConfig.selfEncumbranceRegisteredRetired}`,
+  );
+  lines.push("");
+  lines.push(`ascending_config ${input.ascendingConfigAddress}`);
+  lines.push(`  size_bytes ${input.ascendingConfigSize}`);
+  lines.push(`  discriminator kp_ascfg`);
+  lines.push(`  authority ${input.ascendingConfig.authority}`);
+  lines.push(`  platform_recipient ${input.ascendingConfig.platformRecipient}`);
+  lines.push(`  platform_fee_bps ${input.ascendingConfig.platformFeeBps}`);
+  lines.push(`  guardian ${input.ascendingConfig.guardian}`);
+  lines.push(`  paused ${input.ascendingConfig.paused}`);
+  lines.push(
+    `  self_encumbrance_registered_retired ${input.ascendingConfig.selfEncumbranceRegisteredRetired}`,
+  );
+  lines.push(`  staking_program ${input.ascendingConfig.stakingProgram}`);
+  lines.push(`  forfeit_recipient ${input.ascendingConfig.forfeitRecipient}`);
+  lines.push(`  challenge_bond ${input.ascendingConfig.challengeBond}`);
+  lines.push(`  challenge_window ${input.ascendingConfig.challengeWindow}`);
+  lines.push(
+    `  challenge_configured ${input.ascendingConfig.challengeConfigured}`,
+  );
+  lines.push("");
+  if (input.fixedPriceBinding == null) {
+    lines.push("fixed_price_binding absent");
+  } else {
+    lines.push(`fixed_price_binding ${input.fixedPriceBinding.address}`);
+    lines.push(`  owner ${input.fixedPriceBinding.owner}`);
+    lines.push(
+      `  passport_program ${input.fixedPriceBinding.passportProgram}`,
+    );
+  }
+  if (input.ascendingBinding == null) {
+    lines.push("ascending_binding absent");
+  } else {
+    lines.push(`ascending_binding ${input.ascendingBinding.address}`);
+    lines.push(`  owner ${input.ascendingBinding.owner}`);
+    lines.push(`  passport_program ${input.ascendingBinding.passportProgram}`);
+  }
+  lines.push("");
+  lines.push(`passport_config ${input.passportConfigAddress}`);
+  lines.push(`  size_bytes ${input.passportConfigSize}`);
+  lines.push(`  authority ${input.passportConfig.authority}`);
+  lines.push(`  namespace ${input.passportConfig.namespace}`);
+  lines.push(`  sources_count ${input.passportConfig.encumbranceSources.length}`);
+  for (const [i, s] of input.passportConfig.encumbranceSources.entries()) {
+    lines.push(
+      `  source[${i}] program_id=${s.programId} seed_prefix=${JSON.stringify(s.seedPrefix)}`,
+    );
+  }
+  lines.push("");
+  if (input.sampleTokenId == null) {
+    lines.push(`sample_token unavailable — ${input.sampleTokenNote}`);
+  } else {
+    lines.push(`sample_token ${input.sampleTokenId}`);
+    lines.push(`  note ${input.sampleTokenNote}`);
+  }
+  for (const a of input.answerPdas) {
+    if (a.address == null) {
+      lines.push(
+        `answer_pda recipe ${a.recipe} mode=${a.modeProgramId} prefix=${a.seedPrefix} intent=${a.intentName}(${a.intent}) — address not derived (${input.sampleTokenNote})`,
+      );
+    } else {
+      lines.push(
+        `answer_pda ${a.address} mode=${a.modeProgramId} prefix=${a.seedPrefix} intent=${a.intentName}(${a.intent})`,
+      );
+    }
+  }
+  lines.push("");
+  lines.push("unsettable_today (missing instruction — InitConfig value is sticky)");
+  lines.push(
+    "  fixed_price.guardian — needs SetGuardian (crate set_guardian unwired)",
+  );
+  lines.push(
+    "  fixed_price.platform_recipient — needs SetPlatformRecipient",
+  );
+  lines.push(
+    "  fixed_price.platform_fee_bps — InitConfig-only (no SetPlatformFeeBps)",
+  );
+  lines.push(
+    "  ascending.guardian — needs SetGuardian (crate set_guardian unwired)",
+  );
+  lines.push(
+    "  ascending.platform_recipient — needs SetPlatformRecipient",
+  );
+  lines.push(
+    "  ascending.platform_fee_bps — InitConfig-only (no SetPlatformFeeBps)",
+  );
+  lines.push(
+    "  ascending.challenge_window — InitConfig-only",
+  );
+  lines.push(
+    "  ascending.forfeit_recipient — InitConfig-only",
+  );
+  lines.push(
+    "  ascending.staking_program — InitConfig-only",
+  );
+  lines.push(
+    "  ascending.challenge_bond — settable via SetChallengeBond (not sticky)",
+  );
+  lines.push(
+    "  *.paused — settable via Pause/Unpause (not sticky)",
+  );
+  return lines.join("\n");
+}
+
 async function deriveRequiredPdas(stack: {
   karPassport: string;
   fixedPriceConsignment: string;
@@ -828,7 +918,14 @@ async function assertLiveReadback(args: {
   if (cfgInfo == null) {
     throw new BindModesRefusal("readback_mismatch", "passport config absent");
   }
-  const sources = parsePassportConfigSources(Uint8Array.from(cfgInfo.data));
+  const decodedCfg = decodePassportConfig(Uint8Array.from(cfgInfo.data));
+  if (!decodedCfg.ok) {
+    throw new BindModesRefusal(
+      "readback_mismatch",
+      `passport config decode:${decodedCfg.cause}`,
+    );
+  }
+  const sources = decodedCfg.value.encumbranceSources;
   const fp = findSource(sources, args.fixedPriceProgramId);
   const asc = findSource(sources, args.ascendingProgramId);
   if (fp == null || fp.seedPrefix !== FIXED_PRICE_SEED_PREFIX) {
@@ -944,7 +1041,14 @@ async function main(): Promise<void> {
 
   // First plan with a placeholder rent for register sizes, then refine.
   // Pre-compute possible new config lengths by dry-walking sources.
-  const provisionalSources = parsePassportConfigSources(passportConfig.data);
+  const provisionalDecoded = decodePassportConfig(passportConfig.data);
+  if (!provisionalDecoded.ok) {
+    throw new BindModesRefusal(
+      "config_cannot_grow",
+      `passport config decode:${provisionalDecoded.cause}:${provisionalDecoded.detail}`,
+    );
+  }
+  const provisionalSources = provisionalDecoded.value.encumbranceSources;
   const candidateLens = new Set<number>([passportConfig.data.length]);
   let probeSources = provisionalSources.map((s) => ({
     programIdBytes: s.programIdBytes,
@@ -1004,6 +1108,99 @@ async function main(): Promise<void> {
     throw new BindModesRefusal(plan.cause, plan.detail);
   }
 
+  const fpCfgDecoded = decodeCommerceConfig(fixedPriceConfig.data);
+  const ascCfgDecoded = decodeAscendingConfig(ascendingConfig.data);
+  const passportDecoded = decodePassportConfig(passportConfig.data);
+  if (!fpCfgDecoded.ok || !ascCfgDecoded.ok || !passportDecoded.ok) {
+    throw new BindModesRefusal(
+      "config_cannot_grow",
+      "measured_readback decode refused",
+    );
+  }
+
+  const priorBytes = priorTokenIdBytes(passportDecoded.value.nextTokenId);
+  let sampleTokenId: string | null = null;
+  let sampleTokenNote = "next_token_id has no prior mint";
+  let sampleTokenBytes: Uint8Array | null = null;
+  if (priorBytes != null) {
+    const statePda = await deriveSvmPda({
+      recipe: "kar-passport/state",
+      programId: stack.karPassport,
+      seeds: { token_id: priorBytes },
+    });
+    if (statePda.ok) {
+      const stateInfo = await connection.getAccountInfo(
+        new PublicKey(statePda.address),
+      );
+      if (stateInfo != null && stateInfo.data.length > 0) {
+        const st = decodePassportState(Uint8Array.from(stateInfo.data));
+        if (st.ok) {
+          sampleTokenBytes = priorBytes;
+          sampleTokenId = tokenIdFromBytes32(priorBytes);
+          sampleTokenNote = "prior of on-chain next_token_id (PassportState present)";
+        } else {
+          sampleTokenNote = `prior PassportState undecodable:${st.cause}`;
+        }
+      } else {
+        sampleTokenNote = "prior PassportState account absent";
+      }
+    } else {
+      sampleTokenNote = `prior state pda:${statePda.cause}`;
+    }
+  }
+
+  const answerPdas: MeasuredReadbackInput["answerPdas"] = [];
+  for (const [modeId, prefix] of [
+    [fixedPriceProgramId, FIXED_PRICE_SEED_PREFIX],
+    [ascendingProgramId, ASCENDING_SEED_PREFIX],
+  ] as const) {
+    for (const [intent, intentName] of [
+      [INTENT_LEAVE_CHAIN, "LeaveChain"],
+      [INTENT_OPEN_CONSIGNMENT, "OpenConsignment"],
+    ] as const) {
+      const recipe = `kargain-encumbrance/EncumbranceAnswer prefix=${prefix} intent=${intentName}`;
+      if (sampleTokenBytes == null) {
+        answerPdas.push({
+          modeProgramId: modeId,
+          seedPrefix: prefix,
+          intent,
+          intentName,
+          address: null,
+          recipe,
+        });
+        continue;
+      }
+      const derived = await deriveSvmPda({
+        recipe: "kargain-encumbrance/answer",
+        programId: modeId,
+        seeds: {
+          seed_prefix: prefix,
+          token_id: sampleTokenBytes,
+          intent,
+        },
+      });
+      answerPdas.push({
+        modeProgramId: modeId,
+        seedPrefix: prefix,
+        intent,
+        intentName,
+        address: derived.ok ? derived.address : null,
+        recipe: derived.ok
+          ? recipe
+          : `${recipe} derive_${derived.cause}`,
+      });
+    }
+  }
+
+  const fpBindDecoded =
+    fpBindInfo == null || fpBindInfo.data.length === 0
+      ? null
+      : decodePassportBinding(Uint8Array.from(fpBindInfo.data));
+  const ascBindDecoded =
+    ascBindInfo == null || ascBindInfo.data.length === 0
+      ? null
+      : decodePassportBinding(Uint8Array.from(ascBindInfo.data));
+
   console.log(`eid ${eid}`);
   console.log(`namespace ${namespace}`);
   console.log(`passport ${stack.karPassport}`);
@@ -1014,6 +1211,38 @@ async function main(): Promise<void> {
   console.log(`ascending_config ${pdas.ascendingConfig}`);
   console.log(`fixed_price_binding ${pdas.fixedPriceBinding}`);
   console.log(`ascending_binding ${pdas.ascendingBinding}`);
+  console.log(
+    formatMeasuredReadback({
+      fixedPriceConfig: fpCfgDecoded.value,
+      ascendingConfig: ascCfgDecoded.value,
+      fixedPriceConfigAddress: pdas.fixedPriceConfig,
+      ascendingConfigAddress: pdas.ascendingConfig,
+      fixedPriceConfigSize: fixedPriceConfig.data.length,
+      ascendingConfigSize: ascendingConfig.data.length,
+      passportConfig: passportDecoded.value,
+      passportConfigAddress: pdas.passportConfig,
+      passportConfigSize: passportConfig.data.length,
+      fixedPriceBinding:
+        fpBindDecoded != null && fpBindDecoded.ok
+          ? {
+              address: pdas.fixedPriceBinding,
+              passportProgram: fpBindDecoded.value.passportProgram,
+              owner: fpBindInfo!.owner.toBase58(),
+            }
+          : null,
+      ascendingBinding:
+        ascBindDecoded != null && ascBindDecoded.ok
+          ? {
+              address: pdas.ascendingBinding,
+              passportProgram: ascBindDecoded.value.passportProgram,
+              owner: ascBindInfo!.owner.toBase58(),
+            }
+          : null,
+      sampleTokenId,
+      sampleTokenNote,
+      answerPdas,
+    }),
+  );
   console.log(formatBindModesPlan(plan));
 
   if (dryRun) {

@@ -8,19 +8,21 @@
 //! equal a program `SPACE` constant):
 //! - Fixed-padded (`PassportState`, `StakeAccount`): `golden_byte_length` is
 //!   the padded golden (`SPACE`); `modelled_byte_length` is the borsh payload.
-//! - Exact (`ChallengeAccount`, `EncumbranceAnswer`, `PassportBinding`):
-//!   both lengths == Borsh payload == program SPACE; no pad.
-//! - Variable sample / deliberately partial (`PassportConfig`): no program
-//!   SPACE — `golden_byte_length` is this sample's byte length; modelled
-//!   prefix stops at `remainder_unmodelled`.
+//! - Exact (`ChallengeAccount`, `EncumbranceAnswer`, `PassportBinding`,
+//!   `CommerceConfig`, `AscendingConfig`): both lengths == Borsh payload ==
+//!   program SPACE; no pad.
+//! - Variable sample (`PassportConfig`): no program SPACE — `golden_byte_length`
+//!   is this sample's full Borsh length; modelled walks next_token_id +
+//!   encumbrance_sources + bump (fully modelled).
 
 use kargain_bonded_challenge::{ChallengeAccount, CHALLENGE_ACCOUNT_DISCRIMINATOR};
 use kargain_consignment_base::{
-    PassportBinding, PASSPORT_BINDING_DISCRIMINATOR,
+    CommerceConfig, PassportBinding, CONFIG_DISCRIMINATOR, PASSPORT_BINDING_DISCRIMINATOR,
 };
 use kargain_encumbrance::{
     EncumbranceAnswer, ENCUMBRANCE_ANSWER_DISCRIMINATOR,
 };
+use kar_ascending::ix::{AscendingConfig, ASC_CONFIG_DISC};
 use kar_passport::state::{
     EncumbranceSourceEntry, PassportConfig, PassportState, Status,
     PASSPORT_CONFIG_DISCRIMINATOR, PASSPORT_STATE_DISCRIMINATOR, PASSPORT_STATE_SPACE,
@@ -32,8 +34,8 @@ use serde::Serialize;
 use serde_json::{json, Map, Value};
 
 use crate::{
-    field_bool, field_fixed, field_remainder_unmodelled, field_u128, field_u32, field_u64,
-    field_u8, hex_of, FieldDecl,
+    field_bool, field_fixed, field_remainder_unmodelled, field_u128, field_u16, field_u32,
+    field_u64, field_u8, field_vec_encumbrance_source, hex_of, FieldDecl,
 };
 
 pub const STATE_MANIFEST_REL_PATH: &str = "state.manifest.json";
@@ -292,11 +294,9 @@ fn challenge_account_layout() -> StateLayoutEntry {
     }
 }
 
-/// Modelled prefix through `forfeit_recipient`, then terminal remainder marker.
-/// Does **not** declare encumbrance_sources / bump — those are the unmodelled
-/// structured remainder (not zero padding).
+/// Fully modelled PassportConfig — next_token_id + encumbrance_sources + bump.
 fn passport_config_fields() -> Vec<StateFieldDecl> {
-    let fields = vec![
+    vec![
         wrap_field(field_fixed("discriminator", 8)),
         wrap_field(field_fixed("authority", 32)),
         wrap_field(field_u128("namespace")),
@@ -306,16 +306,15 @@ fn passport_config_fields() -> Vec<StateFieldDecl> {
         wrap_field(field_fixed("staking_program", 32)),
         wrap_field(field_fixed("bridge_gateway", 32)),
         wrap_field(field_fixed("forfeit_recipient", 32)),
-        // Deliberately partial: Vec + bump exist on-chain but are not modelled.
-        wrap_field(field_remainder_unmodelled()),
-    ];
-    assert_remainder_marker_is_terminal(&fields, "kar-passport/PassportConfig");
-    fields
+        wrap_field(field_fixed("next_token_id", 32)),
+        wrap_field(field_vec_encumbrance_source("encumbrance_sources")),
+        wrap_field(field_u8("bump")),
+    ]
 }
 
-fn sample_passport_config() -> (PassportConfig, Map<String, Value>, usize) {
+fn sample_passport_config() -> (PassportConfig, Map<String, Value>) {
     // Deterministic sample with a **populated** encumbrance_sources so a
-    // decoder that wrongly walks the tail cannot pass an empty-vec golden.
+    // decoder that wrongly skips the vec cannot pass an empty-vec golden.
     let authority = [0x11u8; 32];
     let endpoint_program = [0x22u8; 32];
     let staking_program = [0x33u8; 32];
@@ -340,9 +339,6 @@ fn sample_passport_config() -> (PassportConfig, Map<String, Value>, usize) {
         }],
         bump: 252,
     };
-    // Modelled prefix length = bytes through forfeit_recipient (before Vec).
-    // 8+32+16+4+32+8+32+32+32 = 196
-    const MODELLED_PREFIX_LEN: usize = 8 + 32 + 16 + 4 + 32 + 8 + 32 + 32 + 32;
     let mut sample = Map::new();
     sample.insert(
         "discriminator".into(),
@@ -359,17 +355,22 @@ fn sample_passport_config() -> (PassportConfig, Map<String, Value>, usize) {
         "forfeit_recipient".into(),
         json!(hex_of(&forfeit_recipient)),
     );
-    (config, sample, MODELLED_PREFIX_LEN)
+    sample.insert("next_token_id".into(), json!(hex_of(&next_token_id)));
+    sample.insert(
+        "encumbrance_sources".into(),
+        json!([{
+            "program_id": hex_of(&source_program),
+            "seed_prefix": "ans",
+        }]),
+    );
+    sample.insert("bump".into(), json!(252u8));
+    (config, sample)
 }
 
 fn passport_config_layout() -> StateLayoutEntry {
-    let (config, sample, modelled_prefix_len) = sample_passport_config();
+    let (config, sample) = sample_passport_config();
     let payload = borsh::to_vec(&config).expect("borsh serialize PassportConfig");
     let golden_byte_length = payload.len();
-    assert!(
-        golden_byte_length > modelled_prefix_len,
-        "PassportConfig sample must carry unmodelled tail (populated encumbrance_sources)"
-    );
     // No PASSPORT_CONFIG_SPACE — golden_byte_length is this sample only.
     StateLayoutEntry {
         id: "kar-passport/PassportConfig".into(),
@@ -379,8 +380,151 @@ fn passport_config_layout() -> StateLayoutEntry {
         fields: passport_config_fields(),
         sample,
         golden_hex: hex_of(&payload),
-        // Cursor stops at remainder_unmodelled; modelled prefix is the payload.
-        modelled_byte_length: modelled_prefix_len,
+        modelled_byte_length: golden_byte_length,
+    }
+}
+
+fn commerce_config_fields() -> Vec<StateFieldDecl> {
+    vec![
+        wrap_field(field_fixed("discriminator", 8)),
+        wrap_field(field_fixed("authority", 32)),
+        wrap_field(field_fixed("platform_recipient", 32)),
+        wrap_field(field_u16("platform_fee_bps")),
+        wrap_field(field_fixed("guardian", 32)),
+        wrap_field(field_bool("paused")),
+        wrap_field(field_bool("self_encumbrance_registered_retired")),
+        wrap_field(field_u8("bump")),
+    ]
+}
+
+fn sample_commerce_config() -> (CommerceConfig, Map<String, Value>) {
+    let authority = [0xa1u8; 32];
+    let platform_recipient = [0xa2u8; 32];
+    let guardian = [0xa3u8; 32];
+    let cfg = CommerceConfig {
+        discriminator: CONFIG_DISCRIMINATOR,
+        authority,
+        platform_recipient,
+        platform_fee_bps: 10,
+        guardian,
+        paused: false,
+        self_encumbrance_registered_retired: true,
+        bump: 250,
+    };
+    let mut sample = Map::new();
+    sample.insert("discriminator".into(), json!(hex_of(&CONFIG_DISCRIMINATOR)));
+    sample.insert("authority".into(), json!(hex_of(&authority)));
+    sample.insert(
+        "platform_recipient".into(),
+        json!(hex_of(&platform_recipient)),
+    );
+    sample.insert("platform_fee_bps".into(), json!(10u16));
+    sample.insert("guardian".into(), json!(hex_of(&guardian)));
+    sample.insert("paused".into(), json!(false));
+    sample.insert("self_encumbrance_registered_retired".into(), json!(true));
+    sample.insert("bump".into(), json!(250u8));
+    (cfg, sample)
+}
+
+fn commerce_config_layout() -> StateLayoutEntry {
+    let (cfg, sample) = sample_commerce_config();
+    let payload = borsh::to_vec(&cfg).expect("borsh serialize CommerceConfig");
+    assert_eq!(
+        payload.len(),
+        CommerceConfig::SPACE,
+        "CommerceConfig borsh payload must equal SPACE (no padding)"
+    );
+    StateLayoutEntry {
+        id: "kargain-consignment-base/CommerceConfig".into(),
+        program: "kargain-consignment-base".into(),
+        golden_byte_length: CommerceConfig::SPACE,
+        discriminator_hex: hex_of(&CONFIG_DISCRIMINATOR),
+        fields: commerce_config_fields(),
+        sample,
+        golden_hex: hex_of(&payload),
+        modelled_byte_length: CommerceConfig::SPACE,
+    }
+}
+
+fn ascending_config_fields() -> Vec<StateFieldDecl> {
+    vec![
+        wrap_field(field_fixed("discriminator", 8)),
+        wrap_field(field_fixed("authority", 32)),
+        wrap_field(field_fixed("platform_recipient", 32)),
+        wrap_field(field_u16("platform_fee_bps")),
+        wrap_field(field_fixed("guardian", 32)),
+        wrap_field(field_bool("paused")),
+        wrap_field(field_bool("self_encumbrance_registered_retired")),
+        wrap_field(field_fixed("staking_program", 32)),
+        wrap_field(field_fixed("forfeit_recipient", 32)),
+        wrap_field(field_u64("challenge_bond")),
+        wrap_field(field_u64("challenge_window")),
+        wrap_field(field_bool("challenge_configured")),
+        wrap_field(field_u8("bump")),
+    ]
+}
+
+fn sample_ascending_config() -> (AscendingConfig, Map<String, Value>) {
+    let authority = [0xb1u8; 32];
+    let platform_recipient = [0xb2u8; 32];
+    let guardian = [0xb3u8; 32];
+    let staking_program = [0xb4u8; 32];
+    let forfeit_recipient = [0xb5u8; 32];
+    let cfg = AscendingConfig {
+        discriminator: ASC_CONFIG_DISC,
+        authority,
+        platform_recipient,
+        platform_fee_bps: 10,
+        guardian,
+        paused: false,
+        self_encumbrance_registered_retired: true,
+        staking_program,
+        forfeit_recipient,
+        challenge_bond: 1_000_000,
+        challenge_window: 1_209_600,
+        challenge_configured: true,
+        bump: 249,
+    };
+    let mut sample = Map::new();
+    sample.insert("discriminator".into(), json!(hex_of(&ASC_CONFIG_DISC)));
+    sample.insert("authority".into(), json!(hex_of(&authority)));
+    sample.insert(
+        "platform_recipient".into(),
+        json!(hex_of(&platform_recipient)),
+    );
+    sample.insert("platform_fee_bps".into(), json!(10u16));
+    sample.insert("guardian".into(), json!(hex_of(&guardian)));
+    sample.insert("paused".into(), json!(false));
+    sample.insert("self_encumbrance_registered_retired".into(), json!(true));
+    sample.insert("staking_program".into(), json!(hex_of(&staking_program)));
+    sample.insert(
+        "forfeit_recipient".into(),
+        json!(hex_of(&forfeit_recipient)),
+    );
+    sample.insert("challenge_bond".into(), json!("1000000"));
+    sample.insert("challenge_window".into(), json!("1209600"));
+    sample.insert("challenge_configured".into(), json!(true));
+    sample.insert("bump".into(), json!(249u8));
+    (cfg, sample)
+}
+
+fn ascending_config_layout() -> StateLayoutEntry {
+    let (cfg, sample) = sample_ascending_config();
+    let payload = borsh::to_vec(&cfg).expect("borsh serialize AscendingConfig");
+    assert_eq!(
+        payload.len(),
+        AscendingConfig::SPACE,
+        "AscendingConfig borsh payload must equal SPACE (no padding)"
+    );
+    StateLayoutEntry {
+        id: "kar-ascending/AscendingConfig".into(),
+        program: "kar-ascending".into(),
+        golden_byte_length: AscendingConfig::SPACE,
+        discriminator_hex: hex_of(&ASC_CONFIG_DISC),
+        fields: ascending_config_fields(),
+        sample,
+        golden_hex: hex_of(&payload),
+        modelled_byte_length: AscendingConfig::SPACE,
     }
 }
 
@@ -498,6 +642,8 @@ pub fn build_state_manifest() -> StateManifest {
             passport_config_layout(),
             encumbrance_answer_layout(),
             passport_binding_layout(),
+            commerce_config_layout(),
+            ascending_config_layout(),
         ],
     }
 }
@@ -542,9 +688,9 @@ mod tests {
     }
 
     #[test]
-    fn six_layouts_including_answer_and_binding() {
+    fn eight_layouts_including_mode_configs() {
         let m = build_state_manifest();
-        assert_eq!(m.layouts.len(), 6);
+        assert_eq!(m.layouts.len(), 8);
         for layout in &m.layouts {
             assert_eq!(
                 layout.golden_byte_length,
@@ -581,18 +727,26 @@ mod tests {
         assert!(
             m.layouts[3]
                 .fields
+                .iter()
+                .any(|f| f.ty == "vec_encumbrance_source"),
+            "PassportConfig must model encumbrance_sources"
+        );
+        assert!(
+            m.layouts[3]
+                .fields
                 .last()
-                .is_some_and(|f| f.ty == "remainder_unmodelled"),
-            "PassportConfig must end with remainder_unmodelled"
+                .is_some_and(|f| f.name == "bump" && f.ty == "u8"),
+            "PassportConfig must end with bump"
         );
         assert_eq!(
             m.layouts[3].golden_hex.len(),
             m.layouts[3].golden_byte_length * 2,
             "PassportConfig golden_byte_length is the variable sample golden length"
         );
-        assert!(
-            m.layouts[3].modelled_byte_length < m.layouts[3].golden_byte_length,
-            "modelled prefix shorter than full sample (populated vec tail)"
+        assert_eq!(
+            m.layouts[3].modelled_byte_length,
+            m.layouts[3].golden_byte_length,
+            "PassportConfig is fully modelled (sample length)"
         );
         assert!(
             m.layouts[3]
@@ -617,11 +771,25 @@ mod tests {
         assert_eq!(m.layouts[5].golden_byte_length, PassportBinding::SPACE);
         assert_eq!(m.layouts[5].modelled_byte_length, PassportBinding::SPACE);
         assert_eq!(m.layouts[5].golden_byte_length, 41);
+
+        assert_eq!(
+            m.layouts[6].id,
+            "kargain-consignment-base/CommerceConfig"
+        );
+        assert_eq!(m.layouts[6].golden_byte_length, CommerceConfig::SPACE);
+        assert_eq!(m.layouts[6].modelled_byte_length, CommerceConfig::SPACE);
+
+        assert_eq!(m.layouts[7].id, "kar-ascending/AscendingConfig");
+        assert_eq!(m.layouts[7].golden_byte_length, AscendingConfig::SPACE);
+        assert_eq!(m.layouts[7].modelled_byte_length, AscendingConfig::SPACE);
     }
 
     #[test]
     fn remainder_marker_after_field_is_refused() {
-        let mut fields = passport_config_fields();
+        let mut fields = vec![
+            wrap_field(field_fixed("discriminator", 8)),
+            wrap_field(field_remainder_unmodelled()),
+        ];
         fields.push(wrap_field(field_u8("bump")));
         let result = std::panic::catch_unwind(|| {
             assert_remainder_marker_is_terminal(&fields, "planted");
