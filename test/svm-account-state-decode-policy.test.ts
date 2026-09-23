@@ -328,10 +328,11 @@ describe("svm account-state decode policy", () => {
     assert.equal(decoded.bytesRead, 97);
     assert.equal(
       Object.keys(decoded.value).sort().join(","),
-      "challenger",
+      "challenger,openedAt",
     );
     const expected = base58Expected(String(layout.sample.challenger));
     assert.equal(decoded.value.challenger, expected);
+    assert.equal(decoded.value.openedAt, BigInt(String(layout.sample.opened_at)));
 
     const strict = decodeChallengeAccountStrictFullyConsumedForTests(golden);
     assert.equal(strict.ok, true, "exact SPACE golden must fully consume");

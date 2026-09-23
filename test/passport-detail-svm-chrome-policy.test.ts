@@ -299,7 +299,7 @@ describe("passport detail SVM chrome policy (U9.2a)", () => {
     );
   });
 
-  it("SVM commerce-facts plan reads PassportState; resolve surfaces custodyLock pending while unread", async () => {
+  it("SVM commerce-facts plan reads PassportState+mode accounts; resolve pending while unread", async () => {
     const namespaces = commercialSvmNamespaceIds();
     assert.ok(namespaces.length > 0, "live SVM commercial row required");
     const ns = namespaces[0]!;
@@ -311,27 +311,35 @@ describe("passport detail SVM chrome policy (U9.2a)", () => {
     if (!plan.ok) return;
     assert.equal(plan.vm, "svm");
     if (plan.vm !== "svm") return;
-    assert.equal(plan.contracts.length, 1);
-    assert.equal(plan.contracts[0]!.key, "passportState");
+    const keys = plan.contracts.map((c) => c.key);
+    assert.ok(keys.includes("passportState"), "plan must include passportState");
+    assert.ok(keys.includes("passportConfig"), "plan must include passportConfig");
+    assert.ok(keys.includes("challenge"), "plan must include challenge");
+    assert.ok(
+      keys.includes("fp.consignment") || keys.includes("asc.consignment"),
+      "plan must include at least one mode consignment",
+    );
+    assert.ok(plan.contracts.length > 1, "9.3b expands beyond PassportState-only");
 
-    // Pending → custodyLock pending (never invent unlocked).
+    // Pending → custodyLock pending (never invent unlocked); phase waits honestly.
     const pending = resolvePassportCommerceFacts({
       plan,
       planning: false,
       entry: () => undefined,
       get: () => undefined,
       isPending: true,
+      namespace: ns,
     });
     assert.equal(pending.custodyLock.status, "pending");
-    assert.equal(pending.hasLiveConsignment.status, "refused");
+    assert.equal(pending.hasLiveConsignment.status, "pending");
+    assert.equal(pending.fixedPrice.configured, true);
     assert.equal(
-      pending.hasLiveConsignment.status === "refused" &&
-        pending.hasLiveConsignment.cause,
+      pending.openConsignmentPermission.status === "blocked" &&
+        pending.openConsignmentPermission.cause,
       "product_owner_owed",
     );
-    assert.equal(pending.fixedPrice.configured, true);
 
-    // Planning with namespace → SVM support refusals (no "not deployed" flash).
+    // Planning with namespace → may_* refuse; supported reads stay pending.
     const planning = resolvePassportCommerceFacts({
       plan: null,
       planning: true,
@@ -342,6 +350,7 @@ describe("passport detail SVM chrome policy (U9.2a)", () => {
     });
     assert.equal(planning.custodyLock.status, "pending");
     assert.equal(planning.fixedPrice.configured, true);
+    assert.equal(planning.hasLiveConsignment.status, "pending");
     assert.equal(
       planning.openConsignmentPermission.status === "blocked" &&
         planning.openConsignmentPermission.cause,

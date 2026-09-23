@@ -31,13 +31,17 @@ type Props = {
   chainId: number;
 };
 
-function mandateRecordToSnapshot(row: MandateRecord): MandateSnapshot {
+function mandateRecordToSnapshot(
+  row: MandateRecord,
+  chainId: number,
+): MandateSnapshot {
   return {
+    namespace: chainId,
     mode: row.mode,
     tokenId: row.tokenId,
-    agent: row.agent,
+    agent: row.agent as MandateSnapshot["agent"],
     expiry: row.expiry,
-    asset: row.asset,
+    asset: row.asset as MandateSnapshot["asset"],
     denominationKind: row.denominationKind,
     currencyCode: (row.currencyCode.startsWith("0x")
       ? row.currencyCode
@@ -153,7 +157,7 @@ export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
         ) : (
           <ul className="space-y-3">
             {awaiting.map((row) => {
-              const mandate = mandateRecordToSnapshot(row);
+              const mandate = mandateRecordToSnapshot(row, targetChain);
               const href = `/marketplace/${row.tokenId}?chain=${row.chainId}`;
               return (
                 <ConsignmentPortfolioRow

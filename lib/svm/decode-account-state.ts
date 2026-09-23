@@ -131,9 +131,13 @@ export type DecodeStakeAccountResult =
   | DecodeStakeAccountOk
   | DecodeStakeAccountErr;
 
-/** Product ChallengeAccount decode — challenger base58 only (judge/withdraw parties). */
+/**
+ * Product ChallengeAccount decode — challenger base58 + openedAt (challengeOpen
+ * chrome). Bond amount stays on PassportConfig.
+ */
 export type ChallengeAccountDecoded = {
   challenger: string;
+  openedAt: bigint;
 };
 
 export type DecodeChallengeAccountOk = {
@@ -779,7 +783,7 @@ export function decodeStakeAccountStrictFullyConsumedForTests(
 
 /**
  * Decode a ChallengeAccount. Exact SPACE — fully-consumed pin is meaningful.
- * Product surface: challenger base58 only.
+ * Product surface: challenger base58 + openedAt (0 = closed / never opened).
  */
 export function decodeChallengeAccount(
   data: Uint8Array,
@@ -801,6 +805,7 @@ export function decodeChallengeAccount(
     ok: true,
     value: {
       challenger: pubkeyBase58(challengerBytes),
+      openedAt: cursor.fields.opened_at as bigint,
     },
     layout,
     bytesRead: cursor.bytesRead,

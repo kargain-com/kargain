@@ -1801,7 +1801,7 @@ export const SURFACE_CENSUS_CAPABILITY_META: SurfaceCensusCapabilityMeta[] = [
       "source": "struct_field",
       "item": "PassportConfig.encumbrance_sources"
     },
-    "svmReader": "owed",
+    "svmReader": "present",
     "observedSvmBehaviour": "known"
   },
   {
@@ -1915,7 +1915,7 @@ export const SURFACE_CENSUS_CAPABILITY_META: SurfaceCensusCapabilityMeta[] = [
       "source": "state",
       "item": "ChallengeAccount.opened_at"
     },
-    "svmReader": "owed",
+    "svmReader": "present",
     "observedSvmBehaviour": "silent_undefined"
   },
   {
@@ -2278,7 +2278,7 @@ export const SURFACE_CENSUS_CAPABILITY_META: SurfaceCensusCapabilityMeta[] = [
       "source": "struct_field",
       "item": "ConsignmentRecord.phase"
     },
-    "svmReader": "owed",
+    "svmReader": "present",
     "observedSvmBehaviour": "known"
   },
   {
@@ -2289,7 +2289,7 @@ export const SURFACE_CENSUS_CAPABILITY_META: SurfaceCensusCapabilityMeta[] = [
       "source": "struct_field",
       "item": "ConsignmentRecord.phase"
     },
-    "svmReader": "owed",
+    "svmReader": "present",
     "observedSvmBehaviour": "known"
   },
   {
@@ -2311,7 +2311,7 @@ export const SURFACE_CENSUS_CAPABILITY_META: SurfaceCensusCapabilityMeta[] = [
       "source": "struct_field",
       "item": "MandateRecord.agent"
     },
-    "svmReader": "owed",
+    "svmReader": "present",
     "observedSvmBehaviour": "known"
   },
   {

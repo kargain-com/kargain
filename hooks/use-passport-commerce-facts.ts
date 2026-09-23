@@ -35,8 +35,8 @@ type PlannedOk = Extract<PassportCommerceReadPlan, { ok: true }>;
 /**
  * One batched read of every commerce fact the passport surfaces need.
  * Missing mode addresses fail closed (not configured, never "free").
- * SVM answers custodyLocked from PassportState; other facts refuse via
- * surfaceSupport (never invent false).
+ * SVM answers phase/mandate/challenge/registry from mode+passport accounts;
+ * may_* still refuse via surfaceSupport until 9.3c (never invent false).
  */
 export function usePassportCommerceFacts(input: {
   chainId: number;

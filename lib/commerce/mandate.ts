@@ -1,4 +1,4 @@
-import { ZERO_ADDRESS, addressesMatch, isZeroAddress } from "@/lib/commerce/consignment";
+import { ZERO_ADDRESS, isZeroAddress } from "@/lib/commerce/consignment";
 import {
   COMPENSATION_FORM,
   type CompensationForm,
@@ -9,17 +9,26 @@ import {
   parseDenominationKind,
 } from "@/lib/commerce/denomination";
 import type { CommerceMode } from "@/lib/commerce/mode";
+import {
+  mintProtocolOwner,
+  protocolAddressesEqual,
+  type ProtocolOwner,
+} from "@/lib/web3/protocol-address";
 
 /**
  * A mandate is the owner's standing authorization for one agent on one token,
  * per mode contract. It replaces the old escrow agent authorization.
+ *
+ * `agent` / `asset` are {@link ProtocolOwner} — EIP-155 checksum or SVM base58
+ * for the mandate's commercial namespace (never invent a zero from a foreign VM).
  */
 export type MandateSnapshot = {
+  readonly namespace: number;
   readonly mode: CommerceMode;
   readonly tokenId: string;
-  readonly agent: `0x${string}`;
+  readonly agent: ProtocolOwner;
   readonly expiry: number;
-  readonly asset: `0x${string}`;
+  readonly asset: ProtocolOwner;
   readonly denominationKind: DenominationKind;
   readonly currencyCode: `0x${string}`;
   readonly floor: bigint;
@@ -40,10 +49,8 @@ export type MandateReads = {
   readonly active?: boolean;
 };
 
-function toAddress(value: string | undefined): `0x${string}` {
-  if (!value || !value.startsWith("0x")) return ZERO_ADDRESS;
-  return value as `0x${string}`;
-}
+/** Solana system program — 32 zero bytes; empty agent/asset on SVM mandates. */
+const SVM_SYSTEM_PROGRAM = "11111111111111111111111111111111";
 
 function toSeconds(value: bigint | number | undefined): number {
   if (typeof value === "bigint") return Number(value);
@@ -51,19 +58,52 @@ function toSeconds(value: bigint | number | undefined): number {
   return 0;
 }
 
+/**
+ * Mint a protocol address for mandate agent/asset. Missing / unparseable →
+ * the namespace's zero/system sentinel so `mandateHasAgent` stays honest.
+ */
+function mintMandateParty(
+  namespace: number,
+  value: string | undefined,
+): ProtocolOwner {
+  if (value) {
+    const minted = mintProtocolOwner(namespace, value);
+    if (minted != null) return minted;
+  }
+  // EVM path historically coerced non-0x to ZERO_ADDRESS; SVM → system program.
+  const fallback = mintProtocolOwner(namespace, ZERO_ADDRESS);
+  if (fallback != null) return fallback;
+  const svmZero = mintProtocolOwner(namespace, SVM_SYSTEM_PROGRAM);
+  if (svmZero != null) return svmZero;
+  // Unreachable for commercial namespaces — fail closed rather than invent a brand.
+  throw new Error(`mintMandateParty: no zero sentinel for namespace ${namespace}`);
+}
+
+/** True when the agent/asset slot is the empty sentinel for this namespace. */
+export function isAbsentMandateParty(
+  namespace: number,
+  value: string | null | undefined,
+): boolean {
+  if (!value) return true;
+  if (isZeroAddress(value)) return true;
+  return protocolAddressesEqual(namespace, value, SVM_SYSTEM_PROGRAM);
+}
+
 /** Fail closed: a missing `active` read yields `null`, not an inactive mandate. */
 export function parseMandate(
+  namespace: number,
   mode: CommerceMode,
   tokenId: string,
   reads: MandateReads | null | undefined,
 ): MandateSnapshot | null {
   if (!reads || reads.active == null) return null;
   return {
+    namespace,
     mode,
     tokenId,
-    agent: toAddress(reads.agent),
+    agent: mintMandateParty(namespace, reads.agent),
     expiry: toSeconds(reads.expiry),
-    asset: toAddress(reads.asset),
+    asset: mintMandateParty(namespace, reads.asset),
     denominationKind:
       parseDenominationKind(reads.denominationKind) ?? DENOMINATION_KIND.Asset,
     currencyCode: (reads.currencyCode as `0x${string}`) ?? ZERO_CURRENCY_CODE,
@@ -76,7 +116,11 @@ export function parseMandate(
 }
 
 export function mandateHasAgent(mandate: MandateSnapshot | null | undefined): boolean {
-  return mandate != null && mandate.active && !isZeroAddress(mandate.agent);
+  return (
+    mandate != null &&
+    mandate.active &&
+    !isAbsentMandateParty(mandate.namespace, mandate.agent)
+  );
 }
 
 export function isMandateExpired(
@@ -95,7 +139,12 @@ export function canAgentOpenFromMandate(input: {
 }): boolean {
   const { mandate, agentAddress, nowSeconds } = input;
   if (!mandateHasAgent(mandate) || !mandate) return false;
-  if (!addressesMatch(mandate.agent, agentAddress)) return false;
+  if (
+    !agentAddress ||
+    !protocolAddressesEqual(mandate.namespace, mandate.agent, agentAddress)
+  ) {
+    return false;
+  }
   return !isMandateExpired(mandate, nowSeconds);
 }
 

@@ -256,7 +256,7 @@ export const SURFACE_SUPPORT_TABLE: Readonly<
   custody_locked: dualVmOwner(),
   may_open_consignment: productOwnerOwed(),
   may_leave_chain: productOwnerOwed(),
-  encumbrance_registry: productOwnerOwed(),
+  encumbrance_registry: dualVmOwner(),
   challenge_bond_amount: dualVmOwner(),
   verification_fee: productOwnerOwed(),
   active_verifier: dualVmOwner(),
@@ -266,7 +266,7 @@ export const SURFACE_SUPPORT_TABLE: Readonly<
   settlement_notes: productOwnerOwed(),
   hold_protection_ends_at: productOwnerOwed(),
   has_unresolved_settlement: productOwnerOwed(),
-  challenge_open: productOwnerOwed(),
+  challenge_open: dualVmOwner(),
   // D-25 cross-program ApproveEscrow (retired 141) — product reader owed;
   // class-A read evidence = Core TransferDelegate via consignment-base Asset parse
   passport_approve: productOwnerOwed(),
@@ -314,10 +314,10 @@ export const SURFACE_SUPPORT_TABLE: Readonly<
   // ClaimStake exists on SVM; staking has no WithdrawClaim instruction.
   staking_withdraw_claim: notInProgramOnSvm(),
   listing_quote_buy: productOwnerOwed(),
-  fixed_price_consignment_phase: productOwnerOwed(),
-  ascending_consignment_phase: productOwnerOwed(),
+  fixed_price_consignment_phase: dualVmOwner(),
+  ascending_consignment_phase: dualVmOwner(),
   auction_rules: productOwnerOwed(),
-  mandate_snapshot: productOwnerOwed(),
+  mandate_snapshot: dualVmOwner(),
   fixed_price_paused: productOwnerOwed(),
   ascending_paused: productOwnerOwed(),
   fixed_price_platform_fee_bps: productOwnerOwed(),

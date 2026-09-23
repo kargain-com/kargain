@@ -96,16 +96,35 @@ export function findCommerceFactBooleanCompares(source: string): string[] {
 }
 
 /**
- * Extract the body of `function svmCommerceFacts(...) { ... }`.
- * Planning (`svmPlanningFacts`) is a different function and stays out of scope.
+ * Extract the body of `function resolveSvmCommerceFacts(...) { ... }`.
+ * Planning (`svmPlanningFacts`) may pending supported reads — out of scope.
+ * Signature may span lines with nested generics — do not use `[^)]*`.
  */
-export function extractSvmCommerceFactsFn(source: string): string | null {
-  const marker = /function\s+svmCommerceFacts\s*\([^)]*\)\s*(?::\s*[^{]+)?\{/;
+export function extractResolveSvmCommerceFactsFn(source: string): string | null {
+  const marker = /function\s+resolveSvmCommerceFacts\b/;
   const match = marker.exec(source);
   if (!match || match.index == null) return null;
-  const start = match.index + match[0].length;
-  let depth = 1;
-  let i = start;
+  let i = match.index + match[0].length;
+  while (i < source.length && /\s/.test(source[i]!)) i += 1;
+  if (source[i] !== "(") return null;
+  // Skip parameter list (balanced parens).
+  let depth = 0;
+  for (; i < source.length; i++) {
+    const c = source[i]!;
+    if (c === "(") depth += 1;
+    else if (c === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        i += 1;
+        break;
+      }
+    }
+  }
+  while (i < source.length && source[i] !== "{") i += 1;
+  if (source[i] !== "{") return null;
+  const start = i + 1;
+  depth = 1;
+  i = start;
   while (i < source.length && depth > 0) {
     const c = source[i]!;
     if (c === "{") depth += 1;
@@ -118,16 +137,16 @@ export function extractSvmCommerceFactsFn(source: string): string | null {
 
 /**
  * Literal `commerceFactPending()` assigned as a field of the object returned by
- * svmCommerceFacts — eternal wait invent for an owed support cell.
+ * resolveSvmCommerceFacts — eternal wait invent instead of keyed-entry resolve.
  */
-export function findSvmCommerceFactsPendingLiterals(fnBody: string): string[] {
+export function findResolveSvmPendingLiterals(fnBody: string): string[] {
   const violations: string[] = [];
   const re =
     /\b(hasLiveConsignment|liveConsignmentMode|challengeOpen|encumbranceRegistry|live|mandate)\s*:\s*commerceFactPending\s*\(\s*\)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(fnBody)) != null) {
     violations.push(
-      `svmCommerceFacts returns literal commerceFactPending() for field ${m[1]}`,
+      `resolveSvmCommerceFacts returns literal commerceFactPending() for field ${m[1]}`,
     );
   }
   return violations;
@@ -143,16 +162,16 @@ function svmArmBooleanPredicate(rel: string, source: string): string | false {
   return hits[0] ?? false;
 }
 
-function svmCommerceFactsPendingPredicate(
+function resolveSvmPendingPredicate(
   rel: string,
   source: string,
 ): string | false {
   if (rel !== COMMERCE_FACTS_REL) return false;
-  const fn = extractSvmCommerceFactsFn(source);
+  const fn = extractResolveSvmCommerceFactsFn(source);
   if (fn == null) {
-    return `could not extract svmCommerceFacts (${rel})`;
+    return `could not extract resolveSvmCommerceFacts (${rel})`;
   }
-  const hits = findSvmCommerceFactsPendingLiterals(fn);
+  const hits = findResolveSvmPendingLiterals(fn);
   return hits[0] ?? false;
 }
 
@@ -180,17 +199,17 @@ describe("commerce-fact status policy (S8-D1b)", () => {
     );
   });
 
-  it("svmCommerceFacts has no literal commerceFactPending() field", () => {
+  it("resolveSvmCommerceFacts has no literal commerceFactPending() field", () => {
     const src = readFileSync(
       join(process.cwd(), COMMERCE_FACTS_REL),
       "utf8",
     );
-    const fn = extractSvmCommerceFactsFn(src);
-    assert.ok(fn, "svmCommerceFacts must exist");
+    const fn = extractResolveSvmCommerceFactsFn(src);
+    assert.ok(fn, "resolveSvmCommerceFacts must exist");
     assert.deepEqual(
-      findSvmCommerceFactsPendingLiterals(fn!),
+      findResolveSvmPendingLiterals(fn!),
       [],
-      "svmCommerceFacts must not return literal commerceFactPending() fields",
+      "resolveSvmCommerceFacts must not return literal commerceFactPending() fields",
     );
   });
 
@@ -201,12 +220,11 @@ describe("commerce-fact status policy (S8-D1b)", () => {
 
   it("planted hasLiveConsignment: false in SVM arm turns red", () => {
     const cleanArm = `
-    return svmCommerceFacts({
-      namespace: args.plan.namespace,
-      fixedPriceConfigured: args.plan.fixedPriceConfigured,
-      ascendingConfigured: args.plan.ascendingConfigured,
-      custodyLock,
+    return resolveSvmCommerceFacts({
+      plan: args.plan,
+      entry: args.entry,
       isPending: args.isPending,
+      registry: args.registry,
     });
 `;
     const plantedArm = `
@@ -231,12 +249,14 @@ describe("commerce-fact status policy (S8-D1b)", () => {
     );
   });
 
-  it("planted challengeOpen: commerceFactPending() in svmCommerceFacts turns red", () => {
+  it("planted challengeOpen: commerceFactPending() in resolveSvmCommerceFacts turns red", () => {
     const cleanFn = `
   return {
     fixedPrice,
     ascending,
-    challengeOpen: challengeOpenFromSupport(args.namespace, args.registry),
+    challengeOpen: challengeOpenFromEntry(args.entry(CHALLENGE_ACCOUNT_KEY), {
+      batchPending,
+    }),
     hasLiveConsignment: combined.hasLiveConsignment,
   };
 `;
@@ -249,18 +269,18 @@ describe("commerce-fact status policy (S8-D1b)", () => {
   };
 `;
     assert.deepEqual(
-      findSvmCommerceFactsPendingLiterals(cleanFn),
+      findResolveSvmPendingLiterals(cleanFn),
       [],
       "clean twin must be green",
     );
-    const planted = findSvmCommerceFactsPendingLiterals(plantedFn);
+    const planted = findResolveSvmPendingLiterals(plantedFn);
     assert.ok(
       planted.length > 0,
       "planted challengeOpen: commerceFactPending() must turn red",
     );
     assert.match(
       planted[0]!,
-      /svmCommerceFacts returns literal commerceFactPending\(\) for field challengeOpen/,
+      /resolveSvmCommerceFacts returns literal commerceFactPending\(\) for field challengeOpen/,
     );
   });
 
@@ -293,7 +313,7 @@ export function canOpen(facts: PassportCommerceFacts) {
   it("live product scan via shared helpers stays clean", () => {
     const scanBool = scanProductSources(svmArmBooleanPredicate);
     assertCleanProductScan(scanBool);
-    const scanPending = scanProductSources(svmCommerceFactsPendingPredicate);
+    const scanPending = scanProductSources(resolveSvmPendingPredicate);
     assertCleanProductScan(scanPending);
   });
 });

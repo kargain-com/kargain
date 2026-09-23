@@ -54,8 +54,15 @@ import {
 } from "@/lib/web3/deployment-addresses";
 import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import type { ProtocolOwner } from "@/lib/web3/protocol-address";
+import { isEvmHexAddress } from "@/lib/passport/passport-owner";
 
-function ascendingMandateAsAuth(mandate: MandateSnapshot): AuctionAgentAuth {
+/** EVM-only AuctionAgentAuth shape — refuse to invent hex from SVM base58. */
+function ascendingMandateAsAuth(
+  mandate: MandateSnapshot,
+): AuctionAgentAuth | null {
+  if (!isEvmHexAddress(mandate.agent) || !isEvmHexAddress(mandate.asset)) {
+    return null;
+  }
   return {
     agent: mandate.agent,
     expiry: BigInt(mandate.expiry),
@@ -312,9 +319,10 @@ export function PassportSellPanel({
 
       {surface.showAscendingMandateCard &&
       ascendingMandate &&
-      mandateHasAgent(ascendingMandate) ? (
+      mandateHasAgent(ascendingMandate) &&
+      ascendingMandateAsAuth(ascendingMandate) != null ? (
         <AuctionAgentAuthorizationStatus
-          authorization={ascendingMandateAsAuth(ascendingMandate)}
+          authorization={ascendingMandateAsAuth(ascendingMandate)!}
           chainId={chainId}
           now={now}
           onManage={() => setAscendingDialogOpen(true)}

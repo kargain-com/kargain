@@ -9,16 +9,16 @@ import {
   isRegisteredEncumbranceSource,
   type EncumbranceRegistry,
 } from "@/lib/passport/encumbrance-registry";
+import { isEvmHexAddress } from "@/lib/passport/passport-owner";
 import { requireCommercialActive } from "@/lib/web3/commercial-active";
 import { explorerAddressUrl } from "@/lib/web3/network-explorer";
 import { cn } from "@/lib/utils";
-import { getAddress, type Address } from "viem";
 
 type Props = {
   chainId: number;
   registry: EncumbranceRegistry;
   /** Source named by a live `SourceUnanswerable` permission refusal, if any. */
-  unanswerableSource?: Address | null;
+  unanswerableSource?: string | null;
 };
 
 /**
@@ -47,10 +47,11 @@ export function PassportEncumbranceRegistry({
   }
 
   const sources = registry.value;
+  const stack = requireCommercialActive(chainId);
   const highlight =
     unanswerableSource != null &&
-    isRegisteredEncumbranceSource(registry, unanswerableSource)
-      ? getAddress(unanswerableSource)
+    isRegisteredEncumbranceSource(registry, unanswerableSource, chainId)
+      ? unanswerableSource
       : null;
 
   return (
@@ -64,13 +65,25 @@ export function PassportEncumbranceRegistry({
         <ul className="space-y-2">
           {sources.map((source) => {
             const isBroken = highlight != null && source === highlight;
+            const href = explorerAddressUrl(stack, source);
             return (
               <li key={source} className="space-y-0.5">
-                <EnsWalletLink
-                  address={source}
-                  externalHref={explorerAddressUrl(requireCommercialActive(chainId), source)}
-                  className="font-mono text-sm tabular-nums"
-                />
+                {isEvmHexAddress(source) ? (
+                  <EnsWalletLink
+                    address={source}
+                    externalHref={href}
+                    className="font-mono text-sm tabular-nums"
+                  />
+                ) : (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-mono text-sm tabular-nums text-text-primary underline-offset-2 hover:underline"
+                  >
+                    {source}
+                  </a>
+                )}
                 {isBroken ? (
                   <p className="text-sm text-text-secondary">
                     Could not answer a permission question.

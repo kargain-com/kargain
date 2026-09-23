@@ -16,6 +16,7 @@ import { categoryLabel } from "@/lib/design/instrument-classes";
 import { formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 import type { ListingCurrencyCode } from "@/lib/marketplace/currency-code";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
+import { isEvmHexAddress } from "@/lib/passport/passport-owner";
 import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
@@ -61,7 +62,8 @@ export function AgentAuthorizationStatus({
   const wrongChain = evm.ok && walletChain !== chainId;
 
   const currencyCode: ListingCurrencyCode = "USD";
-  const { displayName, isKarPro, profileHref } = usePeerIdentity(mandate.agent, {
+  const agentHex = isEvmHexAddress(mandate.agent) ? mandate.agent : undefined;
+  const { displayName, isKarPro, profileHref } = usePeerIdentity(agentHex, {
     chainId,
   });
 
@@ -107,7 +109,16 @@ export function AgentAuthorizationStatus({
           Delegated to
         </p>
         <div className="mt-2 flex items-center gap-3">
-          <IdentityAvatar address={mandate.agent} size={40} alt={displayName} />
+          {agentHex != null ? (
+            <IdentityAvatar address={agentHex} size={40} alt={displayName} />
+          ) : (
+            <div
+              className="flex size-10 shrink-0 items-center justify-center rounded-full bg-bg-muted font-mono text-[10px] text-text-tertiary"
+              aria-hidden
+            >
+              ···
+            </div>
+          )}
           <div className="min-w-0">
             <Link
               href={profileHref}

@@ -10,7 +10,9 @@ import {
   MAX_ENCUMBRANCE_SOURCES,
 } from "../lib/passport/encumbrance-registry.ts";
 import type { KeyedEntry } from "../lib/web3/keyed-multicall.ts";
+import { mintProtocolOwner } from "../lib/web3/protocol-address.ts";
 
+const NS = 84532;
 const A = "0x1111111111111111111111111111111111111111" as const;
 const B = "0x2222222222222222222222222222222222222222" as const;
 
@@ -25,7 +27,11 @@ function failure(): KeyedEntry {
 describe("deriveEncumbranceRegistry", () => {
   it("is pending when count is unread", () => {
     assert.deepEqual(
-      deriveEncumbranceRegistry({ countEntry: undefined, atEntries: [] }),
+      deriveEncumbranceRegistry({
+        namespace: NS,
+        countEntry: undefined,
+        atEntries: [],
+      }),
       { status: "pending" },
     );
   });
@@ -33,6 +39,7 @@ describe("deriveEncumbranceRegistry", () => {
   it("is pending while count entry is pending", () => {
     assert.deepEqual(
       deriveEncumbranceRegistry({
+        namespace: NS,
         countEntry: { status: "pending" },
         atEntries: [],
       }),
@@ -43,6 +50,7 @@ describe("deriveEncumbranceRegistry", () => {
   it("refuses with keyed cause when count read fails", () => {
     assert.deepEqual(
       deriveEncumbranceRegistry({
+        namespace: NS,
         countEntry: failure(),
         atEntries: [],
       }),
@@ -52,12 +60,16 @@ describe("deriveEncumbranceRegistry", () => {
 
   it("builds known sources from count + At entries", () => {
     const registry = deriveEncumbranceRegistry({
+      namespace: NS,
       countEntry: success(2n),
       atEntries: [success(A), success(B), failure(), failure()],
     });
     assert.equal(registry.status, "known");
     if (registry.status !== "known") return;
-    assert.deepEqual(registry.value, [A, B]);
+    assert.deepEqual(registry.value, [
+      mintProtocolOwner(NS, A),
+      mintProtocolOwner(NS, B),
+    ]);
   });
 
   it("caps at MAX_ENCUMBRANCE_SOURCES", () => {
@@ -66,6 +78,7 @@ describe("deriveEncumbranceRegistry", () => {
       success(`0x${String(i + 1).padStart(40, "0")}`),
     );
     const registry = deriveEncumbranceRegistry({
+      namespace: NS,
       countEntry: success(10n),
       atEntries,
     });
@@ -76,12 +89,13 @@ describe("deriveEncumbranceRegistry", () => {
 
   it("omits failed At slots inside the count window", () => {
     const registry = deriveEncumbranceRegistry({
+      namespace: NS,
       countEntry: success(2n),
       atEntries: [success(A), failure()],
     });
     assert.equal(registry.status, "known");
     if (registry.status !== "known") return;
-    assert.deepEqual(registry.value, [A]);
+    assert.deepEqual(registry.value, [mintProtocolOwner(NS, A)]);
   });
 
   it("encumbranceRegistryFromSupport carries product_owner_owed", () => {
@@ -93,24 +107,26 @@ describe("deriveEncumbranceRegistry", () => {
 });
 
 describe("isRegisteredEncumbranceSource", () => {
-  it("matches a registered source and rejects unknowns", () => {
+  it("matches checksum-normalized members", () => {
     const registry = deriveEncumbranceRegistry({
+      namespace: NS,
       countEntry: success(1n),
       atEntries: [success(A)],
     });
-    assert.equal(isRegisteredEncumbranceSource(registry, A), true);
-    assert.equal(isRegisteredEncumbranceSource(registry, B), false);
+    assert.equal(isRegisteredEncumbranceSource(registry, A, NS), true);
+    assert.equal(isRegisteredEncumbranceSource(registry, B, NS), false);
   });
 
-  it("returns false while pending or refused", () => {
+  it("is false while pending or refused", () => {
     assert.equal(
-      isRegisteredEncumbranceSource({ status: "pending" }, A),
+      isRegisteredEncumbranceSource({ status: "pending" }, A, NS),
       false,
     );
     assert.equal(
       isRegisteredEncumbranceSource(
         { status: "refused", cause: "product_owner_owed" },
         A,
+        NS,
       ),
       false,
     );

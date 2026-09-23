@@ -1,9 +1,10 @@
 /**
- * Sole dual-VM owner of passport commerce chrome reads (U9.2a / S8-D1b).
+ * Sole dual-VM owner of passport commerce chrome reads (U9.2a / S8-D1b / 9.3b).
  *
  * EVM: batched may / custodyLocked (ABI key) / encumbrance / mode phase+mandate.
- * SVM: PassportState keyed-read → custodyLock fact; other commerce facts ask
- * surfaceSupport and refuse by named cause — never invent false / unlocked.
+ * SVM: keyed PassportState + mode consignment/mandate/recall (+ Ascending
+ * auction/hold) + challenge + PassportConfig; may_* still refuse via
+ * surfaceSupport until 9.3c simulation.
  *
  * wagmiChainId is reachable only on the EVM arm of {@link planPassportCommerceReads}.
  */
@@ -35,12 +36,18 @@ import {
 } from "@/lib/passport/encumbrance-permission";
 import {
   deriveEncumbranceRegistry,
-  encumbranceRegistryFromSupport,
+  encumbranceRegistryFromProgramIds,
   MAX_ENCUMBRANCE_SOURCES,
   type EncumbranceRegistry,
 } from "@/lib/passport/encumbrance-registry";
 import { type CustodyLockRead } from "@/lib/passport/presence";
-import { decodePassportState } from "@/lib/svm/decode-account-state";
+import {
+  decodeChallengeAccount,
+  decodeConsignmentRecord,
+  decodeMandateRecord,
+  decodePassportConfig,
+  decodePassportState,
+} from "@/lib/svm/decode-account-state";
 import { deriveSvmPda } from "@/lib/svm/derive-pda";
 import { tokenIdToBytes32 } from "@/lib/svm/event-payload-decode";
 import {
@@ -58,8 +65,15 @@ import {
   type SurfaceCapability,
 } from "@/lib/web3/surface-support";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { toHex } from "viem";
 
 export const PASSPORT_STATE_KEY = "passportState" as const;
+export const PASSPORT_CONFIG_KEY = "passportConfig" as const;
+export const CHALLENGE_ACCOUNT_KEY = "challenge" as const;
+export const FP_CONSIGNMENT_KEY = "fp.consignment" as const;
+export const FP_MANDATE_KEY = "fp.mandate" as const;
+export const ASC_CONSIGNMENT_KEY = "asc.consignment" as const;
+export const ASC_MANDATE_KEY = "asc.mandate" as const;
 
 export type {
   CommerceFact,
@@ -126,7 +140,7 @@ export type PassportCommerceReadPlan =
   | {
       ok: true;
       vm: "svm";
-      contracts: readonly KeyedContract<typeof PASSPORT_STATE_KEY>[];
+      contracts: readonly KeyedContract[];
       tokenId: string;
       namespace: number;
       fixedPriceConfigured: boolean;
@@ -248,7 +262,8 @@ function buildEvmContracts(args: {
 
 /**
  * Plan keyed reads for commerce chrome. EVM builds the full batch; SVM builds
- * a single PassportState account read. Unregistered → empty (honest unread).
+ * PassportState + config + challenge + per-mode consignment/mandate/recall
+ * (+ Ascending auction/hold). Unregistered → empty (honest unread).
  */
 export async function planPassportCommerceReads(args: {
   chainId: number;
@@ -294,9 +309,16 @@ export async function planPassportCommerceReads(args: {
     };
   }
 
+  return planSvmCommerceReads(stack, args.tokenId);
+}
+
+async function planSvmCommerceReads(
+  stack: SvmCommercialActiveStack,
+  tokenId: string,
+): Promise<PassportCommerceReadPlan> {
   let tokenBytes: Uint8Array;
   try {
-    tokenBytes = tokenIdToBytes32(args.tokenId);
+    tokenBytes = tokenIdToBytes32(tokenId);
   } catch (err) {
     return {
       ok: false,
@@ -305,33 +327,78 @@ export async function planPassportCommerceReads(args: {
     };
   }
 
-  const statePda = await deriveSvmPda({
-    recipe: "kar-passport/state",
-    programId: stack.karPassport,
-    seeds: { token_id: tokenBytes },
-  });
-  if (!statePda.ok) {
-    return {
-      ok: false,
-      cause: "pda_failed",
-      detail: `${statePda.cause}:${statePda.detail}`,
-    };
+  const contracts: KeyedContract[] = [];
+  const tokenSeeds = { token_id: tokenBytes };
+
+  async function push(
+    key: string,
+    recipe: string,
+    programId: string,
+    seeds?: Record<string, Uint8Array>,
+  ): Promise<{ ok: true } | { ok: false; detail: string }> {
+    const pda = await deriveSvmPda({
+      recipe,
+      programId,
+      seeds: seeds ?? {},
+    });
+    if (!pda.ok) {
+      return { ok: false, detail: `${pda.cause}:${pda.detail}` };
+    }
+    contracts.push({ key, vm: "svm", account: pda.address });
+    return { ok: true };
+  }
+
+  for (const step of [
+    () => push(PASSPORT_STATE_KEY, "kar-passport/state", stack.karPassport, tokenSeeds),
+    () => push(PASSPORT_CONFIG_KEY, "kar-passport/config", stack.karPassport),
+    () =>
+      push(
+        CHALLENGE_ACCOUNT_KEY,
+        "kargain-bonded-challenge/challenge",
+        stack.karPassport,
+        { subject_id: tokenBytes },
+      ),
+  ] as const) {
+    const r = await step();
+    if (!r.ok) {
+      return { ok: false, cause: "pda_failed", detail: r.detail };
+    }
+  }
+
+  if (stack.fixedPriceConsignment) {
+    const mode = stack.fixedPriceConsignment;
+    for (const [key, recipe] of [
+      [FP_CONSIGNMENT_KEY, "kargain-consignment-base/consignment"],
+      [FP_MANDATE_KEY, "kargain-consignment-base/mandate"],
+    ] as const) {
+      const r = await push(key, recipe, mode, tokenSeeds);
+      if (!r.ok) {
+        return { ok: false, cause: "pda_failed", detail: r.detail };
+      }
+    }
+  }
+
+  if (stack.ascendingConsignment) {
+    const mode = stack.ascendingConsignment;
+    for (const [key, recipe] of [
+      [ASC_CONSIGNMENT_KEY, "kargain-consignment-base/consignment"],
+      [ASC_MANDATE_KEY, "kargain-consignment-base/mandate"],
+    ] as const) {
+      const r = await push(key, recipe, mode, tokenSeeds);
+      if (!r.ok) {
+        return { ok: false, cause: "pda_failed", detail: r.detail };
+      }
+    }
   }
 
   return {
     ok: true,
     vm: "svm",
-    tokenId: args.tokenId,
+    tokenId,
     namespace: Number(stack.namespace),
     fixedPriceConfigured: Boolean(stack.fixedPriceConsignment),
     ascendingConfigured: Boolean(stack.ascendingConsignment),
-    contracts: [
-      {
-        key: PASSPORT_STATE_KEY,
-        vm: "svm",
-        account: statePda.address,
-      },
-    ],
+    contracts,
   };
 }
 
@@ -394,43 +461,6 @@ function supportCauseFromCell(
   return null;
 }
 
-function modeFactsFromSupport(args: {
-  configured: boolean;
-  phaseCapability: SurfaceCapability;
-  mandateCapability: SurfaceCapability;
-  namespace: number;
-  registry?: CommercialRegistry;
-}): CommerceModeFacts {
-  if (!args.configured) return unconfiguredModeFacts();
-
-  const phaseCause = supportCauseFromCell(
-    args.phaseCapability,
-    args.namespace,
-    args.registry,
-  );
-  const mandateCause = supportCauseFromCell(
-    args.mandateCapability,
-    args.namespace,
-    args.registry,
-  );
-
-  const live: CommerceFact<boolean> =
-    phaseCause == null
-      ? commerceFactPending()
-      : phaseCause === "unresolved_namespace"
-        ? commerceFactRefused("unresolved_namespace")
-        : commerceFactRefused(phaseCause);
-
-  const mandate: CommerceFact<MandateSnapshot | null> =
-    mandateCause == null
-      ? commerceFactPending()
-      : mandateCause === "unresolved_namespace"
-        ? commerceFactRefused("unresolved_namespace")
-        : commerceFactRefused(mandateCause);
-
-  return { configured: true, live, mandate };
-}
-
 function permissionFromSupport(
   capability: SurfaceCapability,
   namespace: number,
@@ -448,102 +478,298 @@ function permissionFromSupport(
   return encumbrancePermissionFromSupport(cause);
 }
 
-function registryFromSupport(
-  namespace: number,
-  registry?: CommercialRegistry,
-): EncumbranceRegistry {
-  const cause = supportCauseFromCell(
-    "encumbrance_registry",
-    namespace,
-    registry,
-  );
-  if (cause == null) {
-    return commerceFactPending();
-  }
-  if (cause === "unresolved_namespace") {
-    return commerceFactRefused("unresolved_namespace");
-  }
-  return encumbranceRegistryFromSupport(cause);
-}
-
-function challengeOpenFromSupport(
-  namespace: number,
-  registry?: CommercialRegistry,
-): CommerceFact<boolean> {
-  const cause = supportCauseFromCell("challenge_open", namespace, registry);
-  if (cause == null) {
-    // Supported cell with no reader yet — wait for the keyed ChallengeAccount read.
-    return commerceFactPending();
-  }
-  if (cause === "unresolved_namespace") {
-    return commerceFactRefused("unresolved_namespace");
-  }
-  return commerceFactRefused(cause);
-}
-
-function svmCommerceFacts(args: {
-  namespace: number;
-  fixedPriceConfigured: boolean;
-  ascendingConfigured: boolean;
-  custodyLock: CustodyLockRead;
-  isPending: boolean;
-  registry?: CommercialRegistry;
-}): PassportCommerceFacts {
-  const fixedPrice = modeFactsFromSupport({
-    configured: args.fixedPriceConfigured,
-    phaseCapability: "fixed_price_consignment_phase",
-    mandateCapability: "mandate_snapshot",
-    namespace: args.namespace,
-    registry: args.registry,
-  });
-  const ascending = modeFactsFromSupport({
-    configured: args.ascendingConfigured,
-    phaseCapability: "ascending_consignment_phase",
-    mandateCapability: "mandate_snapshot",
-    namespace: args.namespace,
-    registry: args.registry,
-  });
-  const combined = combinePhaseFacts(fixedPrice.live, ascending.live);
-
-  return {
-    fixedPrice,
-    ascending,
-    openConsignmentPermission: permissionFromSupport(
-      "may_open_consignment",
-      args.namespace,
-      args.registry,
-    ),
-    leaveChainPermission: permissionFromSupport(
-      "may_leave_chain",
-      args.namespace,
-      args.registry,
-    ),
-    encumbranceRegistry: registryFromSupport(args.namespace, args.registry),
-    custodyLock: args.custodyLock,
-    challengeOpen: challengeOpenFromSupport(args.namespace, args.registry),
-    liveConsignmentMode: combined.liveConsignmentMode,
-    hasLiveConsignment: combined.hasLiveConsignment,
-    isPending: args.isPending,
-  };
-}
-
 /**
- * SVM planning flash: apply support refusals as soon as the commercial row is
- * known so the PDA wait does not invent "modes not deployed".
+ * SVM planning flash: may_* refuse by census immediately; supported commerce
+ * reads wait honestly (pending) until keyed entries arrive — never invent false.
  */
 function svmPlanningFacts(
   stack: SvmCommercialActiveStack,
   isPending: boolean,
   registry?: CommercialRegistry,
 ): PassportCommerceFacts {
-  return svmCommerceFacts({
-    namespace: Number(stack.namespace),
-    fixedPriceConfigured: Boolean(stack.fixedPriceConsignment),
-    ascendingConfigured: Boolean(stack.ascendingConsignment),
+  const namespace = Number(stack.namespace);
+  const fixedPriceConfigured = Boolean(stack.fixedPriceConsignment);
+  const ascendingConfigured = Boolean(stack.ascendingConsignment);
+  const fixedPrice: CommerceModeFacts = fixedPriceConfigured
+    ? {
+        configured: true,
+        live: commerceFactPending(),
+        mandate: commerceFactPending(),
+      }
+    : unconfiguredModeFacts();
+  const ascending: CommerceModeFacts = ascendingConfigured
+    ? {
+        configured: true,
+        live: commerceFactPending(),
+        mandate: commerceFactPending(),
+      }
+    : unconfiguredModeFacts();
+  const combined = combinePhaseFacts(fixedPrice.live, ascending.live);
+  return {
+    fixedPrice,
+    ascending,
+    openConsignmentPermission: permissionFromSupport(
+      "may_open_consignment",
+      namespace,
+      registry,
+    ),
+    leaveChainPermission: permissionFromSupport(
+      "may_leave_chain",
+      namespace,
+      registry,
+    ),
+    encumbranceRegistry: commerceFactPending(),
     custodyLock: { status: "pending" },
+    challengeOpen: commerceFactPending(),
+    liveConsignmentMode: combined.liveConsignmentMode,
+    hasLiveConsignment: combined.hasLiveConsignment,
     isPending,
-    registry,
-  });
+  };
+}
+
+function bytes32CurrencyHex(bytes: Uint8Array): `0x${string}` {
+  return toHex(bytes, { size: 32 });
+}
+
+/**
+ * Live phase from a consignment keyed entry.
+ * Absent account → known(false). Pending/missing → pending. Never invent false
+ * from refused/pending.
+ */
+function liveFactFromConsignmentEntry(
+  entry: KeyedEntry | undefined,
+  opts?: { batchPending?: boolean },
+): CommerceFact<boolean> {
+  if (opts?.batchPending || entry == null) {
+    return commerceFactPending();
+  }
+  switch (entry.status) {
+    case "pending":
+      return commerceFactPending();
+    case "refused":
+      if (entry.cause === "account_not_found") {
+        return commerceFactKnown(false);
+      }
+      return commerceFactRefused(entry.cause);
+    case "success": {
+      if (!(entry.result instanceof Uint8Array)) {
+        return commerceFactRefused("malformed_response");
+      }
+      const decoded = decodeConsignmentRecord(entry.result);
+      if (!decoded.ok) {
+        return commerceFactRefused("malformed_response");
+      }
+      const phase = parseConsignmentPhase(decoded.value.phase);
+      return commerceFactKnown(isLiveConsignmentPhase(phase));
+    }
+    default: {
+      const _exhaustive: never = entry;
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * Mandate from a mandate keyed entry.
+ * Absent account → known(null). Pending/missing → pending.
+ */
+function mandateFactFromMandateEntry(
+  entry: KeyedEntry | undefined,
+  args: {
+    namespace: number;
+    mode: CommerceMode;
+    tokenId: string;
+    batchPending?: boolean;
+  },
+): CommerceFact<MandateSnapshot | null> {
+  if (args.batchPending || entry == null) {
+    return commerceFactPending();
+  }
+  switch (entry.status) {
+    case "pending":
+      return commerceFactPending();
+    case "refused":
+      if (entry.cause === "account_not_found") {
+        return commerceFactKnown(null);
+      }
+      return commerceFactRefused(entry.cause);
+    case "success": {
+      if (!(entry.result instanceof Uint8Array)) {
+        return commerceFactRefused("malformed_response");
+      }
+      const decoded = decodeMandateRecord(entry.result);
+      if (!decoded.ok) {
+        return commerceFactRefused("malformed_response");
+      }
+      const v = decoded.value;
+      const mandate = parseMandate(args.namespace, args.mode, args.tokenId, {
+        active: v.active,
+        agent: v.agent,
+        expiry: v.expiry,
+        asset: v.asset,
+        denominationKind: v.kind,
+        currencyCode: bytes32CurrencyHex(v.currencyCode),
+        floor: v.floor,
+        compensationForm: v.form,
+        commissionBps: v.commissionBps,
+      });
+      return commerceFactKnown(mandate);
+    }
+    default: {
+      const _exhaustive: never = entry;
+      return _exhaustive;
+    }
+  }
+}
+
+function challengeOpenFromEntry(
+  entry: KeyedEntry | undefined,
+  opts?: { batchPending?: boolean },
+): CommerceFact<boolean> {
+  if (opts?.batchPending || entry == null) {
+    return commerceFactPending();
+  }
+  switch (entry.status) {
+    case "pending":
+      return commerceFactPending();
+    case "refused":
+      if (entry.cause === "account_not_found") {
+        return commerceFactKnown(false);
+      }
+      return commerceFactRefused(entry.cause);
+    case "success": {
+      if (!(entry.result instanceof Uint8Array)) {
+        return commerceFactRefused("malformed_response");
+      }
+      const decoded = decodeChallengeAccount(entry.result);
+      if (!decoded.ok) {
+        return commerceFactRefused("malformed_response");
+      }
+      return commerceFactKnown(decoded.value.openedAt !== 0n);
+    }
+    default: {
+      const _exhaustive: never = entry;
+      return _exhaustive;
+    }
+  }
+}
+
+function registryFromConfigEntry(
+  entry: KeyedEntry | undefined,
+  namespace: number,
+  opts?: { batchPending?: boolean },
+): EncumbranceRegistry {
+  if (opts?.batchPending || entry == null) {
+    return commerceFactPending();
+  }
+  switch (entry.status) {
+    case "pending":
+      return commerceFactPending();
+    case "refused":
+      // Absent config is anomalous — refuse by name; never invent [].
+      return commerceFactRefused(entry.cause);
+    case "success": {
+      if (!(entry.result instanceof Uint8Array)) {
+        return commerceFactRefused("malformed_response");
+      }
+      const decoded = decodePassportConfig(entry.result);
+      if (!decoded.ok) {
+        return commerceFactRefused("malformed_response");
+      }
+      return encumbranceRegistryFromProgramIds({
+        namespace,
+        programIds: decoded.value.encumbranceSources.map((s) => s.programId),
+      });
+    }
+    default: {
+      const _exhaustive: never = entry;
+      return _exhaustive;
+    }
+  }
+}
+
+function resolveSvmModeFacts(args: {
+  consignmentEntry: KeyedEntry | undefined;
+  mandateEntry: KeyedEntry | undefined;
+  namespace: number;
+  mode: CommerceMode;
+  tokenId: string;
+  batchPending: boolean;
+}): CommerceModeFacts {
+  return {
+    configured: true,
+    live: liveFactFromConsignmentEntry(args.consignmentEntry, {
+      batchPending: args.batchPending,
+    }),
+    mandate: mandateFactFromMandateEntry(args.mandateEntry, {
+      namespace: args.namespace,
+      mode: args.mode,
+      tokenId: args.tokenId,
+      batchPending: args.batchPending,
+    }),
+  };
+}
+
+function resolveSvmCommerceFacts(args: {
+  plan: Extract<PassportCommerceReadPlan, { ok: true; vm: "svm" }>;
+  entry: (key: string) => KeyedEntry | undefined;
+  isPending: boolean;
+  registry?: CommercialRegistry;
+}): PassportCommerceFacts {
+  const { plan } = args;
+  const batchPending = args.isPending;
+  const fixedPrice = plan.fixedPriceConfigured
+    ? resolveSvmModeFacts({
+        consignmentEntry: args.entry(FP_CONSIGNMENT_KEY),
+        mandateEntry: args.entry(FP_MANDATE_KEY),
+        namespace: plan.namespace,
+        mode: "fixedPrice",
+        tokenId: plan.tokenId,
+        batchPending,
+      })
+    : unconfiguredModeFacts();
+  const ascending = plan.ascendingConfigured
+    ? resolveSvmModeFacts({
+        consignmentEntry: args.entry(ASC_CONSIGNMENT_KEY),
+        mandateEntry: args.entry(ASC_MANDATE_KEY),
+        namespace: plan.namespace,
+        mode: "ascending",
+        tokenId: plan.tokenId,
+        batchPending,
+      })
+    : unconfiguredModeFacts();
+  const combined = combinePhaseFacts(fixedPrice.live, ascending.live);
+  const custodyLock = custodyLockFromKeyedEntry(
+    args.entry(PASSPORT_STATE_KEY),
+    { batchPending },
+  );
+
+  return {
+    fixedPrice,
+    ascending,
+    openConsignmentPermission: permissionFromSupport(
+      "may_open_consignment",
+      plan.namespace,
+      args.registry,
+    ),
+    leaveChainPermission: permissionFromSupport(
+      "may_leave_chain",
+      plan.namespace,
+      args.registry,
+    ),
+    encumbranceRegistry: registryFromConfigEntry(
+      args.entry(PASSPORT_CONFIG_KEY),
+      plan.namespace,
+      { batchPending },
+    ),
+    custodyLock,
+    challengeOpen: challengeOpenFromEntry(args.entry(CHALLENGE_ACCOUNT_KEY), {
+      batchPending,
+    }),
+    liveConsignmentMode: combined.liveConsignmentMode,
+    hasLiveConsignment: combined.hasLiveConsignment,
+    isPending: plan.contracts.length > 0 && args.isPending,
+  };
 }
 
 function readModeFactsFromEntries(
@@ -552,6 +778,7 @@ function readModeFactsFromEntries(
   prefix: ModePrefix,
   configured: boolean,
   tokenId: string,
+  namespace: number,
 ): CommerceModeFacts {
   if (!configured) {
     return unconfiguredModeFacts();
@@ -563,7 +790,7 @@ function readModeFactsFromEntries(
   const mandate =
     activeRead == null
       ? undefined
-      : parseMandate(mode, tokenId, {
+      : parseMandate(namespace, mode, tokenId, {
           active: activeRead === true,
           agent: get(`${prefix}.mandateAgent`) as string | undefined,
           expiry: get(`${prefix}.mandateExpiry`) as bigint | undefined,
@@ -648,10 +875,7 @@ export function resolvePassportCommerceFacts(args: {
   registry?: CommercialRegistry;
 }): PassportCommerceFacts {
   const unreadPermission = deriveEncumbrancePermission(undefined);
-  const unreadRegistry = deriveEncumbranceRegistry({
-    countEntry: undefined,
-    atEntries: Array.from({ length: MAX_ENCUMBRANCE_SOURCES }, () => undefined),
-  });
+  const unreadRegistry = commerceFactPending() as EncumbranceRegistry;
   const pendingLock: CustodyLockRead = { status: "pending" };
   const pendingCombined = combinePhaseFacts(
     commerceFactPending(),
@@ -659,7 +883,7 @@ export function resolvePassportCommerceFacts(args: {
   );
 
   if (args.planning || args.plan == null || args.plan.vm == null) {
-    // SVM planning: refuse by census as soon as the commercial row is known.
+    // SVM planning: refuse may_* by census; supported reads stay pending.
     if (args.namespace != null) {
       const stack = commercialActive(args.namespace, args.registry);
       if (stack?.vm === "svm") {
@@ -686,27 +910,23 @@ export function resolvePassportCommerceFacts(args: {
   }
 
   if (args.plan.vm === "svm") {
-    const custodyLock = custodyLockFromKeyedEntry(
-      args.entry(PASSPORT_STATE_KEY),
-      { batchPending: args.isPending },
-    );
-    return svmCommerceFacts({
-      namespace: args.plan.namespace,
-      fixedPriceConfigured: args.plan.fixedPriceConfigured,
-      ascendingConfigured: args.plan.ascendingConfigured,
-      custodyLock,
+    return resolveSvmCommerceFacts({
+      plan: args.plan,
+      entry: args.entry,
       isPending: args.isPending,
       registry: args.registry,
     });
   }
 
   // EVM
+  const namespace = args.namespace ?? 0;
   const fixedPriceFacts = readModeFactsFromEntries(
     args.get,
     "fixedPrice",
     "fp",
     args.plan.fixedPriceConfigured,
     args.plan.tokenId,
+    namespace,
   );
   const ascendingFacts = readModeFactsFromEntries(
     args.get,
@@ -714,6 +934,7 @@ export function resolvePassportCommerceFacts(args: {
     "asc",
     args.plan.ascendingConfigured,
     args.plan.tokenId,
+    namespace,
   );
 
   const mayOpenEntry = args.entry("mayOpen");
@@ -739,6 +960,7 @@ export function resolvePassportCommerceFacts(args: {
     openConsignmentPermission: deriveEncumbrancePermission(mayOpenEntry),
     leaveChainPermission: deriveEncumbrancePermission(mayLeaveEntry),
     encumbranceRegistry: deriveEncumbranceRegistry({
+      namespace,
       countEntry: args.entry("encumbranceSourceCount"),
       atEntries: Array.from({ length: MAX_ENCUMBRANCE_SOURCES }, (_, i) =>
         args.entry(`encumbranceSourceAt.${i}`),

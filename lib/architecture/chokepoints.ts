@@ -735,6 +735,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "passport-detail-svm-chrome-policy.test.ts",
       "commerce-fact-status-policy.test.ts",
       "commerce-fact-matrix.test.ts",
+      "passport-commerce-facts-svm-resolve.test.ts",
     ],
   },
   {

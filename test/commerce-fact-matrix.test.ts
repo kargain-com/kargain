@@ -36,11 +36,12 @@ const NOW = 2_000_000_000;
 
 function inactiveMandate(mode: "fixedPrice" | "ascending"): MandateSnapshot {
   return {
+    namespace: 84532,
     mode,
     tokenId: "1",
-    agent: zeroAddress,
+    agent: zeroAddress as MandateSnapshot["agent"],
     expiry: 0,
-    asset: zeroAddress,
+    asset: zeroAddress as MandateSnapshot["asset"],
     denominationKind: DENOMINATION_KIND.Fiat,
     currencyCode:
       "0x5553440000000000000000000000000000000000000000000000000000000000",
@@ -257,12 +258,14 @@ describe("S8-D1b commerce-fact behaviour matrix", () => {
 
     it("registry EVM known / pending / SVM support", () => {
       const known = deriveEncumbranceRegistry({
+        namespace: 84532,
         countEntry: { status: "success", result: 0n },
         atEntries: [],
       });
       assert.deepEqual(known, { status: "known", value: [] });
 
       const pending = deriveEncumbranceRegistry({
+        namespace: 84532,
         countEntry: undefined,
         atEntries: [],
       });
@@ -276,7 +279,7 @@ describe("S8-D1b commerce-fact behaviour matrix", () => {
   });
 
   describe("resolvePassportCommerceFacts SVM arm", () => {
-    it("refuses mode/permission/registry with product_owner_owed; configured true", async () => {
+    it("unread entries stay pending; may_* still product_owner_owed; configured true", async () => {
       const plan = await planPassportCommerceReads({
         chainId: 2000040168,
         tokenId: "1",
@@ -287,6 +290,14 @@ describe("S8-D1b commerce-fact behaviour matrix", () => {
       }
       assert.equal(plan.fixedPriceConfigured, true);
       assert.equal(plan.ascendingConfigured, true);
+      assert.ok(
+        plan.contracts.some((c) => c.key === "fp.consignment"),
+        "plan must request fp.consignment",
+      );
+      assert.ok(
+        plan.contracts.some((c) => c.key === "passportConfig"),
+        "plan must request passportConfig",
+      );
 
       const facts = resolvePassportCommerceFacts({
         plan,
@@ -294,31 +305,20 @@ describe("S8-D1b commerce-fact behaviour matrix", () => {
         entry: () => undefined,
         get: () => undefined,
         isPending: false,
+        namespace: 2000040168,
       });
 
       assert.equal(facts.fixedPrice.configured, true);
       assert.equal(facts.ascending.configured, true);
-      assert.deepEqual(facts.fixedPrice.live, {
-        status: "refused",
-        cause: "product_owner_owed",
-      });
-      assert.deepEqual(facts.hasLiveConsignment, {
-        status: "refused",
-        cause: "product_owner_owed",
-      });
+      assert.deepEqual(facts.fixedPrice.live, { status: "pending" });
+      assert.deepEqual(facts.hasLiveConsignment, { status: "pending" });
+      assert.deepEqual(facts.encumbranceRegistry, { status: "pending" });
+      assert.deepEqual(facts.challengeOpen, { status: "pending" });
       assert.equal(
         facts.openConsignmentPermission.status === "blocked" &&
           facts.openConsignmentPermission.cause,
         "product_owner_owed",
       );
-      assert.deepEqual(facts.encumbranceRegistry, {
-        status: "refused",
-        cause: "product_owner_owed",
-      });
-      assert.deepEqual(facts.challengeOpen, {
-        status: "refused",
-        cause: "product_owner_owed",
-      });
     });
   });
 });

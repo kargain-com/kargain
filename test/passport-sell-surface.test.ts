@@ -51,11 +51,12 @@ const allHidden: SellSurfaceFlags = {
 
 function inactiveMandate(mode: "fixedPrice" | "ascending"): MandateSnapshot {
   return {
+    namespace: 84532,
     mode,
     tokenId: "1",
-    agent: zeroAddress,
+    agent: zeroAddress as MandateSnapshot["agent"],
     expiry: 0,
-    asset: zeroAddress,
+    asset: zeroAddress as MandateSnapshot["asset"],
     denominationKind: DENOMINATION_KIND.Fiat,
     currencyCode:
       "0x5553440000000000000000000000000000000000000000000000000000000000",
@@ -72,7 +73,7 @@ function activeMandate(
 ): MandateSnapshot {
   return {
     ...inactiveMandate(mode),
-    agent: AGENT,
+    agent: AGENT as MandateSnapshot["agent"],
     floor: 1_000_000_00n,
     active: true,
     ...overrides,

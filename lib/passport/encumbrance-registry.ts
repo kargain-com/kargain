@@ -1,10 +1,11 @@
 /**
- * Pure normalization of the KarPassport encumbrance registry views (S8-D1b).
+ * Pure normalization of the KarPassport encumbrance registry views (S8-D1b / 9.3b).
  * Membership is per passport contract / chain — never invent members.
  * Shape is CommerceFact — known sources | pending | refused(cause).
+ * Members are {@link ProtocolOwner} (EIP-155 checksum or SVM program base58).
  */
 
-import { getAddress, isAddress, type Address } from "viem";
+import { getAddress, isAddress } from "viem";
 
 import {
   commerceFactKnown,
@@ -14,22 +15,29 @@ import {
   type SurfaceSupportCause,
 } from "@/lib/passport/commerce-fact";
 import type { KeyedEntry } from "@/lib/web3/keyed-multicall";
+import {
+  mintProtocolOwner,
+  protocolAddressesEqual,
+  type ProtocolOwner,
+} from "@/lib/web3/protocol-address";
 
 /** Matches `KarPassport.MAX_ENCUMBRANCE_SOURCES`. */
 export const MAX_ENCUMBRANCE_SOURCES = 8;
 
 /** Registry membership as a commerce fact. */
-export type EncumbranceRegistry = CommerceFact<readonly Address[]>;
+export type EncumbranceRegistry = CommerceFact<readonly ProtocolOwner[]>;
 
 /**
  * Build registry membership from keyed `encumbranceSourceCount` +
  * `encumbranceSourceAt(0..7)` entries. Out-of-range At failures are omitted.
+ * `namespace` mints each member as {@link ProtocolOwner}.
  */
 export function deriveEncumbranceRegistry(input: {
+  namespace: number;
   countEntry: KeyedEntry | undefined;
   atEntries: readonly (KeyedEntry | undefined)[];
 }): EncumbranceRegistry {
-  const { countEntry, atEntries } = input;
+  const { namespace, countEntry, atEntries } = input;
   if (countEntry == null) {
     return commerceFactPending();
   }
@@ -58,13 +66,33 @@ export function deriveEncumbranceRegistry(input: {
   }
 
   const n = Math.min(count, MAX_ENCUMBRANCE_SOURCES);
-  const sources: Address[] = [];
+  const sources: ProtocolOwner[] = [];
   for (let i = 0; i < n; i++) {
     const entry = atEntries[i];
     if (entry == null || entry.status !== "success") continue;
     const raw = entry.result;
     if (typeof raw !== "string" || !isAddress(raw)) continue;
-    sources.push(getAddress(raw));
+    const minted = mintProtocolOwner(namespace, getAddress(raw));
+    if (minted != null) sources.push(minted);
+  }
+  return commerceFactKnown(sources);
+}
+
+/**
+ * Registry from decoded PassportConfig encumbrance sources (SVM).
+ * Empty list is a valid known fact; callers must not invent empty on absent config.
+ */
+export function encumbranceRegistryFromProgramIds(input: {
+  namespace: number;
+  programIds: readonly string[];
+}): EncumbranceRegistry {
+  const sources: ProtocolOwner[] = [];
+  for (const id of input.programIds) {
+    const minted = mintProtocolOwner(input.namespace, id);
+    if (minted == null) {
+      return commerceFactRefused("malformed_response");
+    }
+    sources.push(minted);
   }
   return commerceFactKnown(sources);
 }
@@ -76,12 +104,14 @@ export function encumbranceRegistryFromSupport(
   return commerceFactRefused(cause);
 }
 
-/** True when `source` is in the known registry list (checksum-normalized). */
+/** True when `source` is in the known registry list (namespace-normalized). */
 export function isRegisteredEncumbranceSource(
   registry: EncumbranceRegistry,
-  source: Address,
+  source: string,
+  namespace: number,
 ): boolean {
   if (registry.status !== "known") return false;
-  const needle = getAddress(source);
-  return registry.value.some((s) => s === needle);
+  return registry.value.some((s) =>
+    protocolAddressesEqual(namespace, s, source),
+  );
 }

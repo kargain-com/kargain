@@ -84,7 +84,7 @@ export function useMandate(input: {
       ? address
         ? undefined
         : null
-      : parseMandate(mode, tokenId, {
+      : parseMandate(chainId, mode, tokenId, {
           active: activeRead === true,
           agent: reads.asString("mandateAgent"),
           expiry: reads.asBigint("mandateExpiry"),
