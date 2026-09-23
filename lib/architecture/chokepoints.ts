@@ -865,6 +865,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-6d2-measure-policy.test.ts"],
   },
   {
+    id: "scratch-reachability",
+    owner: "test/scratch-reachability.ts",
+    rule: "Every svm/lab/scripts file is package.json-reachable or RESULTS-cited; every package.json script file target exists",
+    guardTests: ["scratch-reachability-policy.test.ts"],
+  },
+  {
     id: "ponder-optional-contract-on",
     owner:
       "src/lib/ponder-optional-contract-on.ts · src/lib/ponder-optional-contract-events.ts",
