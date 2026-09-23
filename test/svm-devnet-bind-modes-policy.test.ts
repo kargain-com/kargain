@@ -16,6 +16,7 @@ import { encodeSvmPubkeyBytes } from "../lib/web3/protocol-address.ts";
 import { POLICY_SCAN_ROOT } from "./policy-scan-helpers.ts";
 import {
   ASCENDING_SEED_PREFIX,
+  ASCENDING_CONFIG_DISCRIMINATOR,
   BIND_MODES_REFUSAL_CAUSES,
   COMMERCE_CONFIG_DISCRIMINATOR,
   FIXED_PRICE_SEED_PREFIX,
@@ -80,6 +81,15 @@ function fixtureCommerceConfig(authority: string): Uint8Array {
   out.set(COMMERCE_CONFIG_DISCRIMINATOR, 0);
   out.set(programIdToBytes(authority), 8);
   out[108] = 255; // bump
+  return out;
+}
+
+/** AscendingConfig SPACE = 190; authority still at bytes 8..40. */
+function fixtureAscendingConfig(authority: string): Uint8Array {
+  const out = new Uint8Array(190);
+  out.set(ASCENDING_CONFIG_DISCRIMINATOR, 0);
+  out.set(programIdToBytes(authority), 8);
+  out[189] = 255;
   return out;
 }
 
@@ -166,8 +176,8 @@ async function baseState(
       lamports: rentExempt(109),
     },
     ascendingConfig: {
-      data: fixtureCommerceConfig(AUTHORITY),
-      lamports: rentExempt(109),
+      data: fixtureAscendingConfig(AUTHORITY),
+      lamports: rentExempt(190),
     },
     fixedPriceBinding: null,
     ascendingBinding: null,

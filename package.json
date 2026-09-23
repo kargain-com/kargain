@@ -85,7 +85,8 @@
     "svm:mint-passport": "node --import tsx scripts/svm-devnet-mint-passport.ts",
     "svm:product-send": "node --import tsx scripts/svm-devnet-product-send.ts",
     "svm:bind-modes": "node --import tsx scripts/svm-devnet-bind-modes.ts",
-    "install:svm-lab": "pnpm --dir svm/lab install --frozen-lockfile"
+    "install:svm-lab": "pnpm --dir svm/lab install --frozen-lockfile",
+    "svm:init-modes": "node --import tsx scripts/svm-devnet-init-modes.ts"
   },
   "dependencies": {
     "@irys/web-upload": "^0.0.15",

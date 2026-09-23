@@ -68,9 +68,11 @@ export const MAX_ENCUMBRANCE_SOURCES = 8;
 /** Mirrors passport `resize_config_account` MAX_GROWTH. */
 export const MAX_CONFIG_GROWTH = 10_240;
 
-/** PassportConfig and CommerceConfig both use this 8-byte tag on chain. */
+/** PassportConfig and FixedPrice CommerceConfig use this 8-byte tag on chain. */
 export const PASSPORT_CONFIG_DISCRIMINATOR = Buffer.from("kp_cfg\0\0", "utf8");
 export const COMMERCE_CONFIG_DISCRIMINATOR = PASSPORT_CONFIG_DISCRIMINATOR;
+/** AscendingConfig discriminator (`kp_ascfg`) — not CommerceConfig. */
+export const ASCENDING_CONFIG_DISCRIMINATOR = Buffer.from("kp_ascfg", "utf8");
 
 export type BindModesRefusalCause =
   | "mode_id_missing"
@@ -397,13 +399,13 @@ export function planBindModes(state: BindModesChainState): BindModesPlanResult {
         detail: "passport config discriminator",
       };
     }
-    for (const [label, modeCfg] of [
-      ["fixed_price", state.fixedPriceConfig.data],
-      ["ascending", state.ascendingConfig.data],
+    for (const [label, modeCfg, expectedDisc] of [
+      ["fixed_price", state.fixedPriceConfig.data, COMMERCE_CONFIG_DISCRIMINATOR],
+      ["ascending", state.ascendingConfig.data, ASCENDING_CONFIG_DISCRIMINATOR],
     ] as const) {
       if (
         modeCfg.length < 40 ||
-        !bytesEqual(modeCfg.subarray(0, 8), COMMERCE_CONFIG_DISCRIMINATOR)
+        !bytesEqual(modeCfg.subarray(0, 8), expectedDisc)
       ) {
         return {
           ok: false,
