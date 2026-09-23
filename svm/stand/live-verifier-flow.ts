@@ -27,6 +27,11 @@ import {
   STAND_SVM_EID,
   STAND_SVM_NAMESPACE,
 } from "./constants.ts";
+import {
+  sendAndConfirmStandTransaction as sendAndConfirmTransaction,
+  standRequestAirdropAndConfirm,
+  confirmStandSentSignature,
+} from "./stand-tx-confirm.ts";
 import { withStandArtifactBindings } from "./stand-artifact-bindings.ts";
 import type { StandArtifactBindings } from "./stand-artifact-bindings.ts";
 import { tokenIdFromParts } from "../../lib/web3/bridge/onft-msg-codec.ts";
@@ -47,7 +52,6 @@ const {
   SystemProgram,
   Transaction,
   TransactionInstruction,
-  sendAndConfirmTransaction,
 } = require("@solana/web3.js") as typeof import("@solana/web3.js");
 
 const DEPLOY = path.resolve(__dirname, "../target/deploy");
@@ -175,8 +179,7 @@ export async function runLiveVerifierFlow(opts?: {
   );
   const bal = await connection.getBalance(payer.publicKey);
   if (bal < 3e9) {
-    const sig = await connection.requestAirdrop(payer.publicKey, 5 * 1e9);
-    await connection.confirmTransaction(sig, "confirmed");
+    await standRequestAirdropAndConfirm(connection, payer.publicKey, 5 * 1e9);
   }
 
   const passportProgram = programIdFromDeploy("kar_passport");
@@ -316,8 +319,7 @@ export async function runLiveVerifierFlow(opts?: {
   // Mint a passport for a distinct owner (verifier will not be owner)
   const owner = Keypair.generate();
   {
-    const sig = await connection.requestAirdrop(owner.publicKey, 1e9);
-    await connection.confirmTransaction(sig, "confirmed");
+    await standRequestAirdropAndConfirm(connection, owner.publicKey, 1e9);
   }
 
   // Read next_token_id from config — simplified: mint once and parse from logs is hard;

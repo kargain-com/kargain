@@ -31,6 +31,11 @@ import {
   pda,
   sendIxWithAlt,
 } from "./stand-passport-commerce.ts";
+import {
+  sendAndConfirmStandTransaction as sendAndConfirmTransaction,
+  standRequestAirdropAndConfirm,
+  confirmStandSentSignature,
+} from "./stand-tx-confirm.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../lab/package.json"));
@@ -39,7 +44,6 @@ const {
   Keypair,
   SystemProgram,
   Transaction,
-  sendAndConfirmTransaction,
 } = require("@solana/web3.js") as typeof import("@solana/web3.js");
 const {
   TOKEN_PROGRAM_ID,

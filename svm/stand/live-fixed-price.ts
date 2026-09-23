@@ -87,6 +87,12 @@ import {
   type Meta,
   type Pk,
 } from "./stand-passport-commerce.ts";
+import {
+  sendAndConfirmStandTransaction as sendAndConfirmTransaction,
+  standRequestAirdropAndConfirm,
+  confirmStandSentSignature,
+} from "./stand-tx-confirm.ts";
+import { isStandValidatorReadyNow } from "./stand-validator-ready.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../lab/package.json"));
@@ -95,7 +101,6 @@ const {
   Keypair,
   SystemProgram,
   Transaction,
-  sendAndConfirmTransaction,
 } = require("@solana/web3.js") as typeof import("@solana/web3.js");
 const {
   TOKEN_PROGRAM_ID,
@@ -221,18 +226,7 @@ function readConsignment(data: Buffer): {
 }
 
 export async function probeValidator(rpc = RPC): Promise<boolean> {
-  try {
-    const res = await fetch(rpc, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getHealth", params: [] }),
-    });
-    if (!res.ok) return false;
-    const body = (await res.json()) as { result?: string };
-    return body.result === "ok";
-  } catch {
-    return false;
-  }
+  return isStandValidatorReadyNow({ rpcUrl: rpc });
 }
 
 async function initMode(

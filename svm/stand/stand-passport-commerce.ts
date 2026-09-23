@@ -17,6 +17,11 @@ import {
   STAND_SVM_NAMESPACE,
 } from "./constants.ts";
 import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../../lib/svm/rpc-max-supported-transaction-version.ts";
+import {
+  confirmStandSentSignature,
+  sendAndConfirmStandTransaction,
+  standRequestAirdropAndConfirm,
+} from "./stand-tx-confirm.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../lab/package.json"));
@@ -30,8 +35,10 @@ const {
   TransactionMessage,
   VersionedTransaction,
   AddressLookupTableProgram,
-  sendAndConfirmTransaction,
 } = require("@solana/web3.js") as typeof import("@solana/web3.js");
+
+/** Stand send door — re-exported so live modules share one confirm path. */
+export { sendAndConfirmStandTransaction as sendAndConfirmTransaction };
 
 const ROOT = path.resolve(__dirname, "../..");
 const DEPLOY = path.join(ROOT, "svm/target/deploy");
@@ -224,7 +231,7 @@ export async function sendIxWithAlt(
   unique.set(instruction.programId.toBase58(), instruction.programId);
   const addresses = [...unique.values()];
 
-  await sendAndConfirmTransaction(conn, new Transaction().add(createIx), [payer]);
+  await sendAndConfirmStandTransaction(conn, new Transaction().add(createIx), [payer]);
 
   // extendLookupTable max ~20 addresses per ix — chunk.
   const CHUNK = 20;
@@ -236,7 +243,7 @@ export async function sendIxWithAlt(
       lookupTable: altAddress,
       addresses: chunk,
     });
-    await sendAndConfirmTransaction(conn, new Transaction().add(extendIx), [payer]);
+    await sendAndConfirmStandTransaction(conn, new Transaction().add(extendIx), [payer]);
   }
   // Wait so the ALT is active for lookups.
   await new Promise((r) => setTimeout(r, 1500));
@@ -259,17 +266,21 @@ export async function sendIxWithAlt(
     legacyWouldBe = legacyProbe.serializeMessage().length + 64 * Math.max(signers.length, 1) + 1;
   }
 
-  const { blockhash } = await conn.getLatestBlockhash("confirmed");
+  const latest = await conn.getLatestBlockhash("confirmed");
   const msg = new TransactionMessage({
     payerKey: payer.publicKey,
-    recentBlockhash: blockhash,
+    recentBlockhash: latest.blockhash,
     instructions: [instruction],
   }).compileToV0Message([altAccount]);
   const vtx = new VersionedTransaction(msg);
   vtx.sign(signers);
   const versionedSize = vtx.serialize().length;
   const signature = await conn.sendTransaction(vtx, { skipPreflight: false });
-  await conn.confirmTransaction(signature, "confirmed");
+  await confirmStandSentSignature(conn, {
+    signature,
+    blockhash: latest.blockhash,
+    lastValidBlockHeight: latest.lastValidBlockHeight,
+  });
   return { signature, legacyWouldBe, versionedSize, alt: altAddress };
 }
 
@@ -344,13 +355,12 @@ export async function sendAndMeasure(
   }
 
   const tx = new Transaction().add(instruction);
-  tx.recentBlockhash = blockhash;
   tx.feePayer = payer.publicKey;
   // Fee payer must sign — callers may pass only the instruction's business signers.
   const sendSigners = signers.some((s) => s.publicKey.equals(payer.publicKey))
     ? signers
     : [...signers, payer];
-  const sig = await sendAndConfirmTransaction(conn, tx, sendSigners, {
+  const sig = await sendAndConfirmStandTransaction(conn, tx, sendSigners, {
     commitment: "confirmed",
   }).catch(async (err: unknown) => {
     const logs =
@@ -420,8 +430,7 @@ function encodeVecU8(data: Uint8Array): Buffer {
 }
 
 export async function airdrop(conn: Conn, kp: Kp, sol = 20) {
-  const sig = await conn.requestAirdrop(kp.publicKey, sol * 1e9);
-  await conn.confirmTransaction(sig, "confirmed");
+  await standRequestAirdropAndConfirm(conn, kp.publicKey, sol * 1e9);
 }
 
 export function customErrCode(e: unknown): number | null {
@@ -439,7 +448,7 @@ export async function expectCustom(
   code: number,
 ): Promise<number> {
   try {
-    await sendAndConfirmTransaction(conn, tx, signers, { commitment: "confirmed" });
+    await sendAndConfirmStandTransaction(conn, tx, signers, { commitment: "confirmed" });
     assert.fail(`expected custom error ${code}`);
   } catch (e) {
     const got = customErrCode(e);
@@ -459,7 +468,7 @@ export async function expectAccountAlreadyInitialized(
   signers: Kp[],
 ): Promise<"AccountAlreadyInitialized"> {
   try {
-    await sendAndConfirmTransaction(conn, tx, signers, { commitment: "confirmed" });
+    await sendAndConfirmStandTransaction(conn, tx, signers, { commitment: "confirmed" });
     assert.fail("expected AccountAlreadyInitialized");
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -642,8 +651,11 @@ export async function ensurePassportCommerceStack(
   const passportAuthority = loadStandDeployerKeypair();
   const bal = await conn.getBalance(passportAuthority.publicKey);
   if (bal < 2_000_000_000) {
-    const sig = await conn.requestAirdrop(passportAuthority.publicKey, 5_000_000_000);
-    await conn.confirmTransaction(sig, "confirmed");
+    await standRequestAirdropAndConfirm(
+      conn,
+      passportAuthority.publicKey,
+      5_000_000_000,
+    );
   }
 
   const passportProgram = loadDeployProgramId("kar_passport");
@@ -657,7 +669,7 @@ export async function ensurePassportCommerceStack(
   const [endpointConfig] = pda(endpointProgram, [SEED.epConfig]);
 
   if (!(await conn.getAccountInfo(endpointConfig))) {
-    await sendAndConfirmTransaction(
+    await sendAndConfirmStandTransaction(
       conn,
       new Transaction().add(
         ix(
@@ -675,7 +687,7 @@ export async function ensurePassportCommerceStack(
   }
 
   if (!(await conn.getAccountInfo(passportConfig))) {
-    await sendAndConfirmTransaction(
+    await sendAndConfirmStandTransaction(
       conn,
       new Transaction().add(
         ix(
@@ -701,7 +713,7 @@ export async function ensurePassportCommerceStack(
   }
 
   if (!(await conn.getAccountInfo(gatewayConfig))) {
-    await sendAndConfirmTransaction(
+    await sendAndConfirmStandTransaction(
       conn,
       new Transaction().add(
         ix(
@@ -730,7 +742,7 @@ export async function ensurePassportCommerceStack(
     const gwOff = 8 + 32 + 16 + 4 + 32 + 8 + 32 + 32;
     const gw = new PublicKey(cfg.subarray(gwOff, gwOff + 32));
     if (gw.equals(PublicKey.default)) {
-      await sendAndConfirmTransaction(
+      await sendAndConfirmStandTransaction(
         conn,
         new Transaction().add(
           ix(
@@ -769,7 +781,7 @@ export async function addEncumbranceSource(
   seedPrefix: Buffer = ENCUMBRANCE_SEED_PREFIX,
 ): Promise<void> {
   try {
-    await sendAndConfirmTransaction(
+    await sendAndConfirmStandTransaction(
       conn,
       new Transaction().add(
         ix(
@@ -808,7 +820,7 @@ export async function bindPassportProgram(
   const [binding] = pda(modeProgram, [SEED.passportBind]);
   if (!opts?.force && (await conn.getAccountInfo(binding))) return binding;
   const disc = opts?.bindDisc ?? FP_IX.BindPassportProgram;
-  await sendAndConfirmTransaction(
+  await sendAndConfirmStandTransaction(
     conn,
     new Transaction().add(
       bindPassportProgramIx(
@@ -859,7 +871,7 @@ export async function setPassportStakingProgram(
   stack: PassportCommerceStack,
   stakingProgram: Pk,
 ): Promise<void> {
-  await sendAndConfirmTransaction(
+  await sendAndConfirmStandTransaction(
     conn,
     new Transaction().add(
       ix(
@@ -888,7 +900,7 @@ export async function verifyPassportAsset(
   asset: Pk,
   state: Pk,
 ): Promise<void> {
-  await sendAndConfirmTransaction(
+  await sendAndConfirmStandTransaction(
     conn,
     new Transaction().add(
       ix(
@@ -1023,7 +1035,7 @@ export async function tryGatewaySend(
   );
   try {
     const signers = owner.publicKey.equals(payer.publicKey) ? [owner] : [owner, payer];
-    await sendAndConfirmTransaction(conn, tx, signers, { commitment: "confirmed" });
+    await sendAndConfirmStandTransaction(conn, tx, signers, { commitment: "confirmed" });
     return null;
   } catch (e) {
     return customErrCode(e);
@@ -1046,7 +1058,7 @@ export async function mintPassportAsset(
   const [state] = pda(stack.passportProgram, [SEED.state, tokenId]);
   const [challenge] = pda(stack.passportProgram, [SEED.challenge, tokenId]);
 
-  await sendAndConfirmTransaction(
+  await sendAndConfirmStandTransaction(
     conn,
     new Transaction().add(
       ix(
@@ -1079,7 +1091,7 @@ export async function addTransferDelegateToCustody(
   custody: Pk,
 ): Promise<void> {
   const harness = loadDeployProgramId("consignment_harness");
-  await sendAndConfirmTransaction(
+  await sendAndConfirmStandTransaction(
     conn,
     new Transaction().add(
       ix(
@@ -1135,7 +1147,7 @@ export async function tryMayLeaveChain(
     ),
   );
   try {
-    await sendAndConfirmTransaction(conn, tx, [payer], { commitment: "confirmed" });
+    await sendAndConfirmStandTransaction(conn, tx, [payer], { commitment: "confirmed" });
     return null;
   } catch (e) {
     return customErrCode(e);

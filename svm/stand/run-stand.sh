@@ -14,6 +14,10 @@
 #   ./svm/stand/run-stand.sh --live-both
 #
 # Assumes Agave CLI on PATH (or ~/.local/share/solana/install/active_release/bin).
+#
+# Isolation: refuses if 8899/8900 already accepting, or if Hardhat :8545 is up
+# unless KARGAIN_SVM_STAND_EVM=1. Residual: foreign Node workers that do not hold
+# those ports cannot be detected from port probes alone — run the stand alone.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
@@ -49,29 +53,25 @@ build_arch() {
   done
 }
 
+assert_isolation() {
+  echo "==> stand isolation preflight"
+  pnpm exec tsx svm/stand/wait-stand-ready.ts
+}
+
 wait_validator() {
   local val_pid="$1"
   local val_log="$2"
-  echo "    waiting for 127.0.0.1:8899 …"
-  for i in $(seq 1 90); do
-    if curl -sf http://127.0.0.1:8899 -X POST -H 'content-type: application/json' \
-      -d '{"jsonrpc":"2.0","id":1,"method":"getHealth","params":[]}' \
-      | grep -q '"result":"ok"'; then
-      echo "    validator ready"
-      return 0
-    fi
-    if ! kill -0 "$val_pid" 2>/dev/null; then
-      echo "validator exited early — log:" >&2
-      cat "$val_log" >&2
-      exit 1
-    fi
-    if [[ "$i" -eq 90 ]]; then
-      echo "validator not healthy after 90s — log:" >&2
-      cat "$val_log" >&2
-      exit 1
-    fi
-    sleep 1
-  done
+  echo "    waiting for rpc:8899 + websocket:8900 …"
+  if ! pnpm exec tsx svm/stand/wait-stand-ready.ts --skip-isolation; then
+    echo "validator not ready — log:" >&2
+    cat "$val_log" >&2
+    exit 1
+  fi
+  if ! kill -0 "$val_pid" 2>/dev/null; then
+    echo "validator exited early — log:" >&2
+    cat "$val_log" >&2
+    exit 1
+  fi
 }
 
 run_live() {
@@ -83,6 +83,7 @@ run_live() {
     arch=v0
   fi
 
+  assert_isolation
   build_arch "$arch"
 
   echo "==> start stand validator (load=$load)"

@@ -17,6 +17,12 @@ import { createRequire } from "node:module";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  sendAndConfirmStandTransaction as sendAndConfirmTransaction,
+  standRequestAirdropAndConfirm,
+  confirmStandSentSignature,
+} from "./stand-tx-confirm.ts";
+import { isStandValidatorReadyNow } from "./stand-validator-ready.ts";
 
 import {
   withStandArtifactBindings,
@@ -32,7 +38,6 @@ const {
   SystemProgram,
   Transaction,
   TransactionInstruction,
-  sendAndConfirmTransaction,
 } = require("@solana/web3.js") as typeof import("@solana/web3.js");
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -62,8 +67,7 @@ function loadProgramId(): InstanceType<typeof PublicKey> {
 }
 
 async function airdrop(conn: InstanceType<typeof Connection>, kp: InstanceType<typeof Keypair>, sol = 20) {
-  const sig = await conn.requestAirdrop(kp.publicKey, sol * 1e9);
-  await conn.confirmTransaction(sig, "confirmed");
+  await standRequestAirdropAndConfirm(conn, kp.publicKey, sol * 1e9);
 }
 
 function pda(programId: InstanceType<typeof PublicKey>, seeds: (Buffer | Uint8Array)[]) {
@@ -157,18 +161,7 @@ function readConsignment(data: Buffer): {
 }
 
 export async function probeValidator(rpc = RPC): Promise<boolean> {
-  try {
-    const res = await fetch(rpc, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getHealth", params: [] }),
-    });
-    if (!res.ok) return false;
-    const body = (await res.json()) as { result?: string };
-    return body.result === "ok";
-  } catch {
-    return false;
-  }
+  return isStandValidatorReadyNow({ rpcUrl: rpc });
 }
 
 export async function runLiveConsignmentAutomaton(opts?: {

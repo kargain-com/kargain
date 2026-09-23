@@ -634,6 +634,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-stand-artifact-bindings-policy.test.ts"],
   },
   {
+    id: "svm-stand-confirm-readiness",
+    owner:
+      "svm/stand/stand-tx-confirm.ts · svm/stand/stand-validator-ready.ts · svm/stand/run-stand.sh",
+    rule: "Stand confirms by signature status against lastValidBlockHeight; stand_blockhash_expired retries bounded only; RPC+websocket readiness named refuse (no sleep-as-ready); isolation refuses ports in use / Hardhat :8545 unless STAND_EVM",
+    guardTests: ["svm-stand-confirm-readiness-policy.test.ts"],
+  },
+  {
     id: "commercial-abi-events",
     owner: "lib/svm/commercial-abi-events.ts",
     rule: "Sole enumerator of the commercial ABI set (COMMERCIAL_CONTRACT_ABIS); assembling a parallel collection from abis.generated is banned except named owners (ponder.config = Ponder registration map)",

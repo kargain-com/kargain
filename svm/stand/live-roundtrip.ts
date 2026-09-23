@@ -27,6 +27,12 @@ import {
   STAND_SVM_NAMESPACE,
   standLiveUri,
 } from "./constants.ts";
+import {
+  sendAndConfirmStandTransaction as sendAndConfirmTransaction,
+  standRequestAirdropAndConfirm,
+  confirmStandSentSignature,
+} from "./stand-tx-confirm.ts";
+import { isStandValidatorReadyNow } from "./stand-validator-ready.ts";
 import { assertPayloadUnchanged, relayCopyPayload } from "./dumb-relay.ts";
 import { withStandArtifactBindings } from "./stand-artifact-bindings.ts";
 import type { StandArtifactBindings } from "./stand-artifact-bindings.ts";
@@ -49,7 +55,6 @@ const {
   SystemProgram,
   Transaction,
   TransactionInstruction,
-  sendAndConfirmTransaction,
   ComputeBudgetProgram,
 } = require("@solana/web3.js") as typeof import("@solana/web3.js");
 
@@ -230,11 +235,7 @@ async function sendIx(
     ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
     ...ixs,
   );
-  const { blockhash } = await connection.getLatestBlockhash("confirmed");
-  tx.recentBlockhash = blockhash;
   tx.feePayer = payer.publicKey;
-  tx.sign(payer);
-  const serializedLen = tx.serialize().length;
   const sig = await sendAndConfirmTransaction(connection, tx, [payer], {
     commitment: "confirmed",
   });
@@ -249,6 +250,7 @@ async function sendIx(
   if (parsed?.meta?.err) {
     throw new Error(`${label} failed: ${JSON.stringify(parsed.meta.err)}`);
   }
+  const serializedLen = tx.serialize().length;
   console.warn(
     `[svm-stand live] ${label} ok sig=${sig.slice(0, 12)}… cu=${cu ?? "?"} txSize=${serializedLen}`,
   );
@@ -256,23 +258,7 @@ async function sendIx(
 }
 
 export async function probeValidator(rpc = RPC): Promise<boolean> {
-  try {
-    const res = await fetch(rpc, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "getHealth",
-        params: [],
-      }),
-    });
-    if (!res.ok) return false;
-    const body = (await res.json()) as { result?: string };
-    return body.result === "ok";
-  } catch {
-    return false;
-  }
+  return isStandValidatorReadyNow({ rpcUrl: rpc });
 }
 
 /**
@@ -311,8 +297,7 @@ export async function runLiveSvmRoundTrip(): Promise<LiveRoundTripResult> {
   const bal = await connection.getBalance(payer.publicKey);
   if (bal < 2e9) {
     // Local validator faucet
-    const sig = await connection.requestAirdrop(payer.publicKey, 5 * 1e9);
-    await connection.confirmTransaction(sig, "confirmed");
+    await standRequestAirdropAndConfirm(connection, payer.publicKey, 5 * 1e9);
   }
 
   // --- Init endpoint ---
