@@ -1,0 +1,5 @@
+# Lab-only. Published litesvm 0.16 + solana-syscalls 4.2 need rustc that
+# stabilised maybe_uninit_write_slice (official 1.89.0 is not enough).
+# svm workspace host stays 1.85.0.
+[toolchain]
+channel = "1.98.1"

@@ -9,7 +9,8 @@
     "measure:price:discover": "tsx scripts/measure-price-sources.ts discover",
     "measure:price:sample": "tsx scripts/measure-price-sources.ts sample --seconds 1200 --interval 20",
     "measure:price:local-five": "tsx scripts/measure-price-sources.ts local-five",
-    "measure:litesvm": "tsx scripts/measure-litesvm.ts"
+    "measure:litesvm": "tsx scripts/measure-litesvm.ts",
+    "measure:6d2": "tsx scripts/measure-6d2.ts"
   },
   "dependencies": {
     "@metaplex-foundation/mpl-core": "^1.4.0",

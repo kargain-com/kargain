@@ -26,6 +26,7 @@ members = [
 ]
 exclude = [
   "lab/programs/lab_harness",
+  "lab/litesvm-probe",
 ]
 
 [workspace.package]

@@ -1,0 +1,15 @@
+[package]
+name = "litesvm-probe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Lab-only LiteSVM 0.16 TransferV1 probe — excluded from svm workspace"
+
+[dependencies]
+litesvm = "=0.16.0"
+solana-address = "~2.6.1"
+solana-instruction = "~3.4.0"
+solana-keypair = "3.1.2"
+solana-message = "4.2.4"
+solana-signer = "3.0.1"
+solana-transaction = { version = "4.1.5", features = ["verify"] }

@@ -412,3 +412,41 @@ Fixtures: `lab-*.bin` + `local-five.json`. Decoder = same offsets as chain.
 
 **Recommendation:** move cooldown / price-owner / Clock-only warp-retirement cases to LiteSVM; keep LIVE stand, ALT/tx-size, upgradeable/UA, CU pins, websocket on validator.
 
+## S8-E 6d-2 — time-proof without program warps (2026-09-23) — **MEASURED**
+
+**Command (one):** `pnpm --dir svm/lab measure:6d2`  
+**Harness:** `svm/lab/scripts/measure-6d2.ts`. **Not** in `test:ci` / `test:verify` / stand (policy pins names only).  
+**Artifacts:** unmodified stand `.so` (`svm/target/deploy/*`) + `svm/lab/fixtures/mpl_core_release_0.15.1.so`. **No** `--arch` rebuild.  
+**llvm-readobj:** `~/.cache/solana/v1.56/platform-tools/llvm/bin/llvm-readobj --file-headers --notes`.
+
+| H | Command | Verdict |
+|---|---------|---------|
+| **H1** isolate A/B/C + SBPF | LiteSVM Node `1.4.1` (Agave **4.2.1**) | **CPI / commercial mover** — client TransferV1 **ok**; harness + OpenDirect stack-fault |
+| **H2** published runtimes | `npm view litesvm versions --json` | Newest **1.4.1** only. Reuse H1. **No published embed matches validator 4.3.0-beta.2.** |
+| **H3** Rust in-process | `cargo +1.98.1 run` `svm/lab/litesvm-probe` (litesvm **0.16.0**) | **A ok; B fault** — same split as Node. Host rustc 1.85 / official 1.89 cannot compile 0.16 (`maybe_uninit_write_slice`). `solana-program-test` 2.3 is an older runtime; not used. |
+| **H4** validator time | lab-owned `solana-test-validator` 4.3.0-beta.2; ledger `/tmp/kargain-svm-6d2-ledger`; `--warp-slot 1522000` (7d @ 400 ms) | **FAIL** — `Clock.unix_timestamp` **unchanged** (`1790151253` → `1790151253`); slot `0` → `1522000`. Slot-only. ForceRecall skipped. `--slots-per-epoch` genesis-only (ignored on restart). No `--warp-timestamp`. |
+
+**SBPF (all four `.so`):** `Format: elf64-sbf` · `Machine: EM_SBF` · **`e_flags=0x0`** · notes empty → **SBF v0** (stand preload / classic). mpl-core fixture same. Not v3 shipping.
+
+**Isolation (LiteSVM 1.4.1):**
+
+| Id | Path | Result | CU / err |
+|----|------|--------|----------|
+| **A** | client `TransferV1` (official 7 metas; Create via harness fallback) | **transfer_ok** | Create **30 884**; Transfer **5 727** (`Instruction: Transfer` + Approve) |
+| **B** | harness `CoreTransferOwnerToCustody` | **transfer_fault** | Create ok **27 884**; Transfer `ProgramFailedToComplete` / **stack frame 11 @ 0x20000bff8** |
+| **C** | FixedPrice `OpenDirect` after Mint+Bind | **open_fault** | `ProgramFailedToComplete` / **stack frame 9 @ 0x200009ff8** |
+
+**H4 clocks:** before `{slot:0, unix_timestamp:1790151253}`; after `{slot:1522000, epoch:3, unix_timestamp:1790151253}`; Δts **0**; Δslot **1 522 000**. Magnitudes noted: 3d **648 000** / 7d **1 522 000** / 30d **6 480 000**. Lot survived restart (`OpenFromMandate` — RequestRecall is agented-only; OpenDirect → `NotOfferedAgented(91)`).
+
+**Recommendation (success path = Core move after the window):**
+
+| Warp | Mechanism |
+|------|-----------|
+| `ForceRecallRequestedAt` | **stay** — in-process CPI TransferV1 still stack-faults; validator `--warp-slot` does not move `unix_timestamp` |
+| `ForceAuctionEndsAt` | **stay** — same (`Clock.unix_timestamp`) |
+| `ForceHoldClock` | **stay** — same |
+
+Client TransferV1 on LiteSVM is **not** a replacement (ForceRecall / OpenDirect are program CPI). Prefer none. **Stand impact:** neither → no stand change this step. Named blocker remains in-process CPI TransferV1 + validator unix_timestamp.
+
+**Scope:** no `svm/programs` · `svm/crates` · product tree. No HANDOFF/SESSION. No push.
+

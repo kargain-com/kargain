@@ -847,6 +847,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["ts-nocheck-policy.test.ts"],
   },
   {
+    id: "svm-6d2-measure",
+    owner: "svm/lab/scripts/measure-6d2.ts",
+    rule: "6d-2 time-proof measure names H1–H4 and TransferV1 isolation A/B/C; policy pins names only (no live LiteSVM/validator gate)",
+    guardTests: ["svm-6d2-measure-policy.test.ts"],
+  },
+  {
     id: "ponder-optional-contract-on",
     owner:
       "src/lib/ponder-optional-contract-on.ts · src/lib/ponder-optional-contract-events.ts",
