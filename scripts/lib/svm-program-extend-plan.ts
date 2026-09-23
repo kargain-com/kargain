@@ -6,6 +6,9 @@
  * — 125 % of the new .so — so near-term growth does not require another
  * irreversible extend. Exact-deficit extends are intentionally not offered here.
  *
+ * Each planned row is classified from measured bytes only:
+ * required (artifact > deployed), headroom (fits but below 125% target), or none.
+ *
  * Accepted `--programs` keys = commercial census only
  * (`COMMERCIAL_PROGRAM_EVIDENCE_KEY_LIST`). No second hand-written list.
  */
@@ -44,10 +47,19 @@ export function targetCapacityAtArtifactHeadroom(
   );
 }
 
+/**
+ * required — artifact does not fit deployed ProgramData (blocks upgrade).
+ * headroom — artifact fits; only the 125% policy asks for more.
+ * none — deployed already meets the 125% target (no extend).
+ * Decided from measured bytes only — never from program-name lists.
+ */
+export type ExtendPlanKind = "required" | "headroom" | "none";
+
 export type ProgramExtendPlan =
   | {
       ok: true;
       skip: true;
+      kind: "none";
       reason: "already_at_or_above_target";
       deployedCapacityBytes: number;
       artifactBytes: number;
@@ -57,6 +69,7 @@ export type ProgramExtendPlan =
   | {
       ok: true;
       skip: false;
+      kind: "required" | "headroom";
       deployedCapacityBytes: number;
       artifactBytes: number;
       targetCapacityBytes: number;
@@ -66,6 +79,7 @@ export type ProgramExtendPlan =
 /**
  * ADDITIONAL_BYTES for `solana program extend <PROGRAM_ID> <ADDITIONAL_BYTES>`.
  * Skip when deployed capacity already meets the 125 % target.
+ * Kind partitions: none | required (artifact > deployed) | headroom (fits, below target).
  */
 export function planProgramExtend(args: {
   deployedCapacityBytes: number;
@@ -80,11 +94,17 @@ export function planProgramExtend(args: {
       `planProgramExtend: deployedCapacityBytes must be a positive integer (got ${deployedCapacityBytes})`,
     );
   }
+  if (!Number.isInteger(artifactBytes) || artifactBytes <= 0) {
+    throw new Error(
+      `planProgramExtend: artifactBytes must be a positive integer (got ${artifactBytes})`,
+    );
+  }
   const targetCapacityBytes = targetCapacityAtArtifactHeadroom(artifactBytes);
   if (deployedCapacityBytes >= targetCapacityBytes) {
     return {
       ok: true,
       skip: true,
+      kind: "none",
       reason: "already_at_or_above_target",
       deployedCapacityBytes,
       artifactBytes,
@@ -92,9 +112,12 @@ export function planProgramExtend(args: {
       additionalBytes: 0,
     };
   }
+  const kind: "required" | "headroom" =
+    artifactBytes > deployedCapacityBytes ? "required" : "headroom";
   return {
     ok: true,
     skip: false,
+    kind,
     deployedCapacityBytes,
     artifactBytes,
     targetCapacityBytes,
@@ -224,4 +247,105 @@ export function sumExtendRentDeltaLamports(
     total += n;
   }
   return total;
+}
+
+export type ExtendPlanReportRow = {
+  evidenceKey: string;
+  maskedProgramId: string;
+  deployedCapacityBytes: number;
+  artifactBytes: number;
+  targetCapacityBytes: number;
+  additionalBytes: number;
+  estimatedRentDeltaLamports: number;
+  kind: ExtendPlanKind;
+};
+
+export type ExtendRentDeltaByKind = {
+  required: number;
+  headroom: number;
+  none: number;
+  combined: number;
+};
+
+/** Per-kind rentΔ sums; combined = required + headroom (none is always 0 spend). */
+export function sumExtendRentDeltaByKind(
+  rows: readonly ExtendPlanReportRow[],
+): ExtendRentDeltaByKind {
+  const required = sumExtendRentDeltaLamports(
+    rows.filter((r) => r.kind === "required"),
+  );
+  const headroom = sumExtendRentDeltaLamports(
+    rows.filter((r) => r.kind === "headroom"),
+  );
+  const none = sumExtendRentDeltaLamports(
+    rows.filter((r) => r.kind === "none"),
+  );
+  return {
+    required,
+    headroom,
+    none,
+    combined: required + headroom,
+  };
+}
+
+const REPORT_KINDS: readonly ExtendPlanKind[] = [
+  "required",
+  "headroom",
+  "none",
+];
+
+function formatExtendPlanSection(
+  kind: ExtendPlanKind,
+  rows: readonly ExtendPlanReportRow[],
+): string {
+  const header =
+    "program | id | deployed | artifact | target(125%) | additional | rentΔ lamports | kind";
+  const rule =
+    "--------|----|----------|----------|--------------|------------|----------------|-----";
+  const lines = [`==> ${kind}`, header, rule];
+  if (rows.length === 0) {
+    lines.push("(none)");
+  } else {
+    for (const row of rows) {
+      lines.push(
+        [
+          row.evidenceKey,
+          row.maskedProgramId,
+          String(row.deployedCapacityBytes),
+          String(row.artifactBytes),
+          String(row.targetCapacityBytes),
+          String(row.additionalBytes),
+          String(row.estimatedRentDeltaLamports),
+          row.kind,
+        ].join(" | "),
+      );
+    }
+  }
+  const groupSum = sumExtendRentDeltaLamports(rows);
+  lines.push(`sum of rentΔ (${kind}) = ${groupSum} lamports`);
+  return lines.join("\n");
+}
+
+/**
+ * Founder-facing dry-run report: required, then headroom, then none;
+ * each group totals its rentΔ; final combined = required + headroom.
+ */
+export function formatExtendPlanReport(
+  rows: readonly ExtendPlanReportRow[],
+): string {
+  const sections: string[] = [];
+  for (const kind of REPORT_KINDS) {
+    sections.push(
+      formatExtendPlanSection(
+        kind,
+        rows.filter((r) => r.kind === kind),
+      ),
+    );
+  }
+  const totals = sumExtendRentDeltaByKind(rows);
+  sections.push(
+    `sum of rentΔ (combined) = ${totals.combined} lamports ` +
+      `(required ${totals.required} + headroom ${totals.headroom})`,
+  );
+  return sections.join("\n\n");
 }

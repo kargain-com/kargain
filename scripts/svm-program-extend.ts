@@ -30,9 +30,11 @@ import {
   assertExtendCapacityReadable,
   assertExtendProgramsInRegistry,
   assertExtendTargetCoversArtifact,
+  formatExtendPlanReport,
   planProgramExtend,
   rentDeltaLamports,
-  sumExtendRentDeltaLamports,
+  sumExtendRentDeltaByKind,
+  type ExtendPlanReportRow,
 } from "./lib/svm-program-extend-plan.js";
 import {
   assertProgramShowAllowsUpgrade,
@@ -154,39 +156,6 @@ function programShow(args: {
   return show;
 }
 
-type ExtendPlanRow = {
-  evidenceKey: string;
-  maskedProgramId: string;
-  deployedCapacityBytes: number;
-  artifactBytes: number;
-  targetCapacityBytes: number;
-  additionalBytes: number;
-  estimatedRentDeltaLamports: number;
-  action: "extend" | "skip";
-};
-
-function formatExtendPlanTable(rows: readonly ExtendPlanRow[]): string {
-  const lines = [
-    "program | id | deployed | artifact | target(125%) | additional | rentΔ lamports | action",
-    "--------|----|----------|----------|--------------|------------|----------------|--------",
-  ];
-  for (const row of rows) {
-    lines.push(
-      [
-        row.evidenceKey,
-        row.maskedProgramId,
-        String(row.deployedCapacityBytes),
-        String(row.artifactBytes),
-        String(row.targetCapacityBytes),
-        String(row.additionalBytes),
-        String(row.estimatedRentDeltaLamports),
-        row.action,
-      ].join(" | "),
-    );
-  }
-  return lines.join("\n");
-}
-
 async function main(): Promise<void> {
   const dryRun = hasFlag("--dry-run");
   const programsCsv = arg("--programs");
@@ -211,7 +180,7 @@ async function main(): Promise<void> {
   const deployerPub = showDeployer.stdout.trim();
   assertSolanaUpgradeAuthorityMatchesDeployer(deployerPub);
 
-  const planRows: ExtendPlanRow[] = [];
+  const planRows: ExtendPlanReportRow[] = [];
   const statusRows: UpgradeProgramStatusRow[] = [];
 
   for (const evidenceKey of keys) {
@@ -264,18 +233,19 @@ async function main(): Promise<void> {
       targetCapacityBytes: plan.targetCapacityBytes,
       additionalBytes: plan.additionalBytes,
       estimatedRentDeltaLamports,
-      action: plan.skip ? "skip" : "extend",
+      kind: plan.kind,
     });
   }
 
-  const estimatedCostLamports = sumExtendRentDeltaLamports(planRows);
+  const rentByKind = sumExtendRentDeltaByKind(planRows);
+  const estimatedCostLamports = rentByKind.combined;
   const payerLamports = payerBalanceLamports(deployerKp, rpc);
   console.log(
     `==> payerLamports=${payerLamports} estimatedExtendCostLamports=${estimatedCostLamports} ` +
-      `(sum of solana rent(target) − rent(deployed) for planned extends)`,
+      `(required ${rentByKind.required} + headroom ${rentByKind.headroom}; ` +
+      `sum of solana rent(target) − rent(deployed) for planned extends)`,
   );
-  console.log(formatExtendPlanTable(planRows));
-  console.log(`==> sum of rentΔ = ${estimatedCostLamports} lamports`);
+  console.log(formatExtendPlanReport(planRows));
 
   assertPayerCoversUpgradeCost({
     payerLamports,
@@ -289,7 +259,7 @@ async function main(): Promise<void> {
         evidenceKey: row.evidenceKey,
         maskedProgramId: row.maskedProgramId,
         outcome: "skipped",
-        detail: row.action === "skip" ? "already_at_target" : "dry-run",
+        detail: row.kind === "none" ? "already_at_target" : "dry-run",
       });
     }
     console.log(formatUpgradeProgramStatusTable(statusRows));
@@ -299,7 +269,7 @@ async function main(): Promise<void> {
 
   for (const row of planRows) {
     const programId = registryProgramId(stack, row.evidenceKey);
-    if (row.action === "skip") {
+    if (row.kind === "none") {
       statusRows.push({
         evidenceKey: row.evidenceKey,
         maskedProgramId: row.maskedProgramId,
@@ -310,7 +280,7 @@ async function main(): Promise<void> {
     }
 
     console.log(
-      `==> extend ${row.evidenceKey} ${maskBase58Id(programId)} +${row.additionalBytes} ` +
+      `==> extend ${row.kind} ${row.evidenceKey} ${maskBase58Id(programId)} +${row.additionalBytes} ` +
         `(${row.deployedCapacityBytes} → ${row.targetCapacityBytes})`,
     );
     const ext = runSolana([

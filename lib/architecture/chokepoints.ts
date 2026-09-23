@@ -805,7 +805,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-program-extend-plan",
     owner: "scripts/lib/svm-program-extend-plan.ts",
-    rule: "Founder-approved program-data extend ADDITIONAL_BYTES = ceil(artifact×5/4) − deployed; accepted --programs = commercial census evidence keys only; upgrade path never calls extend",
+    rule: "Founder-approved program-data extend ADDITIONAL_BYTES = ceil(artifact×5/4) − deployed; accepted --programs = commercial census evidence keys only; each row kind required|headroom|none from measured artifact vs deployed (never program-name lists); upgrade path never calls extend",
     guardTests: ["svm-program-extend-plan-policy.test.ts"],
   },
   {

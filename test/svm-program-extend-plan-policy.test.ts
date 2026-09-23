@@ -18,10 +18,13 @@ import {
   assertExtendProgramsInRegistry,
   assertExtendTargetCoversArtifact,
   commercialExtendEvidenceKeys,
+  formatExtendPlanReport,
   planProgramExtend,
   rentDeltaLamports,
+  sumExtendRentDeltaByKind,
   sumExtendRentDeltaLamports,
   targetCapacityAtArtifactHeadroom,
+  type ExtendPlanReportRow,
 } from "../scripts/lib/svm-program-extend-plan.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -56,7 +59,58 @@ describe("svm-program-extend-plan-policy", () => {
       artifactBytes: 262016,
     });
     assert.equal(skip.skip, true);
+    assert.equal(skip.kind, "none");
     assert.equal(skip.additionalBytes, 0);
+  });
+
+  it("artifact that does not fit is required (red plant headroom then green)", () => {
+    const plan = planProgramExtend({
+      deployedCapacityBytes: 232544,
+      artifactBytes: 388832,
+    });
+    assert.throws(
+      () => {
+        assert.equal(plan.kind, "headroom");
+      },
+      /Expected values to be strictly equal/,
+    );
+    assert.equal(plan.kind, "required");
+    assert.equal(plan.skip, false);
+    if (plan.skip) throw new Error("expected extend");
+    assert.equal(plan.additionalBytes, 253496);
+  });
+
+  it("artifact that fits below 125% is headroom (red plant required then green)", () => {
+    const plan = planProgramExtend({
+      deployedCapacityBytes: 327520,
+      artifactBytes: 292496,
+    });
+    assert.throws(
+      () => {
+        assert.equal(plan.kind, "required");
+      },
+      /Expected values to be strictly equal/,
+    );
+    assert.equal(plan.kind, "headroom");
+    assert.equal(plan.skip, false);
+    if (plan.skip) throw new Error("expected extend");
+    assert.equal(plan.additionalBytes, 38100);
+  });
+
+  it("already at target is none (red plant required then green)", () => {
+    const plan = planProgramExtend({
+      deployedCapacityBytes: 365620,
+      artifactBytes: 292496,
+    });
+    assert.throws(
+      () => {
+        assert.equal(plan.kind, "required");
+      },
+      /Expected values to be strictly equal/,
+    );
+    assert.equal(plan.kind, "none");
+    assert.equal(plan.skip, true);
+    assert.equal(plan.additionalBytes, 0);
   });
 
   it("rent delta is to − from (not a invented constant)", () => {
@@ -191,6 +245,72 @@ describe("svm-program-extend-plan-policy", () => {
     );
   });
 
+  it("group totals by kind (red plant wrong combined then green)", () => {
+    const rows: ExtendPlanReportRow[] = [
+      {
+        evidenceKey: "a",
+        maskedProgramId: "A…",
+        deployedCapacityBytes: 1,
+        artifactBytes: 2,
+        targetCapacityBytes: 3,
+        additionalBytes: 2,
+        estimatedRentDeltaLamports: 100,
+        kind: "required",
+      },
+      {
+        evidenceKey: "b",
+        maskedProgramId: "B…",
+        deployedCapacityBytes: 1,
+        artifactBytes: 2,
+        targetCapacityBytes: 3,
+        additionalBytes: 2,
+        estimatedRentDeltaLamports: 200,
+        kind: "required",
+      },
+      {
+        evidenceKey: "c",
+        maskedProgramId: "C…",
+        deployedCapacityBytes: 10,
+        artifactBytes: 8,
+        targetCapacityBytes: 10,
+        additionalBytes: 0,
+        estimatedRentDeltaLamports: 50,
+        kind: "headroom",
+      },
+      {
+        evidenceKey: "d",
+        maskedProgramId: "D…",
+        deployedCapacityBytes: 10,
+        artifactBytes: 8,
+        targetCapacityBytes: 10,
+        additionalBytes: 0,
+        estimatedRentDeltaLamports: 0,
+        kind: "none",
+      },
+    ];
+    const totals = sumExtendRentDeltaByKind(rows);
+    assert.throws(
+      () => {
+        assert.equal(totals.combined, 999);
+      },
+      /Expected values to be strictly equal/,
+    );
+    assert.equal(totals.required, 300);
+    assert.equal(totals.headroom, 50);
+    assert.equal(totals.none, 0);
+    assert.equal(totals.combined, 350);
+    assert.equal(totals.combined, totals.required + totals.headroom);
+
+    const report = formatExtendPlanReport(rows);
+    assert.match(report, /sum of rentΔ \(required\) = 300 lamports/);
+    assert.match(report, /sum of rentΔ \(headroom\) = 50 lamports/);
+    assert.match(report, /sum of rentΔ \(none\) = 0 lamports/);
+    assert.match(
+      report,
+      /sum of rentΔ \(combined\) = 350 lamports \(required 300 \+ headroom 50\)/,
+    );
+  });
+
   it("CLI consumes registry assert + plan owner; no EXTENDABLE_KEYS / S9-B gate; upgrade never auto-extends", () => {
     const extendCli = readFileSync(
       join(ROOT, "scripts/svm-program-extend.ts"),
@@ -199,13 +319,16 @@ describe("svm-program-extend-plan-policy", () => {
     assert.match(extendCli, /planProgramExtend/);
     assert.match(extendCli, /rentDeltaLamports/);
     assert.match(extendCli, /assertExtendProgramsInRegistry/);
-    assert.match(extendCli, /sumExtendRentDeltaLamports/);
+    assert.match(extendCli, /sumExtendRentDeltaByKind/);
+    assert.match(extendCli, /formatExtendPlanReport/);
     assert.match(extendCli, /assertExtendArtifactPresent/);
     assert.match(extendCli, /assertExtendTargetCoversArtifact/);
     assert.match(extendCli, /assertExtendCapacityReadable/);
     assert.match(extendCli, /program\",\s*\"extend\"/);
     assert.doesNotMatch(extendCli, /EXTENDABLE_KEYS/);
     assert.doesNotMatch(extendCli, /S9-B extend target/);
+    assert.doesNotMatch(extendCli, /action:\s*"extend"/);
+    assert.doesNotMatch(extendCli, /formatExtendPlanTable/);
 
     const upgrade = readFileSync(
       join(ROOT, "scripts/svm-upgrade-in-place.ts"),
