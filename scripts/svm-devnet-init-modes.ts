@@ -1,6 +1,7 @@
 /**
  * One-shot Devnet InitConfig for FixedPrice + Ascending (founder ops helper).
  * Not a product door — run then shred. Uses encodeSvmInstruction + deriveSvmPda.
+ * Roles + bond/window/fee come from `svm-mode-init-params` only.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -13,9 +14,9 @@ import { deriveSvmPda } from "../lib/svm/derive-pda.ts";
 import { systemProgramId } from "../lib/svm/foreign-programs.ts";
 import { programIdToBytes } from "./svm-devnet-bind-modes.ts";
 import {
-  ASCENDING_CHALLENGE_WINDOW,
-  MARKETPLACE_FEE_BPS,
-} from "./lib/verify-constructor-args.ts";
+  platformEqualsForfeitAckLine,
+  resolveModeInitParams,
+} from "./lib/svm-mode-init-params.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../svm/lab/package.json"));
@@ -34,6 +35,10 @@ function arg(name: string): string {
   return process.argv[i + 1]!;
 }
 
+function hasFlag(name: string): boolean {
+  return process.argv.includes(name);
+}
+
 function loadKp(p: string): InstanceType<typeof Keypair> {
   return Keypair.fromSecretKey(
     Uint8Array.from(JSON.parse(fs.readFileSync(p, "utf8")) as number[]),
@@ -49,13 +54,21 @@ async function main(): Promise<void> {
   const asc = stack.ascendingConsignment!;
   const conn = new Connection(rpc, "confirmed");
 
-  const feeBps = Number(MARKETPLACE_FEE_BPS);
-  // Same lamports as on-chain passport dispute_deposit (weight class, not ETH wei).
-  const challengeBond = 1_000_000n;
-  const challengeWindow = ASCENDING_CHALLENGE_WINDOW;
-  const platform = new PublicKey(stack.forfeitRecipient);
-  const guardian = authority.publicKey;
-  const forfeit = new PublicKey(stack.forfeitRecipient);
+  const params = resolveModeInitParams({
+    authority: authority.publicKey.toBase58(),
+    allowPlatformEqualsForfeit: hasFlag("--allow-platform-equals-forfeit"),
+  });
+  const ack = platformEqualsForfeitAckLine(params);
+  if (ack != null) {
+    console.log(ack);
+  }
+
+  const feeBps = params.platformFeeBps;
+  const challengeBond = params.challengeBondLamports;
+  const challengeWindow = params.challengeWindowSeconds;
+  const platform = new PublicKey(params.platformRecipient);
+  const guardian = new PublicKey(params.guardian);
+  const forfeit = new PublicKey(params.forfeitRecipient);
   const staking = programIdToBytes(stack.karProStaking);
   const system = new PublicKey(systemProgramId());
 

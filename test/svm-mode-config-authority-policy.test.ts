@@ -33,9 +33,11 @@ const REQUIRED_HANDLERS: ReadonlyArray<{ program: string; fn: string }> = [
   { program: "kar-fixed-price", fn: "unpause_ix" },
   { program: "kar-fixed-price", fn: "approve_payment_token" },
   { program: "kar-fixed-price", fn: "bind_passport_program" },
+  { program: "kar-fixed-price", fn: "set_guardian_ix" },
   { program: "kar-ascending", fn: "bind_passport_program" },
   { program: "kar-ascending", fn: "unpause_ix" },
   { program: "kar-ascending", fn: "set_challenge_bond" },
+  { program: "kar-ascending", fn: "set_guardian_ix" },
   { program: "kar-ascending", fn: "approve_payment_token" },
   { program: "kar-ascending", fn: "force_auction_ends_at" },
   { program: "kar-ascending", fn: "force_hold_clock" },
@@ -54,7 +56,7 @@ const REQUIRED_HANDLERS: ReadonlyArray<{ program: string; fn: string }> = [
   { program: "kar-pro-staking", fn: "set_min_stake_native" },
 ];
 
-const HANDLER_FLOOR = 23;
+const HANDLER_FLOOR = 25;
 
 /** Inline authority-key vs config-authority compares (must live only in admit owner). */
 const INLINE_AUTHORITY_EQ =

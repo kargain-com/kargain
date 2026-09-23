@@ -1451,6 +1451,23 @@
       "goldenHex": "1b"
     },
     {
+      "program": "kar-fixed-price",
+      "enum": "FixedPriceIx",
+      "index": 28,
+      "name": "SetGuardian",
+      "fields": [
+        {
+          "name": "new_guardian",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "new_guardian": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+      },
+      "goldenHex": "1cc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+    },
+    {
       "program": "kar-ascending",
       "enum": "AscendingIx",
       "index": 0,
@@ -2151,6 +2168,23 @@
       "fields": [],
       "sample": {},
       "goldenHex": "20"
+    },
+    {
+      "program": "kar-ascending",
+      "enum": "AscendingIx",
+      "index": 33,
+      "name": "SetGuardian",
+      "fields": [
+        {
+          "name": "new_guardian",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "new_guardian": "e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3"
+      },
+      "goldenHex": "21e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3"
     }
   ]
 }

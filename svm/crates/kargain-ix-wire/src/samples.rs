@@ -653,7 +653,7 @@ fn layout_and_sample_pass(ix: PassIx) -> ManifestEntry {
     entry_from_borsh("kar-pro-pass", "PassIx", name, fields, sample, &ix)
 }
 
-// ---- FixedPrice (28) ----
+// ---- FixedPrice (29) ----
 
 fn fixed_price_entries() -> Vec<ManifestEntry> {
     fixed_price_samples()
@@ -768,6 +768,9 @@ fn fixed_price_samples() -> Vec<FixedPriceIx> {
             data: price_data,
         },
         FixedPriceIx::BindPassportProgram,
+        FixedPriceIx::SetGuardian {
+            new_guardian: b32(0xc0),
+        },
     ]
 }
 
@@ -1014,11 +1017,16 @@ fn layout_and_sample_fixed_price(ix: FixedPriceIx) -> ManifestEntry {
             ]),
         ),
         FixedPriceIx::BindPassportProgram => ("BindPassportProgram", vec![], Map::new()),
+        FixedPriceIx::SetGuardian { new_guardian } => (
+            "SetGuardian",
+            vec![field_fixed("new_guardian", 32)],
+            map_of(&[("new_guardian", sample_bytes(new_guardian))]),
+        ),
     };
     entry_from_borsh("kar-fixed-price", "FixedPriceIx", name, fields, sample, &ix)
 }
 
-// ---- Ascending (32) ----
+// ---- Ascending (34) ----
 
 fn ascending_entries() -> Vec<ManifestEntry> {
     ascending_samples()
@@ -1151,6 +1159,9 @@ fn ascending_samples() -> Vec<AscendingIx> {
             owner: b32(0xe2),
         },
         AscendingIx::BindPassportProgram,
+        AscendingIx::SetGuardian {
+            new_guardian: b32(0xe3),
+        },
     ]
 }
 
@@ -1448,6 +1459,11 @@ fn layout_and_sample_ascending(ix: AscendingIx) -> ManifestEntry {
             ]),
         ),
         AscendingIx::BindPassportProgram => ("BindPassportProgram", vec![], Map::new()),
+        AscendingIx::SetGuardian { new_guardian } => (
+            "SetGuardian",
+            vec![field_fixed("new_guardian", 32)],
+            map_of(&[("new_guardian", sample_bytes(new_guardian))]),
+        ),
     };
     entry_from_borsh("kar-ascending", "AscendingIx", name, fields, sample, &ix)
 }

@@ -757,21 +757,21 @@ export function formatMeasuredReadback(input: MeasuredReadbackInput): string {
     }
   }
   lines.push("");
-  lines.push("unsettable_today (missing instruction — InitConfig value is sticky)");
+  lines.push("unsettable_today (InitConfig sticky unless a setter exists)");
   lines.push(
-    "  fixed_price.guardian — needs SetGuardian (crate set_guardian unwired)",
+    "  fixed_price.guardian — settable via SetGuardian (not sticky)",
   );
   lines.push(
-    "  fixed_price.platform_recipient — needs SetPlatformRecipient",
+    "  fixed_price.platform_recipient — InitConfig-only (EVM parity; no setter either VM)",
   );
   lines.push(
     "  fixed_price.platform_fee_bps — InitConfig-only (no SetPlatformFeeBps)",
   );
   lines.push(
-    "  ascending.guardian — needs SetGuardian (crate set_guardian unwired)",
+    "  ascending.guardian — settable via SetGuardian (not sticky)",
   );
   lines.push(
-    "  ascending.platform_recipient — needs SetPlatformRecipient",
+    "  ascending.platform_recipient — InitConfig-only (EVM parity; no setter either VM)",
   );
   lines.push(
     "  ascending.platform_fee_bps — InitConfig-only (no SetPlatformFeeBps)",

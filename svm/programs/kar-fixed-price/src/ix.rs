@@ -24,9 +24,9 @@ use kargain_consignment_base::{
     owner_withdraw_ok, passport_binding_pda, pause, recall_account_is_requested,
     recall_account_requested_at, recall_pda, request_recall,
     require_agented_price_meets_floor, require_binding_uninitialised,
-    require_bound_passport_program, require_config_authority, require_mandate_allows_open,
+    require_bound_passport_program,     require_config_authority, require_mandate_allows_open,
     require_not_paused, require_passport_core_asset, has_transfer_delegate, revoke_mandate,
-    set_price, set_snapshot_floor, terminate_to_owner, transfer_custody_to_recipient,
+    set_guardian, set_price, set_snapshot_floor, terminate_to_owner, transfer_custody_to_recipient,
     transfer_delegate_to_custody, transfer_owner_to_custody, unpause, write_open, CloseReason,
     CommerceConfig, Compensation, CompensationForm, ConsignmentRecord, Denomination,
     DenominationKind, MandateRecord, PassportBinding, RecallRecord, CONFIG_SEED, CONSIGNMENT_SEED,
@@ -148,6 +148,9 @@ pub enum FixedPriceIx {
     /// One-shot bind of passport program id into mode PDA.
     /// Accounts: authority(signer) · config · binding · passport_program(executable) · system · payer
     BindPassportProgram,
+    /// Owner-gated guardian rotate (EVM ConsignmentBase.setGuardian).
+    /// Accounts: authority(signer) · config
+    SetGuardian { new_guardian: [u8; 32] },
 }
 
 pub const PAYMENT_TOKEN_SEED: &[u8] = b"payment-token";
@@ -310,6 +313,9 @@ pub fn process_instruction(
         } => force_recall_at(program_id, accounts, token_id, requested_at),
         FixedPriceIx::ForceSeedPriceAccount { .. } => refuse_harness(program_id, accounts),
         FixedPriceIx::BindPassportProgram => bind_passport_program(program_id, accounts),
+        FixedPriceIx::SetGuardian { new_guardian } => {
+            set_guardian_ix(program_id, accounts, new_guardian)
+        }
     }
 }
 
@@ -1315,6 +1321,30 @@ fn unpause_ix(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
         COMMERCE_EMITTER,
         &ConsignmentEvent::Unpaused {
             account: authority.key.to_bytes(),
+        },
+    );
+    Ok(())
+}
+
+/// EVM ConsignmentBase.setGuardian (L163–167): onlyOwner → ZeroAddress → mutate + GuardianSet.
+fn set_guardian_ix(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    new_guardian: [u8; 32],
+) -> ProgramResult {
+    let iter = &mut accounts.iter();
+    let authority = next_account_info(iter)?;
+    let config = next_account_info(iter)?;
+    let mut cfg = load_config(config)?;
+    require_config_authority(authority, config, program_id, &cfg.authority)?;
+    let previous =
+        set_guardian(&mut cfg, &authority.key.to_bytes(), new_guardian).map_err(into_pe)?;
+    save_config(config, &cfg)?;
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &ConsignmentEvent::GuardianSet {
+            previous,
+            current: new_guardian,
         },
     );
     Ok(())
@@ -2420,6 +2450,89 @@ mod config_authority_handler_tests {
             unpause_ix(&program_id, &[a, c]).unwrap();
         }
         assert!(!CommerceConfig::try_from_slice(&cfg_data).unwrap().paused);
+    }
+
+    #[test]
+    fn set_guardian_unsigned_wrong_zero_success() {
+        let program_id = pid();
+        let authority = auth();
+        let (cfg_key, mut cfg_data) = cfg_bytes(&program_id, &authority);
+        let new_g = Pubkey::new_from_array([7u8; 32]);
+        let mut al = 0u64;
+        let mut cl = 0u64;
+        {
+            let a =
+                AccountInfo::new(&authority, false, false, &mut al, &mut [], &program_id, false, 0);
+            let c = AccountInfo::new(
+                &cfg_key,
+                false,
+                true,
+                &mut cl,
+                &mut cfg_data,
+                &program_id,
+                false,
+                0,
+            );
+            assert_eq!(
+                set_guardian_ix(&program_id, &[a, c], new_g.to_bytes()).unwrap_err(),
+                ProgramError::MissingRequiredSignature
+            );
+        }
+        {
+            let w = wrong();
+            let a = AccountInfo::new(&w, true, false, &mut al, &mut [], &program_id, false, 0);
+            let c = AccountInfo::new(
+                &cfg_key,
+                false,
+                true,
+                &mut cl,
+                &mut cfg_data,
+                &program_id,
+                false,
+                0,
+            );
+            assert_eq!(
+                set_guardian_ix(&program_id, &[a, c], new_g.to_bytes()).unwrap_err(),
+                ProgramError::Custom(u32::from(KargainError::NotOwner)),
+            );
+        }
+        {
+            let a =
+                AccountInfo::new(&authority, true, false, &mut al, &mut [], &program_id, false, 0);
+            let c = AccountInfo::new(
+                &cfg_key,
+                false,
+                true,
+                &mut cl,
+                &mut cfg_data,
+                &program_id,
+                false,
+                0,
+            );
+            assert_eq!(
+                set_guardian_ix(&program_id, &[a, c], [0u8; 32]).unwrap_err(),
+                ProgramError::Custom(u32::from(KargainError::ZeroAddress)),
+            );
+        }
+        {
+            let a =
+                AccountInfo::new(&authority, true, false, &mut al, &mut [], &program_id, false, 0);
+            let c = AccountInfo::new(
+                &cfg_key,
+                false,
+                true,
+                &mut cl,
+                &mut cfg_data,
+                &program_id,
+                false,
+                0,
+            );
+            set_guardian_ix(&program_id, &[a, c], new_g.to_bytes()).unwrap();
+        }
+        assert_eq!(
+            CommerceConfig::try_from_slice(&cfg_data).unwrap().guardian,
+            new_g.to_bytes()
+        );
     }
 }
 

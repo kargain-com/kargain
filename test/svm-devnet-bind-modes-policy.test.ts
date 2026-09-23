@@ -535,8 +535,10 @@ describe("svm-devnet-bind-modes door source policy", () => {
     const text = formatMeasuredReadback(sample);
     assert.match(text, /platform_fee_bps 10/);
     assert.match(text, /challenge_bond 1000000/);
-    assert.match(text, /needs SetGuardian/);
+    assert.match(text, /settable via SetGuardian/);
+    assert.doesNotMatch(text, /needs SetGuardian/);
     assert.match(text, /SetChallengeBond \(not sticky\)/);
+    assert.match(text, /platform_recipient — InitConfig-only/);
     assert.match(text, new RegExp(`seed_prefix=.*${FIXED_PRICE_SEED_PREFIX}`));
   });
 

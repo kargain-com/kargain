@@ -800,8 +800,14 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-devnet-bind-modes",
     owner: "scripts/svm-devnet-bind-modes.ts",
-    rule: "Sole Devnet mode↔passport bind+register door: BindPassportProgram ×2 + AddEncumbranceSource ×2 via encodeSvmInstruction+deriveSvmPda; state-first skip; foreign binding refuses by name; prefixes fp-ans/asc-ans; dry-run default prints measured readback via decodeCommerceConfig/decodeAscendingConfig/decodePassportConfig/decodePassportBinding (no script hand-parse of config bytes); unsettable fields named",
+    rule: "Sole Devnet mode↔passport bind+register door: BindPassportProgram ×2 + AddEncumbranceSource ×2 via encodeSvmInstruction+deriveSvmPda; state-first skip; foreign binding refuses by name; prefixes fp-ans/asc-ans; dry-run default prints measured readback via decodeCommerceConfig/decodeAscendingConfig/decodePassportConfig/decodePassportBinding (no script hand-parse of config bytes); unsettable fields named (guardian settable via SetGuardian; platform InitConfig-only)",
     guardTests: ["svm-devnet-bind-modes-policy.test.ts"],
+  },
+  {
+    id: "svm-mode-init-params",
+    owner: "scripts/lib/svm-mode-init-params.ts",
+    rule: "Sole InitConfig parameter source for svm-devnet-init-modes: SOLANA_PLATFORM_RECIPIENT / SOLANA_FORFEIT_RECIPIENT / SOLANA_GUARDIAN required; guardian≠authority; platform≡forfeit only with explicit ack flag + printed line; bond/window/fee from named constants (SVM_ASCENDING_CHALLENGE_BOND_LAMPORTS, ASCENDING_CHALLENGE_WINDOW, MARKETPLACE_FEE_BPS) — no script literals or forfeit-as-platform invent",
+    guardTests: ["svm-mode-init-params-policy.test.ts"],
   },
   {
     id: "svm-startup-retention",

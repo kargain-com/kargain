@@ -29,7 +29,8 @@ use kargain_consignment_base::{
     passport_binding_pda, pause, refuse_set_price_terms_fixed, refuse_shared_open_path,
     require_agented_price_meets_floor, require_binding_uninitialised, require_bound_passport_program,
     require_config_authority, require_mandate_allows_open, require_not_paused,
-    require_passport_core_asset, has_transfer_delegate, require_transfer_delegate, revoke_mandate, terminate_to_owner,
+    require_passport_core_asset, has_transfer_delegate, require_transfer_delegate, revoke_mandate,
+    set_guardian, terminate_to_owner,
     transfer_custody_to_recipient, transfer_delegate_to_custody, transfer_owner_to_custody,
     transfer_owner_to_recipient, unpause, write_open, CloseReason, CommerceConfig, Compensation,
     CompensationForm, CONFIG_DISCRIMINATOR, ConsignmentRecord, Denomination, DenominationKind,
@@ -172,6 +173,9 @@ pub enum AscendingIx {
     /// One-shot bind of passport program id into mode PDA.
     /// Accounts: authority(signer) · config · binding · passport_program(executable) · system · payer
     BindPassportProgram,
+    /// Owner-gated guardian rotate (EVM ConsignmentBase.setGuardian).
+    /// Accounts: authority(signer) · config
+    SetGuardian { new_guardian: [u8; 32] },
 }
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq, Eq)]
@@ -431,6 +435,9 @@ pub fn process_instruction(
             force_asset_owner(program_id, accounts, token_id, owner)
         }
         AscendingIx::BindPassportProgram => bind_passport_program(program_id, accounts),
+        AscendingIx::SetGuardian { new_guardian } => {
+            set_guardian_ix(program_id, accounts, new_guardian)
+        }
     }
 }
 
@@ -2607,6 +2614,32 @@ fn set_challenge_bond(
     save_asc_config(config, &cfg)
 }
 
+/// EVM ConsignmentBase.setGuardian (L163–167): onlyOwner → ZeroAddress → mutate + GuardianSet.
+fn set_guardian_ix(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    new_guardian: [u8; 32],
+) -> ProgramResult {
+    let iter = &mut accounts.iter();
+    let authority = next_account_info(iter)?;
+    let config = next_account_info(iter)?;
+    let mut asc = load_asc_config(config)?;
+    require_config_authority(authority, config, program_id, &asc.authority)?;
+    let mut commerce = asc.as_commerce_config();
+    let previous =
+        set_guardian(&mut commerce, &authority.key.to_bytes(), new_guardian).map_err(into_pe)?;
+    asc.guardian = commerce.guardian;
+    save_asc_config(config, &asc)?;
+    emit_commerce(
+        COMMERCE_EMITTER,
+        &ConsignmentEvent::GuardianSet {
+            previous,
+            current: new_guardian,
+        },
+    );
+    Ok(())
+}
+
 fn approve_payment_token(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let iter = &mut accounts.iter();
     let authority = next_account_info(iter)?;
@@ -3153,5 +3186,49 @@ mod config_authority_handler_tests {
             set_challenge_bond(&program_id, &[a, c], 1).unwrap();
         }
         assert_eq!(AscendingConfig::try_from_slice(&cfg_data).unwrap().challenge_bond, 1);
+    }
+
+    #[test]
+    fn set_guardian_unsigned_wrong_zero_success() {
+        let program_id = pid();
+        let authority = auth();
+        let (cfg_key, mut cfg_data) = cfg_bytes(&program_id, &authority);
+        let new_g = Pubkey::new_from_array([7u8; 32]);
+        let mut al = 0u64;
+        let mut cl = 0u64;
+        {
+            let a = AccountInfo::new(&authority, false, false, &mut al, &mut [], &program_id, false, 0);
+            let c = AccountInfo::new(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id, false, 0);
+            assert_eq!(
+                set_guardian_ix(&program_id, &[a, c], new_g.to_bytes()).unwrap_err(),
+                ProgramError::MissingRequiredSignature
+            );
+        }
+        {
+            let w = wrong();
+            let a = AccountInfo::new(&w, true, false, &mut al, &mut [], &program_id, false, 0);
+            let c = AccountInfo::new(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id, false, 0);
+            assert_eq!(
+                set_guardian_ix(&program_id, &[a, c], new_g.to_bytes()).unwrap_err(),
+                ProgramError::Custom(u32::from(KargainError::NotOwner)),
+            );
+        }
+        {
+            let a = AccountInfo::new(&authority, true, false, &mut al, &mut [], &program_id, false, 0);
+            let c = AccountInfo::new(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id, false, 0);
+            assert_eq!(
+                set_guardian_ix(&program_id, &[a, c], [0u8; 32]).unwrap_err(),
+                ProgramError::Custom(u32::from(KargainError::ZeroAddress)),
+            );
+        }
+        {
+            let a = AccountInfo::new(&authority, true, false, &mut al, &mut [], &program_id, false, 0);
+            let c = AccountInfo::new(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id, false, 0);
+            set_guardian_ix(&program_id, &[a, c], new_g.to_bytes()).unwrap();
+        }
+        assert_eq!(
+            AscendingConfig::try_from_slice(&cfg_data).unwrap().guardian,
+            new_g.to_bytes()
+        );
     }
 }
