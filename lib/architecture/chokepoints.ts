@@ -798,6 +798,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-devnet-product-send-policy.test.ts"],
   },
   {
+    id: "svm-devnet-bind-modes",
+    owner: "scripts/svm-devnet-bind-modes.ts",
+    rule: "Sole Devnet mode↔passport bind+register door: BindPassportProgram ×2 + AddEncumbranceSource ×2 via encodeSvmInstruction+deriveSvmPda; state-first skip; foreign binding refuses by name; prefixes fp-ans/asc-ans; dry-run default",
+    guardTests: ["svm-devnet-bind-modes-policy.test.ts"],
+  },
+  {
     id: "svm-startup-retention",
     owner: "lib/svm/startup-retention.ts",
     rule: "RPC retention of required ingest start slot is one predicate; ingest loop and upgrade dry-run consume it",
