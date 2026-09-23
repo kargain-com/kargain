@@ -9,7 +9,8 @@
  * Layout honesty:
  * - Fixed-padded (`PassportState`, `StakeAccount`): cursor ignores trailing zeros.
  * - Exact (`ChallengeAccount`, `EncumbranceAnswer`, `PassportBinding`,
- *   `CommerceConfig`, `AscendingConfig`): modelled == golden == SPACE.
+ *   `CommerceConfig`, `AscendingConfig`, `ConsignmentRecord`, `MandateRecord`,
+ *   `RecallRecord`, `AuctionTermsRecord`, `HoldRecord`): modelled == golden == SPACE.
  * - Variable (`PassportConfig`): fully modelled including `encumbrance_sources`
  *   (`vec_encumbrance_source`) + bump; golden length is the sample Borsh size.
  * Length fields are `goldenByteLength` / `modelledByteLength` — never
@@ -303,6 +304,159 @@ export type DecodePassportBindingResult =
   | DecodePassportBindingOk
   | DecodePassportBindingErr;
 
+/** ConsignmentRecord — exact SPACE; denomination/compensation flattened. */
+export type ConsignmentRecordDecoded = {
+  tokenId: Uint8Array;
+  seller: string;
+  agent: string;
+  asset: string;
+  kind: number;
+  currencyCode: Uint8Array;
+  floor: bigint;
+  form: number;
+  commissionBps: number;
+  platformFeeBps: number;
+  price: bigint;
+  openedAt: bigint;
+  phase: number;
+  committedNotOffered: boolean;
+  bump: number;
+};
+
+export type DecodeConsignmentRecordOk = {
+  ok: true;
+  value: ConsignmentRecordDecoded;
+  layout: StateLayoutEntry;
+  bytesRead: number;
+};
+
+export type DecodeConsignmentRecordErr = {
+  ok: false;
+  cause: DecodeAccountStateCause;
+  detail: string;
+};
+
+export type DecodeConsignmentRecordResult =
+  | DecodeConsignmentRecordOk
+  | DecodeConsignmentRecordErr;
+
+/** MandateRecord — exact SPACE; denomination/compensation flattened. */
+export type MandateRecordDecoded = {
+  tokenId: Uint8Array;
+  agent: string;
+  expiry: bigint;
+  asset: string;
+  kind: number;
+  currencyCode: Uint8Array;
+  floor: bigint;
+  form: number;
+  commissionBps: number;
+  active: boolean;
+  bump: number;
+};
+
+export type DecodeMandateRecordOk = {
+  ok: true;
+  value: MandateRecordDecoded;
+  layout: StateLayoutEntry;
+  bytesRead: number;
+};
+
+export type DecodeMandateRecordErr = {
+  ok: false;
+  cause: DecodeAccountStateCause;
+  detail: string;
+};
+
+export type DecodeMandateRecordResult =
+  | DecodeMandateRecordOk
+  | DecodeMandateRecordErr;
+
+/** RecallRecord — exact SPACE. */
+export type RecallRecordDecoded = {
+  tokenId: Uint8Array;
+  requestedAt: bigint;
+  bump: number;
+};
+
+export type DecodeRecallRecordOk = {
+  ok: true;
+  value: RecallRecordDecoded;
+  layout: StateLayoutEntry;
+  bytesRead: number;
+};
+
+export type DecodeRecallRecordErr = {
+  ok: false;
+  cause: DecodeAccountStateCause;
+  detail: string;
+};
+
+export type DecodeRecallRecordResult =
+  | DecodeRecallRecordOk
+  | DecodeRecallRecordErr;
+
+/** AuctionTermsRecord — exact SPACE. */
+export type AuctionTermsRecordDecoded = {
+  tokenId: Uint8Array;
+  duration: bigint;
+  endsAt: bigint;
+  extensionWindow: bigint;
+  protectionWindow: bigint;
+  abandonmentWindow: bigint;
+  minIncrementBps: number;
+  highestBidder: string;
+  highestBid: bigint;
+  bump: number;
+};
+
+export type DecodeAuctionTermsRecordOk = {
+  ok: true;
+  value: AuctionTermsRecordDecoded;
+  layout: StateLayoutEntry;
+  bytesRead: number;
+};
+
+export type DecodeAuctionTermsRecordErr = {
+  ok: false;
+  cause: DecodeAccountStateCause;
+  detail: string;
+};
+
+export type DecodeAuctionTermsRecordResult =
+  | DecodeAuctionTermsRecordOk
+  | DecodeAuctionTermsRecordErr;
+
+/** HoldRecord — exact SPACE. */
+export type HoldRecordDecoded = {
+  tokenId: Uint8Array;
+  buyer: string;
+  gross: bigint;
+  protectionEndsAt: bigint;
+  frozenRemaining: bigint;
+  reversalPending: boolean;
+  abandonmentDeadline: bigint;
+  abandonmentWindow: bigint;
+  bump: number;
+};
+
+export type DecodeHoldRecordOk = {
+  ok: true;
+  value: HoldRecordDecoded;
+  layout: StateLayoutEntry;
+  bytesRead: number;
+};
+
+export type DecodeHoldRecordErr = {
+  ok: false;
+  cause: DecodeAccountStateCause;
+  detail: string;
+};
+
+export type DecodeHoldRecordResult =
+  | DecodeHoldRecordOk
+  | DecodeHoldRecordErr;
+
 const MANIFEST = stateManifest as StateManifest;
 
 const LAYOUTS = new Map<string, StateLayoutEntry>(
@@ -317,6 +471,11 @@ const ENCUMBRANCE_ANSWER_ID = "kargain-encumbrance/EncumbranceAnswer";
 const PASSPORT_BINDING_ID = "kargain-consignment-base/PassportBinding";
 const COMMERCE_CONFIG_ID = "kargain-consignment-base/CommerceConfig";
 const ASCENDING_CONFIG_ID = "kar-ascending/AscendingConfig";
+const CONSIGNMENT_RECORD_ID = "kargain-consignment-base/ConsignmentRecord";
+const MANDATE_RECORD_ID = "kargain-consignment-base/MandateRecord";
+const RECALL_RECORD_ID = "kargain-consignment-base/RecallRecord";
+const AUCTION_TERMS_RECORD_ID = "kar-ascending/AuctionTermsRecord";
+const HOLD_RECORD_ID = "kar-ascending/HoldRecord";
 
 function pubkeyBase58(bytes: Uint8Array): string {
   return encodeSvmPubkeyBytes(bytes);
@@ -386,6 +545,46 @@ export function ascendingConfigLayout(): StateLayoutEntry {
   const layout = LAYOUTS.get(ASCENDING_CONFIG_ID);
   if (!layout) {
     throw new Error(`state_manifest_missing:${ASCENDING_CONFIG_ID}`);
+  }
+  return layout;
+}
+
+export function consignmentRecordLayout(): StateLayoutEntry {
+  const layout = LAYOUTS.get(CONSIGNMENT_RECORD_ID);
+  if (!layout) {
+    throw new Error(`state_manifest_missing:${CONSIGNMENT_RECORD_ID}`);
+  }
+  return layout;
+}
+
+export function mandateRecordLayout(): StateLayoutEntry {
+  const layout = LAYOUTS.get(MANDATE_RECORD_ID);
+  if (!layout) {
+    throw new Error(`state_manifest_missing:${MANDATE_RECORD_ID}`);
+  }
+  return layout;
+}
+
+export function recallRecordLayout(): StateLayoutEntry {
+  const layout = LAYOUTS.get(RECALL_RECORD_ID);
+  if (!layout) {
+    throw new Error(`state_manifest_missing:${RECALL_RECORD_ID}`);
+  }
+  return layout;
+}
+
+export function auctionTermsRecordLayout(): StateLayoutEntry {
+  const layout = LAYOUTS.get(AUCTION_TERMS_RECORD_ID);
+  if (!layout) {
+    throw new Error(`state_manifest_missing:${AUCTION_TERMS_RECORD_ID}`);
+  }
+  return layout;
+}
+
+export function holdRecordLayout(): StateLayoutEntry {
+  const layout = LAYOUTS.get(HOLD_RECORD_ID);
+  if (!layout) {
+    throw new Error(`state_manifest_missing:${HOLD_RECORD_ID}`);
   }
   return layout;
 }
@@ -628,9 +827,7 @@ export function decodeChallengeAccountStrictFullyConsumedForTests(
 }
 
 /**
- * Decode PassportConfig modelled prefix (through forfeit_recipient).
- * Stops at remainder_unmodelled — does not walk next_token_id / vec / bump.
- * No fully-consumed export (meaningless on partial + variable tail).
+ * Decode EncumbranceAnswer — exact SPACE; product needs recorded funder.
  */
 export function decodeEncumbranceAnswer(
   data: Uint8Array,
@@ -1029,6 +1226,376 @@ export function decodeAscendingConfig(
       bump: cursor.fields.bump as number,
     },
     layout,
+    bytesRead: cursor.bytesRead,
+  };
+}
+
+export function decodeConsignmentRecord(
+  data: Uint8Array,
+): DecodeConsignmentRecordResult {
+  const layout = LAYOUTS.get(CONSIGNMENT_RECORD_ID);
+  if (!layout) {
+    return {
+      ok: false,
+      cause: "unknown_layout",
+      detail: CONSIGNMENT_RECORD_ID,
+    };
+  }
+  const cursor = decodeLayoutCursor(data, layout);
+  if (!cursor.ok) return cursor;
+  return {
+    ok: true,
+    value: {
+      tokenId: cursor.fields.token_id as Uint8Array,
+      seller: pubkeyBase58(cursor.fields.seller as Uint8Array),
+      agent: pubkeyBase58(cursor.fields.agent as Uint8Array),
+      asset: pubkeyBase58(cursor.fields.asset as Uint8Array),
+      kind: cursor.fields.kind as number,
+      currencyCode: cursor.fields.currency_code as Uint8Array,
+      floor: cursor.fields.floor as bigint,
+      form: cursor.fields.form as number,
+      commissionBps: cursor.fields.commission_bps as number,
+      platformFeeBps: cursor.fields.platform_fee_bps as number,
+      price: cursor.fields.price as bigint,
+      openedAt: cursor.fields.opened_at as bigint,
+      phase: cursor.fields.phase as number,
+      committedNotOffered: cursor.fields.committed_not_offered as boolean,
+      bump: cursor.fields.bump as number,
+    },
+    layout,
+    bytesRead: cursor.bytesRead,
+  };
+}
+
+export function decodeConsignmentRecordWithFieldsForTests(
+  data: Uint8Array,
+  fields: StateFieldDecl[],
+): DecodeConsignmentRecordResult {
+  const base = LAYOUTS.get(CONSIGNMENT_RECORD_ID);
+  if (!base) {
+    return {
+      ok: false,
+      cause: "unknown_layout",
+      detail: CONSIGNMENT_RECORD_ID,
+    };
+  }
+  const planted: StateLayoutEntry = { ...base, fields };
+  const cursor = decodeLayoutCursor(data, planted);
+  if (!cursor.ok) return cursor;
+  const tokenId = cursor.fields.token_id as Uint8Array | undefined;
+  const seller = cursor.fields.seller as Uint8Array | undefined;
+  const phase = cursor.fields.phase as number | undefined;
+  if (tokenId == null || seller == null || phase == null) {
+    return {
+      ok: false,
+      cause: "malformed_field",
+      detail: "planted_missing_product_fields",
+    };
+  }
+  return {
+    ok: true,
+    value: {
+      tokenId,
+      seller: pubkeyBase58(seller),
+      agent: pubkeyBase58(cursor.fields.agent as Uint8Array),
+      asset: pubkeyBase58(cursor.fields.asset as Uint8Array),
+      kind: cursor.fields.kind as number,
+      currencyCode: cursor.fields.currency_code as Uint8Array,
+      floor: cursor.fields.floor as bigint,
+      form: cursor.fields.form as number,
+      commissionBps: cursor.fields.commission_bps as number,
+      platformFeeBps: cursor.fields.platform_fee_bps as number,
+      price: cursor.fields.price as bigint,
+      openedAt: cursor.fields.opened_at as bigint,
+      phase,
+      committedNotOffered: cursor.fields.committed_not_offered as boolean,
+      bump: cursor.fields.bump as number,
+    },
+    layout: planted,
+    bytesRead: cursor.bytesRead,
+  };
+}
+
+export function decodeMandateRecord(
+  data: Uint8Array,
+): DecodeMandateRecordResult {
+  const layout = LAYOUTS.get(MANDATE_RECORD_ID);
+  if (!layout) {
+    return {
+      ok: false,
+      cause: "unknown_layout",
+      detail: MANDATE_RECORD_ID,
+    };
+  }
+  const cursor = decodeLayoutCursor(data, layout);
+  if (!cursor.ok) return cursor;
+  return {
+    ok: true,
+    value: {
+      tokenId: cursor.fields.token_id as Uint8Array,
+      agent: pubkeyBase58(cursor.fields.agent as Uint8Array),
+      expiry: cursor.fields.expiry as bigint,
+      asset: pubkeyBase58(cursor.fields.asset as Uint8Array),
+      kind: cursor.fields.kind as number,
+      currencyCode: cursor.fields.currency_code as Uint8Array,
+      floor: cursor.fields.floor as bigint,
+      form: cursor.fields.form as number,
+      commissionBps: cursor.fields.commission_bps as number,
+      active: cursor.fields.active as boolean,
+      bump: cursor.fields.bump as number,
+    },
+    layout,
+    bytesRead: cursor.bytesRead,
+  };
+}
+
+export function decodeMandateRecordWithFieldsForTests(
+  data: Uint8Array,
+  fields: StateFieldDecl[],
+): DecodeMandateRecordResult {
+  const base = LAYOUTS.get(MANDATE_RECORD_ID);
+  if (!base) {
+    return {
+      ok: false,
+      cause: "unknown_layout",
+      detail: MANDATE_RECORD_ID,
+    };
+  }
+  const planted: StateLayoutEntry = { ...base, fields };
+  const cursor = decodeLayoutCursor(data, planted);
+  if (!cursor.ok) return cursor;
+  const tokenId = cursor.fields.token_id as Uint8Array | undefined;
+  const active = cursor.fields.active as boolean | undefined;
+  if (tokenId == null || active == null) {
+    return {
+      ok: false,
+      cause: "malformed_field",
+      detail: "planted_missing_product_fields",
+    };
+  }
+  return {
+    ok: true,
+    value: {
+      tokenId,
+      agent: pubkeyBase58(cursor.fields.agent as Uint8Array),
+      expiry: cursor.fields.expiry as bigint,
+      asset: pubkeyBase58(cursor.fields.asset as Uint8Array),
+      kind: cursor.fields.kind as number,
+      currencyCode: cursor.fields.currency_code as Uint8Array,
+      floor: cursor.fields.floor as bigint,
+      form: cursor.fields.form as number,
+      commissionBps: cursor.fields.commission_bps as number,
+      active,
+      bump: cursor.fields.bump as number,
+    },
+    layout: planted,
+    bytesRead: cursor.bytesRead,
+  };
+}
+
+export function decodeRecallRecord(
+  data: Uint8Array,
+): DecodeRecallRecordResult {
+  const layout = LAYOUTS.get(RECALL_RECORD_ID);
+  if (!layout) {
+    return {
+      ok: false,
+      cause: "unknown_layout",
+      detail: RECALL_RECORD_ID,
+    };
+  }
+  const cursor = decodeLayoutCursor(data, layout);
+  if (!cursor.ok) return cursor;
+  return {
+    ok: true,
+    value: {
+      tokenId: cursor.fields.token_id as Uint8Array,
+      requestedAt: cursor.fields.requested_at as bigint,
+      bump: cursor.fields.bump as number,
+    },
+    layout,
+    bytesRead: cursor.bytesRead,
+  };
+}
+
+export function decodeRecallRecordWithFieldsForTests(
+  data: Uint8Array,
+  fields: StateFieldDecl[],
+): DecodeRecallRecordResult {
+  const base = LAYOUTS.get(RECALL_RECORD_ID);
+  if (!base) {
+    return {
+      ok: false,
+      cause: "unknown_layout",
+      detail: RECALL_RECORD_ID,
+    };
+  }
+  const planted: StateLayoutEntry = { ...base, fields };
+  const cursor = decodeLayoutCursor(data, planted);
+  if (!cursor.ok) return cursor;
+  const tokenId = cursor.fields.token_id as Uint8Array | undefined;
+  const requestedAt = cursor.fields.requested_at as bigint | undefined;
+  if (tokenId == null || requestedAt == null) {
+    return {
+      ok: false,
+      cause: "malformed_field",
+      detail: "planted_missing_product_fields",
+    };
+  }
+  return {
+    ok: true,
+    value: {
+      tokenId,
+      requestedAt,
+      bump: cursor.fields.bump as number,
+    },
+    layout: planted,
+    bytesRead: cursor.bytesRead,
+  };
+}
+
+export function decodeAuctionTermsRecord(
+  data: Uint8Array,
+): DecodeAuctionTermsRecordResult {
+  const layout = LAYOUTS.get(AUCTION_TERMS_RECORD_ID);
+  if (!layout) {
+    return {
+      ok: false,
+      cause: "unknown_layout",
+      detail: AUCTION_TERMS_RECORD_ID,
+    };
+  }
+  const cursor = decodeLayoutCursor(data, layout);
+  if (!cursor.ok) return cursor;
+  return {
+    ok: true,
+    value: {
+      tokenId: cursor.fields.token_id as Uint8Array,
+      duration: cursor.fields.duration as bigint,
+      endsAt: cursor.fields.ends_at as bigint,
+      extensionWindow: cursor.fields.extension_window as bigint,
+      protectionWindow: cursor.fields.protection_window as bigint,
+      abandonmentWindow: cursor.fields.abandonment_window as bigint,
+      minIncrementBps: cursor.fields.min_increment_bps as number,
+      highestBidder: pubkeyBase58(cursor.fields.highest_bidder as Uint8Array),
+      highestBid: cursor.fields.highest_bid as bigint,
+      bump: cursor.fields.bump as number,
+    },
+    layout,
+    bytesRead: cursor.bytesRead,
+  };
+}
+
+export function decodeAuctionTermsRecordWithFieldsForTests(
+  data: Uint8Array,
+  fields: StateFieldDecl[],
+): DecodeAuctionTermsRecordResult {
+  const base = LAYOUTS.get(AUCTION_TERMS_RECORD_ID);
+  if (!base) {
+    return {
+      ok: false,
+      cause: "unknown_layout",
+      detail: AUCTION_TERMS_RECORD_ID,
+    };
+  }
+  const planted: StateLayoutEntry = { ...base, fields };
+  const cursor = decodeLayoutCursor(data, planted);
+  if (!cursor.ok) return cursor;
+  const tokenId = cursor.fields.token_id as Uint8Array | undefined;
+  const endsAt = cursor.fields.ends_at as bigint | undefined;
+  if (tokenId == null || endsAt == null) {
+    return {
+      ok: false,
+      cause: "malformed_field",
+      detail: "planted_missing_product_fields",
+    };
+  }
+  return {
+    ok: true,
+    value: {
+      tokenId,
+      duration: cursor.fields.duration as bigint,
+      endsAt,
+      extensionWindow: cursor.fields.extension_window as bigint,
+      protectionWindow: cursor.fields.protection_window as bigint,
+      abandonmentWindow: cursor.fields.abandonment_window as bigint,
+      minIncrementBps: cursor.fields.min_increment_bps as number,
+      highestBidder: pubkeyBase58(cursor.fields.highest_bidder as Uint8Array),
+      highestBid: cursor.fields.highest_bid as bigint,
+      bump: cursor.fields.bump as number,
+    },
+    layout: planted,
+    bytesRead: cursor.bytesRead,
+  };
+}
+
+export function decodeHoldRecord(data: Uint8Array): DecodeHoldRecordResult {
+  const layout = LAYOUTS.get(HOLD_RECORD_ID);
+  if (!layout) {
+    return {
+      ok: false,
+      cause: "unknown_layout",
+      detail: HOLD_RECORD_ID,
+    };
+  }
+  const cursor = decodeLayoutCursor(data, layout);
+  if (!cursor.ok) return cursor;
+  return {
+    ok: true,
+    value: {
+      tokenId: cursor.fields.token_id as Uint8Array,
+      buyer: pubkeyBase58(cursor.fields.buyer as Uint8Array),
+      gross: cursor.fields.gross as bigint,
+      protectionEndsAt: cursor.fields.protection_ends_at as bigint,
+      frozenRemaining: cursor.fields.frozen_remaining as bigint,
+      reversalPending: cursor.fields.reversal_pending as boolean,
+      abandonmentDeadline: cursor.fields.abandonment_deadline as bigint,
+      abandonmentWindow: cursor.fields.abandonment_window as bigint,
+      bump: cursor.fields.bump as number,
+    },
+    layout,
+    bytesRead: cursor.bytesRead,
+  };
+}
+
+export function decodeHoldRecordWithFieldsForTests(
+  data: Uint8Array,
+  fields: StateFieldDecl[],
+): DecodeHoldRecordResult {
+  const base = LAYOUTS.get(HOLD_RECORD_ID);
+  if (!base) {
+    return {
+      ok: false,
+      cause: "unknown_layout",
+      detail: HOLD_RECORD_ID,
+    };
+  }
+  const planted: StateLayoutEntry = { ...base, fields };
+  const cursor = decodeLayoutCursor(data, planted);
+  if (!cursor.ok) return cursor;
+  const tokenId = cursor.fields.token_id as Uint8Array | undefined;
+  const buyer = cursor.fields.buyer as Uint8Array | undefined;
+  if (tokenId == null || buyer == null) {
+    return {
+      ok: false,
+      cause: "malformed_field",
+      detail: "planted_missing_product_fields",
+    };
+  }
+  return {
+    ok: true,
+    value: {
+      tokenId,
+      buyer: pubkeyBase58(buyer),
+      gross: cursor.fields.gross as bigint,
+      protectionEndsAt: cursor.fields.protection_ends_at as bigint,
+      frozenRemaining: cursor.fields.frozen_remaining as bigint,
+      reversalPending: cursor.fields.reversal_pending as boolean,
+      abandonmentDeadline: cursor.fields.abandonment_deadline as bigint,
+      abandonmentWindow: cursor.fields.abandonment_window as bigint,
+      bump: cursor.fields.bump as number,
+    },
+    layout: planted,
     bytesRead: cursor.bytesRead,
   };
 }

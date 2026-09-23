@@ -9,20 +9,26 @@
 //! - Fixed-padded (`PassportState`, `StakeAccount`): `golden_byte_length` is
 //!   the padded golden (`SPACE`); `modelled_byte_length` is the borsh payload.
 //! - Exact (`ChallengeAccount`, `EncumbranceAnswer`, `PassportBinding`,
-//!   `CommerceConfig`, `AscendingConfig`): both lengths == Borsh payload ==
-//!   program SPACE; no pad.
+//!   `CommerceConfig`, `AscendingConfig`, `ConsignmentRecord`, `MandateRecord`,
+//!   `RecallRecord`, `AuctionTermsRecord`, `HoldRecord`): both lengths == Borsh
+//!   payload == program SPACE; no pad.
 //! - Variable sample (`PassportConfig`): no program SPACE — `golden_byte_length`
 //!   is this sample's full Borsh length; modelled walks next_token_id +
 //!   encumbrance_sources + bump (fully modelled).
 
 use kargain_bonded_challenge::{ChallengeAccount, CHALLENGE_ACCOUNT_DISCRIMINATOR};
 use kargain_consignment_base::{
-    CommerceConfig, PassportBinding, CONFIG_DISCRIMINATOR, PASSPORT_BINDING_DISCRIMINATOR,
+    CommerceConfig, Compensation, CompensationForm, ConsignmentRecord, Denomination,
+    DenominationKind, MandateRecord, PassportBinding, Phase, RecallRecord,
+    CONFIG_DISCRIMINATOR, CONSIGNMENT_DISCRIMINATOR, MANDATE_DISCRIMINATOR,
+    PASSPORT_BINDING_DISCRIMINATOR, RECALL_DISCRIMINATOR,
 };
 use kargain_encumbrance::{
     EncumbranceAnswer, ENCUMBRANCE_ANSWER_DISCRIMINATOR,
 };
-use kar_ascending::ix::{AscendingConfig, ASC_CONFIG_DISC};
+use kar_ascending::ix::{
+    AscendingConfig, AuctionTermsRecord, HoldRecord, ASC_CONFIG_DISC, AUCTION_DISC, HOLD_DISC,
+};
 use kar_passport::state::{
     EncumbranceSourceEntry, PassportConfig, PassportState, Status,
     PASSPORT_CONFIG_DISCRIMINATOR, PASSPORT_STATE_DISCRIMINATOR, PASSPORT_STATE_SPACE,
@@ -632,6 +638,361 @@ fn passport_binding_layout() -> StateLayoutEntry {
     }
 }
 
+fn consignment_record_fields() -> Vec<StateFieldDecl> {
+    vec![
+        wrap_field(field_fixed("discriminator", 8)),
+        wrap_field(field_fixed("token_id", 32)),
+        wrap_field(field_fixed("seller", 32)),
+        wrap_field(field_fixed("agent", 32)),
+        wrap_field(field_fixed("asset", 32)),
+        wrap_field(field_u8("kind")),
+        wrap_field(field_fixed("currency_code", 32)),
+        wrap_field(field_u64("floor")),
+        wrap_field(field_u8("form")),
+        wrap_field(field_u16("commission_bps")),
+        wrap_field(field_u16("platform_fee_bps")),
+        wrap_field(field_u64("price")),
+        wrap_field(field_u64("opened_at")),
+        wrap_field(field_u8("phase")),
+        wrap_field(field_bool("committed_not_offered")),
+        wrap_field(field_u8("bump")),
+    ]
+}
+
+fn sample_consignment_record() -> (ConsignmentRecord, Map<String, Value>) {
+    let token_id = [0xb1u8; 32];
+    let seller = [0xb2u8; 32];
+    let agent = [0xb3u8; 32];
+    let asset = [0xb4u8; 32];
+    let currency_code = [0xb5u8; 32];
+    let rec = ConsignmentRecord {
+        discriminator: CONSIGNMENT_DISCRIMINATOR,
+        token_id,
+        seller,
+        agent,
+        asset,
+        denomination: Denomination {
+            kind: DenominationKind::Asset as u8,
+            currency_code,
+        },
+        floor: 1_000_000,
+        compensation: Compensation {
+            form: CompensationForm::Margin as u8,
+            commission_bps: 0,
+        },
+        platform_fee_bps: 10,
+        price: 1_000_000,
+        opened_at: 1_700_000_000,
+        phase: Phase::Offered as u8,
+        committed_not_offered: false,
+        bump: 251,
+    };
+    let mut sample = Map::new();
+    sample.insert(
+        "discriminator".into(),
+        json!(hex_of(&CONSIGNMENT_DISCRIMINATOR)),
+    );
+    sample.insert("token_id".into(), json!(hex_of(&token_id)));
+    sample.insert("seller".into(), json!(hex_of(&seller)));
+    sample.insert("agent".into(), json!(hex_of(&agent)));
+    sample.insert("asset".into(), json!(hex_of(&asset)));
+    sample.insert("kind".into(), json!(DenominationKind::Asset as u8));
+    sample.insert("currency_code".into(), json!(hex_of(&currency_code)));
+    sample.insert("floor".into(), json!(1_000_000u64));
+    sample.insert("form".into(), json!(CompensationForm::Margin as u8));
+    sample.insert("commission_bps".into(), json!(0u16));
+    sample.insert("platform_fee_bps".into(), json!(10u16));
+    sample.insert("price".into(), json!(1_000_000u64));
+    sample.insert("opened_at".into(), json!(1_700_000_000u64));
+    sample.insert("phase".into(), json!(Phase::Offered as u8));
+    sample.insert("committed_not_offered".into(), json!(false));
+    sample.insert("bump".into(), json!(251u8));
+    (rec, sample)
+}
+
+fn consignment_record_layout() -> StateLayoutEntry {
+    let (rec, sample) = sample_consignment_record();
+    let payload = borsh::to_vec(&rec).expect("borsh serialize ConsignmentRecord");
+    assert_eq!(
+        payload.len(),
+        ConsignmentRecord::SPACE,
+        "ConsignmentRecord borsh payload must equal SPACE (no padding)"
+    );
+    assert_eq!(payload.len(), 201);
+    StateLayoutEntry {
+        id: "kargain-consignment-base/ConsignmentRecord".into(),
+        program: "kargain-consignment-base".into(),
+        golden_byte_length: ConsignmentRecord::SPACE,
+        discriminator_hex: hex_of(&CONSIGNMENT_DISCRIMINATOR),
+        fields: consignment_record_fields(),
+        sample,
+        golden_hex: hex_of(&payload),
+        modelled_byte_length: ConsignmentRecord::SPACE,
+    }
+}
+
+fn mandate_record_fields() -> Vec<StateFieldDecl> {
+    vec![
+        wrap_field(field_fixed("discriminator", 8)),
+        wrap_field(field_fixed("token_id", 32)),
+        wrap_field(field_fixed("agent", 32)),
+        wrap_field(field_u64("expiry")),
+        wrap_field(field_fixed("asset", 32)),
+        wrap_field(field_u8("kind")),
+        wrap_field(field_fixed("currency_code", 32)),
+        wrap_field(field_u64("floor")),
+        wrap_field(field_u8("form")),
+        wrap_field(field_u16("commission_bps")),
+        wrap_field(field_bool("active")),
+        wrap_field(field_u8("bump")),
+    ]
+}
+
+fn sample_mandate_record() -> (MandateRecord, Map<String, Value>) {
+    let token_id = [0xc1u8; 32];
+    let agent = [0xc2u8; 32];
+    let asset = [0xc3u8; 32];
+    let currency_code = [0xc4u8; 32];
+    let rec = MandateRecord {
+        discriminator: MANDATE_DISCRIMINATOR,
+        token_id,
+        agent,
+        expiry: 1_800_000_000,
+        asset,
+        denomination: Denomination {
+            kind: DenominationKind::Fiat as u8,
+            currency_code,
+        },
+        floor: 500_000,
+        compensation: Compensation {
+            form: CompensationForm::Commission as u8,
+            commission_bps: 250,
+        },
+        active: true,
+        bump: 252,
+    };
+    let mut sample = Map::new();
+    sample.insert(
+        "discriminator".into(),
+        json!(hex_of(&MANDATE_DISCRIMINATOR)),
+    );
+    sample.insert("token_id".into(), json!(hex_of(&token_id)));
+    sample.insert("agent".into(), json!(hex_of(&agent)));
+    sample.insert("expiry".into(), json!(1_800_000_000u64));
+    sample.insert("asset".into(), json!(hex_of(&asset)));
+    sample.insert("kind".into(), json!(DenominationKind::Fiat as u8));
+    sample.insert("currency_code".into(), json!(hex_of(&currency_code)));
+    sample.insert("floor".into(), json!(500_000u64));
+    sample.insert("form".into(), json!(CompensationForm::Commission as u8));
+    sample.insert("commission_bps".into(), json!(250u16));
+    sample.insert("active".into(), json!(true));
+    sample.insert("bump".into(), json!(252u8));
+    (rec, sample)
+}
+
+fn mandate_record_layout() -> StateLayoutEntry {
+    let (rec, sample) = sample_mandate_record();
+    let payload = borsh::to_vec(&rec).expect("borsh serialize MandateRecord");
+    assert_eq!(
+        payload.len(),
+        MandateRecord::SPACE,
+        "MandateRecord borsh payload must equal SPACE (no padding)"
+    );
+    assert_eq!(payload.len(), 158);
+    StateLayoutEntry {
+        id: "kargain-consignment-base/MandateRecord".into(),
+        program: "kargain-consignment-base".into(),
+        golden_byte_length: MandateRecord::SPACE,
+        discriminator_hex: hex_of(&MANDATE_DISCRIMINATOR),
+        fields: mandate_record_fields(),
+        sample,
+        golden_hex: hex_of(&payload),
+        modelled_byte_length: MandateRecord::SPACE,
+    }
+}
+
+fn recall_record_fields() -> Vec<StateFieldDecl> {
+    vec![
+        wrap_field(field_fixed("discriminator", 8)),
+        wrap_field(field_fixed("token_id", 32)),
+        wrap_field(field_u64("requested_at")),
+        wrap_field(field_u8("bump")),
+    ]
+}
+
+fn sample_recall_record() -> (RecallRecord, Map<String, Value>) {
+    let token_id = [0xd1u8; 32];
+    let rec = RecallRecord {
+        discriminator: RECALL_DISCRIMINATOR,
+        token_id,
+        requested_at: 1_750_000_000,
+        bump: 253,
+    };
+    let mut sample = Map::new();
+    sample.insert(
+        "discriminator".into(),
+        json!(hex_of(&RECALL_DISCRIMINATOR)),
+    );
+    sample.insert("token_id".into(), json!(hex_of(&token_id)));
+    sample.insert("requested_at".into(), json!(1_750_000_000u64));
+    sample.insert("bump".into(), json!(253u8));
+    (rec, sample)
+}
+
+fn recall_record_layout() -> StateLayoutEntry {
+    let (rec, sample) = sample_recall_record();
+    let payload = borsh::to_vec(&rec).expect("borsh serialize RecallRecord");
+    assert_eq!(
+        payload.len(),
+        RecallRecord::SPACE,
+        "RecallRecord borsh payload must equal SPACE (no padding)"
+    );
+    assert_eq!(payload.len(), 49);
+    StateLayoutEntry {
+        id: "kargain-consignment-base/RecallRecord".into(),
+        program: "kargain-consignment-base".into(),
+        golden_byte_length: RecallRecord::SPACE,
+        discriminator_hex: hex_of(&RECALL_DISCRIMINATOR),
+        fields: recall_record_fields(),
+        sample,
+        golden_hex: hex_of(&payload),
+        modelled_byte_length: RecallRecord::SPACE,
+    }
+}
+
+fn auction_terms_record_fields() -> Vec<StateFieldDecl> {
+    vec![
+        wrap_field(field_fixed("discriminator", 8)),
+        wrap_field(field_fixed("token_id", 32)),
+        wrap_field(field_u64("duration")),
+        wrap_field(field_u64("ends_at")),
+        wrap_field(field_u64("extension_window")),
+        wrap_field(field_u64("protection_window")),
+        wrap_field(field_u64("abandonment_window")),
+        wrap_field(field_u16("min_increment_bps")),
+        wrap_field(field_fixed("highest_bidder", 32)),
+        wrap_field(field_u64("highest_bid")),
+        wrap_field(field_u8("bump")),
+    ]
+}
+
+fn sample_auction_terms_record() -> (AuctionTermsRecord, Map<String, Value>) {
+    let token_id = [0xe1u8; 32];
+    let highest_bidder = [0xe2u8; 32];
+    let rec = AuctionTermsRecord {
+        discriminator: AUCTION_DISC,
+        token_id,
+        duration: 86_400,
+        ends_at: 1_760_000_000,
+        extension_window: 600,
+        protection_window: 14 * 86_400,
+        abandonment_window: 7 * 86_400,
+        min_increment_bps: 100,
+        highest_bidder,
+        highest_bid: 2_000_000,
+        bump: 254,
+    };
+    let mut sample = Map::new();
+    sample.insert("discriminator".into(), json!(hex_of(&AUCTION_DISC)));
+    sample.insert("token_id".into(), json!(hex_of(&token_id)));
+    sample.insert("duration".into(), json!(86_400u64));
+    sample.insert("ends_at".into(), json!(1_760_000_000u64));
+    sample.insert("extension_window".into(), json!(600u64));
+    sample.insert("protection_window".into(), json!((14 * 86_400) as u64));
+    sample.insert("abandonment_window".into(), json!((7 * 86_400) as u64));
+    sample.insert("min_increment_bps".into(), json!(100u16));
+    sample.insert("highest_bidder".into(), json!(hex_of(&highest_bidder)));
+    sample.insert("highest_bid".into(), json!(2_000_000u64));
+    sample.insert("bump".into(), json!(254u8));
+    (rec, sample)
+}
+
+fn auction_terms_record_layout() -> StateLayoutEntry {
+    let (rec, sample) = sample_auction_terms_record();
+    let payload = borsh::to_vec(&rec).expect("borsh serialize AuctionTermsRecord");
+    assert_eq!(
+        payload.len(),
+        AuctionTermsRecord::SPACE,
+        "AuctionTermsRecord borsh payload must equal SPACE (no padding)"
+    );
+    assert_eq!(payload.len(), 123);
+    StateLayoutEntry {
+        id: "kar-ascending/AuctionTermsRecord".into(),
+        program: "kar-ascending".into(),
+        golden_byte_length: AuctionTermsRecord::SPACE,
+        discriminator_hex: hex_of(&AUCTION_DISC),
+        fields: auction_terms_record_fields(),
+        sample,
+        golden_hex: hex_of(&payload),
+        modelled_byte_length: AuctionTermsRecord::SPACE,
+    }
+}
+
+fn hold_record_fields() -> Vec<StateFieldDecl> {
+    vec![
+        wrap_field(field_fixed("discriminator", 8)),
+        wrap_field(field_fixed("token_id", 32)),
+        wrap_field(field_fixed("buyer", 32)),
+        wrap_field(field_u64("gross")),
+        wrap_field(field_u64("protection_ends_at")),
+        wrap_field(field_u64("frozen_remaining")),
+        wrap_field(field_bool("reversal_pending")),
+        wrap_field(field_u64("abandonment_deadline")),
+        wrap_field(field_u64("abandonment_window")),
+        wrap_field(field_u8("bump")),
+    ]
+}
+
+fn sample_hold_record() -> (HoldRecord, Map<String, Value>) {
+    let token_id = [0xf1u8; 32];
+    let buyer = [0xf2u8; 32];
+    let rec = HoldRecord {
+        discriminator: HOLD_DISC,
+        token_id,
+        buyer,
+        gross: 2_000_000,
+        protection_ends_at: 1_770_000_000,
+        frozen_remaining: 1_500_000,
+        reversal_pending: false,
+        abandonment_deadline: 1_780_000_000,
+        abandonment_window: 7 * 86_400,
+        bump: 255,
+    };
+    let mut sample = Map::new();
+    sample.insert("discriminator".into(), json!(hex_of(&HOLD_DISC)));
+    sample.insert("token_id".into(), json!(hex_of(&token_id)));
+    sample.insert("buyer".into(), json!(hex_of(&buyer)));
+    sample.insert("gross".into(), json!(2_000_000u64));
+    sample.insert("protection_ends_at".into(), json!(1_770_000_000u64));
+    sample.insert("frozen_remaining".into(), json!(1_500_000u64));
+    sample.insert("reversal_pending".into(), json!(false));
+    sample.insert("abandonment_deadline".into(), json!(1_780_000_000u64));
+    sample.insert("abandonment_window".into(), json!((7 * 86_400) as u64));
+    sample.insert("bump".into(), json!(255u8));
+    (rec, sample)
+}
+
+fn hold_record_layout() -> StateLayoutEntry {
+    let (rec, sample) = sample_hold_record();
+    let payload = borsh::to_vec(&rec).expect("borsh serialize HoldRecord");
+    assert_eq!(
+        payload.len(),
+        HoldRecord::SPACE,
+        "HoldRecord borsh payload must equal SPACE (no padding)"
+    );
+    assert_eq!(payload.len(), 114);
+    StateLayoutEntry {
+        id: "kar-ascending/HoldRecord".into(),
+        program: "kar-ascending".into(),
+        golden_byte_length: HoldRecord::SPACE,
+        discriminator_hex: hex_of(&HOLD_DISC),
+        fields: hold_record_fields(),
+        sample,
+        golden_hex: hex_of(&payload),
+        modelled_byte_length: HoldRecord::SPACE,
+    }
+}
+
 pub fn build_state_manifest() -> StateManifest {
     StateManifest {
         version: 1,
@@ -644,6 +1005,11 @@ pub fn build_state_manifest() -> StateManifest {
             passport_binding_layout(),
             commerce_config_layout(),
             ascending_config_layout(),
+            consignment_record_layout(),
+            mandate_record_layout(),
+            recall_record_layout(),
+            auction_terms_record_layout(),
+            hold_record_layout(),
         ],
     }
 }
@@ -688,9 +1054,9 @@ mod tests {
     }
 
     #[test]
-    fn eight_layouts_including_mode_configs() {
+    fn thirteen_layouts_including_mode_commerce_records() {
         let m = build_state_manifest();
-        assert_eq!(m.layouts.len(), 8);
+        assert_eq!(m.layouts.len(), 13);
         for layout in &m.layouts {
             assert_eq!(
                 layout.golden_byte_length,
@@ -782,6 +1148,43 @@ mod tests {
         assert_eq!(m.layouts[7].id, "kar-ascending/AscendingConfig");
         assert_eq!(m.layouts[7].golden_byte_length, AscendingConfig::SPACE);
         assert_eq!(m.layouts[7].modelled_byte_length, AscendingConfig::SPACE);
+
+        assert_eq!(
+            m.layouts[8].id,
+            "kargain-consignment-base/ConsignmentRecord"
+        );
+        assert_eq!(m.layouts[8].golden_byte_length, ConsignmentRecord::SPACE);
+        assert_eq!(m.layouts[8].modelled_byte_length, ConsignmentRecord::SPACE);
+        assert_eq!(m.layouts[8].golden_byte_length, 201);
+
+        assert_eq!(
+            m.layouts[9].id,
+            "kargain-consignment-base/MandateRecord"
+        );
+        assert_eq!(m.layouts[9].golden_byte_length, MandateRecord::SPACE);
+        assert_eq!(m.layouts[9].modelled_byte_length, MandateRecord::SPACE);
+        assert_eq!(m.layouts[9].golden_byte_length, 158);
+
+        assert_eq!(
+            m.layouts[10].id,
+            "kargain-consignment-base/RecallRecord"
+        );
+        assert_eq!(m.layouts[10].golden_byte_length, RecallRecord::SPACE);
+        assert_eq!(m.layouts[10].modelled_byte_length, RecallRecord::SPACE);
+        assert_eq!(m.layouts[10].golden_byte_length, 49);
+
+        assert_eq!(m.layouts[11].id, "kar-ascending/AuctionTermsRecord");
+        assert_eq!(m.layouts[11].golden_byte_length, AuctionTermsRecord::SPACE);
+        assert_eq!(
+            m.layouts[11].modelled_byte_length,
+            AuctionTermsRecord::SPACE
+        );
+        assert_eq!(m.layouts[11].golden_byte_length, 123);
+
+        assert_eq!(m.layouts[12].id, "kar-ascending/HoldRecord");
+        assert_eq!(m.layouts[12].golden_byte_length, HoldRecord::SPACE);
+        assert_eq!(m.layouts[12].modelled_byte_length, HoldRecord::SPACE);
+        assert_eq!(m.layouts[12].golden_byte_length, 114);
     }
 
     #[test]

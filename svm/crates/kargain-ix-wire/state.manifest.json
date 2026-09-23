@@ -456,6 +456,350 @@
       },
       "goldenHex": "6b705f6173636667b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b20a00b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b30001b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b540420f0000000000007512000000000001f9",
       "modelledByteLength": 190
+    },
+    {
+      "id": "kargain-consignment-base/ConsignmentRecord",
+      "program": "kargain-consignment-base",
+      "goldenByteLength": 201,
+      "discriminatorHex": "6b705f6373670000",
+      "fields": [
+        {
+          "name": "discriminator",
+          "type": "fixed_bytes",
+          "len": 8
+        },
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "seller",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "agent",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "asset",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "kind",
+          "type": "u8"
+        },
+        {
+          "name": "currency_code",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "floor",
+          "type": "u64"
+        },
+        {
+          "name": "form",
+          "type": "u8"
+        },
+        {
+          "name": "commission_bps",
+          "type": "u16"
+        },
+        {
+          "name": "platform_fee_bps",
+          "type": "u16"
+        },
+        {
+          "name": "price",
+          "type": "u64"
+        },
+        {
+          "name": "opened_at",
+          "type": "u64"
+        },
+        {
+          "name": "phase",
+          "type": "u8"
+        },
+        {
+          "name": "committed_not_offered",
+          "type": "bool"
+        },
+        {
+          "name": "bump",
+          "type": "u8"
+        }
+      ],
+      "sample": {
+        "agent": "b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3",
+        "asset": "b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4",
+        "bump": 251,
+        "commission_bps": 0,
+        "committed_not_offered": false,
+        "currency_code": "b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5",
+        "discriminator": "6b705f6373670000",
+        "floor": 1000000,
+        "form": 0,
+        "kind": 0,
+        "opened_at": 1700000000,
+        "phase": 1,
+        "platform_fee_bps": 10,
+        "price": 1000000,
+        "seller": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+        "token_id": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+      },
+      "goldenHex": "6b705f6373670000b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b400b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b540420f00000000000000000a0040420f000000000000f15365000000000100fb",
+      "modelledByteLength": 201
+    },
+    {
+      "id": "kargain-consignment-base/MandateRecord",
+      "program": "kargain-consignment-base",
+      "goldenByteLength": 158,
+      "discriminatorHex": "6b705f6d64740000",
+      "fields": [
+        {
+          "name": "discriminator",
+          "type": "fixed_bytes",
+          "len": 8
+        },
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "agent",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "expiry",
+          "type": "u64"
+        },
+        {
+          "name": "asset",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "kind",
+          "type": "u8"
+        },
+        {
+          "name": "currency_code",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "floor",
+          "type": "u64"
+        },
+        {
+          "name": "form",
+          "type": "u8"
+        },
+        {
+          "name": "commission_bps",
+          "type": "u16"
+        },
+        {
+          "name": "active",
+          "type": "bool"
+        },
+        {
+          "name": "bump",
+          "type": "u8"
+        }
+      ],
+      "sample": {
+        "active": true,
+        "agent": "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2",
+        "asset": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+        "bump": 252,
+        "commission_bps": 250,
+        "currency_code": "c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4",
+        "discriminator": "6b705f6d64740000",
+        "expiry": 1800000000,
+        "floor": 500000,
+        "form": 1,
+        "kind": 1,
+        "token_id": "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+      },
+      "goldenHex": "6b705f6d64740000c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c200d2496b00000000c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c301c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c420a107000000000001fa0001fc",
+      "modelledByteLength": 158
+    },
+    {
+      "id": "kargain-consignment-base/RecallRecord",
+      "program": "kargain-consignment-base",
+      "goldenByteLength": 49,
+      "discriminatorHex": "6b705f72636c0000",
+      "fields": [
+        {
+          "name": "discriminator",
+          "type": "fixed_bytes",
+          "len": 8
+        },
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "requested_at",
+          "type": "u64"
+        },
+        {
+          "name": "bump",
+          "type": "u8"
+        }
+      ],
+      "sample": {
+        "bump": 253,
+        "discriminator": "6b705f72636c0000",
+        "requested_at": 1750000000,
+        "token_id": "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1"
+      },
+      "goldenHex": "6b705f72636c0000d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d180e14e6800000000fd",
+      "modelledByteLength": 49
+    },
+    {
+      "id": "kar-ascending/AuctionTermsRecord",
+      "program": "kar-ascending",
+      "goldenByteLength": 123,
+      "discriminatorHex": "6b705f6175637400",
+      "fields": [
+        {
+          "name": "discriminator",
+          "type": "fixed_bytes",
+          "len": 8
+        },
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "duration",
+          "type": "u64"
+        },
+        {
+          "name": "ends_at",
+          "type": "u64"
+        },
+        {
+          "name": "extension_window",
+          "type": "u64"
+        },
+        {
+          "name": "protection_window",
+          "type": "u64"
+        },
+        {
+          "name": "abandonment_window",
+          "type": "u64"
+        },
+        {
+          "name": "min_increment_bps",
+          "type": "u16"
+        },
+        {
+          "name": "highest_bidder",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "highest_bid",
+          "type": "u64"
+        },
+        {
+          "name": "bump",
+          "type": "u8"
+        }
+      ],
+      "sample": {
+        "abandonment_window": 604800,
+        "bump": 254,
+        "discriminator": "6b705f6175637400",
+        "duration": 86400,
+        "ends_at": 1760000000,
+        "extension_window": 600,
+        "highest_bid": 2000000,
+        "highest_bidder": "e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2",
+        "min_increment_bps": 100,
+        "protection_window": 1209600,
+        "token_id": "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1"
+      },
+      "goldenHex": "6b705f6175637400e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e180510100000000000078e7680000000058020000000000000075120000000000803a0900000000006400e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e280841e0000000000fe",
+      "modelledByteLength": 123
+    },
+    {
+      "id": "kar-ascending/HoldRecord",
+      "program": "kar-ascending",
+      "goldenByteLength": 114,
+      "discriminatorHex": "6b705f686f6c6400",
+      "fields": [
+        {
+          "name": "discriminator",
+          "type": "fixed_bytes",
+          "len": 8
+        },
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "buyer",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "gross",
+          "type": "u64"
+        },
+        {
+          "name": "protection_ends_at",
+          "type": "u64"
+        },
+        {
+          "name": "frozen_remaining",
+          "type": "u64"
+        },
+        {
+          "name": "reversal_pending",
+          "type": "bool"
+        },
+        {
+          "name": "abandonment_deadline",
+          "type": "u64"
+        },
+        {
+          "name": "abandonment_window",
+          "type": "u64"
+        },
+        {
+          "name": "bump",
+          "type": "u8"
+        }
+      ],
+      "sample": {
+        "abandonment_deadline": 1780000000,
+        "abandonment_window": 604800,
+        "bump": 255,
+        "buyer": "f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2",
+        "discriminator": "6b705f686f6c6400",
+        "frozen_remaining": 1500000,
+        "gross": 2000000,
+        "protection_ends_at": 1770000000,
+        "reversal_pending": false,
+        "token_id": "f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1"
+      },
+      "goldenHex": "6b705f686f6c6400f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f280841e0000000000800e80690000000060e31600000000000000a5186a00000000803a090000000000ff",
+      "modelledByteLength": 114
     }
   ]
 }

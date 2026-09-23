@@ -34,6 +34,21 @@ import {
   ascendingConfigLayout,
   decodeCommerceConfig,
   decodeAscendingConfig,
+  consignmentRecordLayout,
+  mandateRecordLayout,
+  recallRecordLayout,
+  auctionTermsRecordLayout,
+  holdRecordLayout,
+  decodeConsignmentRecord,
+  decodeMandateRecord,
+  decodeRecallRecord,
+  decodeAuctionTermsRecord,
+  decodeHoldRecord,
+  decodeConsignmentRecordWithFieldsForTests,
+  decodeMandateRecordWithFieldsForTests,
+  decodeRecallRecordWithFieldsForTests,
+  decodeAuctionTermsRecordWithFieldsForTests,
+  decodeHoldRecordWithFieldsForTests,
   encodePassportConfigAccount,
   encodePassportConfigWithSources,
   encumbranceAnswerLayout,
@@ -100,6 +115,31 @@ function decodeAscendingCounted(data: Uint8Array) {
   return decodeAscendingConfig(data);
 }
 
+function decodeConsignmentCounted(data: Uint8Array) {
+  DECODE_EXERCISED += 1;
+  return decodeConsignmentRecord(data);
+}
+
+function decodeMandateCounted(data: Uint8Array) {
+  DECODE_EXERCISED += 1;
+  return decodeMandateRecord(data);
+}
+
+function decodeRecallCounted(data: Uint8Array) {
+  DECODE_EXERCISED += 1;
+  return decodeRecallRecord(data);
+}
+
+function decodeAuctionTermsCounted(data: Uint8Array) {
+  DECODE_EXERCISED += 1;
+  return decodeAuctionTermsRecord(data);
+}
+
+function decodeHoldCounted(data: Uint8Array) {
+  DECODE_EXERCISED += 1;
+  return decodeHoldRecord(data);
+}
+
 function loadManifest(): StateManifest {
   return JSON.parse(
     readFileSync(path.join(ROOT, MANIFEST_REL), "utf8"),
@@ -109,9 +149,9 @@ function loadManifest(): StateManifest {
 const base58Expected = (hex: string) => encodeSvmPubkeyBytes(hexToBytes(hex));
 
 describe("svm account-state decode policy", () => {
-  it("manifest has eight layouts including mode configs + full PassportConfig", () => {
+  it("manifest has thirteen layouts including five mode commerce records", () => {
     const committed = loadManifest();
-    assert.equal(committed.layouts.length, 8);
+    assert.equal(committed.layouts.length, 13);
     assert.equal(committed.layouts[0]!.id, "kar-passport/PassportState");
     assert.equal(committed.layouts[0]!.goldenByteLength, 256);
     assert.ok(committed.layouts[0]!.modelledByteLength < 256);
@@ -170,8 +210,42 @@ describe("svm account-state decode policy", () => {
       committed.layouts[7]!.modelledByteLength,
     );
 
+    assert.equal(
+      committed.layouts[8]!.id,
+      "kargain-consignment-base/ConsignmentRecord",
+    );
+    assert.equal(committed.layouts[8]!.goldenByteLength, 201);
+    assert.equal(committed.layouts[8]!.modelledByteLength, 201);
+    assert.equal(committed.layouts[8]!.discriminatorHex, "6b705f6373670000");
+
+    assert.equal(
+      committed.layouts[9]!.id,
+      "kargain-consignment-base/MandateRecord",
+    );
+    assert.equal(committed.layouts[9]!.goldenByteLength, 158);
+    assert.equal(committed.layouts[9]!.modelledByteLength, 158);
+    assert.equal(committed.layouts[9]!.discriminatorHex, "6b705f6d64740000");
+
+    assert.equal(
+      committed.layouts[10]!.id,
+      "kargain-consignment-base/RecallRecord",
+    );
+    assert.equal(committed.layouts[10]!.goldenByteLength, 49);
+    assert.equal(committed.layouts[10]!.modelledByteLength, 49);
+    assert.equal(committed.layouts[10]!.discriminatorHex, "6b705f72636c0000");
+
+    assert.equal(committed.layouts[11]!.id, "kar-ascending/AuctionTermsRecord");
+    assert.equal(committed.layouts[11]!.goldenByteLength, 123);
+    assert.equal(committed.layouts[11]!.modelledByteLength, 123);
+    assert.equal(committed.layouts[11]!.discriminatorHex, "6b705f6175637400");
+
+    assert.equal(committed.layouts[12]!.id, "kar-ascending/HoldRecord");
+    assert.equal(committed.layouts[12]!.goldenByteLength, 114);
+    assert.equal(committed.layouts[12]!.modelledByteLength, 114);
+    assert.equal(committed.layouts[12]!.discriminatorHex, "6b705f686f6c6400");
+
     const layouts = stateManifestLayouts();
-    assert.equal(layouts.length, 8);
+    assert.equal(layouts.length, 13);
     assert.deepEqual(layouts[0], passportStateLayout());
     assert.deepEqual(layouts[1], stakeAccountLayout());
     assert.deepEqual(layouts[2], challengeAccountLayout());
@@ -180,6 +254,11 @@ describe("svm account-state decode policy", () => {
     assert.deepEqual(layouts[5], passportBindingLayout());
     assert.deepEqual(layouts[6], commerceConfigLayout());
     assert.deepEqual(layouts[7], ascendingConfigLayout());
+    assert.deepEqual(layouts[8], consignmentRecordLayout());
+    assert.deepEqual(layouts[9], mandateRecordLayout());
+    assert.deepEqual(layouts[10], recallRecordLayout());
+    assert.deepEqual(layouts[11], auctionTermsRecordLayout());
+    assert.deepEqual(layouts[12], holdRecordLayout());
 
     const raw = readFileSync(path.join(ROOT, MANIFEST_REL), "utf8");
     assert.doesNotMatch(raw, /"accountSpace"/);
@@ -376,6 +455,237 @@ describe("svm account-state decode policy", () => {
     assert.equal(ascDecoded.value.challengeWindow, 1_209_600n);
     assert.equal(ascDecoded.value.challengeConfigured, true);
     assert.equal(ascDecoded.value.bump, 249);
+  });
+
+  it("five mode commerce record goldens decode sample surfaces", () => {
+    const consignment = consignmentRecordLayout();
+    const c = decodeConsignmentCounted(hexToBytes(consignment.goldenHex));
+    assert.equal(c.ok, true);
+    if (!c.ok) return;
+    assert.equal(c.bytesRead, 201);
+    assert.equal(c.value.phase, 1);
+    assert.equal(c.value.floor, 1_000_000n);
+    assert.equal(c.value.price, 1_000_000n);
+    assert.equal(c.value.kind, 0);
+    assert.equal(c.value.form, 0);
+    assert.equal(c.value.committedNotOffered, false);
+    assert.equal(c.value.bump, 251);
+    assert.equal(
+      c.value.seller,
+      base58Expected(String(consignment.sample.seller)),
+    );
+
+    const mandate = mandateRecordLayout();
+    const m = decodeMandateCounted(hexToBytes(mandate.goldenHex));
+    assert.equal(m.ok, true);
+    if (!m.ok) return;
+    assert.equal(m.bytesRead, 158);
+    assert.equal(m.value.active, true);
+    assert.equal(m.value.kind, 1);
+    assert.equal(m.value.form, 1);
+    assert.equal(m.value.commissionBps, 250);
+    assert.equal(m.value.expiry, 1_800_000_000n);
+    assert.equal(m.value.bump, 252);
+
+    const recall = recallRecordLayout();
+    const r = decodeRecallCounted(hexToBytes(recall.goldenHex));
+    assert.equal(r.ok, true);
+    if (!r.ok) return;
+    assert.equal(r.bytesRead, 49);
+    assert.equal(r.value.requestedAt, 1_750_000_000n);
+    assert.equal(r.value.bump, 253);
+
+    const auction = auctionTermsRecordLayout();
+    const a = decodeAuctionTermsCounted(hexToBytes(auction.goldenHex));
+    assert.equal(a.ok, true);
+    if (!a.ok) return;
+    assert.equal(a.bytesRead, 123);
+    assert.equal(a.value.duration, 86_400n);
+    assert.equal(a.value.endsAt, 1_760_000_000n);
+    assert.equal(a.value.minIncrementBps, 100);
+    assert.equal(a.value.highestBid, 2_000_000n);
+    assert.equal(a.value.bump, 254);
+    assert.equal(
+      a.value.highestBidder,
+      base58Expected(String(auction.sample.highest_bidder)),
+    );
+
+    const hold = holdRecordLayout();
+    const h = decodeHoldCounted(hexToBytes(hold.goldenHex));
+    assert.equal(h.ok, true);
+    if (!h.ok) return;
+    assert.equal(h.bytesRead, 114);
+    assert.equal(h.value.gross, 2_000_000n);
+    assert.equal(h.value.reversalPending, false);
+    assert.equal(h.value.frozenRemaining, 1_500_000n);
+    assert.equal(h.value.bump, 255);
+    assert.equal(h.value.buyer, base58Expected(String(hold.sample.buyer)));
+  });
+
+  it("planted swapped field order / truncated refuse each mode commerce record", () => {
+    const consignment = consignmentRecordLayout();
+    const consignmentGolden = hexToBytes(consignment.goldenHex);
+    const consignmentHonest = decodeConsignmentCounted(consignmentGolden);
+    assert.equal(consignmentHonest.ok, true);
+    if (!consignmentHonest.ok) return;
+    const consignmentSwapped: StateFieldDecl[] = [
+      ...consignment.fields.slice(0, 13),
+      consignment.fields[14]!,
+      consignment.fields[13]!,
+      consignment.fields[15]!,
+    ];
+    const consignmentPlanted = decodeConsignmentRecordWithFieldsForTests(
+      consignmentGolden,
+      consignmentSwapped,
+    );
+    if (consignmentPlanted.ok) {
+      assert.notEqual(
+        consignmentPlanted.value.phase,
+        consignmentHonest.value.phase,
+        "swapped phase/committed order must not reproduce honest phase",
+      );
+    } else {
+      assert.ok(
+        consignmentPlanted.cause === "truncated" ||
+          consignmentPlanted.cause === "malformed_field" ||
+          consignmentPlanted.cause === "discriminator_mismatch",
+      );
+    }
+    const consignmentShort = decodeConsignmentCounted(
+      consignmentGolden.subarray(0, 40),
+    );
+    assert.equal(consignmentShort.ok, false);
+    if (!consignmentShort.ok) assert.equal(consignmentShort.cause, "truncated");
+
+    const mandate = mandateRecordLayout();
+    const mandateGolden = hexToBytes(mandate.goldenHex);
+    const mandateHonest = decodeMandateCounted(mandateGolden);
+    assert.equal(mandateHonest.ok, true);
+    if (!mandateHonest.ok) return;
+    const mandateSwapped: StateFieldDecl[] = [
+      ...mandate.fields.slice(0, 10),
+      mandate.fields[11]!,
+      mandate.fields[10]!,
+    ];
+    const mandatePlanted = decodeMandateRecordWithFieldsForTests(
+      mandateGolden,
+      mandateSwapped,
+    );
+    if (mandatePlanted.ok) {
+      assert.notEqual(
+        mandatePlanted.value.active,
+        mandateHonest.value.active,
+        "swapped active/bump must not reproduce honest active",
+      );
+    } else {
+      assert.ok(
+        mandatePlanted.cause === "truncated" ||
+          mandatePlanted.cause === "malformed_field" ||
+          mandatePlanted.cause === "discriminator_mismatch",
+      );
+    }
+    const mandateShort = decodeMandateCounted(mandateGolden.subarray(0, 20));
+    assert.equal(mandateShort.ok, false);
+    if (!mandateShort.ok) assert.equal(mandateShort.cause, "truncated");
+
+    const recall = recallRecordLayout();
+    const recallGolden = hexToBytes(recall.goldenHex);
+    const recallHonest = decodeRecallCounted(recallGolden);
+    assert.equal(recallHonest.ok, true);
+    if (!recallHonest.ok) return;
+    const recallSwapped: StateFieldDecl[] = [
+      recall.fields[0]!,
+      recall.fields[1]!,
+      recall.fields[3]!,
+      recall.fields[2]!,
+    ];
+    const recallPlanted = decodeRecallRecordWithFieldsForTests(
+      recallGolden,
+      recallSwapped,
+    );
+    if (recallPlanted.ok) {
+      assert.notEqual(
+        recallPlanted.value.requestedAt,
+        recallHonest.value.requestedAt,
+        "swapped requested_at/bump must not reproduce honest requestedAt",
+      );
+    } else {
+      assert.ok(
+        recallPlanted.cause === "truncated" ||
+          recallPlanted.cause === "malformed_field" ||
+          recallPlanted.cause === "discriminator_mismatch",
+      );
+    }
+    const recallShort = decodeRecallCounted(recallGolden.subarray(0, 10));
+    assert.equal(recallShort.ok, false);
+    if (!recallShort.ok) assert.equal(recallShort.cause, "truncated");
+
+    const auction = auctionTermsRecordLayout();
+    const auctionGolden = hexToBytes(auction.goldenHex);
+    const auctionHonest = decodeAuctionTermsCounted(auctionGolden);
+    assert.equal(auctionHonest.ok, true);
+    if (!auctionHonest.ok) return;
+    const auctionSwapped: StateFieldDecl[] = [
+      auction.fields[0]!,
+      auction.fields[1]!,
+      auction.fields[3]!,
+      auction.fields[2]!,
+      ...auction.fields.slice(4),
+    ];
+    const auctionPlanted = decodeAuctionTermsRecordWithFieldsForTests(
+      auctionGolden,
+      auctionSwapped,
+    );
+    if (auctionPlanted.ok) {
+      assert.notEqual(
+        auctionPlanted.value.endsAt,
+        auctionHonest.value.endsAt,
+        "swapped duration/ends_at must not reproduce honest endsAt",
+      );
+    } else {
+      assert.ok(
+        auctionPlanted.cause === "truncated" ||
+          auctionPlanted.cause === "malformed_field" ||
+          auctionPlanted.cause === "discriminator_mismatch",
+      );
+    }
+    const auctionShort = decodeAuctionTermsCounted(auctionGolden.subarray(0, 20));
+    assert.equal(auctionShort.ok, false);
+    if (!auctionShort.ok) assert.equal(auctionShort.cause, "truncated");
+
+    const hold = holdRecordLayout();
+    const holdGolden = hexToBytes(hold.goldenHex);
+    const holdHonest = decodeHoldCounted(holdGolden);
+    assert.equal(holdHonest.ok, true);
+    if (!holdHonest.ok) return;
+    const holdSwapped: StateFieldDecl[] = [
+      hold.fields[0]!,
+      hold.fields[1]!,
+      hold.fields[2]!,
+      hold.fields[4]!,
+      hold.fields[3]!,
+      ...hold.fields.slice(5),
+    ];
+    const holdPlanted = decodeHoldRecordWithFieldsForTests(
+      holdGolden,
+      holdSwapped,
+    );
+    if (holdPlanted.ok) {
+      assert.notEqual(
+        holdPlanted.value.gross,
+        holdHonest.value.gross,
+        "swapped gross/protection_ends_at must not reproduce honest gross",
+      );
+    } else {
+      assert.ok(
+        holdPlanted.cause === "truncated" ||
+          holdPlanted.cause === "malformed_field" ||
+          holdPlanted.cause === "discriminator_mismatch",
+      );
+    }
+    const holdShort = decodeHoldCounted(holdGolden.subarray(0, 20));
+    assert.equal(holdShort.ok, false);
+    if (!holdShort.ok) assert.equal(holdShort.cause, "truncated");
   });
 
   it("encodePassportConfigWithSources round-trips via decoder (no offset dual path)", () => {
@@ -697,8 +1007,8 @@ describe("svm account-state decode policy", () => {
 
   it("reports decode exercise count for the ship report", () => {
     assert.ok(
-      DECODE_EXERCISED >= 10,
-      `expected ≥10 decode exercises, got ${DECODE_EXERCISED}`,
+      DECODE_EXERCISED >= 15,
+      `expected ≥15 decode exercises, got ${DECODE_EXERCISED}`,
     );
     console.log(`U7_DECODE_EXERCISED=${DECODE_EXERCISED}`);
   });
