@@ -327,6 +327,7 @@ pub fn close_obligation<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use solana_program::account_info::MAX_PERMITTED_DATA_INCREASE;
 
     fn sample_answer(funder: [u8; 32]) -> EncumbranceAnswer {
         EncumbranceAnswer {
@@ -336,6 +337,45 @@ mod tests {
             allowed: false,
             funder,
         }
+    }
+
+    /// Runtime layout for [`AccountInfo::resize`]: `original_data_len` lives in the
+    /// 4 bytes immediately before `key`, and the serialized data length lives in
+    /// the 8 bytes immediately before the data slice. Plain `AccountInfo::new`
+    /// with a naked `Vec` lacks both — `resize` then writes out of bounds (UB;
+    /// intermittent SIGSEGV when cargo runs this crate with `--test-threads` > 1).
+    #[repr(C)]
+    struct KeySlot {
+        original_data_len: u32,
+        key: Pubkey,
+    }
+
+    fn account_info_for_host_resize<'a>(
+        key_slot: &'a mut KeySlot,
+        // `[u64 le length][payload…][spare up to MAX_PERMITTED_DATA_INCREASE]`
+        data_buf: &'a mut [u8],
+        data_len: usize,
+        lamports: &'a mut u64,
+        owner: &'a Pubkey,
+        is_writable: bool,
+    ) -> AccountInfo<'a> {
+        assert!(
+            data_buf.len() >= 8 + data_len,
+            "data_buf must hold length prefix + payload"
+        );
+        key_slot.original_data_len = u32::try_from(data_len).expect("data_len fits u32");
+        data_buf[..8].copy_from_slice(&(data_len as u64).to_le_bytes());
+        let data = &mut data_buf[8..8 + data_len];
+        AccountInfo::new(
+            &key_slot.key,
+            false,
+            is_writable,
+            lamports,
+            data,
+            owner,
+            false,
+            0,
+        )
     }
 
     #[test]
@@ -512,7 +552,7 @@ mod tests {
     #[test]
     fn fill_assign_without_realloc_is_not_empty() {
         let key = Pubkey::new_unique();
-        let mut owner = Pubkey::new_from_array([0xAAu8; 32]);
+        let owner = Pubkey::new_from_array([0xAAu8; 32]);
         let mut lamports = 1_000_000u64;
         let mut data = vec![0xFFu8; EncumbranceAnswer::SPACE];
         let info = AccountInfo::new(
@@ -539,31 +579,60 @@ mod tests {
         assert_eq!(info.data_len(), EncumbranceAnswer::SPACE);
     }
 
+    /// Control: `AccountInfo::resize` on a runtime-shaped buffer is defined and
+    /// survives shrink-to-zero. The same call on a naked `AccountInfo::new` Vec
+    /// is the measured SIGSEGV under parallel `cargo test` (writes `data_ptr-8`).
+    #[test]
+    fn host_resize_fixture_survives_shrink_to_zero() {
+        let mut key_slot = KeySlot {
+            original_data_len: 0,
+            key: Pubkey::new_unique(),
+        };
+        let owner = Pubkey::new_from_array([0xBBu8; 32]);
+        let mut lamports = 1u64;
+        let space = EncumbranceAnswer::SPACE;
+        let mut data_buf = vec![0u8; 8 + space + MAX_PERMITTED_DATA_INCREASE];
+        data_buf[8..8 + space].fill(0xAB);
+        let info = account_info_for_host_resize(
+            &mut key_slot,
+            &mut data_buf,
+            space,
+            &mut lamports,
+            &owner,
+            true,
+        );
+        assert_eq!(info.data_len(), space);
+        info.resize(0).unwrap();
+        assert!(info.data_is_empty());
+        assert_eq!(u64::from_le_bytes(data_buf[..8].try_into().unwrap()), 0);
+    }
+
     #[test]
     fn close_answer_resize_zero_is_empty() {
-        let key = Pubkey::new_unique();
         let program = Pubkey::new_from_array([0xBBu8; 32]);
         let funder_key = Pubkey::new_unique();
         let owner = program;
         let funder_owner = system_program::ID;
         let mut answer_lamports = 2_000_000u64;
         let mut funder_lamports = 5_000_000u64;
-        let mut data = {
-            let rec = sample_answer(funder_key.to_bytes());
-            let mut buf = vec![0u8; EncumbranceAnswer::SPACE];
-            rec.serialize(&mut &mut buf[..]).unwrap();
-            buf
+        let space = EncumbranceAnswer::SPACE;
+        let mut key_slot = KeySlot {
+            original_data_len: 0,
+            key: Pubkey::new_unique(),
         };
+        let mut data_buf = vec![0u8; 8 + space + MAX_PERMITTED_DATA_INCREASE];
+        {
+            let rec = sample_answer(funder_key.to_bytes());
+            rec.serialize(&mut &mut data_buf[8..8 + space]).unwrap();
+        }
         let mut funder_data = vec![];
-        let answer = AccountInfo::new(
-            &key,
-            false,
-            true,
+        let answer = account_info_for_host_resize(
+            &mut key_slot,
+            &mut data_buf,
+            space,
             &mut answer_lamports,
-            &mut data,
             &owner,
-            false,
-            0,
+            true,
         );
         let funder = AccountInfo::new(
             &funder_key,
@@ -593,7 +662,7 @@ mod tests {
             derive_encumbrance_answer_pda(&program, seed, &token, INTENT_LEAVE_CHAIN).unwrap();
         let recorded = Pubkey::new_from_array([0x11u8; 32]);
         let wrong = Pubkey::new_from_array([0x22u8; 32]);
-        let mut owner = program;
+        let owner = program;
         let mut lamports = 1u64;
         let mut data = {
             let rec = EncumbranceAnswer {
@@ -613,7 +682,7 @@ mod tests {
             true,
             &mut lamports,
             &mut data,
-            &mut owner,
+            &owner,
             false,
             0,
         );
