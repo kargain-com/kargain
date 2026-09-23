@@ -602,6 +602,8 @@ version = "0.1.0"
 dependencies = [
  "borsh 1.8.1",
  "kar-passport",
+ "kargain-config-authority",
+ "kargain-config-pda",
  "kargain-encumbrance",
  "kargain-errors",
  "kargain-events",
@@ -620,6 +622,7 @@ dependencies = [
  "kargain-bonded-challenge",
  "kargain-claimable-payouts",
  "kargain-config-authority",
+ "kargain-config-pda",
  "kargain-encumbrance",
  "kargain-errors",
  "kargain-events",
@@ -633,6 +636,8 @@ name = "kar-pro-pass"
 version = "0.1.0"
 dependencies = [
  "borsh 1.8.1",
+ "kargain-config-pda",
+ "kargain-core-liveness",
  "kargain-errors",
  "kargain-events",
  "mpl-core",
@@ -645,6 +650,8 @@ version = "0.1.0"
 dependencies = [
  "borsh 1.8.1",
  "kargain-claimable-payouts",
+ "kargain-config-authority",
+ "kargain-config-pda",
  "kargain-errors",
  "kargain-events",
  "solana-program",
@@ -688,6 +695,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "kargain-config-pda"
+version = "0.1.0"
+dependencies = [
+ "solana-program",
+]
+
+[[package]]
 name = "kargain-consignment-base"
 version = "0.1.0"
 dependencies = [
@@ -697,6 +711,14 @@ dependencies = [
  "kargain-errors",
  "kargain-events",
  "kargain-passport-asset",
+ "mpl-core",
+ "solana-program",
+]
+
+[[package]]
+name = "kargain-core-liveness"
+version = "0.1.0"
+dependencies = [
  "mpl-core",
  "solana-program",
 ]
@@ -759,7 +781,7 @@ dependencies = [
 name = "kargain-passport-asset"
 version = "0.1.0"
 dependencies = [
- "mpl-core",
+ "kargain-core-liveness",
  "solana-program",
 ]
 

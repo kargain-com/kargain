@@ -576,13 +576,25 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-mode-config-authority",
     owner: "svm/crates/kargain-config-authority::admit_config_authority",
-    rule: "Sole pure config-authority admit (unsigned→MissingRequiredSignature, wrong-key→NotOwner); modes(+harness) reach it via consignment-base require_config_authority (PDA then admit); passport via load_config then admit; no inline authority-key compare outside the admit owner",
+    rule: "Sole pure config-authority admit (unsigned→MissingRequiredSignature, wrong-key→NotOwner); modes(+harness) reach it via consignment-base require_config_authority (PDA then admit); passport / gateway / staking via load-then-admit wrappers; no inline authority-key compare; signed-wrong is Custom(NotOwner) not a Solana built-in owner InstructionError",
     guardTests: ["svm-mode-config-authority-policy.test.ts"],
+  },
+  {
+    id: "svm-config-pda",
+    owner: "svm/crates/kargain-config-pda::config_pda",
+    rule: "Sole [b\"config\"] program-config PDA recipe parameterized only by program id; passport / gateway / staking / pro-pass seeds.rs pub use; is_bridge_gateway_signer and require_staking_signer call this owner with the bound program id; consign-config and ep_config stay out",
+    guardTests: ["svm-s8e-7a-owner-policy.test.ts"],
+  },
+  {
+    id: "svm-core-liveness",
+    owner: "svm/crates/kargain-core-liveness::is_live_core_asset",
+    rule: "Sole Core live-asset predicate (D-17: mpl-core owner + data_len > 1); kargain-passport-asset and kar-pro-pass consume via pub use; address law (ASSET_SEED / PASS_SEED) stays in those owners",
+    guardTests: ["svm-s8e-7a-owner-policy.test.ts"],
   },
   {
     id: "svm-core-custody",
     owner: "svm/crates/kargain-consignment-base::core_custody · svm/crates/kargain-passport-asset",
-    rule: "Sole Core custody helpers (binding via kargain-passport-asset PDA+liveness, AssetFrozen freeze gate before every public TransferV1, TransferDelegate read, owner/delegate/custody moves); passport keeps its own core_asset CPI door; skip-freeze plant harness-only; modes must not TransferV1CpiBuilder — FixedPrice consumes movers (step 5), Ascending waits for step 6",
+    rule: "Sole Core custody helpers (binding via kargain-passport-asset PDA + kargain-core-liveness re-export, AssetFrozen freeze gate before every public TransferV1, TransferDelegate read, owner/delegate/custody moves); passport keeps its own core_asset CPI door; skip-freeze plant harness-only; modes must not TransferV1CpiBuilder — FixedPrice consumes movers (step 5), Ascending waits for step 6",
     guardTests: ["svm-core-custody-policy.test.ts"],
   },
   {

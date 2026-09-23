@@ -17,7 +17,7 @@ use solana_program::{
 };
 
 use crate::account::into_program_error;
-use crate::config::GatewayConfig;
+use crate::config::{require_config_authority, GatewayConfig};
 use crate::lz_receive_types::{lz_receive_types, LzReceiveAccountList};
 use crate::seeds::config_pda;
 
@@ -304,14 +304,10 @@ pub fn init_lz_receive_types_accounts(
     let payer = next_account_info(iter)?;
     let system = next_account_info(iter)?;
 
-    if !authority.is_signer || !payer.is_signer {
+    if !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
-    let cfg = GatewayConfig::try_from_slice(&gateway_config.try_borrow_data()?)
-        .map_err(|_| ProgramError::InvalidAccountData)?;
-    if authority.key.to_bytes() != cfg.authority {
-        return Err(ProgramError::InvalidArgument);
-    }
+    let _cfg = require_config_authority(program_id, gateway_config, authority)?;
     let (expected, bump) = lz_receive_types_pda(program_id, gateway_config.key);
     if types_pda.key != &expected {
         return Err(ProgramError::InvalidSeeds);
@@ -360,5 +356,91 @@ mod tests {
         assert_eq!(&h2.to_bytes()[..8], &IX_LZ_RECEIVE_TYPES_V2);
         let h3 = hash(b"global:lz_receive");
         assert_eq!(&h3.to_bytes()[..8], &IX_LZ_RECEIVE_ANCHOR);
+    }
+
+    fn ai<'a>(
+        key: &'a Pubkey,
+        is_signer: bool,
+        writable: bool,
+        lamports: &'a mut u64,
+        data: &'a mut [u8],
+        owner: &'a Pubkey,
+    ) -> AccountInfo<'a> {
+        AccountInfo::new(key, is_signer, writable, lamports, data, owner, false, 0)
+    }
+
+    #[test]
+    fn init_lz_receive_types_unsigned_wrong_admit_passed() {
+        use crate::config::{GatewayConfig, GATEWAY_CONFIG_DISCRIMINATOR};
+        use crate::seeds::config_pda;
+        use kargain_errors::KargainError;
+        use solana_program::program_error::ProgramError;
+
+        let program_id = Pubkey::new_from_array([9u8; 32]);
+        let authority = Pubkey::new_from_array([1u8; 32]);
+        let (cfg_key, bump) = config_pda(&program_id);
+        let mut cfg_data = borsh::to_vec(&GatewayConfig {
+            discriminator: GATEWAY_CONFIG_DISCRIMINATOR,
+            authority: authority.to_bytes(),
+            local_eid: 1,
+            endpoint_program: [3u8; 32],
+            passport_program: [4u8; 32],
+            namespace: 1,
+            bump,
+            freeze_bump: 255,
+        })
+        .unwrap();
+        let mut cl = 0u64;
+        let mut al = 0u64;
+        let mut pl = 0u64;
+        let mut tl = 0u64;
+        let mut sl = 0u64;
+        let mut da: [u8; 0] = [];
+        let mut dp: [u8; 0] = [];
+        let mut dt: [u8; 0] = [];
+        let mut ds: [u8; 0] = [];
+        let types = Pubkey::new_from_array([40u8; 32]);
+        let system = Pubkey::new_from_array([41u8; 32]);
+        let not_owner = ProgramError::Custom(u32::from(KargainError::NotOwner));
+        {
+            let accs = [
+                ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id),
+                ai(&authority, false, false, &mut al, &mut da, &program_id),
+                ai(&types, false, true, &mut tl, &mut dt, &program_id),
+                ai(&authority, true, true, &mut pl, &mut dp, &program_id),
+                ai(&system, false, false, &mut sl, &mut ds, &program_id),
+            ];
+            assert_eq!(
+                init_lz_receive_types_accounts(&program_id, &accs).unwrap_err(),
+                ProgramError::MissingRequiredSignature,
+            );
+        }
+        {
+            let w = Pubkey::new_from_array([2u8; 32]);
+            let accs = [
+                ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id),
+                ai(&w, true, false, &mut al, &mut da, &program_id),
+                ai(&types, false, true, &mut tl, &mut dt, &program_id),
+                ai(&authority, true, true, &mut pl, &mut dp, &program_id),
+                ai(&system, false, false, &mut sl, &mut ds, &program_id),
+            ];
+            assert_eq!(
+                init_lz_receive_types_accounts(&program_id, &accs).unwrap_err(),
+                not_owner,
+            );
+        }
+        {
+            let accs = [
+                ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id),
+                ai(&authority, true, false, &mut al, &mut da, &program_id),
+                ai(&types, false, true, &mut tl, &mut dt, &program_id),
+                ai(&authority, true, true, &mut pl, &mut dp, &program_id),
+                ai(&system, false, false, &mut sl, &mut ds, &program_id),
+            ];
+            assert_eq!(
+                init_lz_receive_types_accounts(&program_id, &accs).unwrap_err(),
+                ProgramError::InvalidSeeds,
+            );
+        }
     }
 }

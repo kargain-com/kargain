@@ -1,10 +1,11 @@
 /**
- * S8-E step 3 — config-authority admission is owned by
+ * S8-E step 3 + 7a — config-authority admission is owned by
  * `kargain-config-authority::admit_config_authority`. Mode (+ harness) handlers
  * reach it via `kargain-consignment-base::require_config_authority` (PDA then
- * admit); passport via its load wrapper. Unsigned → MissingRequiredSignature;
- * wrong key → NotOwner. Set derived from Rust handler names (stated floor);
- * empty derivation is red. Plants through the same helpers.
+ * admit); passport / gateway / staking via load-then-admit wrappers.
+ * Unsigned → MissingRequiredSignature; wrong key → NotOwner. Set derived from
+ * Rust handler names (stated floor); empty derivation is red. Plants through
+ * the same helpers.
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -18,6 +19,8 @@ const SVM = path.join(ROOT, "svm");
 const ADMIT = path.join(SVM, "crates/kargain-config-authority/src/lib.rs");
 const BASE = path.join(SVM, "crates/kargain-consignment-base/src/lib.rs");
 const PASSPORT_ENTRY = path.join(SVM, "programs/kar-passport/src/entrypoint.rs");
+const GATEWAY_CONFIG = path.join(SVM, "programs/kar-gateway/src/config.rs");
+const STAKING_ENTRY = path.join(SVM, "programs/kar-pro-staking/src/entrypoint.rs");
 
 /**
  * Stated floor — every config-authority / trust-warp binder that must call the owner.
@@ -40,9 +43,18 @@ const REQUIRED_HANDLERS: ReadonlyArray<{ program: string; fn: string }> = [
   { program: "consignment-harness", fn: "set_self_enc" },
   { program: "consignment-harness", fn: "force_recall_at" },
   { program: "consignment-harness", fn: "unpause_ix" },
+  { program: "kar-passport", fn: "set_bridge_gateway" },
+  { program: "kar-passport", fn: "set_staking_program" },
+  { program: "kar-passport", fn: "mint_passport" },
+  { program: "kar-passport", fn: "set_dispute_deposit" },
+  { program: "kar-gateway", fn: "recover_locked_home" },
+  { program: "kar-gateway", fn: "register_oapp" },
+  { program: "kar-gateway", fn: "set_peer" },
+  { program: "kar-gateway", fn: "init_lz_receive_types_accounts" },
+  { program: "kar-pro-staking", fn: "set_min_stake_native" },
 ];
 
-const HANDLER_FLOOR = 14;
+const HANDLER_FLOOR = 23;
 
 /** Inline authority-key vs config-authority compares (must live only in admit owner). */
 const INLINE_AUTHORITY_EQ =
@@ -50,6 +62,20 @@ const INLINE_AUTHORITY_EQ =
 
 function ixPath(program: string): string {
   return path.join(SVM, "programs", program, "src", "ix.rs");
+}
+
+export function handlerSourcePath(program: string, fn: string): string {
+  if (fn === "init_lz_receive_types_accounts") {
+    return path.join(SVM, "programs/kar-gateway/src/lz_receive_v2.rs");
+  }
+  if (
+    program === "kar-passport" ||
+    program === "kar-gateway" ||
+    program === "kar-pro-staking"
+  ) {
+    return path.join(SVM, "programs", program, "src", "entrypoint.rs");
+  }
+  return ixPath(program);
 }
 
 /** Extract `fn name` body until the next top-level `fn ` at column 0. */
@@ -90,18 +116,19 @@ export function deriveRequiredHandlers(
   catalog: ReadonlyArray<{ program: string; fn: string }>,
 ): ReadonlyArray<{ program: string; fn: string }> {
   return catalog.filter((row) => {
-    const src = fs.readFileSync(ixPath(row.program), "utf8");
+    const src = fs.readFileSync(handlerSourcePath(row.program, row.fn), "utf8");
     return src.includes(`fn ${row.fn}(`);
   });
 }
 
 export function findAuthorityOwnerViolations(
   rows: ReadonlyArray<{ program: string; fn: string }>,
-  readSrc: (program: string) => string = (p) => fs.readFileSync(ixPath(p), "utf8"),
+  readSrc: (program: string, fn: string) => string = (p, fn) =>
+    fs.readFileSync(handlerSourcePath(p, fn), "utf8"),
 ): string[] {
   const out: string[] = [];
   for (const row of rows) {
-    const body = extractFnBody(readSrc(row.program), row.fn);
+    const body = extractFnBody(readSrc(row.program, row.fn), row.fn);
     if (!handlerCallsOwner(body)) {
       out.push(`${row.program}::${row.fn} binds authority-class and skips require_config_authority`);
     }
@@ -111,11 +138,12 @@ export function findAuthorityOwnerViolations(
 
 export function findInlineAuthorityEqViolations(
   rows: ReadonlyArray<{ program: string; fn: string }>,
-  readSrc: (program: string) => string = (p) => fs.readFileSync(ixPath(p), "utf8"),
+  readSrc: (program: string, fn: string) => string = (p, fn) =>
+    fs.readFileSync(handlerSourcePath(p, fn), "utf8"),
 ): string[] {
   const out: string[] = [];
   for (const row of rows) {
-    const body = extractFnBody(readSrc(row.program), row.fn);
+    const body = extractFnBody(readSrc(row.program, row.fn), row.fn);
     if (handlerHasInlineAuthorityEq(body)) {
       out.push(
         `${row.program}::${row.fn} compares authority key outside kargain-config-authority admit`,
@@ -168,6 +196,20 @@ describe("svm-mode-config-authority-policy", () => {
       !handlerHasInlineAuthorityEq(body),
       "passport must not inline authority equality",
     );
+  });
+
+  it("gateway require_config_authority calls admit; no local key compare", () => {
+    const src = fs.readFileSync(GATEWAY_CONFIG, "utf8");
+    const body = extractFnBody(src, "require_config_authority");
+    assert.ok(body.includes("admit_config_authority("), "gateway consumes admit");
+    assert.ok(!handlerHasInlineAuthorityEq(body), "gateway wrapper has no inline eq");
+  });
+
+  it("staking require_config_authority calls admit; no local key compare", () => {
+    const src = fs.readFileSync(STAKING_ENTRY, "utf8");
+    const body = extractFnBody(src, "require_config_authority");
+    assert.ok(body.includes("admit_config_authority("), "staking consumes admit");
+    assert.ok(!handlerHasInlineAuthorityEq(body), "staking wrapper has no inline eq");
   });
 
   it("derives the handler set from Rust with a non-empty floor", () => {

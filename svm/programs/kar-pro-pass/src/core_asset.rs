@@ -14,9 +14,7 @@ use solana_program::{
 
 use crate::seeds::{PASS_SEED, CONFIG_SEED, FREEZE_SEED};
 
-pub fn is_live_core_asset(asset: &AccountInfo) -> bool {
-    asset.owner == &mpl_core::ID && asset.data_len() > 1
-}
+pub use kargain_core_liveness::is_live_core_asset;
 
 pub fn read_owner(asset: &AccountInfo) -> Result<Pubkey, ProgramError> {
     if !is_live_core_asset(asset) {

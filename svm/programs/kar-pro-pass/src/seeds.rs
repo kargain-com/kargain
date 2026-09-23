@@ -1,15 +1,11 @@
 use solana_program::pubkey::Pubkey;
 
-pub const CONFIG_SEED: &[u8] = b"config";
+pub use kargain_config_pda::{config_pda, CONFIG_SEED};
 pub const FREEZE_SEED: &[u8] = b"freeze";
 /// Core asset PDA — one pass per holder.
 pub const PASS_SEED: &[u8] = b"pass";
 /// Off-chain profile fields (category / name / uri / issued_at).
 pub const PASS_META_SEED: &[u8] = b"pass_meta";
-
-pub fn config_pda(program_id: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[CONFIG_SEED], program_id)
-}
 
 pub fn freeze_pda(program_id: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[FREEZE_SEED], program_id)

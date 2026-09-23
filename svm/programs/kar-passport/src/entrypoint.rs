@@ -408,13 +408,7 @@ fn set_bridge_gateway(
     let iter = &mut accounts.iter();
     let config = next_account_info(iter)?;
     let authority = next_account_info(iter)?;
-    if !authority.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-    let mut cfg = load_config(program_id, config)?;
-    if authority.key.to_bytes() != cfg.authority {
-        return Err(ProgramError::IllegalOwner);
-    }
+    let mut cfg = require_config_authority(program_id, config, authority)?;
     check_set_bridge_gateway(cfg.bridge_gateway != [0u8; 32], gateway == [0u8; 32])
         .map_err(into_program_error)?;
     cfg.bridge_gateway = gateway;
@@ -431,15 +425,9 @@ fn set_staking_program(
     let iter = &mut accounts.iter();
     let config = next_account_info(iter)?;
     let authority = next_account_info(iter)?;
-    if !authority.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    let mut cfg = require_config_authority(program_id, config, authority)?;
     if staking_program == [0u8; 32] {
         return Err(into_program_error(kargain_errors::KargainError::ZeroAddress));
-    }
-    let mut cfg = load_config(program_id, config)?;
-    if authority.key.to_bytes() != cfg.authority {
-        return Err(ProgramError::IllegalOwner);
     }
     cfg.staking_program = staking_program;
     save_config(config, &cfg)?;
@@ -550,13 +538,10 @@ fn mint_passport(program_id: &Pubkey, accounts: &[AccountInfo], uri: String) -> 
     let core = next_account_info(iter)?;
     let system = next_account_info(iter)?;
 
-    if !authority.is_signer || !payer.is_signer {
+    if !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
-    let mut cfg = load_config(program_id, config)?;
-    if authority.key.to_bytes() != cfg.authority {
-        return Err(ProgramError::IllegalOwner);
-    }
+    let mut cfg = require_config_authority(program_id, config, authority)?;
     let token_id = cfg.next_token_id;
     let (asset_key, asset_bump) = asset_pda(program_id, &token_id);
     if asset.key != &asset_key {
@@ -1354,17 +1339,11 @@ fn set_dispute_deposit(
     let iter = &mut accounts.iter();
     let config = next_account_info(iter)?;
     let authority = next_account_info(iter)?;
-    if !authority.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    let mut cfg = require_config_authority(program_id, config, authority)?;
     if dispute_deposit == 0 {
         return Err(into_program_error(
             kargain_errors::KargainError::ZeroDisputeDeposit,
         ));
-    }
-    let mut cfg = load_config(program_id, config)?;
-    if authority.key.to_bytes() != cfg.authority {
-        return Err(ProgramError::IllegalOwner);
     }
     let previous = cfg.dispute_deposit;
     cfg.dispute_deposit = dispute_deposit;
@@ -1529,6 +1508,199 @@ mod config_authority_tests {
             );
             let cfg = require_config_authority(&program_id, &c, &a).unwrap();
             assert_eq!(cfg.authority, authority.to_bytes());
+        }
+    }
+
+    fn ai<'a>(
+        key: &'a Pubkey,
+        is_signer: bool,
+        writable: bool,
+        lamports: &'a mut u64,
+        data: &'a mut [u8],
+        owner: &'a Pubkey,
+    ) -> AccountInfo<'a> {
+        AccountInfo::new(key, is_signer, writable, lamports, data, owner, false, 0)
+    }
+
+    fn not_owner() -> ProgramError {
+        ProgramError::Custom(u32::from(KargainError::NotOwner))
+    }
+
+    #[test]
+    fn set_bridge_gateway_unsigned_wrong_correct() {
+        let program_id = pid();
+        let authority = auth();
+        let (cfg_key, mut cfg_data) = cfg_bytes(&program_id, &authority);
+        let mut al = 0u64;
+        let mut cl = 0u64;
+        let gw = [7u8; 32];
+        {
+            let a = ai(&authority, false, false, &mut al, &mut [], &program_id);
+            let c = ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id);
+            assert_eq!(
+                set_bridge_gateway(&program_id, &[c, a], gw).unwrap_err(),
+                ProgramError::MissingRequiredSignature,
+            );
+        }
+        {
+            let w = wrong();
+            let a = ai(&w, true, false, &mut al, &mut [], &program_id);
+            let c = ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id);
+            assert_eq!(
+                set_bridge_gateway(&program_id, &[c, a], gw).unwrap_err(),
+                not_owner(),
+            );
+        }
+        {
+            let a = ai(&authority, true, false, &mut al, &mut [], &program_id);
+            let c = ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id);
+            set_bridge_gateway(&program_id, &[c, a], gw).unwrap();
+        }
+    }
+
+    #[test]
+    fn set_staking_program_unsigned_wrong_correct() {
+        let program_id = pid();
+        let authority = auth();
+        let (cfg_key, mut cfg_data) = cfg_bytes(&program_id, &authority);
+        let mut al = 0u64;
+        let mut cl = 0u64;
+        let staking = [8u8; 32];
+        {
+            let a = ai(&authority, false, false, &mut al, &mut [], &program_id);
+            let c = ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id);
+            assert_eq!(
+                set_staking_program(&program_id, &[c, a], staking).unwrap_err(),
+                ProgramError::MissingRequiredSignature,
+            );
+        }
+        {
+            let w = wrong();
+            let a = ai(&w, true, false, &mut al, &mut [], &program_id);
+            let c = ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id);
+            assert_eq!(
+                set_staking_program(&program_id, &[c, a], staking).unwrap_err(),
+                not_owner(),
+            );
+        }
+        {
+            let a = ai(&authority, true, false, &mut al, &mut [], &program_id);
+            let c = ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id);
+            set_staking_program(&program_id, &[c, a], staking).unwrap();
+        }
+    }
+
+    #[test]
+    fn set_dispute_deposit_unsigned_wrong_correct() {
+        let program_id = pid();
+        let authority = auth();
+        let (cfg_key, mut cfg_data) = cfg_bytes(&program_id, &authority);
+        let mut al = 0u64;
+        let mut cl = 0u64;
+        {
+            let a = ai(&authority, false, false, &mut al, &mut [], &program_id);
+            let c = ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id);
+            assert_eq!(
+                set_dispute_deposit(&program_id, &[c, a], 2).unwrap_err(),
+                ProgramError::MissingRequiredSignature,
+            );
+        }
+        {
+            let w = wrong();
+            let a = ai(&w, true, false, &mut al, &mut [], &program_id);
+            let c = ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id);
+            assert_eq!(
+                set_dispute_deposit(&program_id, &[c, a], 2).unwrap_err(),
+                not_owner(),
+            );
+        }
+        {
+            let a = ai(&authority, true, false, &mut al, &mut [], &program_id);
+            let c = ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id);
+            set_dispute_deposit(&program_id, &[c, a], 2).unwrap();
+        }
+    }
+
+    #[test]
+    fn mint_passport_unsigned_wrong_admit_passed() {
+        let program_id = pid();
+        let authority = auth();
+        let (cfg_key, mut cfg_data) = cfg_bytes(&program_id, &authority);
+        let mut al = 0u64;
+        let mut pl = 0u64;
+        let mut cl = 0u64;
+        let mut l2 = 0u64;
+        let mut l3 = 0u64;
+        let mut l5 = 0u64;
+        let mut l6 = 0u64;
+        let mut l7 = 0u64;
+        let mut l8 = 0u64;
+        let mut d_auth: [u8; 0] = [];
+        let mut d_pay: [u8; 0] = [];
+        let mut d2: [u8; 0] = [];
+        let mut d3: [u8; 0] = [];
+        let mut d5: [u8; 0] = [];
+        let mut d6: [u8; 0] = [];
+        let mut d7: [u8; 0] = [];
+        let mut d8: [u8; 0] = [];
+        let k2 = Pubkey::new_from_array([10u8; 32]);
+        let k3 = Pubkey::new_from_array([11u8; 32]);
+        let k5 = Pubkey::new_from_array([12u8; 32]);
+        let k6 = Pubkey::new_from_array([13u8; 32]);
+        let k7 = Pubkey::new_from_array([14u8; 32]);
+        let k8 = Pubkey::new_from_array([15u8; 32]);
+        let uri = "ar://x".to_string();
+        {
+            let accs = [
+                ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id),
+                ai(&authority, false, false, &mut al, &mut d_auth, &program_id),
+                ai(&k2, false, true, &mut l2, &mut d2, &program_id),
+                ai(&k3, false, true, &mut l3, &mut d3, &program_id),
+                ai(&authority, true, true, &mut pl, &mut d_pay, &program_id),
+                ai(&k5, false, false, &mut l5, &mut d5, &program_id),
+                ai(&k6, false, true, &mut l6, &mut d6, &program_id),
+                ai(&k7, false, false, &mut l7, &mut d7, &program_id),
+                ai(&k8, false, false, &mut l8, &mut d8, &program_id),
+            ];
+            assert_eq!(
+                mint_passport(&program_id, &accs, uri.clone()).unwrap_err(),
+                ProgramError::MissingRequiredSignature,
+            );
+        }
+        {
+            let w = wrong();
+            let accs = [
+                ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id),
+                ai(&w, true, false, &mut al, &mut d_auth, &program_id),
+                ai(&k2, false, true, &mut l2, &mut d2, &program_id),
+                ai(&k3, false, true, &mut l3, &mut d3, &program_id),
+                ai(&authority, true, true, &mut pl, &mut d_pay, &program_id),
+                ai(&k5, false, false, &mut l5, &mut d5, &program_id),
+                ai(&k6, false, true, &mut l6, &mut d6, &program_id),
+                ai(&k7, false, false, &mut l7, &mut d7, &program_id),
+                ai(&k8, false, false, &mut l8, &mut d8, &program_id),
+            ];
+            assert_eq!(
+                mint_passport(&program_id, &accs, uri.clone()).unwrap_err(),
+                not_owner(),
+            );
+        }
+        {
+            let accs = [
+                ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id),
+                ai(&authority, true, false, &mut al, &mut d_auth, &program_id),
+                ai(&k2, false, true, &mut l2, &mut d2, &program_id),
+                ai(&k3, false, true, &mut l3, &mut d3, &program_id),
+                ai(&authority, true, true, &mut pl, &mut d_pay, &program_id),
+                ai(&k5, false, false, &mut l5, &mut d5, &program_id),
+                ai(&k6, false, true, &mut l6, &mut d6, &program_id),
+                ai(&k7, false, false, &mut l7, &mut d7, &program_id),
+                ai(&k8, false, false, &mut l8, &mut d8, &program_id),
+            ];
+            assert_eq!(
+                mint_passport(&program_id, &accs, uri).unwrap_err(),
+                ProgramError::InvalidSeeds,
+            );
         }
     }
 }

@@ -137,6 +137,20 @@ fn initialize(
     Ok(())
 }
 
+fn require_config_authority(
+    program_id: &Pubkey,
+    config: &AccountInfo,
+    authority: &AccountInfo,
+) -> Result<StakingConfig, ProgramError> {
+    let cfg = load_config(program_id, config)?;
+    kargain_config_authority::admit_config_authority(
+        authority.is_signer,
+        &authority.key.to_bytes(),
+        &cfg.authority,
+    )?;
+    Ok(cfg)
+}
+
 fn load_config(program_id: &Pubkey, config: &AccountInfo) -> Result<StakingConfig, ProgramError> {
     let (expected, _) = config_pda(program_id);
     if config.key != &expected {
@@ -426,13 +440,7 @@ fn set_min_stake_native(
     let iter = &mut accounts.iter();
     let config = next_account_info(iter)?;
     let authority = next_account_info(iter)?;
-    if !authority.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-    let mut cfg = load_config(program_id, config)?;
-    if authority.key.to_bytes() != cfg.authority {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    let mut cfg = require_config_authority(program_id, config, authority)?;
     if lamports < cfg.min_stake_floor_lamports {
         return Err(into_program_error(KargainError::BelowMinStakeFloor));
     }
@@ -507,4 +515,78 @@ fn close_pass(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     )?;
     msg!("kar-pro-staking ClosePass ok");
     Ok(())
+}
+
+#[cfg(test)]
+mod admin_admit_tests {
+    use super::*;
+    use solana_program::pubkey::Pubkey;
+
+    fn pid() -> Pubkey {
+        Pubkey::new_from_array([9u8; 32])
+    }
+    fn auth() -> Pubkey {
+        Pubkey::new_from_array([1u8; 32])
+    }
+    fn wrong() -> Pubkey {
+        Pubkey::new_from_array([2u8; 32])
+    }
+    fn not_owner() -> ProgramError {
+        ProgramError::Custom(u32::from(KargainError::NotOwner))
+    }
+    fn ai<'a>(
+        key: &'a Pubkey,
+        is_signer: bool,
+        writable: bool,
+        lamports: &'a mut u64,
+        data: &'a mut [u8],
+        owner: &'a Pubkey,
+    ) -> AccountInfo<'a> {
+        AccountInfo::new(key, is_signer, writable, lamports, data, owner, false, 0)
+    }
+    fn cfg_bytes(program_id: &Pubkey, authority: &Pubkey) -> (Pubkey, Vec<u8>) {
+        let (key, bump) = config_pda(program_id);
+        let cfg = StakingConfig {
+            discriminator: STAKING_CONFIG_DISCRIMINATOR,
+            authority: authority.to_bytes(),
+            pass_program: [4u8; 32],
+            min_stake_lamports: 500_000_000,
+            min_stake_floor_lamports: 100_000_000,
+            unbonding_period_secs: 1_209_600,
+            bump,
+        };
+        (key, borsh::to_vec(&cfg).unwrap())
+    }
+
+    #[test]
+    fn set_min_stake_native_unsigned_wrong_correct() {
+        let program_id = pid();
+        let authority = auth();
+        let (cfg_key, mut cfg_data) = cfg_bytes(&program_id, &authority);
+        let mut cl = 0u64;
+        let mut al = 0u64;
+        let mut da: [u8; 0] = [];
+        {
+            let a = ai(&authority, false, false, &mut al, &mut da, &program_id);
+            let c = ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id);
+            assert_eq!(
+                set_min_stake_native(&program_id, &[c, a], 200_000_000).unwrap_err(),
+                ProgramError::MissingRequiredSignature,
+            );
+        }
+        {
+            let w = wrong();
+            let a = ai(&w, true, false, &mut al, &mut da, &program_id);
+            let c = ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id);
+            assert_eq!(
+                set_min_stake_native(&program_id, &[c, a], 200_000_000).unwrap_err(),
+                not_owner(),
+            );
+        }
+        {
+            let a = ai(&authority, true, false, &mut al, &mut da, &program_id);
+            let c = ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id);
+            set_min_stake_native(&program_id, &[c, a], 200_000_000).unwrap();
+        }
+    }
 }

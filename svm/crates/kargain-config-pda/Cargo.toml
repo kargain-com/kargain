@@ -1,0 +1,10 @@
+[package]
+name = "kargain-config-pda"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Sole [b\"config\"] program-config PDA recipe (passport ∩ gateway ∩ staking ∩ pass)"
+
+[dependencies]
+solana-program = { workspace = true }

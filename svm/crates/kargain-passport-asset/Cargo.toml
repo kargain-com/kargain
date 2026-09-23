@@ -4,8 +4,8 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "Sole passport Core asset PDA seed + live-asset predicate (passport ∩ custody)"
+description = "Sole passport Core asset PDA seed (passport ∩ custody); liveness via kargain-core-liveness"
 
 [dependencies]
 solana-program = { workspace = true }
-mpl-core = { workspace = true }
+kargain-core-liveness = { workspace = true }

@@ -21,5 +21,7 @@ kargain-errors = { workspace = true }
 kargain-onft-codec = { workspace = true }
 kargain-events = { workspace = true }
 kargain-encumbrance = { workspace = true }
+kargain-config-authority = { workspace = true }
+kargain-config-pda = { workspace = true }
 kar-passport = { path = "../kar-passport", features = ["no-entrypoint"] }
 mock-endpoint = { path = "../mock-endpoint", features = ["no-entrypoint"] }

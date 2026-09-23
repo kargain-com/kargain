@@ -1,12 +1,15 @@
-//! Sole passport Core asset address law + live-asset predicate.
+//! Sole passport Core asset address law.
 //!
 //! Seed `b"asset"` + PDA `[ASSET_SEED, token_id]` under the passport program.
-//! Live (D-17): owned by mpl-core with more than the 1-byte burn tombstone.
+//! Live-asset predicate (D-17) is owned by `kargain-core-liveness` and re-exported
+//! here so passport / consignment-base keep one import.
 //!
 //! Consumers: `kar-passport` (seeds / core_asset) and `kargain-consignment-base`
 //! (custody binding). Distinct from harness `b"harness-asset"`.
 
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
+use solana_program::pubkey::Pubkey;
+
+pub use kargain_core_liveness::is_live_core_asset;
 
 /// Passport Core asset PDA seed — sole owner of these bytes.
 pub const ASSET_SEED: &[u8] = b"asset";
@@ -14,11 +17,6 @@ pub const ASSET_SEED: &[u8] = b"asset";
 /// Derive the passport Core asset PDA for `token_id` under `passport_program`.
 pub fn asset_pda(passport_program: &Pubkey, token_id: &[u8; 32]) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[ASSET_SEED, token_id], passport_program)
-}
-
-/// Live Core asset (D-17): owned by Core with more than the 1-byte burn tombstone.
-pub fn is_live_core_asset(asset: &AccountInfo) -> bool {
-    asset.owner == &mpl_core::ID && asset.data_len() > 1
 }
 
 #[cfg(test)]

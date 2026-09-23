@@ -126,8 +126,7 @@ pub fn is_bridge_gateway_signer(bound: &[u8; 32], signer: &[u8; 32]) -> bool {
         return false;
     }
     let program = solana_program::pubkey::Pubkey::new_from_array(*bound);
-    let (pda, _) =
-        solana_program::pubkey::Pubkey::find_program_address(&[b"config"], &program);
+    let (pda, _) = crate::seeds::config_pda(&program);
     pda.to_bytes() == *signer
 }
 
@@ -187,8 +186,7 @@ mod tests {
     #[test]
     fn bridge_gateway_signer_accepts_config_pda_of_bound_program() {
         let program = solana_program::pubkey::Pubkey::new_unique();
-        let (pda, _) =
-            solana_program::pubkey::Pubkey::find_program_address(&[b"config"], &program);
+        let (pda, _) = crate::seeds::config_pda(&program);
         assert!(is_bridge_gateway_signer(
             &program.to_bytes(),
             &pda.to_bytes()

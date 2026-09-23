@@ -243,7 +243,7 @@ FixedPriceConsignment `VERSION` **`2.4.0-rc.1`**. AscendingConsignment **`2.5.0-
 | `setDisputeDeposit` | owner | Update exact bond for next `open` (**≠ 0**); emits `DisputeDepositUpdated` |
 | `rescueExcessEth` | owner | Withdraw ETH not in `totalLockedBonds` or pending claims |
 | `mintPassport` | anyone | Mint UNVERIFIED passport; increment chain-local id |
-| *(SVM counterpart)* | **config authority only** | `MintPassport` requires `authority` signer ≡ `PassportConfig.authority` — **not** permissionless like EVM. Product Create UI cannot mirror EVM “anyone mints” without a program change. Ops door: `scripts/svm-devnet-mint-passport.ts`. |
+| *(SVM counterpart)* | **config authority only** | `MintPassport` requires `authority` signer ≡ `PassportConfig.authority` — **not** permissionless like EVM. Unsigned authority → `MissingRequiredSignature`; signed-wrong → `NotOwner` (Ownable parity; ordinal 1). Payer-must-sign is rent, not admission. Product Create UI cannot mirror EVM “anyone mints” without a program change. Ops door: `scripts/svm-devnet-mint-passport.ts`. Same admission names on SVM `setBridgeGateway` / `setStakingProgram` / `setDisputeDeposit`. |
 | `setPassportURI` | token owner | Metadata URI update; resets verification when status is VERIFIED (see Part III § anchor vs cosmetic) |
 | `verifyPassport` | active verifier | UNVERIFIED → VERIFIED |
 | `open` | anyone + exact ETH | VERIFIED → DISPUTED; BondedChallenge open |
@@ -263,7 +263,7 @@ FixedPriceConsignment `VERSION` **`2.4.0-rc.1`**. AscendingConsignment **`2.5.0-
 | Error | When |
 |-------|------|
 | `NonexistentToken` | Invalid tokenId |
-| `NotOwner` | Caller is not token owner |
+| `NotOwner` | Caller is not token owner. **SVM also:** config-authority signed-wrong on admin ix (`MintPassport`, `setBridgeGateway`, `setStakingProgram`, `setDisputeDeposit`, gateway `recoverLockedHome` / `RegisterOApp` / `SetPeer` / `InitLzReceiveTypes`, staking `setMinStakeNative`) — same name, ordinal 1 (D-43). |
 | `NotActiveVerifier` | Verifier gate failed |
 | `CannotSelfVerify` | Verifier owns passport |
 | `InvalidStatus` | Wrong status for operation |
@@ -342,7 +342,7 @@ Soulbound ERC-721: **one pass per wallet**, non-transferable after mint.
 | `becomeVerifierNative` | anyone + ETH | Stake native (`asset = 0`); mint pass |
 | `leave` | active verifier | End role; start 14d unbond; attempt burn (no payout yet) |
 | `claimStake` | after unlock | Pay native stake (or credit claim); clear unbond state |
-| `setMinStakeNative` | owner | New minimum (≥ floor) for **new** joiners |
+| `setMinStakeNative` | owner | New minimum (≥ floor) for **new** joiners. **SVM:** unsigned → `MissingRequiredSignature`; signed-wrong → `NotOwner`. |
 | `isActiveVerifier` | view | Active stake check |
 | `setVerificationFee` | active verifier | Set public fee signal (wei) |
 
@@ -801,7 +801,7 @@ The home-unlock path is **asset-custodial** (a forged unlock steals a real NFT);
 If a bridge message is permanently undeliverable, a home-origin passport can be stranded locked in the gateway (`ownerOf == gateway`, `custodyLocked`). Restoration is **governed**, not a user one-click:
 
 1. **Kill** the stuck inbound on the destination LayerZero EndpointV2 (`skip` / `nilify` / `burn` / `clear` as applicable). Callable by the OApp or its **delegate** — production delegate is **Timelock48h**. No new Kargain contract code for the kill side.
-2. **Restore** on the home chain: `KarPassportBridgeGateway.recoverLockedHome(tokenId, to)` (`onlyOwner`; production owner = Timelock48h). Requires home-origin id and that the gateway holds the token; calls `bridgeResetOnUnlock(tokenId, "")` then `transferFrom` to `to`; emits `RecoveredLockedHome`. **No mint/burn path.**
+2. **Restore** on the home chain: `KarPassportBridgeGateway.recoverLockedHome(tokenId, to)` (`onlyOwner`; production owner = Timelock48h). Requires home-origin id and that the gateway holds the token; calls `bridgeResetOnUnlock(tokenId, "")` then `transferFrom` to `to`; emits `RecoveredLockedHome`. **No mint/burn path.** **SVM:** unsigned config authority → `MissingRequiredSignature`; signed-wrong → `NotOwner`. The same admission names apply to `RegisterOApp`, `SetPeer`, and `InitLzReceiveTypes`.
 
 **Contract guarantee:** `recoverLockedHome` can only release one token the gateway already custodies — structurally incapable of minting a duplicate home instance.
 
@@ -976,7 +976,7 @@ Same answer-account pattern as §13.7, applied to verifier status:
 
 **Pair init:** staking and pass initialise together and bind each other (Nuclear A3 retarget trap shape: a pass bound to a replaced staking program leaves holders unable to leave or re-join).
 
-**SVM `SetStakingProgram`:** EVM passport binds staking immutably in the constructor. On SVM, config authority may set `staking_program` (testnet migration mock→commercial and A3 pair swap). Refuse zero.
+**SVM `SetStakingProgram`:** EVM passport binds staking immutably in the constructor. On SVM, config authority may set `staking_program` (testnet migration mock→commercial and A3 pair swap). Refuse zero. Unsigned → `MissingRequiredSignature`; signed-wrong → `NotOwner`.
 
 #### 13.8 Governance and upgradeability
 
@@ -1054,7 +1054,7 @@ Each entry: mechanism may differ; named invariant preserved. A divergence withou
 | D-14 | `may` ignores custody-lock | same on EVM | Custody primary; encumbrance secondary |
 | D-15 | Native amounts only for stake/bonds | `address(0)` wei | §13.10–§13.11 |
 | D-16 | Receive may fail-closed on absent compose | EVM leaves `uri=""` and continues | I3 — named asymmetry |
-| D-17 | Records/passport **state** survive burn of representation; mint existence = live Core asset account (a one-byte Core burn tombstone still owned by Core is **not** a live asset — remint must not be refused by leftover state PDA) | `bridgeBurn` leaves `records[]`; `_ownerOf` / `_requireExists` | §12.8; TokenExists ≠ state PDA |
+| D-17 | Records/passport **state** survive burn of representation; mint existence = live Core asset account (a one-byte Core burn tombstone still owned by Core is **not** a live asset — remint must not be refused by leftover state PDA). SVM predicate owner: `kargain-core-liveness::is_live_core_asset` (mpl-core owner + `data_len() > 1`). | `bridgeBurn` leaves `records[]`; `_ownerOf` / `_requireExists` | §12.8; TokenExists ≠ state PDA |
 | D-18 | Gateway bind one-shot vs staking rebind | `setBridgeGateway` vs `setStaking` | §12.7 corrected prose |
 | D-19 | Namespace ≠ EIP-155 | EVM chainId-as-namespace | §13.1 / I1 uniqueness |
 | D-20 | Over-ceiling URI on **inbound** receive | — | **EVM:** OOG on `EndpointV2.lzReceive` is **retryable** (atomic clear+execute; pin LayerZero-v2 `9c741e7f…`). **SVM:** assembled tx **>1232** is **permanently unexecutable** without ALT/split. Product ceiling **160** (Nuclear #6) keeps production no-ALT path ≤1232 (S4a-1/S4a-2 / N6-4). Receive still never length-rejects. |
@@ -1080,7 +1080,7 @@ Each entry: mechanism may differ; named invariant preserved. A divergence withou
 | D-40 | `CurrencyFeedSet` — EVM admin feed table emit; **SVM has no equivalent log** (feed pinned per payment-token at admit — D-29). Census row retained for EVM indexer parity. | FixedPrice `setCurrencyFeed` | **P4 (D-29):** fiat offered iff feed path pinned at payment-token admit; no second mode-global currency-feed config surface on SVM |
 | D-41 | `NativeUsdStalenessToleranceSet` — EVM mode-global native-USD staleness admin emit. On SVM, oracle freshness/confidence is pinned **per admitted payment token** at admit (D-07: staleness ∈ [60, 259200]); native USD has no on-chain feed path (D-29). | FixedPrice `setNativeUsdStalenessTolerance` | **D-07 + D-29:** staleness is a property of the admitted feed record, not a mode-global admin knob; native USD feed admin surface absent on SVM |
 | D-42 | `ProfileUpdated` on KarProPass — EVM emit on profile write. SVM pass holds no separate profile authority. | KarProPass `updateProfile` | **D-21:** pass is projection only; sole verifier-status owner is stake PDA `active` — no KarPro profile emit path on SVM |
-| D-43 | EVM custom errors may carry typed parameters (`EmptyField(string fieldName)`, …); SVM answers with the **same error name** as an ordinal only — parameters do not travel in the refusal surface. | Solidity `error` ABI | **Same refusal name**; UI/copy uses static name-based messages; no parameter-dependent SVM payload |
+| D-43 | EVM custom errors may carry typed parameters (`EmptyField(string fieldName)`, …); SVM answers with the **same error name** as an ordinal only — parameters do not travel in the refusal surface. Ordinal 1 (`NotOwner`) is token-owner **and** config-authority on SVM (Ownable parity); name only — copy is not split. | Solidity `error` ABI | **Same refusal name**; UI/copy uses static name-based messages; no parameter-dependent SVM payload |
 | D-44 | FixedPrice Core passport custody (S8-E step 5 / 6c / 6d-1). **Direct open:** product owner signs `TransferV1` in the same open transaction (no EVM-style pre-`approve` of the mode). **Mandate open:** Core `TransferDelegate` must already name the mode custody authority; open uses delegate→custody. Every Core `TransferV1` resets TransferDelegate to Owner — so a successful open clears the grant plugin; **Revoke** leaves an inert TransferDelegate on the asset (OpenFromMandate then refuses by mandate cause, not missing delegate). **Encumbrance answer PDAs** exist only while the lot obligation exists: `open_obligation` at FixedPrice open creates both LeaveChain and OpenConsignment accounts (`allowed: false`, recorded funder = fee-payer); every close path `close_obligation` refunds rent to that funder and reallocates to empty so passport `may` reads Uninitialised (= allow). Wrong reclaim recipient → `WrongAnswerFunder` (142). Registry miss reuses `ModeNotEncumbranceSource` (71); unbound mode → `PassportProgramUnbound` (140); retired harness CreateAsset / ApproveEscrow / SetMayOpen / SetSelfEncumbrance / **ForceSeedPriceAccount** → `HarnessInstructionRetired` (141). **Price:** no Kargain program writes a price account; Buy reads only accounts owned by the admitted `price_program` (stand injects receiver-owned clone/fixture — D-07). | EVM `approve` + `transferFrom`; FixedPrice `may` = `!isLiveConsignment` (no stored answer) | Stand Core path + answer rent + external price |
 | D-45 | Ascending Core passport custody (S8-E step 6 / 6c). Same Core movers + `BindPassportProgram` as FixedPrice (Ascending ix index 32). **VERIFIED is mode-side:** open reads `PassportState.status` via a public kar-passport reader and refuses `PassportNotVerified` (121) when not Verified — passport `may` does not encode VERIFIED. **Encumbrance answers** mirror EVM Ascending `may` (`!_hasUnresolvedSettlement`): accounts are **absent during the live auction**; `open_obligation` at Settle creates both intents (`allowed: false`, funder = settle fee-payer); hold-clear paths (`ConfirmReceipt` / `ReleaseFunds` / `CompleteReversal` / `AbandonReversal` / challenge on_rejected / on_expired) `close_obligation` with refund — uphold leaves answers open. **CompleteReversal** moves Core via owner-signed TransferV1 from current Core owner → seller when `core_asset_owner == hold.buyer`, else `NotPassportHolder` (120). Harness CreateAsset / ApproveEscrow / SetMayOpen / SetVerified / SetSelfEncumbrance / ForceAssetOwner → `HarnessInstructionRetired` (141). `HarnessAsset` lives only in consignment-harness. Grant order matches EVM Mandate in pure `grant_mandate` (owner → not live → TransferDelegate/`NotTransferDelegate` → zero agent); handlers pass a measured approval fact (never a literal). ForceAuctionEndsAt / ForceHoldClock / ForceRecallRequestedAt remain **pending** — named blocker: in-process runtime must execute Core `TransferV1` (LiteSVM stack fault; 6d-2). `ForceSeedPriceAccount` retired on FixedPrice (D-44 / 6d-1). | EVM Ascending `may` = `!_hasUnresolvedSettlement`; `passportStatus` at open | Stand Core + VERIFIED + Settle-open answers + hold-clear close |
 

@@ -1,0 +1,11 @@
+[package]
+name = "kargain-core-liveness"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Sole Core live-asset predicate (D-17 tombstone): mpl-core owner + data_len > 1"
+
+[dependencies]
+solana-program = { workspace = true }
+mpl-core = { workspace = true }

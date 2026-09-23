@@ -16,7 +16,9 @@ use solana_program::{
 };
 
 use crate::account::into_program_error;
-use crate::config::{GatewayConfig, GATEWAY_CONFIG_DISCRIMINATOR};
+use crate::config::{
+    load_config, require_config_authority, GatewayConfig, GATEWAY_CONFIG_DISCRIMINATOR,
+};
 use crate::endpoint_v2::{
     cpi_clear_production, cpi_register_oapp, cpi_send_production, is_production_endpoint,
     ClearParams as EndpointClearParams, SendParams as EndpointSendParams, EVENT_SEED, OAPP_SEED,
@@ -182,18 +184,6 @@ fn initialize(
     config.try_borrow_mut_data()?[..encoded.len()].copy_from_slice(&encoded);
     msg!("kar-gateway Initialize ok");
     Ok(())
-}
-
-fn load_config(program_id: &Pubkey, config: &AccountInfo) -> Result<GatewayConfig, ProgramError> {
-    let (expected, _) = config_pda(program_id);
-    if config.key != &expected {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    if config.owner != program_id {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-    GatewayConfig::try_from_slice(&config.try_borrow_data()?)
-        .map_err(|_| ProgramError::InvalidAccountData)
 }
 
 /// CPI mock-endpoint Clear — MUST run before any Kargain state mutation.
@@ -705,13 +695,10 @@ fn recover_locked_home(
     let system = next_account_info(iter)?;
     let to_ai = next_account_info(iter)?;
 
-    if !authority.is_signer || !payer.is_signer {
+    if !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
-    let cfg = load_config(program_id, gateway_config)?;
-    if authority.key.to_bytes() != cfg.authority {
-        return Err(ProgramError::IllegalOwner);
-    }
+    let cfg = require_config_authority(program_id, gateway_config, authority)?;
     if to_ai.key.to_bytes() != to {
         return Err(ProgramError::InvalidArgument);
     }
@@ -781,13 +768,7 @@ fn register_oapp(
     let system = next_account_info(iter)?;
     let event_authority = next_account_info(iter)?;
 
-    if !authority_payer.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-    let cfg = load_config(program_id, gateway_config)?;
-    if authority_payer.key.to_bytes() != cfg.authority {
-        return Err(ProgramError::IllegalOwner);
-    }
+    let cfg = require_config_authority(program_id, gateway_config, authority_payer)?;
     if endpoint_program.key.to_bytes() != cfg.endpoint_program {
         return Err(ProgramError::IncorrectProgramId);
     }
@@ -833,13 +814,10 @@ fn set_peer(
     let payer = next_account_info(iter)?;
     let system = next_account_info(iter)?;
 
-    if !authority.is_signer || !payer.is_signer {
+    if !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
-    let cfg = load_config(program_id, gateway_config)?;
-    if authority.key.to_bytes() != cfg.authority {
-        return Err(ProgramError::IllegalOwner);
-    }
+    let cfg = require_config_authority(program_id, gateway_config, authority)?;
     // Star topology: Solana spoke may only peer with the hub.
     if remote_eid != HUB_EID {
         return Err(ProgramError::InvalidArgument);
@@ -889,4 +867,266 @@ fn set_peer(
         Pubkey::new_from_array(peer)
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod admin_admit_tests {
+    use super::*;
+    use kargain_errors::KargainError;
+    use solana_program::pubkey::Pubkey;
+
+    fn pid() -> Pubkey {
+        Pubkey::new_from_array([9u8; 32])
+    }
+    fn auth() -> Pubkey {
+        Pubkey::new_from_array([1u8; 32])
+    }
+    fn wrong() -> Pubkey {
+        Pubkey::new_from_array([2u8; 32])
+    }
+    fn not_owner() -> ProgramError {
+        ProgramError::Custom(u32::from(KargainError::NotOwner))
+    }
+    fn ai<'a>(
+        key: &'a Pubkey,
+        is_signer: bool,
+        writable: bool,
+        lamports: &'a mut u64,
+        data: &'a mut [u8],
+        owner: &'a Pubkey,
+    ) -> AccountInfo<'a> {
+        AccountInfo::new(key, is_signer, writable, lamports, data, owner, false, 0)
+    }
+    fn cfg_bytes(program_id: &Pubkey, authority: &Pubkey) -> (Pubkey, Vec<u8>) {
+        let (key, bump) = config_pda(program_id);
+        let cfg = GatewayConfig {
+            discriminator: GATEWAY_CONFIG_DISCRIMINATOR,
+            authority: authority.to_bytes(),
+            local_eid: 1,
+            endpoint_program: [3u8; 32],
+            passport_program: [4u8; 32],
+            namespace: 1,
+            bump,
+            freeze_bump: 255,
+        };
+        (key, borsh::to_vec(&cfg).unwrap())
+    }
+
+    #[test]
+    fn recover_locked_home_unsigned_wrong_admit_passed() {
+        let program_id = pid();
+        let authority = auth();
+        let (cfg_key, mut cfg_data) = cfg_bytes(&program_id, &authority);
+        let mut cl = 0u64;
+        let mut al = 0u64;
+        let mut pl = 0u64;
+        let mut l0 = 0u64;
+        let mut l1 = 0u64;
+        let mut l2 = 0u64;
+        let mut l3 = 0u64;
+        let mut l4 = 0u64;
+        let mut l5 = 0u64;
+        let mut l6 = 0u64;
+        let mut l7 = 0u64;
+        let k0 = Pubkey::new_from_array([10u8; 32]);
+        let k1 = Pubkey::new_from_array([11u8; 32]);
+        let k2 = Pubkey::new_from_array([12u8; 32]);
+        let k3 = Pubkey::new_from_array([13u8; 32]);
+        let k4 = Pubkey::new_from_array([14u8; 32]);
+        let k5 = Pubkey::new_from_array([15u8; 32]);
+        let k6 = Pubkey::new_from_array([16u8; 32]);
+        let k7 = Pubkey::new_from_array([17u8; 32]);
+        let mut d0: [u8; 0] = [];
+        let mut d1: [u8; 0] = [];
+        let mut d2: [u8; 0] = [];
+        let mut d3: [u8; 0] = [];
+        let mut d4: [u8; 0] = [];
+        let mut d5: [u8; 0] = [];
+        let mut d6: [u8; 0] = [];
+        let mut d7: [u8; 0] = [];
+        let mut da: [u8; 0] = [];
+        let mut dp: [u8; 0] = [];
+        let to = [9u8; 32];
+        {
+            let accs = [
+                ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id),
+                ai(&authority, false, false, &mut al, &mut da, &program_id),
+                ai(&authority, true, true, &mut pl, &mut dp, &program_id),
+                ai(&k0, false, false, &mut l0, &mut d0, &program_id),
+                ai(&k1, false, false, &mut l1, &mut d1, &program_id),
+                ai(&k2, false, false, &mut l2, &mut d2, &program_id),
+                ai(&k3, false, false, &mut l3, &mut d3, &program_id),
+                ai(&k4, false, false, &mut l4, &mut d4, &program_id),
+                ai(&k5, false, false, &mut l5, &mut d5, &program_id),
+                ai(&k6, false, false, &mut l6, &mut d6, &program_id),
+                ai(&k7, false, false, &mut l7, &mut d7, &program_id),
+            ];
+            assert_eq!(
+                recover_locked_home(&program_id, &accs, [1u8; 32], to).unwrap_err(),
+                ProgramError::MissingRequiredSignature,
+            );
+        }
+        {
+            let w = wrong();
+            let accs = [
+                ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id),
+                ai(&w, true, false, &mut al, &mut da, &program_id),
+                ai(&authority, true, true, &mut pl, &mut dp, &program_id),
+                ai(&k0, false, false, &mut l0, &mut d0, &program_id),
+                ai(&k1, false, false, &mut l1, &mut d1, &program_id),
+                ai(&k2, false, false, &mut l2, &mut d2, &program_id),
+                ai(&k3, false, false, &mut l3, &mut d3, &program_id),
+                ai(&k4, false, false, &mut l4, &mut d4, &program_id),
+                ai(&k5, false, false, &mut l5, &mut d5, &program_id),
+                ai(&k6, false, false, &mut l6, &mut d6, &program_id),
+                ai(&k7, false, false, &mut l7, &mut d7, &program_id),
+            ];
+            assert_eq!(
+                recover_locked_home(&program_id, &accs, [1u8; 32], to).unwrap_err(),
+                not_owner(),
+            );
+        }
+        {
+            let accs = [
+                ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id),
+                ai(&authority, true, false, &mut al, &mut da, &program_id),
+                ai(&authority, true, true, &mut pl, &mut dp, &program_id),
+                ai(&k0, false, false, &mut l0, &mut d0, &program_id),
+                ai(&k1, false, false, &mut l1, &mut d1, &program_id),
+                ai(&k2, false, false, &mut l2, &mut d2, &program_id),
+                ai(&k3, false, false, &mut l3, &mut d3, &program_id),
+                ai(&k4, false, false, &mut l4, &mut d4, &program_id),
+                ai(&k5, false, false, &mut l5, &mut d5, &program_id),
+                ai(&k6, false, false, &mut l6, &mut d6, &program_id),
+                ai(&k7, false, false, &mut l7, &mut d7, &program_id),
+            ];
+            assert_eq!(
+                recover_locked_home(&program_id, &accs, [1u8; 32], to).unwrap_err(),
+                ProgramError::InvalidArgument,
+            );
+        }
+    }
+
+    #[test]
+    fn register_oapp_unsigned_wrong_admit_passed() {
+        let program_id = pid();
+        let authority = auth();
+        let (cfg_key, mut cfg_data) = cfg_bytes(&program_id, &authority);
+        let mut cl = 0u64;
+        let mut al = 0u64;
+        let mut l2 = 0u64;
+        let mut l3 = 0u64;
+        let mut l4 = 0u64;
+        let mut l5 = 0u64;
+        let mut da: [u8; 0] = [];
+        let mut d2: [u8; 0] = [];
+        let mut d3: [u8; 0] = [];
+        let mut d4: [u8; 0] = [];
+        let mut d5: [u8; 0] = [];
+        let k2 = Pubkey::new_from_array([20u8; 32]);
+        let k3 = Pubkey::new_from_array([21u8; 32]);
+        let k4 = Pubkey::new_from_array([22u8; 32]);
+        let k5 = Pubkey::new_from_array([23u8; 32]);
+        {
+            let accs = [
+                ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id),
+                ai(&authority, false, true, &mut al, &mut da, &program_id),
+                ai(&k2, false, false, &mut l2, &mut d2, &program_id),
+                ai(&k3, false, true, &mut l3, &mut d3, &program_id),
+                ai(&k4, false, false, &mut l4, &mut d4, &program_id),
+                ai(&k5, false, false, &mut l5, &mut d5, &program_id),
+            ];
+            assert_eq!(
+                register_oapp(&program_id, &accs, [1u8; 32]).unwrap_err(),
+                ProgramError::MissingRequiredSignature,
+            );
+        }
+        {
+            let w = wrong();
+            let accs = [
+                ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id),
+                ai(&w, true, true, &mut al, &mut da, &program_id),
+                ai(&k2, false, false, &mut l2, &mut d2, &program_id),
+                ai(&k3, false, true, &mut l3, &mut d3, &program_id),
+                ai(&k4, false, false, &mut l4, &mut d4, &program_id),
+                ai(&k5, false, false, &mut l5, &mut d5, &program_id),
+            ];
+            assert_eq!(
+                register_oapp(&program_id, &accs, [1u8; 32]).unwrap_err(),
+                not_owner(),
+            );
+        }
+        {
+            let accs = [
+                ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id),
+                ai(&authority, true, true, &mut al, &mut da, &program_id),
+                ai(&k2, false, false, &mut l2, &mut d2, &program_id),
+                ai(&k3, false, true, &mut l3, &mut d3, &program_id),
+                ai(&k4, false, false, &mut l4, &mut d4, &program_id),
+                ai(&k5, false, false, &mut l5, &mut d5, &program_id),
+            ];
+            assert_eq!(
+                register_oapp(&program_id, &accs, [1u8; 32]).unwrap_err(),
+                ProgramError::IncorrectProgramId,
+            );
+        }
+    }
+
+    #[test]
+    fn set_peer_unsigned_wrong_admit_passed() {
+        let program_id = pid();
+        let authority = auth();
+        let (cfg_key, mut cfg_data) = cfg_bytes(&program_id, &authority);
+        let mut cl = 0u64;
+        let mut al = 0u64;
+        let mut pl = 0u64;
+        let mut l2 = 0u64;
+        let mut l4 = 0u64;
+        let mut da: [u8; 0] = [];
+        let mut dp: [u8; 0] = [];
+        let mut d2: [u8; 0] = [];
+        let mut d4: [u8; 0] = [];
+        let k2 = Pubkey::new_from_array([30u8; 32]);
+        let k4 = Pubkey::new_from_array([31u8; 32]);
+        {
+            let accs = [
+                ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id),
+                ai(&authority, false, false, &mut al, &mut da, &program_id),
+                ai(&k2, false, true, &mut l2, &mut d2, &program_id),
+                ai(&authority, true, true, &mut pl, &mut dp, &program_id),
+                ai(&k4, false, false, &mut l4, &mut d4, &program_id),
+            ];
+            assert_eq!(
+                set_peer(&program_id, &accs, 0, [1u8; 32]).unwrap_err(),
+                ProgramError::MissingRequiredSignature,
+            );
+        }
+        {
+            let w = wrong();
+            let accs = [
+                ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id),
+                ai(&w, true, false, &mut al, &mut da, &program_id),
+                ai(&k2, false, true, &mut l2, &mut d2, &program_id),
+                ai(&authority, true, true, &mut pl, &mut dp, &program_id),
+                ai(&k4, false, false, &mut l4, &mut d4, &program_id),
+            ];
+            assert_eq!(
+                set_peer(&program_id, &accs, 0, [1u8; 32]).unwrap_err(),
+                not_owner(),
+            );
+        }
+        {
+            let accs = [
+                ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id),
+                ai(&authority, true, false, &mut al, &mut da, &program_id),
+                ai(&k2, false, true, &mut l2, &mut d2, &program_id),
+                ai(&authority, true, true, &mut pl, &mut dp, &program_id),
+                ai(&k4, false, false, &mut l4, &mut d4, &program_id),
+            ];
+            assert_eq!(
+                set_peer(&program_id, &accs, 0, [1u8; 32]).unwrap_err(),
+                ProgramError::InvalidArgument,
+            );
+        }
+    }
 }

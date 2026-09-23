@@ -2,7 +2,8 @@
  * S8-E step 4 — Core custody helpers sole owner in kargain-consignment-base.
  *
  * - Binding / freeze / TransferDelegate / TransferV1 live in core_custody.rs
- * - Passport asset address + liveness: sole owner kargain-passport-asset
+ * - Passport asset address: sole owner kargain-passport-asset (ASSET_SEED / asset_pda)
+ * - Core liveness predicate: kargain-core-liveness (re-exported by passport-asset)
  * - Modes must not call TransferV1CpiBuilder directly (use core_custody movers)
  * - Passport keeps its own Core CPI door (no custody helper copy)
  * - Harness proves skip-freeze; FixedPrice (step 5) consumes the three movers; Ascending waits for step 6
@@ -102,7 +103,11 @@ pub fn transfer_owner_to_custody_skip_freeze_gate() {
     const leaf = fs.readFileSync(PASSPORT_ASSET, "utf8");
     assert.ok(leaf.includes('pub const ASSET_SEED: &[u8] = b"asset"'));
     assert.ok(leaf.includes("pub fn asset_pda"));
-    assert.ok(leaf.includes("pub fn is_live_core_asset"));
+    assert.ok(leaf.includes("pub use kargain_core_liveness::is_live_core_asset"));
+    assert.ok(
+      !/fn is_live_core_asset\s*\(/.test(leaf),
+      "liveness body lives in kargain-core-liveness, not passport-asset",
+    );
 
     const seeds = fs.readFileSync(PASSPORT_SEEDS, "utf8");
     assert.ok(seeds.includes("kargain_passport_asset"));

@@ -115,7 +115,7 @@ fn require_staking_signer(
         return Err(into_program_error(KargainError::OnlyStaking));
     }
     let staking_program = Pubkey::new_from_array(cfg.staking_program);
-    let (expected, _) = Pubkey::find_program_address(&[b"config"], &staking_program);
+    let (expected, _) = crate::seeds::config_pda(&staking_program);
     if staking_config.key != &expected {
         return Err(into_program_error(KargainError::OnlyStaking));
     }
@@ -292,4 +292,57 @@ fn close_pass(program_id: &Pubkey, accounts: &[AccountInfo], holder: [u8; 32]) -
     generated::emit_kar_pro_pass_pro_pass_burned(holder);
     kargain_events::ops_log!("kar-pro-pass ClosePass ok");
     Ok(())
+}
+
+#[cfg(test)]
+mod staking_signer_tests {
+    use super::*;
+    use solana_program::pubkey::Pubkey;
+
+    fn only_staking() -> ProgramError {
+        into_program_error(KargainError::OnlyStaking)
+    }
+
+    fn ai<'a>(
+        key: &'a Pubkey,
+        is_signer: bool,
+        owner: &'a Pubkey,
+        lamports: &'a mut u64,
+        data: &'a mut [u8],
+    ) -> AccountInfo<'a> {
+        AccountInfo::new(key, is_signer, false, lamports, data, owner, false, 0)
+    }
+
+    #[test]
+    fn require_staking_signer_unsigned_wrong_pda_correct() {
+        let staking_program = Pubkey::new_from_array([8u8; 32]);
+        let (expected, bump) = crate::seeds::config_pda(&staking_program);
+        let cfg = PassConfig {
+            discriminator: PASS_CONFIG_DISCRIMINATOR,
+            authority: [1u8; 32],
+            staking_program: staking_program.to_bytes(),
+            bump,
+        };
+        let mut lamports = 0u64;
+        let mut data: [u8; 0] = [];
+        {
+            let unsigned = ai(&expected, false, &staking_program, &mut lamports, &mut data);
+            assert_eq!(
+                require_staking_signer(&cfg, &unsigned).unwrap_err(),
+                only_staking(),
+            );
+        }
+        {
+            let wrong_key = Pubkey::new_from_array([3u8; 32]);
+            let signed_wrong = ai(&wrong_key, true, &staking_program, &mut lamports, &mut data);
+            assert_eq!(
+                require_staking_signer(&cfg, &signed_wrong).unwrap_err(),
+                only_staking(),
+            );
+        }
+        {
+            let correct = ai(&expected, true, &staking_program, &mut lamports, &mut data);
+            require_staking_signer(&cfg, &correct).unwrap();
+        }
+    }
 }

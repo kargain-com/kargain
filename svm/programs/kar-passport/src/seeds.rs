@@ -4,15 +4,11 @@
 
 use solana_program::pubkey::Pubkey;
 
+pub use kargain_config_pda::{config_pda, CONFIG_SEED};
 pub use kargain_passport_asset::{asset_pda, ASSET_SEED};
 
-pub const CONFIG_SEED: &[u8] = b"config";
 pub const STATE_SEED: &[u8] = b"state";
 pub const RECORD_SEED: &[u8] = b"record";
-
-pub fn config_pda(program_id: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[CONFIG_SEED], program_id)
-}
 
 pub fn state_pda(program_id: &Pubkey, token_id: &[u8; 32]) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[STATE_SEED, token_id], program_id)

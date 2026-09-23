@@ -175,6 +175,15 @@ describe("svm program error ordinals", () => {
     assert.equal(copy, REVERT_COPY.NotActiveVerifier);
   });
 
+  it("Custom(1) is NotOwner; IllegalOwner is not a mapped name", () => {
+    const decoded = decodeSvmProgramError(new Error("Custom(1)"));
+    assert.ok(decoded);
+    assert.equal(decoded!.name, "NotOwner");
+    assert.deepEqual(decoded!.args, []);
+    assert.equal(txErrorMessage(new Error("Custom(1)")), REVERT_COPY.NotOwner);
+    assert.equal(SVM_PROGRAM_ERROR_BY_ORDINAL[1], "NotOwner");
+  });
+
   it("maps ConfidenceTooWide (SVM-only) from ordinal without inventing params", () => {
     const ordinal = SVM_PROGRAM_ERROR_BY_ORDINAL.indexOf("ConfidenceTooWide");
     assert.ok(ordinal >= 0);
