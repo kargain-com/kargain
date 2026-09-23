@@ -69,13 +69,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-pda-derivation",
     owner: "lib/svm/derive-pda.ts · svm/crates/kargain-ix-wire",
-    rule: "Commercial SVM PDA: product entry deriveSvmPda = recipe id + COMMERCIAL_ACTIVE program only; layout seam deriveSvmPdaLayout = synthetic-only golden/plant path; product scanner bans seam imports; async kit only",
+    rule: "Commercial SVM PDA: product entry deriveSvmPda = recipe id + COMMERCIAL_ACTIVE program only (31 recipes: 19 program-local + 12 shared-crate including kargain-consignment-base/passport_binding and kargain-encumbrance/answer with dynamic bytes seed_prefix + both intents); layout seam deriveSvmPdaLayout = synthetic-only golden/plant path; product scanner bans seam imports and ad-hoc passport-bind; async kit only",
     guardTests: ["svm-pda-derivation-policy.test.ts"],
   },
   {
     id: "svm-account-state-decode",
     owner: "lib/svm/decode-account-state.ts · svm/crates/kargain-ix-wire",
-    rule: "Commercial SVM account-state decode (PassportState + StakeAccount + ChallengeAccount + partial PassportConfig) only via decode-account-state; layout+goldens from Rust BorshSerialize (committed state.manifest.json); cursor decode; u128; remainder_unmodelled terminal (not padding); ChallengeAccount fully-consumed meaningful; PassportConfig deliberately partial (populated-vec golden); product surfaces base58 via encodeSvmPubkeyBytes; no hand offsets; no chrome amounts from StakeAccount",
+    rule: "Commercial SVM account-state decode (PassportState + StakeAccount + ChallengeAccount + partial PassportConfig + EncumbranceAnswer + PassportBinding; census 6) only via decode-account-state; layout+goldens from Rust BorshSerialize (committed state.manifest.json); length fields are goldenByteLength and modelledByteLength (retired accountSpace/payloadLen refuse by name); neither is a rent SPACE unless it equals a program SPACE; cursor decode; u128; remainder_unmodelled terminal (not padding); exact layouts fully-consumed meaningful; PassportConfig deliberately partial (populated-vec golden); product surfaces base58 via encodeSvmPubkeyBytes; no hand offsets; no chrome amounts from StakeAccount",
     guardTests: ["svm-account-state-decode-policy.test.ts"],
   },
   {

@@ -35,6 +35,16 @@ pub struct PdaDynamicDecl {
     pub encoding: String,
 }
 
+/// Extra Rust-authored sample point on a recipe whose dynamics vary
+/// (answer intents). Absent on every other recipe.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PdaAlternateSample {
+    pub sample: Map<String, Value>,
+    pub golden_address: String,
+    pub golden_bump: u8,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PdaManifestRecipe {
@@ -45,6 +55,8 @@ pub struct PdaManifestRecipe {
     pub sample: Map<String, Value>,
     pub golden_address: String,
     pub golden_bump: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alternate_samples: Option<Vec<PdaAlternateSample>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -106,6 +118,13 @@ fn refuse_live_program_ids_in_artifact(text: &str) {
     }
 }
 
+pub(crate) fn dynamic_bytes(name: &str) -> PdaDynamicDecl {
+    PdaDynamicDecl {
+        name: name.into(),
+        encoding: "bytes".into(),
+    }
+}
+
 pub(crate) fn dynamic_bytes32(name: &str) -> PdaDynamicDecl {
     PdaDynamicDecl {
         name: name.into(),
@@ -144,13 +163,46 @@ mod tests {
     }
 
     #[test]
-    fn pda_census_is_thirty() {
+    fn pda_census_is_thirty_one() {
         let m = build_pda_manifest();
         assert_eq!(
             m.recipes.len(),
-            30,
-            "pda census floor: 19 program-local + 11 shared-crate = 30"
+            31,
+            "pda census: 19 program-local + 12 shared-crate = 31"
         );
+        assert!(
+            m.recipes
+                .iter()
+                .any(|r| r.id == "kargain-consignment-base/passport_binding"),
+            "passport-binding recipe required"
+        );
+    }
+
+    #[test]
+    fn encumbrance_answer_leave_golden_unchanged_and_open_alternate() {
+        let m = build_pda_manifest();
+        let answer = m
+            .recipes
+            .iter()
+            .find(|r| r.id == "kargain-encumbrance/answer")
+            .expect("answer recipe");
+        assert_eq!(answer.seed_tag_hex, "", "prefix is a dynamic, not a tag");
+        assert_eq!(
+            answer.dynamics.iter().map(|d| d.name.as_str()).collect::<Vec<_>>(),
+            ["seed_prefix", "token_id", "intent"]
+        );
+        assert_eq!(
+            answer.golden_address,
+            "dv1DnfwkaV1LfAspr8ggsxw7Nq9LPEEKEgJywqv3MwC",
+            "LeaveChain sample golden is authoritative"
+        );
+        assert_eq!(answer.golden_bump, 255);
+        let alts = answer
+            .alternate_samples
+            .as_ref()
+            .expect("OpenConsignment alternate");
+        assert_eq!(alts.len(), 1);
+        assert_ne!(alts[0].golden_address, answer.golden_address);
     }
 
     #[test]

@@ -36,6 +36,12 @@ export type PdaDynamicDecl = {
   encoding: string;
 };
 
+export type PdaAlternateSample = {
+  sample: Record<string, unknown>;
+  goldenAddress: string;
+  goldenBump: number;
+};
+
 export type PdaManifestRecipe = {
   owner: string;
   id: string;
@@ -44,6 +50,8 @@ export type PdaManifestRecipe = {
   sample: Record<string, unknown>;
   goldenAddress: string;
   goldenBump: number;
+  /** Extra Rust-authored sample points (answer intents). */
+  alternateSamples?: PdaAlternateSample[];
 };
 
 export type PdaManifest = {
@@ -204,7 +212,11 @@ async function deriveCore(input: {
   }
 
   const recipe = input.recipe;
-  const seedParts: Uint8Array[] = [hexToBytesExact(recipe.seedTagHex)];
+  const seedParts: Uint8Array[] = [];
+  // Empty tag: first seed is a dynamic (encumbrance answer prefix).
+  if (recipe.seedTagHex.length > 0) {
+    seedParts.push(hexToBytesExact(recipe.seedTagHex));
+  }
   const provided = input.seeds ?? {};
 
   for (const dyn of recipe.dynamics) {
@@ -258,7 +270,41 @@ function encodeDynamicSeed(
   if (encoding === "u8") {
     return encodeU8(value);
   }
+  if (encoding === "bytes") {
+    return encodeBytes(value);
+  }
   return { ok: false, detail: `unsupported_encoding:${encoding}` };
+}
+
+/** Variable-length seed (1–32), same ceiling as `require_valid_seed_prefix`. */
+const BYTES_SEED_MIN = 1;
+const BYTES_SEED_MAX = 32;
+
+function encodeBytes(value: PdaSeedValue): EncodeOk | EncodeErr {
+  if (value instanceof Uint8Array) {
+    if (value.length < BYTES_SEED_MIN || value.length > BYTES_SEED_MAX) {
+      return { ok: false, detail: `bytes_len_${value.length}` };
+    }
+    return { ok: true, bytes: value };
+  }
+  if (typeof value !== "string") {
+    return { ok: false, detail: "bytes_wrong_type" };
+  }
+  if (value.length === 0) {
+    return { ok: false, detail: "bytes_empty" };
+  }
+  if (/^[0-9a-fA-F]+$/.test(value) && value.length % 2 === 0) {
+    const bytes = hexToBytesExact(value);
+    if (bytes.length < BYTES_SEED_MIN || bytes.length > BYTES_SEED_MAX) {
+      return { ok: false, detail: `bytes_len_${bytes.length}` };
+    }
+    return { ok: true, bytes };
+  }
+  const utf8 = new TextEncoder().encode(value);
+  if (utf8.length < BYTES_SEED_MIN || utf8.length > BYTES_SEED_MAX) {
+    return { ok: false, detail: `bytes_len_${utf8.length}` };
+  }
+  return { ok: true, bytes: utf8 };
 }
 
 function encodeBytes32(value: PdaSeedValue): EncodeOk | EncodeErr {
@@ -345,13 +391,19 @@ function hexToBytesExact(hex: string, expectedLen?: number): Uint8Array {
 /** Sample dynamics from a manifest recipe → seed map for derivation doors. */
 export function sampleSeedsFromManifest(
   recipe: PdaManifestRecipe,
+  sample: Record<string, unknown> = recipe.sample,
 ): Record<string, PdaSeedValue> {
   const out: Record<string, PdaSeedValue> = {};
   for (const dyn of recipe.dynamics) {
-    const raw = recipe.sample[dyn.name];
+    const raw = sample[dyn.name];
     if (dyn.encoding === "bytes32") {
       if (typeof raw !== "string") {
         throw new Error(`sample_bytes32:${recipe.id}:${dyn.name}`);
+      }
+      out[dyn.name] = raw;
+    } else if (dyn.encoding === "bytes") {
+      if (typeof raw !== "string") {
+        throw new Error(`sample_bytes:${recipe.id}:${dyn.name}`);
       }
       out[dyn.name] = raw;
     } else if (dyn.encoding === "u32_le" || dyn.encoding === "u32_be") {

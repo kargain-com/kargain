@@ -100,10 +100,10 @@ export function productPdaBypassPredicate(
   }
   // Ad-hoc seed tag literals outside the owner (ASCII seed words used by recipes).
   if (
-    /Buffer\.from\(\s*["'](?:config|asset|state|record|freeze|Peer|stake|pass|claim|escrow|challenge|custody|consignment|mandate|recall)["']\s*\)/.test(
+    /Buffer\.from\(\s*["'](?:config|asset|state|record|freeze|Peer|stake|pass|claim|escrow|challenge|custody|consignment|mandate|recall|passport-bind)["']\s*\)/.test(
       source,
     ) ||
-    /new\s+TextEncoder\(\)\s*\.encode\(\s*["'](?:config|asset|state|record|freeze|Peer|stake|pass|claim|escrow|challenge|custody)["']\s*\)/.test(
+    /new\s+TextEncoder\(\)\s*\.encode\(\s*["'](?:config|asset|state|record|freeze|Peer|stake|pass|claim|escrow|challenge|custody|passport-bind)["']\s*\)/.test(
       source,
     )
   ) {
@@ -127,10 +127,14 @@ export function productPdaBypassPredicate(
 }
 
 describe("svm pda derivation policy", () => {
-  it("pda census recipe count equals the acknowledged floor (30)", () => {
-    assert.equal(RECIPES.length, 30);
+  it("pda census recipe count equals the acknowledged floor (31)", () => {
+    assert.equal(RECIPES.length, 31);
     const working = loadWorkingManifest();
-    assert.equal(working.recipes.length, 30);
+    assert.equal(working.recipes.length, 31);
+    assert.ok(
+      working.recipes.some((r) => r.id === "kargain-consignment-base/passport_binding"),
+      "passport_binding recipe required",
+    );
   });
 
   it("synthetic program id is the documented 0x11×32 constant", () => {
@@ -202,10 +206,32 @@ describe("svm pda derivation policy", () => {
         bump: result.bump,
       });
       comparisons += 1;
+      for (const alt of recipe.alternateSamples ?? []) {
+        const altResult = await deriveSvmPdaLayout({
+          recipe,
+          programId: SYNTHETIC,
+          seeds: sampleSeedsFromManifest(recipe, alt.sample),
+        });
+        assert.equal(
+          altResult.ok,
+          true,
+          `derive_failed_alt:${recipe.id}:${altResult.ok === false ? altResult.detail : ""}`,
+        );
+        if (!altResult.ok) continue;
+        if (
+          altResult.address !== alt.goldenAddress ||
+          altResult.bump !== alt.goldenBump
+        ) {
+          throw new Error(
+            `golden_mismatch:${recipe.id}:alt:got_${altResult.address}/${altResult.bump}_want_${alt.goldenAddress}/${alt.goldenBump}`,
+          );
+        }
+        comparisons += 1;
+      }
     }
-    assert.equal(comparisons, RECIPES.length);
+    assert.ok(comparisons >= RECIPES.length);
     console.log(
-      `svm-pda-derivation: ${comparisons} derivations compared over ${RECIPES.length} goldens`,
+      `svm-pda-derivation: ${comparisons} derivations compared over ${RECIPES.length} recipes`,
     );
   });
 
@@ -383,6 +409,169 @@ describe("svm pda derivation policy", () => {
       productPdaBypassPredicate as ProductSourcePredicate,
     );
     assertCleanProductScan(scan);
+  });
+
+  it("both live mode program ids derive passport_binding to different addresses", async () => {
+    const namespaces = commercialSvmNamespaceIds();
+    assert.ok(namespaces.length >= 1);
+    const stack = requireSvmCommercialActive(namespaces[0]!);
+    const fp = stack.fixedPriceConsignment;
+    const asc = stack.ascendingConsignment;
+    assert.ok(typeof fp === "string" && fp.length > 0);
+    assert.ok(typeof asc === "string" && asc.length > 0);
+    const a = await deriveSvmPda({
+      recipe: "kargain-consignment-base/passport_binding",
+      programId: fp,
+    });
+    const b = await deriveSvmPda({
+      recipe: "kargain-consignment-base/passport_binding",
+      programId: asc,
+    });
+    assert.equal(a.ok, true, a.ok === false ? a.detail : "");
+    assert.equal(b.ok, true, b.ok === false ? b.detail : "");
+    if (a.ok && b.ok) {
+      assert.notEqual(a.address, b.address);
+    }
+  });
+
+  it("planted passport-bind seed-tag flip refuses golden comparison by name", async () => {
+    const original = RECIPES.find(
+      (r) => r.id === "kargain-consignment-base/passport_binding",
+    )!;
+    const recipe = structuredClone(original);
+    // passport-bind = 70617373706f72742d62696e64; flip first byte.
+    assert.equal(recipe.seedTagHex, "70617373706f72742d62696e64");
+    recipe.seedTagHex = "71617373706f72742d62696e64";
+    const derived = await deriveSvmPdaLayout({
+      recipe,
+      programId: SYNTHETIC,
+    });
+    assert.equal(derived.ok, true);
+    if (!derived.ok) return;
+    assert.throws(
+      () =>
+        assertMatchesGolden(original, {
+          address: derived.address,
+          bump: derived.bump,
+        }),
+      /golden_mismatch:kargain-consignment-base\/passport_binding/,
+    );
+  });
+
+  it("answer recipe samples both intents; plants miss the LeaveChain golden", async () => {
+    const original = RECIPES.find((r) => r.id === "kargain-encumbrance/answer")!;
+    assert.equal(original.seedTagHex, "");
+    assert.deepEqual(
+      original.dynamics.map((d) => d.name),
+      ["seed_prefix", "token_id", "intent"],
+    );
+    assert.equal(original.sample.intent, 0);
+    const alts = original.alternateSamples ?? [];
+    assert.equal(alts.length, 1);
+    assert.equal(alts[0]!.sample.intent, 1);
+
+    const leave = await deriveSvmPdaLayout({
+      recipe: original,
+      programId: SYNTHETIC,
+      seeds: sampleSeedsFromManifest(original),
+    });
+    assert.equal(leave.ok, true);
+    if (leave.ok) {
+      assertMatchesGolden(original, {
+        address: leave.address,
+        bump: leave.bump,
+      });
+    }
+
+    const open = await deriveSvmPdaLayout({
+      recipe: original,
+      programId: SYNTHETIC,
+      seeds: sampleSeedsFromManifest(original, alts[0]!.sample),
+    });
+    assert.equal(open.ok, true);
+    if (open.ok) {
+      assert.notEqual(open.address, original.goldenAddress);
+      assert.throws(
+        () =>
+          assertMatchesGolden(original, {
+            address: open.address,
+            bump: open.bump,
+          }),
+        /golden_mismatch:kargain-encumbrance\/answer/,
+      );
+    }
+
+    const swapped = structuredClone(original);
+    swapped.dynamics = [swapped.dynamics[0]!, swapped.dynamics[2]!, swapped.dynamics[1]!];
+    const swappedDerived = await deriveSvmPdaLayout({
+      recipe: swapped,
+      programId: SYNTHETIC,
+      seeds: sampleSeedsFromManifest(original),
+    });
+    assert.equal(swappedDerived.ok, true);
+    if (swappedDerived.ok) {
+      assert.throws(
+        () =>
+          assertMatchesGolden(original, {
+            address: swappedDerived.address,
+            bump: swappedDerived.bump,
+          }),
+        /golden_mismatch:kargain-encumbrance\/answer/,
+      );
+    }
+
+    const wrongPrefix = structuredClone(original);
+    const prefixPlant = sampleSeedsFromManifest(original);
+    prefixPlant.seed_prefix = "fp";
+    const prefixDerived = await deriveSvmPdaLayout({
+      recipe: wrongPrefix,
+      programId: SYNTHETIC,
+      seeds: prefixPlant,
+    });
+    assert.equal(prefixDerived.ok, true);
+    if (prefixDerived.ok) {
+      assert.throws(
+        () =>
+          assertMatchesGolden(original, {
+            address: prefixDerived.address,
+            bump: prefixDerived.bump,
+          }),
+        /golden_mismatch:kargain-encumbrance\/answer/,
+      );
+    }
+  });
+
+  it("bytes seed_prefix empty and oversized refuse invalid_seed", async () => {
+    const namespaces = commercialSvmNamespaceIds();
+    const stack = requireSvmCommercialActive(namespaces[0]!);
+    const fp = stack.fixedPriceConsignment;
+    assert.ok(typeof fp === "string" && fp.length > 0);
+    const token =
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const empty = await deriveSvmPda({
+      recipe: "kargain-encumbrance/answer",
+      programId: fp,
+      seeds: { seed_prefix: "", token_id: token, intent: 0 },
+    });
+    assert.equal(empty.ok, false);
+    if (!empty.ok) {
+      assert.equal(empty.cause, "invalid_seed");
+      assert.match(empty.detail, /bytes_empty|bytes_len_/);
+    }
+    const oversized = await deriveSvmPda({
+      recipe: "kargain-encumbrance/answer",
+      programId: fp,
+      seeds: {
+        seed_prefix: new Uint8Array(33),
+        token_id: token,
+        intent: 0,
+      },
+    });
+    assert.equal(oversized.ok, false);
+    if (!oversized.ok) {
+      assert.equal(oversized.cause, "invalid_seed");
+      assert.match(oversized.detail, /bytes_len_33/);
+    }
   });
 
   it("planted product bypass and layout-seam import turn red then green", () => {

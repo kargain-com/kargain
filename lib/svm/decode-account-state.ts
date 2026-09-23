@@ -8,10 +8,14 @@
  *
  * Layout honesty:
  * - Fixed-padded (`PassportState`, `StakeAccount`): cursor ignores trailing zeros.
- * - Exact (`ChallengeAccount`): payload == SPACE; fully-consumed pin is meaningful.
+ * - Exact (`ChallengeAccount`, `EncumbranceAnswer`, `PassportBinding`):
+ *   modelled == golden == SPACE; fully-consumed pin is meaningful.
  * - Deliberately partial (`PassportConfig`): fields stop at `remainder_unmodelled`;
  *   unmodelled structured tail (next_token_id / vec / bump) is not walked.
  *   Fully-consumed is meaningless on a partial + variable account.
+ * Length fields are `goldenByteLength` / `modelledByteLength` — never
+ * `accountSpace` / `payloadLen`. Neither is a rent SPACE unless it equals a
+ * program `SPACE` constant.
  *
  * Pubkeys on product surfaces are base58 via `encodeSvmPubkeyBytes` (never
  * `@solana/addresses` direct).
@@ -31,13 +35,34 @@ export type StateFieldDecl = {
 export type StateLayoutEntry = {
   id: string;
   program: string;
-  accountSpace: number;
+  goldenByteLength: number;
   discriminatorHex: string;
   fields: StateFieldDecl[];
   sample: Record<string, unknown>;
   goldenHex: string;
-  payloadLen: number;
+  modelledByteLength: number;
 };
+
+/** Retired length names must not re-enter a layout object. */
+export type RetiredStateLengthNameCause = "retired_length_name";
+
+export function refuseRetiredStateLengthNames(
+  layout: Record<string, unknown>,
+):
+  | { ok: true }
+  | { ok: false; cause: RetiredStateLengthNameCause; detail: string } {
+  const retired: string[] = [];
+  if (Object.prototype.hasOwnProperty.call(layout, "accountSpace")) {
+    retired.push("accountSpace");
+  }
+  if (Object.prototype.hasOwnProperty.call(layout, "payloadLen")) {
+    retired.push("payloadLen");
+  }
+  if (retired.length > 0) {
+    return { ok: false, cause: "retired_length_name", detail: retired.join(",") };
+  }
+  return { ok: true };
+}
 
 export type StateManifest = {
   version: number;
@@ -155,6 +180,54 @@ export type DecodePassportConfigResult =
   | DecodePassportConfigOk
   | DecodePassportConfigErr;
 
+/** Product EncumbranceAnswer — close paths need the recorded funder. */
+export type EncumbranceAnswerDecoded = {
+  tokenId: Uint8Array;
+  intent: number;
+  allowed: boolean;
+  funder: string;
+};
+
+export type DecodeEncumbranceAnswerOk = {
+  ok: true;
+  value: EncumbranceAnswerDecoded;
+  layout: StateLayoutEntry;
+  bytesRead: number;
+};
+
+export type DecodeEncumbranceAnswerErr = {
+  ok: false;
+  cause: DecodeAccountStateCause;
+  detail: string;
+};
+
+export type DecodeEncumbranceAnswerResult =
+  | DecodeEncumbranceAnswerOk
+  | DecodeEncumbranceAnswerErr;
+
+/** Product PassportBinding — bound passport program + bump. */
+export type PassportBindingDecoded = {
+  passportProgram: string;
+  bump: number;
+};
+
+export type DecodePassportBindingOk = {
+  ok: true;
+  value: PassportBindingDecoded;
+  layout: StateLayoutEntry;
+  bytesRead: number;
+};
+
+export type DecodePassportBindingErr = {
+  ok: false;
+  cause: DecodeAccountStateCause;
+  detail: string;
+};
+
+export type DecodePassportBindingResult =
+  | DecodePassportBindingOk
+  | DecodePassportBindingErr;
+
 const MANIFEST = stateManifest as StateManifest;
 
 const LAYOUTS = new Map<string, StateLayoutEntry>(
@@ -165,6 +238,8 @@ const PASSPORT_STATE_ID = "kar-passport/PassportState";
 const STAKE_ACCOUNT_ID = "kar-pro-staking/StakeAccount";
 const CHALLENGE_ACCOUNT_ID = "kargain-bonded-challenge/ChallengeAccount";
 const PASSPORT_CONFIG_ID = "kar-passport/PassportConfig";
+const ENCUMBRANCE_ANSWER_ID = "kargain-encumbrance/EncumbranceAnswer";
+const PASSPORT_BINDING_ID = "kargain-consignment-base/PassportBinding";
 
 function pubkeyBase58(bytes: Uint8Array): string {
   return encodeSvmPubkeyBytes(bytes);
@@ -202,6 +277,22 @@ export function passportConfigLayout(): StateLayoutEntry {
   const layout = LAYOUTS.get(PASSPORT_CONFIG_ID);
   if (!layout) {
     throw new Error(`state_manifest_missing:${PASSPORT_CONFIG_ID}`);
+  }
+  return layout;
+}
+
+export function encumbranceAnswerLayout(): StateLayoutEntry {
+  const layout = LAYOUTS.get(ENCUMBRANCE_ANSWER_ID);
+  if (!layout) {
+    throw new Error(`state_manifest_missing:${ENCUMBRANCE_ANSWER_ID}`);
+  }
+  return layout;
+}
+
+export function passportBindingLayout(): StateLayoutEntry {
+  const layout = LAYOUTS.get(PASSPORT_BINDING_ID);
+  if (!layout) {
+    throw new Error(`state_manifest_missing:${PASSPORT_BINDING_ID}`);
   }
   return layout;
 }
@@ -448,6 +539,171 @@ export function decodeChallengeAccountStrictFullyConsumedForTests(
  * Stops at remainder_unmodelled — does not walk next_token_id / vec / bump.
  * No fully-consumed export (meaningless on partial + variable tail).
  */
+export function decodeEncumbranceAnswer(
+  data: Uint8Array,
+): DecodeEncumbranceAnswerResult {
+  const layout = LAYOUTS.get(ENCUMBRANCE_ANSWER_ID);
+  if (!layout) {
+    return {
+      ok: false,
+      cause: "unknown_layout",
+      detail: ENCUMBRANCE_ANSWER_ID,
+    };
+  }
+
+  const cursor = decodeLayoutCursor(data, layout);
+  if (!cursor.ok) return cursor;
+
+  const funderBytes = cursor.fields.funder as Uint8Array;
+  return {
+    ok: true,
+    value: {
+      tokenId: cursor.fields.token_id as Uint8Array,
+      intent: cursor.fields.intent as number,
+      allowed: cursor.fields.allowed as boolean,
+      funder: pubkeyBase58(funderBytes),
+    },
+    layout,
+    bytesRead: cursor.bytesRead,
+  };
+}
+
+export function decodeEncumbranceAnswerStrictFullyConsumedForTests(
+  data: Uint8Array,
+): DecodeEncumbranceAnswerResult {
+  const cursor = decodeEncumbranceAnswer(data);
+  if (!cursor.ok) return cursor;
+  if (cursor.bytesRead !== data.length) {
+    return {
+      ok: false,
+      cause: "malformed_field",
+      detail: `trailing_bytes:${data.length - cursor.bytesRead}`,
+    };
+  }
+  return cursor;
+}
+
+export function decodeEncumbranceAnswerWithFieldsForTests(
+  data: Uint8Array,
+  fields: StateFieldDecl[],
+): DecodeEncumbranceAnswerResult {
+  const base = LAYOUTS.get(ENCUMBRANCE_ANSWER_ID);
+  if (!base) {
+    return {
+      ok: false,
+      cause: "unknown_layout",
+      detail: ENCUMBRANCE_ANSWER_ID,
+    };
+  }
+  const planted: StateLayoutEntry = { ...base, fields };
+  const cursor = decodeLayoutCursor(data, planted);
+  if (!cursor.ok) return cursor;
+  const funderBytes = cursor.fields.funder as Uint8Array | undefined;
+  const tokenId = cursor.fields.token_id as Uint8Array | undefined;
+  const intent = cursor.fields.intent as number | undefined;
+  const allowed = cursor.fields.allowed as boolean | undefined;
+  if (
+    tokenId == null ||
+    intent == null ||
+    allowed == null ||
+    funderBytes == null
+  ) {
+    return {
+      ok: false,
+      cause: "malformed_field",
+      detail: "planted_missing_product_fields",
+    };
+  }
+  return {
+    ok: true,
+    value: {
+      tokenId,
+      intent,
+      allowed,
+      funder: pubkeyBase58(funderBytes),
+    },
+    layout: planted,
+    bytesRead: cursor.bytesRead,
+  };
+}
+
+export function decodePassportBinding(
+  data: Uint8Array,
+): DecodePassportBindingResult {
+  const layout = LAYOUTS.get(PASSPORT_BINDING_ID);
+  if (!layout) {
+    return {
+      ok: false,
+      cause: "unknown_layout",
+      detail: PASSPORT_BINDING_ID,
+    };
+  }
+
+  const cursor = decodeLayoutCursor(data, layout);
+  if (!cursor.ok) return cursor;
+
+  const programBytes = cursor.fields.passport_program as Uint8Array;
+  return {
+    ok: true,
+    value: {
+      passportProgram: pubkeyBase58(programBytes),
+      bump: cursor.fields.bump as number,
+    },
+    layout,
+    bytesRead: cursor.bytesRead,
+  };
+}
+
+export function decodePassportBindingStrictFullyConsumedForTests(
+  data: Uint8Array,
+): DecodePassportBindingResult {
+  const cursor = decodePassportBinding(data);
+  if (!cursor.ok) return cursor;
+  if (cursor.bytesRead !== data.length) {
+    return {
+      ok: false,
+      cause: "malformed_field",
+      detail: `trailing_bytes:${data.length - cursor.bytesRead}`,
+    };
+  }
+  return cursor;
+}
+
+export function decodePassportBindingWithFieldsForTests(
+  data: Uint8Array,
+  fields: StateFieldDecl[],
+): DecodePassportBindingResult {
+  const base = LAYOUTS.get(PASSPORT_BINDING_ID);
+  if (!base) {
+    return {
+      ok: false,
+      cause: "unknown_layout",
+      detail: PASSPORT_BINDING_ID,
+    };
+  }
+  const planted: StateLayoutEntry = { ...base, fields };
+  const cursor = decodeLayoutCursor(data, planted);
+  if (!cursor.ok) return cursor;
+  const programBytes = cursor.fields.passport_program as Uint8Array | undefined;
+  const bump = cursor.fields.bump as number | undefined;
+  if (programBytes == null || bump == null) {
+    return {
+      ok: false,
+      cause: "malformed_field",
+      detail: "planted_missing_product_fields",
+    };
+  }
+  return {
+    ok: true,
+    value: {
+      passportProgram: pubkeyBase58(programBytes),
+      bump,
+    },
+    layout: planted,
+    bytesRead: cursor.bytesRead,
+  };
+}
+
 export function decodePassportConfig(
   data: Uint8Array,
 ): DecodePassportConfigResult {

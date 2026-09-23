@@ -8,12 +8,12 @@ use serde_json::{Map, Value};
 use solana_program::pubkey::Pubkey;
 
 use super::{
-    dynamic_bytes32, dynamic_u32_be, dynamic_u32_le, dynamic_u8, PdaDynamicDecl, PdaManifestRecipe,
-    SYNTHETIC_PDA_PROGRAM_ID_BYTES,
+    dynamic_bytes, dynamic_bytes32, dynamic_u32_be, dynamic_u32_le, dynamic_u8, PdaAlternateSample,
+    PdaDynamicDecl, PdaManifestRecipe, SYNTHETIC_PDA_PROGRAM_ID_BYTES,
 };
 use crate::{hex_of, sample_bytes, sample_u32, sample_u8};
 
-/// Closed census of product PDA recipes (floor 30).
+/// Closed census of product PDA recipes (floor 31).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PdaRecipe {
     KarPassportConfig,
@@ -41,6 +41,8 @@ pub enum PdaRecipe {
     ConsignmentBaseRecall,
     ConsignmentBaseAsset,
     ConsignmentBaseCustodyAuthority,
+    /// One-shot `[b"passport-bind"]` under a mode program.
+    ConsignmentBasePassportBinding,
     ClaimablePayoutsClaim,
     ClaimablePayoutsClaimAta,
     ClaimablePayoutsEscrow,
@@ -50,7 +52,7 @@ pub enum PdaRecipe {
 }
 
 /// Every recipe, in stable owner/name order. Length is the census floor.
-pub fn all_recipes() -> [PdaRecipe; 30] {
+pub fn all_recipes() -> [PdaRecipe; 31] {
     use PdaRecipe::*;
     [
         KarPassportConfig,
@@ -78,6 +80,7 @@ pub fn all_recipes() -> [PdaRecipe; 30] {
         ConsignmentBaseRecall,
         ConsignmentBaseAsset,
         ConsignmentBaseCustodyAuthority,
+        ConsignmentBasePassportBinding,
         ClaimablePayoutsClaim,
         ClaimablePayoutsClaimAta,
         ClaimablePayoutsEscrow,
@@ -119,6 +122,7 @@ fn recipe(
         sample,
         golden_address: address.to_string(),
         golden_bump: bump,
+        alternate_samples: None,
     }
 }
 
@@ -495,6 +499,18 @@ fn entry_for(r: PdaRecipe) -> PdaManifestRecipe {
                 bump,
             )
         }
+        PdaRecipe::ConsignmentBasePassportBinding => {
+            let (addr, bump) = kargain_consignment_base::passport_binding_pda(&program);
+            recipe(
+                "kargain-consignment-base",
+                "passport_binding",
+                kargain_consignment_base::PASSPORT_BINDING_SEED,
+                vec![],
+                Map::new(),
+                addr,
+                bump,
+            )
+        }
         PdaRecipe::ClaimablePayoutsClaim => {
             let recipient = Pubkey::new_from_array(sample_recipient());
             let mint = Pubkey::new_from_array(sample_claim_mint());
@@ -565,28 +581,53 @@ fn entry_for(r: PdaRecipe) -> PdaManifestRecipe {
             )
         }
         PdaRecipe::EncumbranceAnswer => {
-            // Sample seed_prefix = b"ans" (registry-declared; not a fixed program tag).
+            // Shipping seeds: `[seed_prefix, token_id, intent]`. Prefix is
+            // registry-declared (stand sample `ans`), not a fixed program tag.
             let token = sample_token_id();
-            let intent = kargain_encumbrance::INTENT_LEAVE_CHAIN;
+            let prefix = b"ans";
+            let leave = kargain_encumbrance::INTENT_LEAVE_CHAIN;
+            let open = kargain_encumbrance::INTENT_OPEN_CONSIGNMENT;
             let (addr, bump) = kargain_encumbrance::derive_encumbrance_answer_pda(
                 &program,
-                b"ans",
+                prefix,
                 &token,
-                intent,
+                leave,
             )
-            .expect("sample encumbrance answer PDA");
-            recipe(
+            .expect("sample encumbrance answer PDA leave");
+            let (open_addr, open_bump) = kargain_encumbrance::derive_encumbrance_answer_pda(
+                &program,
+                prefix,
+                &token,
+                open,
+            )
+            .expect("sample encumbrance answer PDA open");
+            let mut rec = recipe(
                 "kargain-encumbrance",
                 "answer",
-                b"ans",
-                vec![dynamic_bytes32("token_id"), dynamic_u8("intent")],
+                b"",
+                vec![
+                    dynamic_bytes("seed_prefix"),
+                    dynamic_bytes32("token_id"),
+                    dynamic_u8("intent"),
+                ],
                 map_of(&[
+                    ("seed_prefix", sample_bytes(prefix)),
                     ("token_id", sample_bytes(&token)),
-                    ("intent", sample_u8(intent)),
+                    ("intent", sample_u8(leave)),
                 ]),
                 addr,
                 bump,
-            )
+            );
+            rec.alternate_samples = Some(vec![PdaAlternateSample {
+                sample: map_of(&[
+                    ("seed_prefix", sample_bytes(prefix)),
+                    ("token_id", sample_bytes(&token)),
+                    ("intent", sample_u8(open)),
+                ]),
+                golden_address: open_addr.to_string(),
+                golden_bump: open_bump,
+            }]);
+            rec
         }
     }
 }

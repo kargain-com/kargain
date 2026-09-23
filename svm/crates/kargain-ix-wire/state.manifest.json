@@ -4,7 +4,7 @@
     {
       "id": "kar-passport/PassportState",
       "program": "kar-passport",
-      "accountSpace": 256,
+      "goldenByteLength": 256,
       "discriminatorHex": "6b705f7374000000",
       "fields": [
         {
@@ -59,12 +59,12 @@
         "verifier": "3333333333333333333333333333333333333333333333333333333333333333"
       },
       "goldenHex": "6b705f7374000000222222222222222222222222222222222222222222222222222222222222222201333333333333333333333333333333333333333333333333333333333333333300f1536500000000000007000000ff000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-      "payloadLen": 88
+      "modelledByteLength": 88
     },
     {
       "id": "kar-pro-staking/StakeAccount",
       "program": "kar-pro-staking",
-      "accountSpace": 128,
+      "goldenByteLength": 128,
       "discriminatorHex": "6b70735f73746b00",
       "fields": [
         {
@@ -113,12 +113,12 @@
         "wallet": "4444444444444444444444444444444444444444444444444444444444444444"
       },
       "goldenHex": "6b70735f73746b0044444444444444444444444444444444444444444444444444444444444444440065cd1d0000000000f153650000000001000000000000000040420f0000000000fe000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-      "payloadLen": 74
+      "modelledByteLength": 74
     },
     {
       "id": "kargain-bonded-challenge/ChallengeAccount",
       "program": "kar-passport",
-      "accountSpace": 97,
+      "goldenByteLength": 97,
       "discriminatorHex": "6b705f63686c0000",
       "fields": [
         {
@@ -163,12 +163,12 @@
         "window_duration": "1209600"
       },
       "goldenHex": "6b705f63686c0000555555555555555555555555555555555555555555555555555555555555555500f1536500000000007512000000000066666666666666666666666666666666666666666666666666666666666666668096980000000000fd",
-      "payloadLen": 97
+      "modelledByteLength": 97
     },
     {
       "id": "kar-passport/PassportConfig",
       "program": "kar-passport",
-      "accountSpace": 272,
+      "goldenByteLength": 272,
       "discriminatorHex": "6b705f6366670000",
       "fields": [
         {
@@ -230,7 +230,76 @@
         "staking_program": "3333333333333333333333333333333333333333333333333333333333333333"
       },
       "goldenHex": "6b705f63666700001111111111111111111111111111111111111111111111111111111111111111e8303677000000000000000000000000e89c000022222222222222222222222222222222222222222222222222222222222222228096980000000000333333333333333333333333333333333333333333333333333333333333333344444444444444444444444444444444444444444444444444444444444444445555555555555555555555555555555555555555555555555555555555555555666666666666666666666666666666666666666666666666666666666666666601000000777777777777777777777777777777777777777777777777777777777777777703000000616e73fc",
-      "payloadLen": 196
+      "modelledByteLength": 196
+    },
+    {
+      "id": "kargain-encumbrance/EncumbranceAnswer",
+      "program": "kargain-encumbrance",
+      "goldenByteLength": 74,
+      "discriminatorHex": "656e635f616e7300",
+      "fields": [
+        {
+          "name": "discriminator",
+          "type": "fixed_bytes",
+          "len": 8
+        },
+        {
+          "name": "token_id",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "intent",
+          "type": "u8"
+        },
+        {
+          "name": "allowed",
+          "type": "bool"
+        },
+        {
+          "name": "funder",
+          "type": "fixed_bytes",
+          "len": 32
+        }
+      ],
+      "sample": {
+        "allowed": false,
+        "discriminator": "656e635f616e7300",
+        "funder": "8888888888888888888888888888888888888888888888888888888888888888",
+        "intent": 0,
+        "token_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "goldenHex": "656e635f616e7300aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa00008888888888888888888888888888888888888888888888888888888888888888",
+      "modelledByteLength": 74
+    },
+    {
+      "id": "kargain-consignment-base/PassportBinding",
+      "program": "kargain-consignment-base",
+      "goldenByteLength": 41,
+      "discriminatorHex": "6b705f7062696e64",
+      "fields": [
+        {
+          "name": "discriminator",
+          "type": "fixed_bytes",
+          "len": 8
+        },
+        {
+          "name": "passport_program",
+          "type": "fixed_bytes",
+          "len": 32
+        },
+        {
+          "name": "bump",
+          "type": "u8"
+        }
+      ],
+      "sample": {
+        "bump": 255,
+        "discriminator": "6b705f7062696e64",
+        "passport_program": "9999999999999999999999999999999999999999999999999999999999999999"
+      },
+      "goldenHex": "6b705f7062696e649999999999999999999999999999999999999999999999999999999999999999ff",
+      "modelledByteLength": 41
     }
   ]
 }

@@ -357,6 +357,15 @@
       "goldenBump": 254
     },
     {
+      "owner": "kargain-consignment-base",
+      "id": "kargain-consignment-base/passport_binding",
+      "seedTagHex": "70617373706f72742d62696e64",
+      "dynamics": [],
+      "sample": {},
+      "goldenAddress": "BSXRhsf68VTmkqYoNb2K2ybPj8f59VdxeVhwAFfNJXLg",
+      "goldenBump": 255
+    },
+    {
       "owner": "kargain-claimable-payouts",
       "id": "kargain-claimable-payouts/claim",
       "seedTagHex": "636c61696d",
@@ -433,8 +442,12 @@
     {
       "owner": "kargain-encumbrance",
       "id": "kargain-encumbrance/answer",
-      "seedTagHex": "616e73",
+      "seedTagHex": "",
       "dynamics": [
+        {
+          "name": "seed_prefix",
+          "encoding": "bytes"
+        },
         {
           "name": "token_id",
           "encoding": "bytes32"
@@ -446,10 +459,22 @@
       ],
       "sample": {
         "intent": 0,
+        "seed_prefix": "616e73",
         "token_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       },
       "goldenAddress": "dv1DnfwkaV1LfAspr8ggsxw7Nq9LPEEKEgJywqv3MwC",
-      "goldenBump": 255
+      "goldenBump": 255,
+      "alternateSamples": [
+        {
+          "sample": {
+            "intent": 1,
+            "seed_prefix": "616e73",
+            "token_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "goldenAddress": "4YsywpiUyqjuTyUQS2EZ6cLmWCyaKurHzqkHUoC2Sc78",
+          "goldenBump": 255
+        }
+      ]
     }
   ]
 }

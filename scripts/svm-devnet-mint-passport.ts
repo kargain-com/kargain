@@ -6,7 +6,7 @@
  *
  * Instruction data + PDAs come from product owners (encodeSvmInstruction /
  * deriveSvmPda). Config `next_token_id` is an ops hand-read at offset 196 —
- * product PassportConfig decode stays partial (no accountSpace debt).
+ * product PassportConfig decode stays partial (no goldenByteLength SPACE claim).
  *
  * Transport is stand web3.js (same class as s5/y5). Product sendSvmInstruction
  * + Wallet Standard port is U9.1.

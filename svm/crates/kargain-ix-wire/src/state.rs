@@ -4,17 +4,23 @@
 //! Committed artifact: `state.manifest.json`. Goldens are never produced by
 //! the TypeScript decoder.
 //!
-//! Layout kinds:
-//! - Fixed-padded (`PassportState`, `StakeAccount`): `account_space` is the
-//!   program SPACE constant; golden is payload zero-padded to that space.
-//! - Exact (`ChallengeAccount`): `account_space == payload_len == SPACE`; no pad.
+//! Layout kinds (length fields are never a rent SPACE unless they happen to
+//! equal a program `SPACE` constant):
+//! - Fixed-padded (`PassportState`, `StakeAccount`): `golden_byte_length` is
+//!   the padded golden (`SPACE`); `modelled_byte_length` is the borsh payload.
+//! - Exact (`ChallengeAccount`, `EncumbranceAnswer`, `PassportBinding`):
+//!   both lengths == Borsh payload == program SPACE; no pad.
 //! - Variable sample / deliberately partial (`PassportConfig`): no program
-//!   SPACE — `account_space` is the golden byte length of the Borsh sample
-//!   (truth for that golden only). Declared fields stop at a
-//!   `remainder_unmodelled` terminal; the Vec+bump tail is in the golden but
-//!   not modelled for product decode.
+//!   SPACE — `golden_byte_length` is this sample's byte length; modelled
+//!   prefix stops at `remainder_unmodelled`.
 
 use kargain_bonded_challenge::{ChallengeAccount, CHALLENGE_ACCOUNT_DISCRIMINATOR};
+use kargain_consignment_base::{
+    PassportBinding, PASSPORT_BINDING_DISCRIMINATOR,
+};
+use kargain_encumbrance::{
+    EncumbranceAnswer, ENCUMBRANCE_ANSWER_DISCRIMINATOR,
+};
 use kar_passport::state::{
     EncumbranceSourceEntry, PassportConfig, PassportState, Status,
     PASSPORT_CONFIG_DISCRIMINATOR, PASSPORT_STATE_DISCRIMINATOR, PASSPORT_STATE_SPACE,
@@ -47,17 +53,17 @@ pub struct StateFieldDecl {
 pub struct StateLayoutEntry {
     pub id: String,
     pub program: String,
-    /// Fixed SPACE, exact SPACE, or variable-sample golden length — never an
-    /// invented PassportConfig SPACE constant.
-    pub account_space: usize,
+    /// Always `golden_hex.len() / 2`. Not a rent SPACE unless it equals a
+    /// program `SPACE` constant (PassportConfig has none).
+    pub golden_byte_length: usize,
     pub discriminator_hex: String,
     pub fields: Vec<StateFieldDecl>,
     pub sample: Map<String, Value>,
     /// Account bytes as hex (padded for fixed layouts; exact for Challenge /
-    /// full Borsh sample for PassportConfig).
+    /// EncumbranceAnswer / PassportBinding; full Borsh sample for PassportConfig).
     pub golden_hex: String,
-    /// Leading modelled payload length (cursor vs padding / unmodelled tail).
-    pub payload_len: usize,
+    /// Decoder cursor stop (borsh payload before pad, or modelled prefix).
+    pub modelled_byte_length: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -153,12 +159,12 @@ fn passport_state_layout() -> StateLayoutEntry {
     StateLayoutEntry {
         id: "kar-passport/PassportState".into(),
         program: "kar-passport".into(),
-        account_space: PASSPORT_STATE_SPACE,
+        golden_byte_length: PASSPORT_STATE_SPACE,
         discriminator_hex: hex_of(&PASSPORT_STATE_DISCRIMINATOR),
         fields: passport_state_fields(),
         sample,
         golden_hex: hex_of(&account),
-        payload_len,
+        modelled_byte_length: payload_len,
     }
 }
 
@@ -216,12 +222,12 @@ fn stake_account_layout() -> StateLayoutEntry {
     StateLayoutEntry {
         id: "kar-pro-staking/StakeAccount".into(),
         program: "kar-pro-staking".into(),
-        account_space: STAKE_ACCOUNT_SPACE,
+        golden_byte_length: STAKE_ACCOUNT_SPACE,
         discriminator_hex: hex_of(&STAKE_DISCRIMINATOR),
         fields: stake_account_fields(),
         sample,
         golden_hex: hex_of(&account),
-        payload_len,
+        modelled_byte_length: payload_len,
     }
 }
 
@@ -277,12 +283,12 @@ fn challenge_account_layout() -> StateLayoutEntry {
     StateLayoutEntry {
         id: "kargain-bonded-challenge/ChallengeAccount".into(),
         program: "kar-passport".into(),
-        account_space: ChallengeAccount::SPACE,
+        golden_byte_length: ChallengeAccount::SPACE,
         discriminator_hex: hex_of(&CHALLENGE_ACCOUNT_DISCRIMINATOR),
         fields: challenge_account_fields(),
         sample,
         golden_hex: hex_of(&payload),
-        payload_len,
+        modelled_byte_length: payload_len,
     }
 }
 
@@ -359,22 +365,126 @@ fn sample_passport_config() -> (PassportConfig, Map<String, Value>, usize) {
 fn passport_config_layout() -> StateLayoutEntry {
     let (config, sample, modelled_prefix_len) = sample_passport_config();
     let payload = borsh::to_vec(&config).expect("borsh serialize PassportConfig");
-    let account_space = payload.len();
+    let golden_byte_length = payload.len();
     assert!(
-        account_space > modelled_prefix_len,
+        golden_byte_length > modelled_prefix_len,
         "PassportConfig sample must carry unmodelled tail (populated encumbrance_sources)"
     );
-    // No PASSPORT_CONFIG_SPACE — account_space is this golden's byte length only.
+    // No PASSPORT_CONFIG_SPACE — golden_byte_length is this sample only.
     StateLayoutEntry {
         id: "kar-passport/PassportConfig".into(),
         program: "kar-passport".into(),
-        account_space,
+        golden_byte_length,
         discriminator_hex: hex_of(&PASSPORT_CONFIG_DISCRIMINATOR),
         fields: passport_config_fields(),
         sample,
         golden_hex: hex_of(&payload),
         // Cursor stops at remainder_unmodelled; modelled prefix is the payload.
-        payload_len: modelled_prefix_len,
+        modelled_byte_length: modelled_prefix_len,
+    }
+}
+
+fn encumbrance_answer_fields() -> Vec<StateFieldDecl> {
+    vec![
+        wrap_field(field_fixed("discriminator", 8)),
+        wrap_field(field_fixed("token_id", 32)),
+        wrap_field(field_u8("intent")),
+        wrap_field(field_bool("allowed")),
+        wrap_field(field_fixed("funder", 32)),
+    ]
+}
+
+fn sample_encumbrance_answer() -> (EncumbranceAnswer, Map<String, Value>) {
+    // Deterministic sample — create-time law: allowed=false. token_id = 0xaa…, funder = 0x88…
+    let token_id = [0xaau8; 32];
+    let funder = [0x88u8; 32];
+    let answer = EncumbranceAnswer {
+        discriminator: ENCUMBRANCE_ANSWER_DISCRIMINATOR,
+        token_id,
+        intent: 0,
+        allowed: false,
+        funder,
+    };
+    let mut sample = Map::new();
+    sample.insert(
+        "discriminator".into(),
+        json!(hex_of(&ENCUMBRANCE_ANSWER_DISCRIMINATOR)),
+    );
+    sample.insert("token_id".into(), json!(hex_of(&token_id)));
+    sample.insert("intent".into(), json!(0u8));
+    sample.insert("allowed".into(), json!(false));
+    sample.insert("funder".into(), json!(hex_of(&funder)));
+    (answer, sample)
+}
+
+fn encumbrance_answer_layout() -> StateLayoutEntry {
+    let (answer, sample) = sample_encumbrance_answer();
+    let payload = borsh::to_vec(&answer).expect("borsh serialize EncumbranceAnswer");
+    assert_eq!(
+        payload.len(),
+        EncumbranceAnswer::SPACE,
+        "EncumbranceAnswer borsh payload must equal SPACE (no padding)"
+    );
+    assert_eq!(payload.len(), 74);
+    StateLayoutEntry {
+        id: "kargain-encumbrance/EncumbranceAnswer".into(),
+        program: "kargain-encumbrance".into(),
+        golden_byte_length: EncumbranceAnswer::SPACE,
+        discriminator_hex: hex_of(&ENCUMBRANCE_ANSWER_DISCRIMINATOR),
+        fields: encumbrance_answer_fields(),
+        sample,
+        golden_hex: hex_of(&payload),
+        modelled_byte_length: EncumbranceAnswer::SPACE,
+    }
+}
+
+fn passport_binding_fields() -> Vec<StateFieldDecl> {
+    vec![
+        wrap_field(field_fixed("discriminator", 8)),
+        wrap_field(field_fixed("passport_program", 32)),
+        wrap_field(field_u8("bump")),
+    ]
+}
+
+fn sample_passport_binding() -> (PassportBinding, Map<String, Value>) {
+    // Deterministic sample — passport_program = 0x99…
+    let passport_program = [0x99u8; 32];
+    let binding = PassportBinding {
+        discriminator: PASSPORT_BINDING_DISCRIMINATOR,
+        passport_program,
+        bump: 255,
+    };
+    let mut sample = Map::new();
+    sample.insert(
+        "discriminator".into(),
+        json!(hex_of(&PASSPORT_BINDING_DISCRIMINATOR)),
+    );
+    sample.insert(
+        "passport_program".into(),
+        json!(hex_of(&passport_program)),
+    );
+    sample.insert("bump".into(), json!(255u8));
+    (binding, sample)
+}
+
+fn passport_binding_layout() -> StateLayoutEntry {
+    let (binding, sample) = sample_passport_binding();
+    let payload = borsh::to_vec(&binding).expect("borsh serialize PassportBinding");
+    assert_eq!(
+        payload.len(),
+        PassportBinding::SPACE,
+        "PassportBinding borsh payload must equal SPACE (no padding)"
+    );
+    assert_eq!(payload.len(), 41);
+    StateLayoutEntry {
+        id: "kargain-consignment-base/PassportBinding".into(),
+        program: "kargain-consignment-base".into(),
+        golden_byte_length: PassportBinding::SPACE,
+        discriminator_hex: hex_of(&PASSPORT_BINDING_DISCRIMINATOR),
+        fields: passport_binding_fields(),
+        sample,
+        golden_hex: hex_of(&payload),
+        modelled_byte_length: PassportBinding::SPACE,
     }
 }
 
@@ -386,6 +496,8 @@ pub fn build_state_manifest() -> StateManifest {
             stake_account_layout(),
             challenge_account_layout(),
             passport_config_layout(),
+            encumbrance_answer_layout(),
+            passport_binding_layout(),
         ],
     }
 }
@@ -430,27 +542,35 @@ mod tests {
     }
 
     #[test]
-    fn four_layouts_including_challenge_and_partial_config() {
+    fn six_layouts_including_answer_and_binding() {
         let m = build_state_manifest();
-        assert_eq!(m.layouts.len(), 4);
+        assert_eq!(m.layouts.len(), 6);
+        for layout in &m.layouts {
+            assert_eq!(
+                layout.golden_byte_length,
+                layout.golden_hex.len() / 2,
+                "{} golden_byte_length must equal golden hex byte count",
+                layout.id
+            );
+        }
         assert_eq!(m.layouts[0].id, "kar-passport/PassportState");
-        assert_eq!(m.layouts[0].account_space, PASSPORT_STATE_SPACE);
-        assert!(m.layouts[0].payload_len < PASSPORT_STATE_SPACE);
+        assert_eq!(m.layouts[0].golden_byte_length, PASSPORT_STATE_SPACE);
+        assert!(m.layouts[0].modelled_byte_length < PASSPORT_STATE_SPACE);
         assert_eq!(
             m.layouts[0].golden_hex.len(),
             PASSPORT_STATE_SPACE * 2,
-            "golden is full account space hex"
+            "golden is full padded hex"
         );
         assert_eq!(m.layouts[1].id, "kar-pro-staking/StakeAccount");
-        assert_eq!(m.layouts[1].account_space, STAKE_ACCOUNT_SPACE);
-        assert!(m.layouts[1].payload_len < STAKE_ACCOUNT_SPACE);
+        assert_eq!(m.layouts[1].golden_byte_length, STAKE_ACCOUNT_SPACE);
+        assert!(m.layouts[1].modelled_byte_length < STAKE_ACCOUNT_SPACE);
 
         assert_eq!(
             m.layouts[2].id,
             "kargain-bonded-challenge/ChallengeAccount"
         );
-        assert_eq!(m.layouts[2].account_space, ChallengeAccount::SPACE);
-        assert_eq!(m.layouts[2].payload_len, ChallengeAccount::SPACE);
+        assert_eq!(m.layouts[2].golden_byte_length, ChallengeAccount::SPACE);
+        assert_eq!(m.layouts[2].modelled_byte_length, ChallengeAccount::SPACE);
         assert_eq!(
             m.layouts[2].golden_hex.len(),
             ChallengeAccount::SPACE * 2,
@@ -467,11 +587,11 @@ mod tests {
         );
         assert_eq!(
             m.layouts[3].golden_hex.len(),
-            m.layouts[3].account_space * 2,
-            "PassportConfig account_space is the variable sample golden length"
+            m.layouts[3].golden_byte_length * 2,
+            "PassportConfig golden_byte_length is the variable sample golden length"
         );
         assert!(
-            m.layouts[3].payload_len < m.layouts[3].account_space,
+            m.layouts[3].modelled_byte_length < m.layouts[3].golden_byte_length,
             "modelled prefix shorter than full sample (populated vec tail)"
         );
         assert!(
@@ -481,6 +601,22 @@ mod tests {
                 .any(|f| f.name == "namespace" && f.ty == "u128"),
             "PassportConfig must declare namespace as u128"
         );
+
+        assert_eq!(
+            m.layouts[4].id,
+            "kargain-encumbrance/EncumbranceAnswer"
+        );
+        assert_eq!(m.layouts[4].golden_byte_length, EncumbranceAnswer::SPACE);
+        assert_eq!(m.layouts[4].modelled_byte_length, EncumbranceAnswer::SPACE);
+        assert_eq!(m.layouts[4].golden_byte_length, 74);
+
+        assert_eq!(
+            m.layouts[5].id,
+            "kargain-consignment-base/PassportBinding"
+        );
+        assert_eq!(m.layouts[5].golden_byte_length, PassportBinding::SPACE);
+        assert_eq!(m.layouts[5].modelled_byte_length, PassportBinding::SPACE);
+        assert_eq!(m.layouts[5].golden_byte_length, 41);
     }
 
     #[test]

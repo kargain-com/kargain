@@ -17,6 +17,12 @@ import {
   challengeAccountLayout,
   decodeChallengeAccount,
   decodeChallengeAccountStrictFullyConsumedForTests,
+  decodeEncumbranceAnswer,
+  decodeEncumbranceAnswerStrictFullyConsumedForTests,
+  decodeEncumbranceAnswerWithFieldsForTests,
+  decodePassportBinding,
+  decodePassportBindingStrictFullyConsumedForTests,
+  decodePassportBindingWithFieldsForTests,
   decodePassportConfig,
   decodePassportConfigWithFieldsForTests,
   decodePassportState,
@@ -24,9 +30,12 @@ import {
   decodePastRemainderMarkerForTests,
   decodeStakeAccount,
   decodeStakeAccountStrictFullyConsumedForTests,
+  encumbranceAnswerLayout,
   hexToBytes,
+  passportBindingLayout,
   passportConfigLayout,
   passportStateLayout,
+  refuseRetiredStateLengthNames,
   stakeAccountLayout,
   stateManifestLayouts,
   type StateFieldDecl,
@@ -65,6 +74,16 @@ function decodeConfigCounted(data: Uint8Array) {
   return decodePassportConfig(data);
 }
 
+function decodeAnswerCounted(data: Uint8Array) {
+  DECODE_EXERCISED += 1;
+  return decodeEncumbranceAnswer(data);
+}
+
+function decodeBindingCounted(data: Uint8Array) {
+  DECODE_EXERCISED += 1;
+  return decodePassportBinding(data);
+}
+
 function loadManifest(): StateManifest {
   return JSON.parse(
     readFileSync(path.join(ROOT, MANIFEST_REL), "utf8"),
@@ -74,22 +93,22 @@ function loadManifest(): StateManifest {
 const base58Expected = (hex: string) => encodeSvmPubkeyBytes(hexToBytes(hex));
 
 describe("svm account-state decode policy", () => {
-  it("manifest has four layouts including ChallengeAccount + partial PassportConfig", () => {
+  it("manifest has six layouts including EncumbranceAnswer + PassportBinding", () => {
     const committed = loadManifest();
-    assert.equal(committed.layouts.length, 4);
+    assert.equal(committed.layouts.length, 6);
     assert.equal(committed.layouts[0]!.id, "kar-passport/PassportState");
-    assert.equal(committed.layouts[0]!.accountSpace, 256);
-    assert.ok(committed.layouts[0]!.payloadLen < 256);
+    assert.equal(committed.layouts[0]!.goldenByteLength, 256);
+    assert.ok(committed.layouts[0]!.modelledByteLength < 256);
     assert.equal(committed.layouts[1]!.id, "kar-pro-staking/StakeAccount");
-    assert.equal(committed.layouts[1]!.accountSpace, 128);
-    assert.ok(committed.layouts[1]!.payloadLen < 128);
+    assert.equal(committed.layouts[1]!.goldenByteLength, 128);
+    assert.ok(committed.layouts[1]!.modelledByteLength < 128);
 
     assert.equal(
       committed.layouts[2]!.id,
       "kargain-bonded-challenge/ChallengeAccount",
     );
-    assert.equal(committed.layouts[2]!.accountSpace, 97);
-    assert.equal(committed.layouts[2]!.payloadLen, 97);
+    assert.equal(committed.layouts[2]!.goldenByteLength, 97);
+    assert.equal(committed.layouts[2]!.modelledByteLength, 97);
 
     assert.equal(committed.layouts[3]!.id, "kar-passport/PassportConfig");
     assert.ok(
@@ -102,27 +121,48 @@ describe("svm account-state decode policy", () => {
       "remainder_unmodelled",
     );
     assert.ok(
-      committed.layouts[3]!.payloadLen < committed.layouts[3]!.accountSpace,
-      "PassportConfig accountSpace is variable-sample golden length; payload is modelled prefix",
+      committed.layouts[3]!.modelledByteLength < committed.layouts[3]!.goldenByteLength,
+      "PassportConfig goldenByteLength is variable-sample golden length; payload is modelled prefix",
     );
 
+    assert.equal(
+      committed.layouts[4]!.id,
+      "kargain-encumbrance/EncumbranceAnswer",
+    );
+    assert.equal(committed.layouts[4]!.goldenByteLength, 74);
+    assert.equal(committed.layouts[4]!.modelledByteLength, 74);
+    assert.equal(
+      committed.layouts[5]!.id,
+      "kargain-consignment-base/PassportBinding",
+    );
+    assert.equal(committed.layouts[5]!.goldenByteLength, 41);
+    assert.equal(committed.layouts[5]!.modelledByteLength, 41);
+
     const layouts = stateManifestLayouts();
-    assert.equal(layouts.length, 4);
+    assert.equal(layouts.length, 6);
     assert.deepEqual(layouts[0], passportStateLayout());
     assert.deepEqual(layouts[1], stakeAccountLayout());
     assert.deepEqual(layouts[2], challengeAccountLayout());
     assert.deepEqual(layouts[3], passportConfigLayout());
+    assert.deepEqual(layouts[4], encumbranceAnswerLayout());
+    assert.deepEqual(layouts[5], passportBindingLayout());
+
+    const raw = readFileSync(path.join(ROOT, MANIFEST_REL), "utf8");
+    assert.doesNotMatch(raw, /"accountSpace"/);
+    assert.doesNotMatch(raw, /"payloadLen"/);
+    assert.match(raw, /"goldenByteLength"/);
+    assert.match(raw, /"modelledByteLength"/);
   });
 
   it("padded golden PassportState decodes; record_count matches sample", () => {
     const layout = passportStateLayout();
     const golden = hexToBytes(layout.goldenHex);
-    assert.equal(golden.length, layout.accountSpace);
+    assert.equal(golden.length, layout.goldenByteLength);
 
     const decoded = decodePassportCounted(golden);
     assert.equal(decoded.ok, true);
     if (!decoded.ok) return;
-    assert.equal(decoded.bytesRead, layout.payloadLen);
+    assert.equal(decoded.bytesRead, layout.modelledByteLength);
     assert.ok(decoded.bytesRead < golden.length, "padding remains unread");
     assert.equal(decoded.value.recordCount, 7);
     assert.equal(decoded.value.status, 1);
@@ -144,12 +184,12 @@ describe("svm account-state decode policy", () => {
   it("padded golden StakeAccount decodes; product value is active only", () => {
     const layout = stakeAccountLayout();
     const golden = hexToBytes(layout.goldenHex);
-    assert.equal(golden.length, layout.accountSpace);
+    assert.equal(golden.length, layout.goldenByteLength);
 
     const decoded = decodeStakeCounted(golden);
     assert.equal(decoded.ok, true);
     if (!decoded.ok) return;
-    assert.equal(decoded.bytesRead, layout.payloadLen);
+    assert.equal(decoded.bytesRead, layout.modelledByteLength);
     assert.ok(decoded.bytesRead < golden.length, "padding remains unread");
     assert.equal(decoded.value.active, true);
     assert.equal(
@@ -166,8 +206,8 @@ describe("svm account-state decode policy", () => {
     const layout = challengeAccountLayout();
     const golden = hexToBytes(layout.goldenHex);
     assert.equal(golden.length, 97);
-    assert.equal(golden.length, layout.accountSpace);
-    assert.equal(layout.payloadLen, layout.accountSpace);
+    assert.equal(golden.length, layout.goldenByteLength);
+    assert.equal(layout.modelledByteLength, layout.goldenByteLength);
 
     const decoded = decodeChallengeCounted(golden);
     assert.equal(decoded.ok, true);
@@ -198,13 +238,13 @@ describe("svm account-state decode policy", () => {
   it("partial PassportConfig golden decodes deposit + forfeit; stops at marker", () => {
     const layout = passportConfigLayout();
     const golden = hexToBytes(layout.goldenHex);
-    assert.equal(golden.length, layout.accountSpace);
-    assert.ok(layout.payloadLen < golden.length);
+    assert.equal(golden.length, layout.goldenByteLength);
+    assert.ok(layout.modelledByteLength < golden.length);
 
     const decoded = decodeConfigCounted(golden);
     assert.equal(decoded.ok, true);
     if (!decoded.ok) return;
-    assert.equal(decoded.bytesRead, layout.payloadLen);
+    assert.equal(decoded.bytesRead, layout.modelledByteLength);
     assert.ok(
       decoded.bytesRead < golden.length,
       "unmodelled structured remainder stays unread",
@@ -250,14 +290,14 @@ describe("svm account-state decode policy", () => {
     assert.equal(past.ok, true, "plant keeps reading after marker");
     if (!past.ok) return;
     assert.ok(
-      past.bytesRead > layout.payloadLen,
+      past.bytesRead > layout.modelledByteLength,
       "past-marker plant must consume beyond modelled prefix",
     );
     // Honest product decode must not match the planted bytesRead.
     const honest = decodeConfigCounted(golden);
     assert.equal(honest.ok, true);
     if (!honest.ok) return;
-    assert.equal(honest.bytesRead, layout.payloadLen);
+    assert.equal(honest.bytesRead, layout.modelledByteLength);
     assert.notEqual(past.bytesRead, honest.bytesRead);
   });
 
@@ -332,7 +372,7 @@ describe("svm account-state decode policy", () => {
     assert.equal(strict.cause, "malformed_field");
     assert.match(strict.detail, /trailing_bytes:/);
 
-    const payloadOnly = golden.subarray(0, layout.payloadLen);
+    const payloadOnly = golden.subarray(0, layout.modelledByteLength);
     const strictPayload = decodePassportStateStrictFullyConsumedForTests(payloadOnly);
     assert.equal(strictPayload.ok, true);
   });
@@ -349,7 +389,7 @@ describe("svm account-state decode policy", () => {
     assert.equal(strict.cause, "malformed_field");
     assert.match(strict.detail, /trailing_bytes:/);
 
-    const payloadOnly = golden.subarray(0, layout.payloadLen);
+    const payloadOnly = golden.subarray(0, layout.modelledByteLength);
     const strictPayload = decodeStakeAccountStrictFullyConsumedForTests(payloadOnly);
     assert.equal(strictPayload.ok, true);
   });
@@ -375,6 +415,185 @@ describe("svm account-state decode policy", () => {
     assert.equal(decoded.cause, "truncated");
   });
 
+  it("exact golden EncumbranceAnswer decodes funder base58; fully-consumed green", () => {
+    const layout = encumbranceAnswerLayout();
+    const golden = hexToBytes(layout.goldenHex);
+    assert.equal(golden.length, 74);
+    assert.equal(golden.length, layout.goldenByteLength);
+    assert.equal(layout.modelledByteLength, layout.goldenByteLength);
+
+    const decoded = decodeAnswerCounted(golden);
+    assert.equal(decoded.ok, true);
+    if (!decoded.ok) return;
+    assert.equal(decoded.bytesRead, 74);
+    assert.equal(decoded.value.intent, 0);
+    assert.equal(decoded.value.allowed, false);
+    assert.equal(decoded.value.funder, base58Expected(String(layout.sample.funder)));
+    assert.ok(
+      bytesEqual(decoded.value.tokenId, hexToBytes(String(layout.sample.token_id))),
+    );
+
+    const strict = decodeEncumbranceAnswerStrictFullyConsumedForTests(golden);
+    assert.equal(strict.ok, true, "exact SPACE golden must fully consume");
+
+    const withTrailing = new Uint8Array(golden.length + 1);
+    withTrailing.set(golden);
+    withTrailing[golden.length] = 0xff;
+    const trailing = decodeEncumbranceAnswerStrictFullyConsumedForTests(
+      withTrailing,
+    );
+    assert.equal(trailing.ok, false, "trailing byte must refuse fully-consumed");
+    if (trailing.ok) return;
+    assert.equal(trailing.cause, "malformed_field");
+    assert.match(trailing.detail, /trailing_bytes:1/);
+  });
+
+  it("exact golden PassportBinding decodes program + bump; fully-consumed green", () => {
+    const layout = passportBindingLayout();
+    const golden = hexToBytes(layout.goldenHex);
+    assert.equal(golden.length, 41);
+    assert.equal(golden.length, layout.goldenByteLength);
+    assert.equal(layout.modelledByteLength, layout.goldenByteLength);
+
+    const decoded = decodeBindingCounted(golden);
+    assert.equal(decoded.ok, true);
+    if (!decoded.ok) return;
+    assert.equal(decoded.bytesRead, 41);
+    assert.equal(decoded.value.bump, 255);
+    assert.equal(
+      decoded.value.passportProgram,
+      base58Expected(String(layout.sample.passport_program)),
+    );
+
+    const strict = decodePassportBindingStrictFullyConsumedForTests(golden);
+    assert.equal(strict.ok, true, "exact SPACE golden must fully consume");
+
+    const withTrailing = new Uint8Array(golden.length + 1);
+    withTrailing.set(golden);
+    withTrailing[golden.length] = 0xff;
+    const trailing = decodePassportBindingStrictFullyConsumedForTests(withTrailing);
+    assert.equal(trailing.ok, false);
+    if (trailing.ok) return;
+    assert.equal(trailing.cause, "malformed_field");
+    assert.match(trailing.detail, /trailing_bytes:1/);
+  });
+
+  it("planted swapped field order / truncated / wrong disc refuse EncumbranceAnswer", () => {
+    const layout = encumbranceAnswerLayout();
+    const golden = hexToBytes(layout.goldenHex);
+    const honest = decodeAnswerCounted(golden);
+    assert.equal(honest.ok, true);
+    if (!honest.ok) return;
+
+    const swapped: StateFieldDecl[] = [
+      layout.fields[0]!,
+      layout.fields[2]!,
+      layout.fields[1]!,
+      layout.fields[3]!,
+      layout.fields[4]!,
+    ];
+    const planted = decodeEncumbranceAnswerWithFieldsForTests(golden, swapped);
+    if (planted.ok) {
+      assert.notEqual(
+        planted.value.intent,
+        honest.value.intent,
+        "swapped field order must not reproduce honest intent",
+      );
+    } else {
+      assert.ok(
+        planted.cause === "truncated" ||
+          planted.cause === "malformed_field" ||
+          planted.cause === "discriminator_mismatch",
+      );
+    }
+
+    const short = golden.subarray(0, 20);
+    const truncated = decodeAnswerCounted(short);
+    assert.equal(truncated.ok, false);
+    if (!truncated.ok) {
+      assert.equal(truncated.cause, "truncated");
+    }
+
+    const flipped = new Uint8Array(golden);
+    flipped[0] = (flipped[0]! ^ 0xff) & 0xff;
+    const wrongDisc = decodeAnswerCounted(flipped);
+    assert.equal(wrongDisc.ok, false);
+    if (!wrongDisc.ok) {
+      assert.equal(wrongDisc.cause, "discriminator_mismatch");
+    }
+  });
+
+  it("planted swapped field order / truncated / wrong disc refuse PassportBinding", () => {
+    const layout = passportBindingLayout();
+    const golden = hexToBytes(layout.goldenHex);
+    const honest = decodeBindingCounted(golden);
+    assert.equal(honest.ok, true);
+    if (!honest.ok) return;
+
+    const swapped: StateFieldDecl[] = [
+      layout.fields[0]!,
+      layout.fields[2]!,
+      layout.fields[1]!,
+    ];
+    const planted = decodePassportBindingWithFieldsForTests(golden, swapped);
+    if (planted.ok) {
+      assert.notEqual(
+        planted.value.bump,
+        honest.value.bump,
+        "swapped field order must not reproduce honest bump",
+      );
+    } else {
+      assert.ok(
+        planted.cause === "truncated" ||
+          planted.cause === "malformed_field" ||
+          planted.cause === "discriminator_mismatch",
+      );
+    }
+
+    const short = golden.subarray(0, 10);
+    const truncated = decodeBindingCounted(short);
+    assert.equal(truncated.ok, false);
+    if (!truncated.ok) {
+      assert.equal(truncated.cause, "truncated");
+    }
+
+    const flipped = new Uint8Array(golden);
+    flipped[0] = (flipped[0]! ^ 0xff) & 0xff;
+    const wrongDisc = decodeBindingCounted(flipped);
+    assert.equal(wrongDisc.ok, false);
+    if (!wrongDisc.ok) {
+      assert.equal(wrongDisc.cause, "discriminator_mismatch");
+    }
+  });
+
+  it("planted accountSpace / payloadLen layout refuses retired_length_name", () => {
+    const live = passportStateLayout();
+    const liveOk = refuseRetiredStateLengthNames({ ...live });
+    assert.equal(liveOk.ok, true);
+
+    const plantedSpace = {
+      ...live,
+      accountSpace: live.goldenByteLength,
+    };
+    const space = refuseRetiredStateLengthNames(plantedSpace);
+    assert.equal(space.ok, false);
+    if (!space.ok) {
+      assert.equal(space.cause, "retired_length_name");
+      assert.match(space.detail, /accountSpace/);
+    }
+
+    const plantedPayload = {
+      ...live,
+      payloadLen: live.modelledByteLength,
+    };
+    const payload = refuseRetiredStateLengthNames(plantedPayload);
+    assert.equal(payload.ok, false);
+    if (!payload.ok) {
+      assert.equal(payload.cause, "retired_length_name");
+      assert.match(payload.detail, /payloadLen/);
+    }
+  });
+
   it("product sources never hand-decode account bytes or invent offsets", () => {
     const predicate: ProductSourcePredicate = (rel, text) => {
       if (rel === DECODER_REL) return false;
@@ -391,7 +610,7 @@ describe("svm account-state decode policy", () => {
         rel.startsWith("hooks/")
       ) {
         if (
-          /decodePassportState|decodeStakeAccount|decodeChallengeAccount|decodePassportConfig|decode-account-state|getAccountInfo|fetchProductSvmAccountData/.test(
+          /decodePassportState|decodeStakeAccount|decodeChallengeAccount|decodePassportConfig|decodeEncumbranceAnswer|decodePassportBinding|decode-account-state|getAccountInfo|fetchProductSvmAccountData/.test(
             text,
           )
         ) {
