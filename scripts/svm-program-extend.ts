@@ -4,11 +4,13 @@
  *
  * Usage:
  *   pnpm exec tsx scripts/svm-program-extend.ts \
- *     --programs kar_passport,kar_gateway,kar_pro_staking,kar_pro_pass \
+ *     --programs kar_passport,kar_gateway,kar_pro_staking,kar_pro_pass,kar_fixed_price,kar_ascending \
  *     --so-dir svm/target/deploy \
  *     --rpc <url> \
  *     --deployer-keypair <path> \
  *     [--dry-run]
+ *
+ * `--programs` may list any commercial census evidence key (six).
  */
 
 import { spawnSync } from "node:child_process";
@@ -24,8 +26,13 @@ import { namespaceFromLayerZeroEid } from "../lib/web3/kargain-namespace.js";
 import { assertSolanaUpgradeAuthorityMatchesDeployer } from "./lib/svm-deploy-plan.js";
 import { artifactDigestFromSo } from "./lib/svm-devnet-evidence-write.js";
 import {
+  assertExtendArtifactPresent,
+  assertExtendCapacityReadable,
+  assertExtendProgramsInRegistry,
+  assertExtendTargetCoversArtifact,
   planProgramExtend,
   rentDeltaLamports,
+  sumExtendRentDeltaLamports,
 } from "./lib/svm-program-extend-plan.js";
 import {
   assertProgramShowAllowsUpgrade,
@@ -42,13 +49,6 @@ import {
 } from "./lib/svm-upgrade-in-place-preflight.js";
 
 const CALLER = "svm-program-extend.ts";
-
-const EXTENDABLE_KEYS = new Set([
-  "kar_passport",
-  "kar_gateway",
-  "kar_pro_staking",
-  "kar_pro_pass",
-] as const);
 
 function arg(name: string): string {
   const i = process.argv.indexOf(name);
@@ -81,9 +81,11 @@ function registryProgramId(
 
 function soPathForEvidenceKey(soDir: string, evidenceKey: string): string {
   const p = join(soDir, `${evidenceKey}.so`);
-  if (!existsSync(p)) {
-    throw new Error(`${CALLER}: missing artifact ${p}`);
-  }
+  assertExtendArtifactPresent({
+    evidenceKey,
+    soPath: p,
+    exists: existsSync,
+  });
   return p;
 }
 
@@ -197,16 +199,7 @@ async function main(): Promise<void> {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  if (keys.length === 0) {
-    throw new Error(`${CALLER}: --programs empty`);
-  }
-  for (const k of keys) {
-    if (!EXTENDABLE_KEYS.has(k as never)) {
-      throw new Error(
-        `${CALLER}: ${k} is not an S9-B extend target (passport/gateway/staking/pass only)`,
-      );
-    }
-  }
+  assertExtendProgramsInRegistry(keys);
 
   const namespace = namespaceFromLayerZeroEid(eid);
   const stack = requireSvmCommercialActive(namespace);
@@ -220,7 +213,6 @@ async function main(): Promise<void> {
 
   const planRows: ExtendPlanRow[] = [];
   const statusRows: UpgradeProgramStatusRow[] = [];
-  let estimatedCostLamports = 0;
 
   for (const evidenceKey of keys) {
     const programId = registryProgramId(stack, evidenceKey);
@@ -238,11 +230,20 @@ async function main(): Promise<void> {
       evidenceKey,
       caller: CALLER,
     });
-    const deployedCapacityBytes = parseProgramDataCapacityBytes(showText);
+    const deployedCapacityBytes = assertExtendCapacityReadable({
+      evidenceKey,
+      showText,
+      parseCapacity: parseProgramDataCapacityBytes,
+    });
     const digest = artifactDigestFromSo(soPathForEvidenceKey(soDir, evidenceKey));
     const plan = planProgramExtend({
       deployedCapacityBytes,
       artifactBytes: digest.soBytes,
+    });
+    assertExtendTargetCoversArtifact({
+      evidenceKey,
+      artifactBytes: plan.artifactBytes,
+      targetCapacityBytes: plan.targetCapacityBytes,
     });
 
     let estimatedRentDeltaLamports = 0;
@@ -253,7 +254,6 @@ async function main(): Promise<void> {
         rentExemptFromLamports: fromRent,
         rentExemptToLamports: toRent,
       });
-      estimatedCostLamports += estimatedRentDeltaLamports;
     }
 
     planRows.push({
@@ -268,12 +268,14 @@ async function main(): Promise<void> {
     });
   }
 
+  const estimatedCostLamports = sumExtendRentDeltaLamports(planRows);
   const payerLamports = payerBalanceLamports(deployerKp, rpc);
   console.log(
     `==> payerLamports=${payerLamports} estimatedExtendCostLamports=${estimatedCostLamports} ` +
       `(sum of solana rent(target) − rent(deployed) for planned extends)`,
   );
   console.log(formatExtendPlanTable(planRows));
+  console.log(`==> sum of rentΔ = ${estimatedCostLamports} lamports`);
 
   assertPayerCoversUpgradeCost({
     payerLamports,
@@ -342,9 +344,11 @@ async function main(): Promise<void> {
       deployerKp,
       evidenceKey: row.evidenceKey,
     });
-    const after = parseProgramDataCapacityBytes(
-      `${verify.stdout}\n${verify.stderr}`,
-    );
+    const after = assertExtendCapacityReadable({
+      evidenceKey: row.evidenceKey,
+      showText: `${verify.stdout}\n${verify.stderr}`,
+      parseCapacity: parseProgramDataCapacityBytes,
+    });
     if (after < row.targetCapacityBytes) {
       statusRows.push({
         evidenceKey: row.evidenceKey,
