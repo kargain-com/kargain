@@ -91,8 +91,23 @@ describe("mapMaySimulateErr", () => {
     );
   });
 
-  it("named-but-unswitched Custom (e.g. NotOwner=1) → construction", () => {
-    assert.deepEqual(mapMaySimulateErr({ InstructionError: [0, { Custom: 1 }] }), {
+  it("named-but-unruled Custom (NotOwner=1) → unmapped_program_error; NonexistentToken stays construction", () => {
+    const notOwner = { InstructionError: [0, { Custom: 1 }] };
+    assert.deepEqual(mapMaySimulateErr(notOwner), {
+      status: "blocked",
+      cause: "unmapped_program_error",
+    });
+    // Plant: folding named-unruled into construction is red.
+    const constructionPlant = {
+      status: "blocked" as const,
+      cause: "construction" as const,
+    };
+    assert.notDeepEqual(
+      mapMaySimulateErr(notOwner),
+      constructionPlant,
+      "named program answer without a rule is not construction",
+    );
+    assert.deepEqual(mapMaySimulateErr({ InstructionError: [0, { Custom: 0 }] }), {
       status: "blocked",
       cause: "construction",
     });

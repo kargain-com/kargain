@@ -157,7 +157,7 @@ export function mapMaySimulateErr(err: unknown): EncumbrancePermissionGate {
       case "NonexistentToken":
         return { status: "blocked", cause: "construction" };
       default:
-        return { status: "blocked", cause: "construction" };
+        return { status: "blocked", cause: "unmapped_program_error" };
     }
   }
   return { status: "blocked", cause: "simulation_unavailable" };
