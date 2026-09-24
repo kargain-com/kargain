@@ -25,6 +25,7 @@ import {
   locationUnresolvedCauseCopy,
   passportAwayActionCopy,
 } from "../lib/passport/presence.ts";
+import { mintProtocolOwner } from "../lib/web3/protocol-address.ts";
 
 const AVAILABLE: EncumbrancePermissionGate = { status: "available" };
 const REFUSED: EncumbrancePermissionGate = {
@@ -35,11 +36,19 @@ const UNRESOLVED: EncumbrancePermissionGate = {
   status: "blocked",
   cause: "reads_unresolved",
 };
-const SOURCE = "0x1111111111111111111111111111111111111111" as const;
+const SOURCE = mintProtocolOwner(
+  84_532,
+  "0x1111111111111111111111111111111111111111",
+)!;
 const UNANSWERABLE: EncumbrancePermissionGate = {
   status: "blocked",
   cause: "source_unanswerable",
-  source: SOURCE,
+  source: { presence: "known", address: SOURCE },
+};
+const UNANSWERABLE_ABSENT: EncumbrancePermissionGate = {
+  status: "blocked",
+  cause: "source_unanswerable",
+  source: { presence: "not_carried_by_vm" },
 };
 const SUPPORT_OWED: EncumbrancePermissionGate = {
   status: "blocked",
@@ -135,6 +144,14 @@ describe("deriveBridgeSurface", () => {
     );
     assert.equal(surface.blockReason, "source_unanswerable");
     assert.equal(surface.unanswerableSource, SOURCE);
+  });
+
+  it("source_unanswerable without known address does not invent one", () => {
+    const surface = deriveBridgeSurface(
+      input({ leaveChainPermission: UNANSWERABLE_ABSENT }),
+    );
+    assert.equal(surface.blockReason, "source_unanswerable");
+    assert.equal(surface.unanswerableSource, null);
   });
 
   it("names consigned when leave is refused and a live consignment is known", () => {

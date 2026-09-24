@@ -5,6 +5,7 @@ import type {
 } from "@/lib/passport/commerce-fact";
 import {
   encumbrancePermissionCopy,
+  encumbranceUnanswerableKnownAddress,
   isEncumbrancePermissionAvailable,
   type EncumbrancePermissionGate,
 } from "@/lib/passport/encumbrance-permission";
@@ -16,7 +17,7 @@ import {
   type PassportPresence,
 } from "@/lib/passport/presence";
 import { bridgeCounterpartChainId } from "@/lib/web3/bridge";
-import type { Address } from "viem";
+import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 
 export type BridgeBlockReason =
   | "consigned"
@@ -24,6 +25,9 @@ export type BridgeBlockReason =
   | "refused"
   | "unresolved"
   | "source_unanswerable"
+  | "fee_payer_required"
+  | "construction"
+  | "simulation_unavailable"
   | SurfaceSupportCause;
 
 export type BridgeSurfaceMode = "hidden" | "action";
@@ -33,8 +37,8 @@ export type BridgeSurfaceResult = {
   mode: BridgeSurfaceMode;
   canBridge: boolean;
   blockReason: BridgeBlockReason | null;
-  /** Set when `blockReason` is `source_unanswerable`. */
-  unanswerableSource: Address | null;
+  /** Known address when `source_unanswerable` carries one; never invented. */
+  unanswerableSource: ProtocolOwner | null;
   /**
    * Location answer from presence (§4.21). Null when here or when the panel
    * is hidden. Fold gaps and lock-unread never become `blockReason: "unresolved"`.
@@ -204,7 +208,7 @@ export function deriveBridgeSurface(
       mode: "action",
       canBridge: false,
       blockReason: "source_unanswerable",
-      unanswerableSource: gate.source,
+      unanswerableSource: encumbranceUnanswerableKnownAddress(gate),
       ...loc,
     };
   }
@@ -213,9 +217,12 @@ export function deriveBridgeSurface(
     gate.status === "blocked" &&
     (gate.cause === "product_owner_owed" ||
       gate.cause === "not_in_program" ||
-      gate.cause === "authority_only")
+      gate.cause === "authority_only" ||
+      gate.cause === "fee_payer_required" ||
+      gate.cause === "construction" ||
+      gate.cause === "simulation_unavailable")
   ) {
-    // Support refusal — named cause, never mapped to waiting (`unresolved`).
+    // Named cause, never mapped to waiting (`unresolved`) or invent `refused`.
     return {
       visible: true,
       mode: "action",
@@ -279,7 +286,7 @@ export function deriveBridgeSurface(
 
 export function bridgeBlockReasonCopy(
   reason: BridgeBlockReason,
-  unanswerableSource: Address | null = null,
+  unanswerableSource: ProtocolOwner | null = null,
 ): string {
   switch (reason) {
     case "consigned":
@@ -302,14 +309,21 @@ export function bridgeBlockReasonCopy(
           ? {
               status: "blocked",
               cause: "source_unanswerable",
-              source: unanswerableSource,
+              source: { presence: "known", address: unanswerableSource },
             }
-          : { status: "blocked", cause: "reads_unresolved" },
+          : {
+              status: "blocked",
+              cause: "source_unanswerable",
+              source: { presence: "not_carried_by_vm" },
+            },
         "leaveChain",
       );
     case "product_owner_owed":
     case "not_in_program":
     case "authority_only":
+    case "fee_payer_required":
+    case "construction":
+    case "simulation_unavailable":
       // D2 names these at the control — empty this unit (no wait-as-refusal).
       return encumbrancePermissionCopy(
         { status: "blocked", cause: reason },

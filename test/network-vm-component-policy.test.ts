@@ -62,6 +62,8 @@ export const VM_BRANCH_ALLOWLIST = [
   "lib/passport/conclude-challenge.ts",
   // U9.2a passport commerce chrome reads — EVM batch vs SVM PassportState; panels stay blind.
   "lib/passport/passport-commerce-facts.ts",
+  // S8-D1 9.3c May simulate — fee payer + planVm decision; hook stays blind.
+  "lib/passport/simulate-passport-may.ts",
   // U6.2 verification-fee write owner + surface/hub admit — panels stay blind.
   "lib/verifier/set-verification-fee.ts",
   "lib/verifier/verification-fee-surface.ts",

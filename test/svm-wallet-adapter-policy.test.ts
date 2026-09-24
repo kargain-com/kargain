@@ -25,6 +25,8 @@ const SVM_OWNERS = [
   // §7.2 U5: write adapter (kit assemble) + sign-and-send port (Wallet Standard).
   "lib/web3/svm-write-adapter.ts",
   "lib/web3/svm-sign-and-send-port.ts",
+  // S8-D1 9.3c: May simulate assembles unsigned kit wire (no wallet sign).
+  "lib/passport/simulate-passport-may.ts",
 ] as const;
 
 const SVM_DEP_IMPORT =

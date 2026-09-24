@@ -15,14 +15,17 @@ import {
   sourceUnanswerableCopy,
 } from "../lib/passport/encumbrance-permission.ts";
 import { shortAddress } from "../lib/web3/wallet-display.ts";
+import { mintProtocolOwner } from "../lib/web3/protocol-address.ts";
 
-const SOURCE = "0x1111111111111111111111111111111111111111" as const;
+const SOURCE_HEX = "0x1111111111111111111111111111111111111111" as const;
+const SOURCE = mintProtocolOwner(84_532, SOURCE_HEX)!;
+const KNOWN_SOURCE = { presence: "known" as const, address: SOURCE };
 
 function sourceUnanswerableError(): ContractFunctionRevertedError {
   const raw = encodeErrorResult({
     abi: KarPassportAbi,
     errorName: "SourceUnanswerable",
-    args: [SOURCE],
+    args: [SOURCE_HEX],
   });
   return new ContractFunctionRevertedError({
     abi: KarPassportAbi,
@@ -34,12 +37,16 @@ function sourceUnanswerableError(): ContractFunctionRevertedError {
 describe("txErrorMessage", () => {
   it("names the SourceUnanswerable source on the write path", () => {
     const message = txErrorMessage(sourceUnanswerableError());
-    assert.equal(message, sourceUnanswerableCopy(SOURCE));
+    assert.equal(message, sourceUnanswerableCopy(KNOWN_SOURCE));
     assert.ok(message.includes(shortAddress(SOURCE)));
     assert.equal(
       message,
       encumbrancePermissionCopy(
-        { status: "blocked", cause: "source_unanswerable", source: SOURCE },
+        {
+          status: "blocked",
+          cause: "source_unanswerable",
+          source: KNOWN_SOURCE,
+        },
         "leaveChain",
       ),
     );

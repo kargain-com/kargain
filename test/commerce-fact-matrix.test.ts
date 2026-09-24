@@ -279,7 +279,7 @@ describe("S8-D1b commerce-fact behaviour matrix", () => {
   });
 
   describe("resolvePassportCommerceFacts SVM arm", () => {
-    it("unread entries stay pending; may_* still product_owner_owed; configured true", async () => {
+    it("unread entries stay pending; may_* reads_unresolved without inject; configured true", async () => {
       const plan = await planPassportCommerceReads({
         chainId: 2000040168,
         tokenId: "1",
@@ -317,7 +317,7 @@ describe("S8-D1b commerce-fact behaviour matrix", () => {
       assert.equal(
         facts.openConsignmentPermission.status === "blocked" &&
           facts.openConsignmentPermission.cause,
-        "product_owner_owed",
+        "reads_unresolved",
       );
     });
   });

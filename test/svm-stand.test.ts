@@ -298,6 +298,7 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.ok(Number.isFinite(fp.pricePublishTime));
       assert.ok(fp.priceStalenessTolerance >= 60 && fp.priceStalenessTolerance <= 259_200);
       assert.equal(fp.leaveChainSendWhileLive, 37); // LeaveChainRefused
+      assert.equal(fp.leaveChainMaySimulateCustom, 37); // product May simulate
       assert.equal(fp.leaveChainSendAfterClose, null);
       assert.equal(fp.fiatNoFeedCode, 124); // PaymentTokenFeedRequired
       assert.equal(fp.staleBuyCode, 122);
@@ -338,6 +339,7 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.equal(fp.admittedDecimals, fp.chainMintDecimals);
       assert.equal(fp.transferFeeRefuseCode, 69);
       assert.equal(fp.leaveChainWhileLive, 37); // LeaveChainRefused
+      assert.equal(fp.leaveChainMaySimulateCustom, 37); // product May simulate
       assert.equal(fp.leaveChainAfterClose, null);
       assert.equal(fp.revokeOpenCode, 84); // NoMandate
       assert.equal(fp.transferDelegateAfterRevoke, true);

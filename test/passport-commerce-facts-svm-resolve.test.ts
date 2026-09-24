@@ -427,7 +427,7 @@ describe("S8-D1 9.3b SVM commerce facts", () => {
     });
   });
 
-  it("may_* stay product_owner_owed", async () => {
+  it("may_* without inject stay reads_unresolved (never product_owner_owed)", async () => {
     const plan = await svmPlan();
     const facts = resolvePassportCommerceFacts({
       plan,
@@ -440,12 +440,39 @@ describe("S8-D1 9.3b SVM commerce facts", () => {
     assert.equal(
       facts.openConsignmentPermission.status === "blocked" &&
         facts.openConsignmentPermission.cause,
-      "product_owner_owed",
+      "reads_unresolved",
     );
     assert.equal(
       facts.leaveChainPermission.status === "blocked" &&
         facts.leaveChainPermission.cause,
-      "product_owner_owed",
+      "reads_unresolved",
+    );
+  });
+
+  it("mayPermissions inject carries simulate gate", async () => {
+    const plan = await svmPlan();
+    const refused = { status: "blocked" as const, cause: "refused" as const };
+    const facts = resolvePassportCommerceFacts({
+      plan,
+      planning: false,
+      entry: () => undefined,
+      get: () => undefined,
+      isPending: false,
+      namespace: SVM_NS,
+      mayPermissions: {
+        openConsignmentPermission: refused,
+        leaveChainPermission: {
+          status: "blocked",
+          cause: "source_unanswerable",
+          source: { presence: "not_carried_by_vm" },
+        },
+      },
+    });
+    assert.deepEqual(facts.openConsignmentPermission, refused);
+    assert.equal(
+      facts.leaveChainPermission.status === "blocked" &&
+        facts.leaveChainPermission.cause,
+      "source_unanswerable",
     );
   });
 });

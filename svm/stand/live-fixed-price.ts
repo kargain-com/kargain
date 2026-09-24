@@ -5,6 +5,7 @@
  * - Corrective negatives: unbound OpenDirect(140); rebind AAI; Send→OpenDirect NotPassportOwner(79);
  *   registry miss(71); retired harness(141); live-lot Send LeaveChainRefused(37) then Send ok after close
  *   registry-miss OpenDirect(71); retired CreateAsset(141)
+ * - Product simulatePassportMay LeaveChain while live → InstructionError Custom(37) (9.3c)
  * - Native buy: pull → buyer owns Core asset → three-leg deltas = fee snapshot split
  * - SPL buy + soft-revoke then buy still settles (D-31)
  * - Transfer-fee mint refused at admission (TransferFeeExtensionForbidden)
@@ -27,6 +28,13 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { ENCUMBRANCE_INTENT } from "../../lib/commerce/consignment.ts";
+import { simulatePassportMay } from "../../lib/passport/simulate-passport-may.ts";
+import { decodePassportConfig } from "../../lib/svm/decode-account-state.ts";
+import { deriveSvmPdaForProgram } from "../../lib/svm/derive-pda.ts";
+import { tokenIdFromBytes32 } from "../../lib/svm/event-payload-decode.ts";
+import { postSolanaJsonRpc } from "../../lib/svm/solana-json-rpc.ts";
+import { commercialActive } from "../../lib/web3/commercial-active.ts";
 import {
   withStandArtifactBindings,
   type StandArtifactBindings,
@@ -471,6 +479,8 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   leaveChainAfterClose: null;
   leaveChainSendWhileLive: number;
   leaveChainSendAfterClose: null;
+  /** Product May simulate while live — Custom(37) LeaveChainRefused. */
+  leaveChainMaySimulateCustom: number;
   revokeOpenCode: number;
   transferDelegateAfterRevoke: boolean;
   /** Per-ix metas/CU/tx on stand with passport registry N=1. */
@@ -761,6 +771,56 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
   const priceN = 1000n;
   await openDirectNative(conn, ctx, lotN, priceN);
   await assertAnswersOpen(conn, lotN.answers.leave, lotN.answers.open, programId, "lotN after open");
+
+  // Product May simulate (9.3c): LeaveChain while live answers refuse → Custom(37).
+  const cfgInfo = await conn.getAccountInfo(stack.passportConfig);
+  assert.ok(cfgInfo, "passport config for May simulate");
+  const cfgDecoded = decodePassportConfig(new Uint8Array(cfgInfo.data as Buffer));
+  assert.equal(cfgDecoded.ok, true, "decodePassportConfig for May simulate");
+  if (!cfgDecoded.ok) throw new Error("config decode failed");
+  const commercial = commercialActive(2_000_040_168);
+  assert.ok(commercial?.vm === "svm", "commercial SVM stack shape for May simulate");
+  const mayStack = {
+    ...commercial,
+    karPassport: stack.passportProgram.toBase58(),
+  };
+  let maySimErr: unknown;
+  const maySim = await simulatePassportMay({
+    stack: mayStack,
+    tokenId: tokenIdFromBytes32(new Uint8Array(lotN.tokenId)),
+    intent: ENCUMBRANCE_INTENT.LeaveChain,
+    feePayer: seller.publicKey.toBase58(),
+    sources: cfgDecoded.value.encumbranceSources,
+    rpcUrl: rpc,
+    derivePda: deriveSvmPdaForProgram,
+    postRpc: async (url, method, params) => {
+      const out = await postSolanaJsonRpc(url, method, params);
+      if (method === "simulateTransaction") {
+        maySimErr = (out as { value: { err: unknown } }).value.err;
+      }
+      return out as never;
+    },
+  });
+  assert.ok(
+    maySimErr != null &&
+      typeof maySimErr === "object" &&
+      Array.isArray((maySimErr as { InstructionError?: unknown }).InstructionError) &&
+      (maySimErr as { InstructionError: unknown[] }).InstructionError[1] &&
+      typeof (maySimErr as { InstructionError: unknown[] }).InstructionError[1] ===
+        "object" &&
+      (
+        (maySimErr as { InstructionError: [number, { Custom: number }] })
+          .InstructionError[1] as { Custom: number }
+      ).Custom === 37,
+    `May simulate err must be InstructionError Custom(37); got ${JSON.stringify(maySimErr)} gate=${JSON.stringify(maySim.gate)}`,
+  );
+  assert.equal(maySim.ok, false);
+  assert.equal(
+    maySim.gate.status === "blocked" && maySim.gate.cause,
+    "refused",
+  );
+  const leaveChainMaySimulateCustom = 37;
+
   const answerRentExempt = BigInt(
     await conn.getMinimumBalanceForRentExemption(ENCUMBRANCE_ANSWER_SPACE),
   );
@@ -3163,6 +3223,7 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     leaveChainAfterClose,
     leaveChainSendWhileLive: leaveChainSendWhileLive!,
     leaveChainSendAfterClose,
+    leaveChainMaySimulateCustom,
     revokeOpenCode,
     transferDelegateAfterRevoke,
     ixBudget,

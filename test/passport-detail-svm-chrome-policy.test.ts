@@ -336,10 +336,10 @@ describe("passport detail SVM chrome policy (U9.2a)", () => {
     assert.equal(
       pending.openConsignmentPermission.status === "blocked" &&
         pending.openConsignmentPermission.cause,
-      "product_owner_owed",
+      "reads_unresolved",
     );
 
-    // Planning with namespace → may_* refuse; supported reads stay pending.
+    // Planning with namespace → may_* wait (reads_unresolved); supported reads stay pending.
     const planning = resolvePassportCommerceFacts({
       plan: null,
       planning: true,
@@ -354,7 +354,7 @@ describe("passport detail SVM chrome policy (U9.2a)", () => {
     assert.equal(
       planning.openConsignmentPermission.status === "blocked" &&
         planning.openConsignmentPermission.cause,
-      "product_owner_owed",
+      "reads_unresolved",
     );
   });
 

@@ -727,15 +727,22 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     ],
   },
   {
+    id: "passport-may-simulate",
+    owner: "lib/passport/simulate-passport-may.ts",
+    rule: "PassportIx::May outcome for SVM permissions only via simulatePassportMay (encode+kit wire+JSON-RPC sim); fee payer = connected SVM session; Custom(20)→not_carried_by_vm; never re-implement may.rs; sole product caller of the Solana transaction-simulation RPC method",
+    guardTests: ["simulate-passport-may-policy.test.ts"],
+  },
+  {
     id: "passport-commerce-facts",
     owner:
-      "lib/passport/passport-commerce-facts.ts · lib/passport/commerce-fact.ts · lib/passport/passport-commerce-rail.ts · hooks/use-passport-commerce-facts.ts · lib/web3/supported-chains.ts",
-    rule: "Dual-VM passport commerce chrome: EVM batched may/custodyLocked/encumbrance/modes; SVM PassportState → custodyLock + surfaceSupport refusals for owed cells (never invent hasLiveConsignment false or configured false); CommerceFact = known|pending|refused(KeyedReadCause|SurfaceSupportCause); wagmiChainId only inside the EVM plan arm; eip155WagmiChainId returns undefined for commercial SVM",
+      "lib/passport/passport-commerce-facts.ts · lib/passport/commerce-fact.ts · lib/passport/passport-commerce-rail.ts · hooks/use-passport-commerce-facts.ts · lib/web3/supported-chains.ts · lib/passport/simulate-passport-may.ts",
+    rule: "Dual-VM passport commerce chrome: EVM batched may/custodyLocked/encumbrance/modes; SVM mode/challenge/registry facts + may_* from simulatePassportMay inject (never invent hasLiveConsignment false or configured false); CommerceFact = known|pending|refused(KeyedReadCause|SurfaceSupportCause); wagmiChainId only inside the EVM plan arm; eip155WagmiChainId returns undefined for commercial SVM",
     guardTests: [
       "passport-detail-svm-chrome-policy.test.ts",
       "commerce-fact-status-policy.test.ts",
       "commerce-fact-matrix.test.ts",
       "passport-commerce-facts-svm-resolve.test.ts",
+      "simulate-passport-may-policy.test.ts",
     ],
   },
   {

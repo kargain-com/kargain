@@ -16,8 +16,12 @@ import {
   type SellSurfaceFlags,
   type SellSurfaceInput,
 } from "../lib/passport/sell-surface.ts";
+import { mintProtocolOwner } from "../lib/web3/protocol-address.ts";
 
-const AGENT = "0x1111111111111111111111111111111111111111" as const;
+const AGENT = mintProtocolOwner(
+  84_532,
+  "0x1111111111111111111111111111111111111111",
+)!;
 const NOW = 2_000_000_000;
 
 const AVAILABLE_PERM: EncumbrancePermissionGate = { status: "available" };
@@ -32,7 +36,7 @@ const UNRESOLVED: EncumbrancePermissionGate = {
 const UNANSWERABLE: EncumbrancePermissionGate = {
   status: "blocked",
   cause: "source_unanswerable",
-  source: AGENT,
+  source: { presence: "known", address: AGENT },
 };
 const SUPPORT_OWED: EncumbrancePermissionGate = {
   status: "blocked",

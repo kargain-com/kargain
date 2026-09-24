@@ -1779,7 +1779,7 @@ export const SURFACE_CENSUS_CAPABILITY_META: SurfaceCensusCapabilityMeta[] = [
       "source": "struct_field",
       "item": "EncumbranceAnswer.allowed"
     },
-    "svmReader": "owed",
+    "svmReader": "present",
     "observedSvmBehaviour": "known"
   },
   {
@@ -1790,7 +1790,7 @@ export const SURFACE_CENSUS_CAPABILITY_META: SurfaceCensusCapabilityMeta[] = [
       "source": "struct_field",
       "item": "EncumbranceAnswer.allowed"
     },
-    "svmReader": "owed",
+    "svmReader": "present",
     "observedSvmBehaviour": "known"
   },
   {

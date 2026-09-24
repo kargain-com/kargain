@@ -1,10 +1,9 @@
 /**
- * Sole dual-VM owner of passport commerce chrome reads (U9.2a / S8-D1b / 9.3b).
+ * Sole dual-VM owner of passport commerce chrome reads (U9.2a / S8-D1b / 9.3c).
  *
  * EVM: batched may / custodyLocked (ABI key) / encumbrance / mode phase+mandate.
- * SVM: keyed PassportState + mode consignment/mandate/recall (+ Ascending
- * auction/hold) + challenge + PassportConfig; may_* still refuse via
- * surfaceSupport until 9.3c simulation.
+ * SVM: keyed PassportState + mode consignment/mandate + challenge + PassportConfig;
+ * may_* from simulatePassportMay (injected gates) — never a TS copy of may.rs.
  *
  * wagmiChainId is reachable only on the EVM arm of {@link planPassportCommerceReads}.
  */
@@ -27,11 +26,9 @@ import {
   commerceFactPending,
   commerceFactRefused,
   type CommerceFact,
-  type SurfaceSupportCause,
 } from "@/lib/passport/commerce-fact";
 import {
   deriveEncumbrancePermission,
-  encumbrancePermissionFromSupport,
   type EncumbrancePermissionGate,
 } from "@/lib/passport/encumbrance-permission";
 import {
@@ -47,6 +44,7 @@ import {
   decodeMandateRecord,
   decodePassportConfig,
   decodePassportState,
+  type EncumbranceSourceDecoded,
 } from "@/lib/svm/decode-account-state";
 import { deriveSvmPda } from "@/lib/svm/derive-pda";
 import { tokenIdToBytes32 } from "@/lib/svm/event-payload-decode";
@@ -60,10 +58,6 @@ import type {
   KeyedContract,
   KeyedEntry,
 } from "@/lib/web3/keyed-multicall";
-import {
-  surfaceSupport,
-  type SurfaceCapability,
-} from "@/lib/web3/surface-support";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { toHex } from "viem";
 
@@ -450,42 +444,14 @@ function unconfiguredModeFacts(): CommerceModeFacts {
   };
 }
 
-function supportCauseFromCell(
-  capability: SurfaceCapability,
-  namespace: number,
-  registry?: CommercialRegistry,
-): SurfaceSupportCause | "unresolved_namespace" | null {
-  const cell = surfaceSupport(capability, namespace, registry);
-  if ("unresolved" in cell) return "unresolved_namespace";
-  if (!cell.supported) return cell.cause;
-  return null;
-}
-
-function permissionFromSupport(
-  capability: SurfaceCapability,
-  namespace: number,
-  registry?: CommercialRegistry,
-): EncumbrancePermissionGate {
-  const cause = supportCauseFromCell(capability, namespace, registry);
-  if (cause == null) {
-    // Supported but no reader yet — still product_owner_owed in census for these.
-    // If somehow supported, treat as pending read (should not happen for owed cells).
-    return { status: "blocked", cause: "reads_unresolved" };
-  }
-  if (cause === "unresolved_namespace") {
-    return { status: "blocked", cause: "reads_unresolved" };
-  }
-  return encumbrancePermissionFromSupport(cause);
-}
-
 /**
- * SVM planning flash: may_* refuse by census immediately; supported commerce
+ * SVM planning flash: may_* wait until simulate; supported commerce
  * reads wait honestly (pending) until keyed entries arrive — never invent false.
  */
 function svmPlanningFacts(
   stack: SvmCommercialActiveStack,
   isPending: boolean,
-  registry?: CommercialRegistry,
+  _registry?: CommercialRegistry,
 ): PassportCommerceFacts {
   const namespace = Number(stack.namespace);
   const fixedPriceConfigured = Boolean(stack.fixedPriceConsignment);
@@ -508,16 +474,8 @@ function svmPlanningFacts(
   return {
     fixedPrice,
     ascending,
-    openConsignmentPermission: permissionFromSupport(
-      "may_open_consignment",
-      namespace,
-      registry,
-    ),
-    leaveChainPermission: permissionFromSupport(
-      "may_leave_chain",
-      namespace,
-      registry,
-    ),
+    openConsignmentPermission: { status: "blocked", cause: "reads_unresolved" },
+    leaveChainPermission: { status: "blocked", cause: "reads_unresolved" },
     encumbranceRegistry: commerceFactPending(),
     custodyLock: { status: "pending" },
     challengeOpen: commerceFactPending(),
@@ -688,6 +646,24 @@ function registryFromConfigEntry(
   }
 }
 
+/**
+ * Encumbrance sources (program id + seed prefix) from the same passportConfig
+ * keyed entry used for the registry fact. Re-decode — do not invent prefixes
+ * from ProtocolOwner[]. Pending/refused → null (caller fails closed).
+ */
+export function encumbranceSourcesFromConfigEntry(
+  entry: KeyedEntry | undefined,
+  opts?: { batchPending?: boolean },
+): readonly EncumbranceSourceDecoded[] | null {
+  if (opts?.batchPending || entry == null) return null;
+  if (entry.status === "pending") return null;
+  if (entry.status === "refused") return null;
+  if (!(entry.result instanceof Uint8Array)) return null;
+  const decoded = decodePassportConfig(entry.result);
+  if (!decoded.ok) return null;
+  return decoded.value.encumbranceSources;
+}
+
 function resolveSvmModeFacts(args: {
   consignmentEntry: KeyedEntry | undefined;
   mandateEntry: KeyedEntry | undefined;
@@ -715,6 +691,11 @@ function resolveSvmCommerceFacts(args: {
   entry: (key: string) => KeyedEntry | undefined;
   isPending: boolean;
   registry?: CommercialRegistry;
+  /** Injected from simulatePassportMay; omitted → reads_unresolved. */
+  mayPermissions?: {
+    openConsignmentPermission: EncumbrancePermissionGate;
+    leaveChainPermission: EncumbrancePermissionGate;
+  };
 }): PassportCommerceFacts {
   const { plan } = args;
   const batchPending = args.isPending;
@@ -744,19 +725,18 @@ function resolveSvmCommerceFacts(args: {
     { batchPending },
   );
 
+  const unreadMay: EncumbrancePermissionGate = {
+    status: "blocked",
+    cause: "reads_unresolved",
+  };
+
   return {
     fixedPrice,
     ascending,
-    openConsignmentPermission: permissionFromSupport(
-      "may_open_consignment",
-      plan.namespace,
-      args.registry,
-    ),
-    leaveChainPermission: permissionFromSupport(
-      "may_leave_chain",
-      plan.namespace,
-      args.registry,
-    ),
+    openConsignmentPermission:
+      args.mayPermissions?.openConsignmentPermission ?? unreadMay,
+    leaveChainPermission:
+      args.mayPermissions?.leaveChainPermission ?? unreadMay,
     encumbranceRegistry: registryFromConfigEntry(
       args.entry(PASSPORT_CONFIG_KEY),
       plan.namespace,
@@ -873,6 +853,11 @@ export function resolvePassportCommerceFacts(args: {
   /** When planning and the commercial row is already known (SVM flash). */
   namespace?: number;
   registry?: CommercialRegistry;
+  /** SVM only — from simulatePassportMay (hook). */
+  mayPermissions?: {
+    openConsignmentPermission: EncumbrancePermissionGate;
+    leaveChainPermission: EncumbrancePermissionGate;
+  };
 }): PassportCommerceFacts {
   const unreadPermission = deriveEncumbrancePermission(undefined);
   const unreadRegistry = commerceFactPending() as EncumbranceRegistry;
@@ -915,6 +900,7 @@ export function resolvePassportCommerceFacts(args: {
       entry: args.entry,
       isPending: args.isPending,
       registry: args.registry,
+      mayPermissions: args.mayPermissions,
     });
   }
 
@@ -957,8 +943,12 @@ export function resolvePassportCommerceFacts(args: {
   return {
     fixedPrice: fixedPriceFacts,
     ascending: ascendingFacts,
-    openConsignmentPermission: deriveEncumbrancePermission(mayOpenEntry),
-    leaveChainPermission: deriveEncumbrancePermission(mayLeaveEntry),
+    openConsignmentPermission: deriveEncumbrancePermission(mayOpenEntry, {
+      namespace,
+    }),
+    leaveChainPermission: deriveEncumbrancePermission(mayLeaveEntry, {
+      namespace,
+    }),
     encumbranceRegistry: deriveEncumbranceRegistry({
       namespace,
       countEntry: args.entry("encumbranceSourceCount"),

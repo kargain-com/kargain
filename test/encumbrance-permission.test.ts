@@ -12,18 +12,22 @@ import {
   deriveEncumbrancePermission,
   encumbrancePermissionCopy,
   encumbrancePermissionFromSupport,
+  encumbranceUnanswerableKnownAddress,
   isEncumbrancePermissionAvailable,
   type EncumbrancePermissionGate,
 } from "../lib/passport/encumbrance-permission.ts";
 import type { KeyedEntry } from "../lib/web3/keyed-multicall.ts";
+import { mintProtocolOwner } from "../lib/web3/protocol-address.ts";
 
-const SOURCE = "0x1111111111111111111111111111111111111111" as const;
+const SOURCE_HEX = "0x1111111111111111111111111111111111111111" as const;
+const SOURCE = mintProtocolOwner(84_532, SOURCE_HEX)!;
+const KNOWN_SOURCE = { presence: "known" as const, address: SOURCE };
 
 function sourceUnanswerableEntry(): KeyedEntry {
   const raw = encodeErrorResult({
     abi: KarPassportAbi,
     errorName: "SourceUnanswerable",
-    args: [SOURCE],
+    args: [SOURCE_HEX],
   });
   return {
     status: "refused",
@@ -54,19 +58,29 @@ describe("deriveEncumbrancePermission", () => {
     assert.deepEqual(gate, { status: "blocked", cause: "refused" });
   });
 
-  it("names the source on SourceUnanswerable", () => {
-    const gate = deriveEncumbrancePermission(sourceUnanswerableEntry());
+  it("names the source on SourceUnanswerable as known presence", () => {
+    const gate = deriveEncumbrancePermission(sourceUnanswerableEntry(), {
+      namespace: 84_532,
+    });
     assert.equal(gate.status, "blocked");
     assert.equal(
       gate.status === "blocked" && gate.cause,
       "source_unanswerable",
     );
-    assert.equal(
+    assert.deepEqual(
       gate.status === "blocked" &&
         gate.cause === "source_unanswerable" &&
         gate.source,
-      SOURCE,
+      KNOWN_SOURCE,
     );
+    assert.equal(encumbranceUnanswerableKnownAddress(gate), SOURCE);
+  });
+
+  it("stays reads_unresolved on SourceUnanswerable without namespace", () => {
+    assert.deepEqual(deriveEncumbrancePermission(sourceUnanswerableEntry()), {
+      status: "blocked",
+      cause: "reads_unresolved",
+    });
   });
 
   it("is reads_unresolved when the entry is missing", () => {
@@ -101,7 +115,10 @@ describe("deriveEncumbrancePermission", () => {
       status: "success",
       result: false,
     });
-    const unanswerable = deriveEncumbrancePermission(sourceUnanswerableEntry());
+    const unanswerable = deriveEncumbrancePermission(
+      sourceUnanswerableEntry(),
+      { namespace: 84_532 },
+    );
     const unresolved = deriveEncumbrancePermission(undefined);
     assert.notDeepEqual(refused, unanswerable);
     assert.notDeepEqual(refused, unresolved);
@@ -110,16 +127,40 @@ describe("deriveEncumbrancePermission", () => {
 });
 
 describe("encumbrancePermissionCopy", () => {
-  it("surfaces the source address on unanswerable", () => {
+  it("surfaces the source address on known unanswerable", () => {
     const gate: EncumbrancePermissionGate = {
       status: "blocked",
       cause: "source_unanswerable",
-      source: SOURCE,
+      source: KNOWN_SOURCE,
     };
     const copy = encumbrancePermissionCopy(gate, "openConsignment");
     assert.match(copy, /0x1111/);
     assert.match(copy, /could not answer/i);
     assert.match(copy, /Governance/);
+  });
+
+  it("returns empty copy for not_carried_by_vm and new simulate causes", () => {
+    const absent: EncumbrancePermissionGate = {
+      status: "blocked",
+      cause: "source_unanswerable",
+      source: { presence: "not_carried_by_vm" },
+    };
+    assert.equal(encumbrancePermissionCopy(absent, "leaveChain"), "");
+    assert.equal(encumbranceUnanswerableKnownAddress(absent), null);
+    for (const cause of [
+      "fee_payer_required",
+      "construction",
+      "simulation_unavailable",
+    ] as const) {
+      assert.equal(
+        encumbrancePermissionCopy(
+          { status: "blocked", cause },
+          "openConsignment",
+        ),
+        "",
+        cause,
+      );
+    }
   });
 
   it("uses waiting copy for unresolved, not a definite refusal", () => {

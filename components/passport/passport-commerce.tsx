@@ -14,7 +14,10 @@ import {
   type AuctionRow,
 } from "@/lib/auction/map-ponder-auction";
 import { sectionScrollAnchor } from "@/lib/design/instrument-classes";
-import { isEncumbrancePermissionAvailable } from "@/lib/passport/encumbrance-permission";
+import {
+  encumbranceUnanswerableKnownAddress,
+  isEncumbrancePermissionAvailable,
+} from "@/lib/passport/encumbrance-permission";
 import type { FixedPriceListingDetailProp } from "@/lib/passport/fetch-passport-detail";
 import { derivePassportCommerceRail } from "@/lib/passport/passport-commerce-rail";
 import type { PassportStatus } from "@/lib/types/ponder";
@@ -115,13 +118,8 @@ function ResolvedPassportCommerce({
   );
 
   const unanswerableSource =
-    facts.openConsignmentPermission.status === "blocked" &&
-    facts.openConsignmentPermission.cause === "source_unanswerable"
-      ? facts.openConsignmentPermission.source
-      : facts.leaveChainPermission.status === "blocked" &&
-          facts.leaveChainPermission.cause === "source_unanswerable"
-        ? facts.leaveChainPermission.source
-        : null;
+    encumbranceUnanswerableKnownAddress(facts.openConsignmentPermission) ??
+    encumbranceUnanswerableKnownAddress(facts.leaveChainPermission);
 
   return (
     <div id="passport-commerce" className={cn("space-y-4", sectionScrollAnchor)}>

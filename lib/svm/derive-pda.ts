@@ -169,6 +169,31 @@ export async function deriveSvmPda(input: {
 }
 
 /**
+ * Recipe-keyed derive without the commercial registry gate.
+ * Stand / tooling inject into simulatePassportMay only — product entry remains
+ * {@link deriveSvmPda}. Do not import from app/components/hooks.
+ */
+export async function deriveSvmPdaForProgram(input: {
+  recipe: string;
+  programId: string;
+  seeds?: Record<string, PdaSeedValue>;
+}): Promise<DeriveSvmPdaResult> {
+  const recipe = BY_ID.get(input.recipe);
+  if (!recipe) {
+    return {
+      ok: false,
+      cause: "unknown_recipe",
+      detail: input.recipe,
+    };
+  }
+  return deriveCore({
+    recipe,
+    programId: input.programId,
+    seeds: input.seeds,
+  });
+}
+
+/**
  * Golden-verification seam: derive against an explicit layout object.
  *
  * Accepts **only** the committed synthetic program id. A registry (or any
