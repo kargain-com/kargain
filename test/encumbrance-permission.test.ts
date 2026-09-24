@@ -151,6 +151,7 @@ describe("encumbrancePermissionCopy", () => {
       "fee_payer_required",
       "construction",
       "simulation_unavailable",
+      "unmapped_program_error",
     ] as const) {
       assert.equal(
         encumbrancePermissionCopy(

@@ -38,6 +38,16 @@ export function mintProtocolOwner(
   return normalized as ProtocolOwner;
 }
 
+/**
+ * EVM-only mint when the VM is already known from the decode surface
+ * (e.g. EVM custom-error args). No namespace — never invent a hub id.
+ */
+export function mintEvmProtocolOwner(address: string): ProtocolOwner | null {
+  const normalized = evmNormalize(address);
+  if (normalized == null) return null;
+  return normalized as ProtocolOwner;
+}
+
 /** Bitcoin / Solana base58 alphabet (no 0/O/I/l). */
 const BASE58_ALPHABET =
   "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";

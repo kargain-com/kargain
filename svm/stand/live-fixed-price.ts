@@ -819,7 +819,10 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     maySim.gate.status === "blocked" && maySim.gate.cause,
     "refused",
   );
-  const leaveChainMaySimulateCustom = 37;
+  const leaveChainMaySimulateCustom = (
+    (maySimErr as { InstructionError: [number, { Custom: number }] })
+      .InstructionError[1] as { Custom: number }
+  ).Custom;
 
   const answerRentExempt = BigInt(
     await conn.getMinimumBalanceForRentExemption(ENCUMBRANCE_ANSWER_SPACE),

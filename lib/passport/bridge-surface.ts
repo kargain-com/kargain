@@ -28,6 +28,7 @@ export type BridgeBlockReason =
   | "fee_payer_required"
   | "construction"
   | "simulation_unavailable"
+  | "unmapped_program_error"
   | SurfaceSupportCause;
 
 export type BridgeSurfaceMode = "hidden" | "action";
@@ -220,7 +221,8 @@ export function deriveBridgeSurface(
       gate.cause === "authority_only" ||
       gate.cause === "fee_payer_required" ||
       gate.cause === "construction" ||
-      gate.cause === "simulation_unavailable")
+      gate.cause === "simulation_unavailable" ||
+      gate.cause === "unmapped_program_error")
   ) {
     // Named cause, never mapped to waiting (`unresolved`) or invent `refused`.
     return {
@@ -324,6 +326,7 @@ export function bridgeBlockReasonCopy(
     case "fee_payer_required":
     case "construction":
     case "simulation_unavailable":
+    case "unmapped_program_error":
       // D2 names these at the control — empty this unit (no wait-as-refusal).
       return encumbrancePermissionCopy(
         { status: "blocked", cause: reason },

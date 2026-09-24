@@ -42,7 +42,7 @@ describe("mapMaySimulateErr", () => {
     assert.deepEqual(mapMaySimulateErr(null), AVAILABLE);
   });
 
-  it("Custom(37|70) → refused", () => {
+  it("Custom(37|70) → refused via LeaveChainRefused / OpenConsignmentRefused names", () => {
     assert.deepEqual(mapMaySimulateErr({ InstructionError: [0, { Custom: 37 }] }), {
       status: "blocked",
       cause: "refused",
@@ -53,7 +53,7 @@ describe("mapMaySimulateErr", () => {
     });
   });
 
-  it("Custom(20) → source_unanswerable not_carried_by_vm", () => {
+  it("Custom(20) → source_unanswerable not_carried_by_vm via SourceUnanswerable name", () => {
     assert.deepEqual(mapMaySimulateErr({ InstructionError: [0, { Custom: 20 }] }), {
       status: "blocked",
       cause: "source_unanswerable",
@@ -61,7 +61,7 @@ describe("mapMaySimulateErr", () => {
     });
   });
 
-  it("Custom(0) and InvalidSeeds → construction", () => {
+  it("Custom(0) NonexistentToken and InvalidSeeds → construction", () => {
     assert.deepEqual(mapMaySimulateErr({ InstructionError: [0, { Custom: 0 }] }), {
       status: "blocked",
       cause: "construction",
@@ -71,6 +71,28 @@ describe("mapMaySimulateErr", () => {
       cause: "construction",
     });
     assert.deepEqual(mapMaySimulateErr("InvalidSeeds"), {
+      status: "blocked",
+      cause: "construction",
+    });
+  });
+
+  it("unnamed ordinal → unmapped_program_error (not folded into construction)", () => {
+    const unmapped = { InstructionError: [0, { Custom: 999_999 }] };
+    assert.deepEqual(mapMaySimulateErr(unmapped), {
+      status: "blocked",
+      cause: "unmapped_program_error",
+    });
+    // Plant: folding unnamed into construction is red.
+    const foldedPlant = { status: "blocked" as const, cause: "construction" as const };
+    assert.notDeepEqual(
+      mapMaySimulateErr(unmapped),
+      foldedPlant,
+      "unnamed Custom must not share construction with NonexistentToken",
+    );
+  });
+
+  it("named-but-unswitched Custom (e.g. NotOwner=1) → construction", () => {
+    assert.deepEqual(mapMaySimulateErr({ InstructionError: [0, { Custom: 1 }] }), {
       status: "blocked",
       cause: "construction",
     });
@@ -217,9 +239,25 @@ describe("simulatePassportMay ownership policy", () => {
     assert.match(src, /encodeSvmInstruction/);
     assert.match(src, /deriveSvmPda/);
     assert.match(src, /getBase64EncodedWireTransaction/);
-    assert.match(src, /code === 37 \|\| code === 70/);
-    assert.match(src, /code === 20/);
+    assert.match(src, /svmProgramErrorName/);
+    assert.match(src, /"LeaveChainRefused"/);
+    assert.match(src, /"SourceUnanswerable"/);
+    assert.match(src, /"NonexistentToken"/);
+    assert.match(src, /unmapped_program_error/);
+    // No ordinal-literal map (second owner of ordinal→name).
+    assert.doesNotMatch(src, /code\s*===\s*20/);
+    assert.doesNotMatch(src, /code\s*===\s*37/);
+    assert.doesNotMatch(src, /code\s*===\s*70/);
+    assert.doesNotMatch(src, /code\s*===\s*0\b/);
     assert.doesNotMatch(src, /allowed\s*===|answers\.every|Uninitialised/);
+
+    // Plant: ordinal compare instead of name is red.
+    const ordinalPlant = src.replace(
+      /const name = svmProgramErrorName\(code\);/,
+      "const name = code === 20 ? \"SourceUnanswerable\" : svmProgramErrorName(code);",
+    );
+    assert.notEqual(ordinalPlant, src);
+    assert.match(ordinalPlant, /code\s*===\s*20/);
   });
 
   it("commerce facts / hook consume simulate owner (no second simulate door)", () => {
@@ -251,5 +289,32 @@ describe("simulatePassportMay ownership policy", () => {
       { owners: ["lib/svm/derive-pda.ts"] },
     );
     assertCleanProductScan(scan, { owners: ["lib/svm/derive-pda.ts"] });
+  });
+
+  it("stand leaveChainMaySimulateCustom follows observation — literal plant is red", () => {
+    const standPath = path.join(ROOT, "svm/stand/live-fixed-price.ts");
+    const live = readFileSync(standPath, "utf8");
+    assert.doesNotMatch(
+      live,
+      /leaveChainMaySimulateCustom\s*=\s*37\b/,
+      "proof field must not be a hand-assigned 37",
+    );
+    assert.match(
+      live,
+      /const leaveChainMaySimulateCustom = \(/,
+      "proof field must be assigned from observed InstructionError Custom",
+    );
+
+    const planted = live.replace(
+      /const leaveChainMaySimulateCustom = \(\s*\([\s\S]*?\)\.Custom;/,
+      "const leaveChainMaySimulateCustom = 37;",
+    );
+    assert.notEqual(planted, live, "plant must rewrite observation assignment");
+    assert.match(planted, /leaveChainMaySimulateCustom\s*=\s*37\b/);
+    assert.equal(
+      /leaveChainMaySimulateCustom\s*=\s*37\b/.test(live),
+      false,
+      "live must not assign a constant ordinal to the proof field",
+    );
   });
 });

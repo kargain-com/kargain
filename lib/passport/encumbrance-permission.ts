@@ -31,6 +31,7 @@ export type EncumbrancePermissionCause =
   | "fee_payer_required"
   | "construction"
   | "simulation_unavailable"
+  | "unmapped_program_error"
   | SurfaceSupportCause;
 
 export type EncumbrancePermissionGate =
@@ -43,6 +44,7 @@ export type EncumbrancePermissionGate =
         | "fee_payer_required"
         | "construction"
         | "simulation_unavailable"
+        | "unmapped_program_error"
         | SurfaceSupportCause;
     }
   | {
@@ -149,6 +151,7 @@ export function encumbrancePermissionCopy(
     case "fee_payer_required":
     case "construction":
     case "simulation_unavailable":
+    case "unmapped_program_error":
       return "";
     case "refused":
       if (intent === "openConsignment") {

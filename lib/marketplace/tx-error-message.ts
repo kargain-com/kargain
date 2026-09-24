@@ -1,12 +1,11 @@
 import {
   UserRejectedRequestError,
-  getAddress,
   isAddress,
   type Abi,
 } from "viem";
 
 import { sourceUnanswerableCopy } from "@/lib/passport/encumbrance-permission";
-import { mintProtocolOwner } from "@/lib/web3/protocol-address";
+import { mintEvmProtocolOwner } from "@/lib/web3/protocol-address";
 import { passportStatusFromChainIndex } from "@/lib/passport/passport-status-chain";
 import { COMMERCIAL_CONTRACT_ABIS } from "@/lib/svm/commercial-abi-events";
 import {
@@ -236,8 +235,7 @@ export function formatDecodedRevert(
   if (decoded.name === "SourceUnanswerable") {
     const raw = decoded.args?.[0];
     if (typeof raw !== "string" || !isAddress(raw)) return null;
-    // EVM checksum mint — namespace only selects the EVM normalizer.
-    const address = mintProtocolOwner(84_532, getAddress(raw));
+    const address = mintEvmProtocolOwner(raw);
     if (address == null) return null;
     return sourceUnanswerableCopy({ presence: "known", address });
   }

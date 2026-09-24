@@ -418,7 +418,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "protocol-address-compare",
     owner: "lib/web3/protocol-address.ts",
-    rule: "Protocol address normalize/compare by namespace; ProtocolOwner brand minted only via mintProtocolOwner at entity ingress — not assignable to 0x without isEvmHexAddress; no dual toLowerCase match",
+    rule: "Protocol address normalize/compare by namespace; ProtocolOwner brand minted only via mintProtocolOwner (namespace) or mintEvmProtocolOwner (EVM-known surface, no namespace invent) — not assignable to 0x without isEvmHexAddress; no dual toLowerCase match",
     guardTests: [
       "network-class-policy.test.ts",
       "protocol-owner-policy.test.ts",

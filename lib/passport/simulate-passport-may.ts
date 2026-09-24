@@ -37,6 +37,7 @@ import {
 } from "@/lib/web3/commercial-active";
 import type { KeyedEntry } from "@/lib/web3/keyed-multicall";
 import { productSvmRpcUrl } from "@/lib/web3/svm-rpc";
+import { svmProgramErrorName } from "@/lib/web3/svm-program-errors";
 import { encumbranceSourcesFromConfigEntry } from "@/lib/passport/passport-commerce-facts";
 
 /** LeaveChain / OpenConsignment as carried by PassportIx::May. */
@@ -139,20 +140,25 @@ export function mapMaySimulateErr(err: unknown): EncumbrancePermissionGate {
     typeof (detail as { Custom: unknown }).Custom === "number"
   ) {
     const code = (detail as { Custom: number }).Custom;
-    if (code === 37 || code === 70) {
-      return { status: "blocked", cause: "refused" };
+    const name = svmProgramErrorName(code);
+    if (name == null) {
+      return { status: "blocked", cause: "unmapped_program_error" };
     }
-    if (code === 20) {
-      return {
-        status: "blocked",
-        cause: "source_unanswerable",
-        source: { presence: "not_carried_by_vm" },
-      };
+    switch (name) {
+      case "LeaveChainRefused":
+      case "OpenConsignmentRefused":
+        return { status: "blocked", cause: "refused" };
+      case "SourceUnanswerable":
+        return {
+          status: "blocked",
+          cause: "source_unanswerable",
+          source: { presence: "not_carried_by_vm" },
+        };
+      case "NonexistentToken":
+        return { status: "blocked", cause: "construction" };
+      default:
+        return { status: "blocked", cause: "construction" };
     }
-    if (code === 0) {
-      return { status: "blocked", cause: "construction" };
-    }
-    return { status: "blocked", cause: "construction" };
   }
   return { status: "blocked", cause: "simulation_unavailable" };
 }

@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 
 import { isEvmHexAddress } from "../lib/passport/passport-owner.ts";
 import {
+  mintEvmProtocolOwner,
   mintProtocolOwner,
 } from "../lib/web3/protocol-address.ts";
 import { commercialSvmNamespaceIds } from "../lib/web3/commercial-active.ts";
@@ -24,6 +25,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const LISTING_ISLAND = path.join(
   ROOT,
   "components/marketplace/listing-detail-client-island.tsx",
+);
+const TX_ERROR_MESSAGE = path.join(
+  ROOT,
+  "lib/marketplace/tx-error-message.ts",
 );
 
 function runAssignabilityProbe(source: string): {
@@ -78,6 +83,39 @@ function runAssignabilityProbe(source: string): {
 }
 
 describe("ProtocolOwner brand (entity owner type wall)", () => {
+  it("mintEvmProtocolOwner checksums without a namespace; refuses garbage", () => {
+    assert.equal(mintEvmProtocolOwner(""), null);
+    assert.equal(mintEvmProtocolOwner("not-a-protocol-address!!!"), null);
+    const checksummed = mintEvmProtocolOwner(
+      "0x1111111111111111111111111111111111111111",
+    );
+    assert.ok(checksummed);
+    assert.equal(checksummed, "0x1111111111111111111111111111111111111111");
+    const lower = mintEvmProtocolOwner(
+      "0x1111111111111111111111111111111111111111".toLowerCase(),
+    );
+    assert.equal(lower, checksummed);
+  });
+
+  it("tx-error-message uses mintEvmProtocolOwner — hub namespace plant is red", () => {
+    const live = fs.readFileSync(TX_ERROR_MESSAGE, "utf8");
+    assert.match(live, /mintEvmProtocolOwner/);
+    assert.doesNotMatch(live, /mintProtocolOwner\s*\(/);
+    assert.doesNotMatch(live, /84_532|84532/);
+
+    const planted = live.replace(
+      /mintEvmProtocolOwner\s*\(\s*raw\s*\)/,
+      "mintProtocolOwner(84_532, raw)",
+    );
+    assert.notEqual(planted, live, "plant must rewrite the EVM-only mint call");
+    assert.match(planted, /84_532/);
+    assert.equal(
+      /mintEvmProtocolOwner\s*\(\s*raw\s*\)/.test(planted),
+      false,
+      "planted hub-namespace mint must turn the leaf pin red",
+    );
+  });
+
   it("mint refuses empty and non-protocol strings; EVM checksum round-trips", () => {
     assert.equal(mintProtocolOwner(84532, ""), null);
     assert.equal(mintProtocolOwner(84532, "not-a-protocol-address!!!"), null);
