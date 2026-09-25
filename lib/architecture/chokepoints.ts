@@ -188,6 +188,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["commerce-mode-resolution-policy.test.ts"],
   },
   {
+    id: "commerce-open-fixed-price",
+    owner:
+      "lib/commerce/open-fixed-price-consignment.ts · hooks/use-open-fixed-price-consignment.ts · components/marketplace/listing-edit-client.tsx · components/passport/passport-sell-panel.tsx · components/shell/tx-write-refusal.tsx",
+    rule: "Dual-VM FixedPrice OpenDirect: sole owner plans EVM openDirect four-arg / SVM OpenDirect encode+PDAs+sendSvmInstruction; native Asset only on SVM (fiat/SPL refuse by name); seed prefix from PassportConfig sources; listing-edit is the write site (sell-panel navigates); both admit via txWriteAvailability + TxWriteRefusal; settlement note stays EVM-only",
+    guardTests: ["open-fixed-price-consignment-policy.test.ts"],
+  },
+  {
     id: "profile-subject",
     owner:
       "lib/profile/resolve-profile-subject.ts · lib/profile/profile-section-support.ts",

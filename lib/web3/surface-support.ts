@@ -305,7 +305,8 @@ export const SURFACE_SUPPORT_TABLE: Readonly<
   // ERC-721 setApprovalForAll has no SVM counterpart (approval = TransferDelegate)
   passport_set_approval_for_all: notInProgramOnSvm(),
   bridge_send: productOwnerOwed(),
-  fixed_price_open_direct: productOwnerOwed(),
+  fixed_price_open_direct: dualVmOwner(),
+
   fixed_price_set_price: productOwnerOwed(),
   fixed_price_set_settlement_note: productOwnerOwed(),
   fixed_price_buy: productOwnerOwed(),

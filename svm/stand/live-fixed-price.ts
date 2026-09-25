@@ -28,13 +28,30 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { ENCUMBRANCE_INTENT } from "../../lib/commerce/consignment.ts";
+import {
+  CONSIGNMENT_PHASE,
+  ENCUMBRANCE_INTENT,
+  ZERO_ADDRESS,
+} from "../../lib/commerce/consignment.ts";
+import { DENOMINATION_KIND, ZERO_CURRENCY_CODE } from "../../lib/commerce/denomination.ts";
+import {
+  planOpenFixedPriceConsignment,
+} from "../../lib/commerce/open-fixed-price-consignment.ts";
 import { simulatePassportMay } from "../../lib/passport/simulate-passport-may.ts";
-import { decodePassportConfig } from "../../lib/svm/decode-account-state.ts";
+import {
+  decodeConsignmentRecord,
+  decodePassportConfig,
+} from "../../lib/svm/decode-account-state.ts";
 import { deriveSvmPdaForProgram } from "../../lib/svm/derive-pda.ts";
 import { tokenIdFromBytes32 } from "../../lib/svm/event-payload-decode.ts";
 import { postSolanaJsonRpc } from "../../lib/svm/solana-json-rpc.ts";
-import { commercialActive } from "../../lib/web3/commercial-active.ts";
+import { svmActiveAccountFromAddress } from "../../lib/web3/active-account.ts";
+import {
+  commercialActive,
+  type CommercialRegistry,
+  type SvmCommercialActiveStack,
+} from "../../lib/web3/commercial-active.ts";
+import { AccountRole } from "../../lib/web3/svm-write-adapter.ts";
 import {
   withStandArtifactBindings,
   type StandArtifactBindings,
@@ -107,6 +124,7 @@ const require = createRequire(path.resolve(__dirname, "../lab/package.json"));
 const {
   Connection,
   Keypair,
+  PublicKey,
   SystemProgram,
   Transaction,
 } = require("@solana/web3.js") as typeof import("@solana/web3.js");
@@ -357,6 +375,105 @@ async function openDirectNative(
       ),
     ),
     [ctx.seller, ctx.payer],
+  );
+}
+
+/**
+ * OpenDirect via the product dual-VM owner (encode + metas) — stand only sends.
+ * Proves product plan → Offered without a hand-rolled twin Buffer.
+ */
+async function openDirectViaProductOwner(
+  conn: Conn,
+  ctx: {
+    programId: Pk;
+    stack: Awaited<ReturnType<typeof ensurePassportCommerceStack>>;
+    payer: Kp;
+    seller: Kp;
+  },
+  lot: Minted,
+  price: bigint,
+): Promise<void> {
+  lot.answerFunder = ctx.payer.publicKey;
+  const commercial = commercialActive(2_000_040_168);
+  assert.ok(commercial?.vm === "svm", "commercial SVM stack for product OpenDirect");
+  const standStack: SvmCommercialActiveStack = {
+    ...commercial,
+    karPassport: ctx.stack.passportProgram.toBase58(),
+    fixedPriceConsignment: ctx.programId.toBase58(),
+  };
+  const registry: CommercialRegistry = { 2_000_040_168: standStack };
+  const planned = await planOpenFixedPriceConsignment({
+    account: svmActiveAccountFromAddress(ctx.seller.publicKey.toBase58()),
+    chainId: 2_000_040_168,
+    tokenId: tokenIdFromBytes32(new Uint8Array(lot.tokenId)),
+    denominationKind: DENOMINATION_KIND.Asset,
+    currencyCode: ZERO_CURRENCY_CODE,
+    settlementAsset: ZERO_ADDRESS,
+    price,
+    registry,
+    encumbranceSeedPrefix: new Uint8Array(ENCUMBRANCE_SEED_PREFIX),
+    derivePda: deriveSvmPdaForProgram,
+  });
+  assert.equal(planned.ok, true, `product OpenDirect plan: ${JSON.stringify(planned)}`);
+  if (!planned.ok || planned.vm !== "svm") {
+    throw new Error("product OpenDirect plan refused");
+  }
+  assert.equal(planned.plan.programId, ctx.programId.toBase58());
+  assert.equal(
+    Buffer.from(planned.plan.data).equals(
+      Buffer.concat([
+        Buffer.from([FP_IX.OpenDirect]),
+        lot.tokenId,
+        Buffer.alloc(32, 0),
+        Buffer.from([0]),
+        Buffer.alloc(32, 0),
+        encU64(price),
+      ]),
+    ),
+    true,
+    "product OpenDirect data must match stand golden layout",
+  );
+
+  const keys: Meta[] = planned.plan.accounts.map((m) => {
+    const writable =
+      m.role === AccountRole.WRITABLE || m.role === AccountRole.WRITABLE_SIGNER;
+    const signer =
+      m.role === AccountRole.READONLY_SIGNER ||
+      m.role === AccountRole.WRITABLE_SIGNER;
+    return {
+      pubkey: new PublicKey(m.address),
+      isSigner: signer,
+      isWritable: writable,
+    };
+  });
+  // Product plans seller=payer (one wallet). Stand funds rent from payer —
+  // when seller ≠ payer, replace the WRITABLE_SIGNER payer slot with ctx.payer.
+  const payerIdx = keys.findIndex(
+    (k) => k.isSigner && k.isWritable && k.pubkey.equals(ctx.seller.publicKey),
+  );
+  if (payerIdx >= 0 && !ctx.seller.publicKey.equals(ctx.payer.publicKey)) {
+    keys[payerIdx] = {
+      pubkey: ctx.payer.publicKey,
+      isSigner: true,
+      isWritable: true,
+    };
+  }
+
+  await sendAndConfirmTransaction(
+    conn,
+    new Transaction().add(ix(ctx.programId, keys, Buffer.from(planned.plan.data))),
+    [ctx.seller, ctx.payer],
+  );
+
+  const consignInfo = await conn.getAccountInfo(lot.consign);
+  assert.ok(consignInfo, "consignment after product OpenDirect");
+  const decoded = decodeConsignmentRecord(new Uint8Array(consignInfo.data as Buffer));
+  assert.equal(decoded.ok, true, "decodeConsignmentRecord after product OpenDirect");
+  if (!decoded.ok) throw new Error("consignment decode failed");
+  assert.equal(
+    decoded.value.phase,
+    CONSIGNMENT_PHASE.Offered,
+    "product OpenDirect must land Offered",
   );
 }
 
@@ -765,6 +882,17 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     payer,
     seller,
   };
+
+  // ---- Product OpenDirect owner → Offered (S8-D4 unit 3) ----
+  const lotProduct = await mintCoreLot(conn, stack, programId, payer, seller);
+  await openDirectViaProductOwner(conn, ctx, lotProduct, 1337n);
+  await assertAnswersOpen(
+    conn,
+    lotProduct.answers.leave,
+    lotProduct.answers.open,
+    programId,
+    "lotProduct after product OpenDirect",
+  );
 
   // ---- Native buy + gateway.Send LeaveChain while live / after close ----
   const lotN = await mintCoreLot(conn, stack, programId, payer, seller);

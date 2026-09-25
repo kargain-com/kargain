@@ -1,6 +1,7 @@
 "use client";
 
-import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+import { useActiveAccount, connectedAddress, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+import { useOpenFixedPriceConsignment } from "@/hooks/use-open-fixed-price-consignment";
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -12,7 +13,7 @@ import { CommercePausedNotice } from "@/components/commerce/commerce-paused-noti
 import { SellerMessagingBanner } from "@/components/marketplace/seller-messaging-banner";
 import { Button } from "@/components/ui/button";
 import { PassportIdLabel } from "@/components/passport/passport-id-label";
-import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
+import { TxWriteRefusal } from "@/components/shell/tx-write-refusal";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useOpenableTerms } from "@/hooks/use-openable-terms";
 import { useListingChainReads } from "@/hooks/use-listing-chain-reads";
@@ -24,6 +25,7 @@ import {
   type DenominationKind,
   encodeCurrencyCode,
 } from "@/lib/commerce/denomination";
+import { resolveCommerceMode } from "@/lib/commerce/mode";
 import { FIAT_TOKEN_FEED_REQUIRED_REASON } from "@/lib/commerce/openable-terms";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import {
@@ -34,34 +36,51 @@ import {
   FixedPriceConsignmentAbi,
   KarPassportAbi,
 } from "@/lib/contracts/abis.generated";
+import {
+  isOnChainNftOwner,
+  resolveEffectiveOnChainOwner,
+} from "@/lib/passport/passport-owner";
 import type { PassportStatus } from "@/lib/types/ponder";
+import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 import {
   ascendingConsignmentAddress,
   karPassportAddress,
 } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId, shortChainName } from "@/lib/web3/supported-chains";
+import { commercialActive } from "@/lib/web3/commercial-active";
+import { eip155WagmiChainId, shortChainName } from "@/lib/web3/supported-chains";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
+import { txWriteAvailability } from "@/lib/web3/tx-write-availability";
+
+/** Settlement note is EVM-only this unit — never invent an SVM path. */
+const SETTLEMENT_NOTE_SVM_REFUSAL =
+  "Payment instructions are not available on this network yet.";
 
 type Props = {
   tokenId: string;
   chainId: number;
   passportStatus?: PassportStatus;
+  /** Entity owner — SVM ownership when live ownerOf is unread. */
+  passportOwner?: ProtocolOwner | string;
 };
 
 export function ListingEditClient({
   tokenId,
   chainId,
   passportStatus,
+  passportOwner,
 }: Props) {
   const { account, switchChain } = useActiveAccount();
-  const evm = requireEvmSession(account);
-  const address = evm.ok ? evm.address : undefined;
-  const walletChain = evm.ok ? evm.chainId : undefined;
+  const writeAvail = txWriteAvailability(account, chainId);
+  const address = connectedAddress(account);
   const switchAvail = evmSwitchChainAvailability(account);
 
-  const wc = wagmiChainId(chainId);
-        const { writeContractAsync, isPending } = useEvmWriteContract();
+  const wc = eip155WagmiChainId(chainId);
+  const { writeContractAsync, isPending } = useEvmWriteContract();
+  const {
+    openFixedPriceConsignment,
+    isPending: openPending,
+  } = useOpenFixedPriceConsignment();
   const { runTx, awaitReceipt, runFlow, busy, error, syncLagged } =
     useTxSync(chainId);
   const { options: openOptions, pending: openOptionsPending } =
@@ -76,9 +95,23 @@ export function ListingEditClient({
   const [settlementNote, setSettlementNote] = useState("");
   const [log, setLog] = useState<string | null>(null);
 
+  const stack = commercialActive(chainId);
+  const passportConfigured = stack?.karPassport != null;
+  const modeResolved = resolveCommerceMode("fixedPrice", chainId);
+  const modeConfigured = modeResolved.status === "configured";
+
+  const commerce = useListingChainReads({ chainId, tokenId });
+  /** EVM FixedPrice hex — absent on SVM; gates approve / delist / note. */
+  const market = commerce.market;
+  const evmListingPath = market != null;
+
   const passport = karPassportAddress(chainId);
   const tid = BigInt(tokenId);
-  const wrongChain = evm.ok && walletChain !== chainId;
+  const wrongChain =
+    writeAvail.available &&
+    "walletChainId" in writeAvail &&
+    market != null &&
+    writeAvail.walletChainId !== chainId;
 
   useEffect(() => {
     if (!openOptions.available || openOptions.assets.length === 0) return;
@@ -111,22 +144,20 @@ export function ListingEditClient({
   }, [openOptions.assets, settlementAsset, denominationKind]);
 
   const ownershipReads = useKeyedReadContracts({
-    contracts: passport
-      ? [
-          {
-            key: "ownerOf" as const,
-            address: passport,
-            abi: KarPassportAbi,
-            functionName: "ownerOf",
-            args: [tid],
-            chainId: wc,
-          },
-        ]
-      : [],
+    contracts:
+      passport && wc != null
+        ? [
+            {
+              key: "ownerOf" as const,
+              address: passport,
+              abi: KarPassportAbi,
+              functionName: "ownerOf",
+              args: [tid],
+              chainId: wc,
+            },
+          ]
+        : [],
   });
-
-  const commerce = useListingChainReads({ chainId, tokenId });
-  const market = commerce.market;
 
   const {
     isApproved,
@@ -141,6 +172,7 @@ export function ListingEditClient({
   });
 
   const ownerOf = ownershipReads.get("ownerOf") as `0x${string}` | undefined;
+  const effectiveOwner = resolveEffectiveOnChainOwner(ownerOf, passportOwner);
 
   const refetchListing = useCallback(async () => {
     await Promise.all([
@@ -160,15 +192,14 @@ export function ListingEditClient({
     if (onChainNote) setSettlementNote(onChainNote);
   }, [onChainNote]);
 
-  const isSeller =
-    Boolean(address && seller && address.toLowerCase() === (seller as string).toLowerCase());
-  const isOwner =
-    Boolean(address && ownerOf && address.toLowerCase() === (ownerOf as string).toLowerCase());
+  const isSeller = isOnChainNftOwner(address, seller as string | undefined, chainId);
+  const isOwner = isOnChainNftOwner(address, effectiveOwner, chainId);
 
-  const canDelist = Boolean(active && isSeller);
-  const canList = Boolean(!active && isOwner && address);
+  const canDelist = Boolean(active && isSeller && market);
+  const approvalReady = market == null || isApproved === true;
+  const canList = Boolean(!active && isOwner && address && approvalReady);
 
-  const actionsPending = isPending || busy || approvalBusy;
+  const actionsPending = isPending || openPending || busy || approvalBusy;
   const auctionHint =
     passportStatus !== undefined && passportStatus !== "VERIFIED"
       ? AUCTION_REQUIRES_VERIFICATION_HINT
@@ -192,7 +223,7 @@ export function ListingEditClient({
             abi: FixedPriceConsignmentAbi,
             functionName: "setSettlementNote",
             args: [tid, stringToHex(note.trim())],
-            chainId: wc,
+            chainId: wc ?? undefined,
           }),
         )) !== false
       );
@@ -209,25 +240,24 @@ export function ListingEditClient({
         abi: FixedPriceConsignmentAbi,
         functionName: "ownerWithdraw",
         args: [tid],
-        chainId: wc,
+        chainId: wc ?? undefined,
       }),
     );
-    if (succeeded) setLog("Delisted.");
-  }, [
-    canDelist,
-    market,
-    tid,
-    wc,
-    runTx,
-    writeContractAsync,
-  ]);
+    if (succeeded) {
+      await refetchListing();
+      setLog("Delisted.");
+    }
+  }, [canDelist, market, runTx, tid, wc, writeContractAsync, refetchListing]);
 
   const runApprove = useCallback(async () => {
     if (!address || !market) return;
     if (wrongChain) {
-        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
-        await switchChain(wc );
+      if (!switchAvail.available) {
+        throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
       }
+      if (wc == null) return;
+      await switchChain(wc);
+    }
     setLog("Approving marketplace…");
     try {
       await approveToken(awaitReceipt);
@@ -242,11 +272,13 @@ export function ListingEditClient({
     wc,
     switchChain,
     approveToken,
-    awaitReceipt, switchAvail]);
+    awaitReceipt,
+    switchAvail,
+  ]);
 
   const runList = useCallback(async () => {
     await runFlow(async () => {
-      if (!canList || !market || isApproved !== true) return;
+      if (!canList) return;
       if (!openOptions.available) {
         setLog(openOptions.unavailableReason ?? "Cannot list on this chain.");
         return;
@@ -266,8 +298,11 @@ export function ListingEditClient({
         return;
       }
       if (wrongChain) {
-        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
-        await switchChain(wc );
+        if (!switchAvail.available) {
+          throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        }
+        if (wc == null) return;
+        await switchChain(wc);
       }
       const decimals =
         denominationKind === DENOMINATION_KIND.Asset ? asset.decimals : 8;
@@ -276,37 +311,40 @@ export function ListingEditClient({
         setLog("Enter a valid asking price.");
         return;
       }
+      const currencyCode =
+        denominationKind === DENOMINATION_KIND.Fiat
+          ? encodeCurrencyCode(askingCurrency)
+          : ZERO_CURRENCY_CODE;
+      const settlement = settlementAsset as `0x${string}`;
+
+      if (!evmListingPath && settlementNote.trim()) {
+        setLog(SETTLEMENT_NOTE_SVM_REFUSAL);
+        return;
+      }
+
       setLog("Listing…");
-      const openArgs = [
-        tid,
-        {
-          kind: denominationKind,
-          currencyCode:
-            denominationKind === DENOMINATION_KIND.Fiat
-              ? encodeCurrencyCode(askingCurrency)
-              : ZERO_CURRENCY_CODE,
-        },
-        settlementAsset as `0x${string}`,
-        amount,
-      ] as const;
       try {
-        if (settlementNote.trim()) {
-          const hash = await writeContractAsync({
-            address: market,
-            abi: FixedPriceConsignmentAbi,
-            functionName: "openDirect",
-            args: openArgs,
+        if (evmListingPath && settlementNote.trim() && market) {
+          const hash = await openFixedPriceConsignment({
+            chainId,
+            tokenId,
+            denominationKind,
+            currencyCode,
+            settlementAsset: settlement,
+            price: amount,
           });
-          await awaitReceipt(hash);
+          await awaitReceipt(hash as `0x${string}`);
           setLog("Saving payment instructions…");
           if (!(await saveSettlementNote(settlementNote))) return;
         } else {
           const succeeded = await runTx(() =>
-            writeContractAsync({
-              address: market,
-              abi: FixedPriceConsignmentAbi,
-              functionName: "openDirect",
-              args: openArgs,
+            openFixedPriceConsignment({
+              chainId,
+              tokenId,
+              denominationKind,
+              currencyCode,
+              settlementAsset: settlement,
+              price: amount,
             }),
           );
           if (!succeeded) return;
@@ -319,32 +357,38 @@ export function ListingEditClient({
     });
   }, [
     canList,
-    isApproved,
     wrongChain,
-    market,
     openOptions,
     settlementAsset,
     denominationKind,
     priceInput,
     askingCurrency,
     settlementNote,
-    tid,
-    wc,
+    evmListingPath,
+    market,
+    chainId,
+    tokenId,
     refetchListing,
     saveSettlementNote,
     switchChain,
-    writeContractAsync,
+    openFixedPriceConsignment,
     awaitReceipt,
     runTx,
-    runFlow, switchAvail]);
+    runFlow,
+    switchAvail,
+    wc,
+  ]);
 
   const runUpdatePrice = useCallback(async () => {
     await runFlow(async () => {
       if (!canDelist || !market) return;
       if (priceDecimals == null) return;
       if (wrongChain) {
-        if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
-        await switchChain(wc );
+        if (!switchAvail.available) {
+          throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+        }
+        if (wc == null) return;
+        await switchChain(wc);
       }
       const amount = parseUnits(priceInput || "0", priceDecimals);
       if (amount <= 0n) {
@@ -386,7 +430,9 @@ export function ListingEditClient({
     switchChain,
     writeContractAsync,
     runTx,
-    runFlow, switchAvail]);
+    runFlow,
+    switchAvail,
+  ]);
 
   const runSaveSettlementNote = useCallback(async () => {
     if (!active || !isSeller || !market) return;
@@ -398,18 +444,12 @@ export function ListingEditClient({
     if (await saveSettlementNote(settlementNote)) {
       setLog("Payment instructions saved.");
     }
-  }, [
-    active,
-    isSeller,
-    market,
-    settlementNote,
-    saveSettlementNote,
-  ]);
+  }, [active, isSeller, market, settlementNote, saveSettlementNote]);
 
-  if (!evm.ok) {
+  if (!writeAvail.available) {
     return (
-      <EvmSessionRefusal
-        cause={evm.cause}
+      <TxWriteRefusal
+        refusal={writeAvail}
         disconnectedTitle="Connect wallet to manage this listing."
         className="space-y-4 rounded-md border border-border-default bg-bg-surface p-6"
       />
@@ -422,18 +462,25 @@ export function ListingEditClient({
         <p className="text-sm text-text-secondary">
           Switch to {shortChainName(chainId)}
         </p>
-        <Button type="button" onClick={() => {
-              if (!switchAvail.available) return;
-              void switchChain(wc );
-            }}>
+        <Button
+          type="button"
+          onClick={() => {
+            if (!switchAvail.available || wc == null) return;
+            void switchChain(wc);
+          }}
+        >
           Switch to {shortChainName(chainId)}
         </Button>
       </div>
     );
   }
 
-  if (!passport || !market) {
-    return <p className="text-sm text-text-secondary">Contracts not configured for this chain.</p>;
+  if (!passportConfigured || !modeConfigured) {
+    return (
+      <p className="text-sm text-text-secondary">
+        Contracts not configured for this chain.
+      </p>
+    );
   }
 
   if (!isSeller && !isOwner) {
@@ -467,7 +514,13 @@ export function ListingEditClient({
 
       <section className="space-y-2 rounded-md border border-border-default bg-bg-primary/80 p-4">
         <p className="text-xs text-text-secondary">Token</p>
-        <PassportIdLabel tokenId={tokenId} chainId={chainId} prefix="none" variant="mono" className="text-sm text-text-primary" />
+        <PassportIdLabel
+          tokenId={tokenId}
+          chainId={chainId}
+          prefix="none"
+          variant="mono"
+          className="text-sm text-text-primary"
+        />
         {active && row ? (
           <>
             <p className="text-xs text-text-secondary pt-2">Asking price</p>
@@ -490,7 +543,7 @@ export function ListingEditClient({
 
       {active && isSeller && <SellerMessagingBanner />}
 
-      {active && isSeller && (
+      {active && isSeller && market && (
         <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
           <h2 className="text-sm font-medium text-text-primary">Delist</h2>
           {ascendingConsignmentAddress(chainId) ? (
@@ -510,7 +563,7 @@ export function ListingEditClient({
         </section>
       )}
 
-      {active && isSeller && (
+      {active && isSeller && market && (
         <section className="space-y-4 rounded-md border border-accent-warm/40 bg-bg-surface p-4">
           <h2 className="text-sm font-medium text-text-primary">Update asking price</h2>
           <p className="text-xs text-text-secondary">
@@ -527,13 +580,17 @@ export function ListingEditClient({
             showOpenPairingFields={false}
             disabled={actionsPending}
           />
-          <Button type="button" disabled={actionsPending || priceDecimals == null} onClick={() => void runUpdatePrice()}>
+          <Button
+            type="button"
+            disabled={actionsPending || priceDecimals == null}
+            onClick={() => void runUpdatePrice()}
+          >
             {actionsPending ? "Confirming…" : "Update asking price"}
           </Button>
         </section>
       )}
 
-      {active && isSeller && (
+      {active && isSeller && market && (
         <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
           <h2 className="text-sm font-medium text-text-primary">Direct payment instructions</h2>
           <p className="text-xs text-text-secondary">
@@ -547,9 +604,15 @@ export function ListingEditClient({
             onSettlementNoteChange={setSettlementNote}
             priceInputId="settlement-only"
             showAskingFields={false}
+            showOpenPairingFields={false}
             disabled={actionsPending}
           />
-          <Button type="button" variant="secondary" disabled={actionsPending} onClick={() => void runSaveSettlementNote()}>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={actionsPending}
+            onClick={() => void runSaveSettlementNote()}
+          >
             {actionsPending ? "Confirming…" : "Save payment instructions"}
           </Button>
         </section>
@@ -561,12 +624,19 @@ export function ListingEditClient({
           {commerce.paused === true ? (
             <CommercePausedNotice mode="fixedPrice" />
           ) : null}
-          {isApproved !== true && (
-            <Button type="button" variant="outline" disabled={actionsPending || commerce.paused === true} onClick={() => void runApprove()}>
+          {market != null && isApproved !== true && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={actionsPending || commerce.paused === true}
+              onClick={() => void runApprove()}
+            >
               {actionsPending ? "Confirming…" : "Approve fixed-price mode"}
             </Button>
           )}
-          {isApproved === true && <p className="text-xs text-text-secondary">Fixed-price mode approved.</p>}
+          {market != null && isApproved === true && (
+            <p className="text-xs text-text-secondary">Fixed-price mode approved.</p>
+          )}
           <p className="font-sans text-xs text-text-secondary">
             On an on-chain buy, payment splits immediately between you, any
             agent, and the platform — there is no protection window. Undeliverable
@@ -579,9 +649,25 @@ export function ListingEditClient({
             settlementNote={settlementNote}
             onSettlementNoteChange={setSettlementNote}
             priceInputId="asking-price-new"
+            showSettlementFields={evmListingPath}
             disabled={actionsPending || commerce.paused === true}
           />
-          <Button type="button" disabled={actionsPending || isApproved !== true || commerce.paused === true || !openOptions.available} onClick={() => void runList()}>
+          {!evmListingPath && settlementNote.trim() ? (
+            <p className="font-sans text-xs text-text-secondary" role="status">
+              {SETTLEMENT_NOTE_SVM_REFUSAL}
+            </p>
+          ) : null}
+          <Button
+            type="button"
+            disabled={
+              actionsPending ||
+              !approvalReady ||
+              commerce.paused === true ||
+              !openOptions.available ||
+              (!evmListingPath && Boolean(settlementNote.trim()))
+            }
+            onClick={() => void runList()}
+          >
             {actionsPending ? "Confirming…" : "List for sale"}
           </Button>
         </section>

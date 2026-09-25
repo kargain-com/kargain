@@ -867,6 +867,9 @@ export function capabilityFromMigratedOwnerSource(
   if (file.includes("prepare-passport-record-write")) {
     return "append_passport_record";
   }
+  if (file.includes("open-fixed-price-consignment")) {
+    return "fixed_price_open_direct";
+  }
   const m = text.match(
     /txWriteAvailabilityForCapability\s*\(\s*[^,]+,\s*"([a-z0-9_]+)"/,
   );

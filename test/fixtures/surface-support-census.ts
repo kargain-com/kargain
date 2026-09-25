@@ -849,12 +849,6 @@ export const SURFACE_CENSUS_PAIRS: SurfaceCensusPair[] = [
     "file": "components/marketplace/listing-edit-client.tsx",
     "primitive": "awaitReceipt(",
     "functionName": null,
-    "capability": "fixed_price_open_direct"
-  },
-  {
-    "file": "components/marketplace/listing-edit-client.tsx",
-    "primitive": "awaitReceipt(",
-    "functionName": null,
     "capability": "fixed_price_owner_withdraw"
   },
   {
@@ -871,33 +865,21 @@ export const SURFACE_CENSUS_PAIRS: SurfaceCensusPair[] = [
   },
   {
     "file": "components/marketplace/listing-edit-client.tsx",
-    "primitive": "requireEvmSession",
-    "functionName": null,
-    "capability": "fixed_price_open_direct"
-  },
-  {
-    "file": "components/marketplace/listing-edit-client.tsx",
-    "primitive": "requireEvmSession",
+    "primitive": "txWriteAvailability",
     "functionName": null,
     "capability": "fixed_price_owner_withdraw"
   },
   {
     "file": "components/marketplace/listing-edit-client.tsx",
-    "primitive": "requireEvmSession",
+    "primitive": "txWriteAvailability",
     "functionName": null,
     "capability": "fixed_price_set_price"
   },
   {
     "file": "components/marketplace/listing-edit-client.tsx",
-    "primitive": "requireEvmSession",
+    "primitive": "txWriteAvailability",
     "functionName": null,
     "capability": "fixed_price_set_settlement_note"
-  },
-  {
-    "file": "components/marketplace/listing-edit-client.tsx",
-    "primitive": "runTx(",
-    "functionName": null,
-    "capability": "fixed_price_open_direct"
   },
   {
     "file": "components/marketplace/listing-edit-client.tsx",
@@ -916,12 +898,6 @@ export const SURFACE_CENSUS_PAIRS: SurfaceCensusPair[] = [
     "primitive": "runTx(",
     "functionName": null,
     "capability": "fixed_price_set_settlement_note"
-  },
-  {
-    "file": "components/marketplace/listing-edit-client.tsx",
-    "primitive": "writeContractAsync",
-    "functionName": "openDirect",
-    "capability": "fixed_price_open_direct"
   },
   {
     "file": "components/marketplace/listing-edit-client.tsx",
@@ -1636,6 +1612,12 @@ export const SURFACE_CENSUS_PAIRS: SurfaceCensusPair[] = [
     "primitive": "txWriteAvailability",
     "functionName": null,
     "capability": "withdraw_challenge"
+  },
+  {
+    "file": "lib/commerce/open-fixed-price-consignment.ts",
+    "primitive": "txWriteAvailability",
+    "functionName": null,
+    "capability": "fixed_price_open_direct"
   }
 ];
 
@@ -1962,7 +1944,7 @@ export const SURFACE_CENSUS_CAPABILITY_META: SurfaceCensusCapabilityMeta[] = [
     "kind": "write_action",
     "evmSource": "see consuming files",
     "evidence": null,
-    "svmReader": "owed",
+    "svmReader": "present",
     "observedSvmBehaviour": "known"
   },
   {

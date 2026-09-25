@@ -1,6 +1,6 @@
 "use client";
 
-import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import { useActiveAccount, connectedAddress } from "@/hooks/use-active-account";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -12,7 +12,7 @@ import { CreateAuctionPanel } from "@/components/auction/create-auction-panel";
 import { CommercePausedNotice } from "@/components/commerce/commerce-paused-notice";
 import { AgentAuthorizationStatus } from "@/components/marketplace/agent-authorization-status";
 import { AuthorizeAgentDialog } from "@/components/marketplace/authorize-agent-dialog";
-import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
+import { TxWriteRefusal } from "@/components/shell/tx-write-refusal";
 import { Button } from "@/components/ui/button";
 import type { PassportCommerceFactsResult } from "@/hooks/use-passport-commerce-facts";
 import { useCommerceModePaused } from "@/hooks/use-commerce-mode-paused";
@@ -58,6 +58,7 @@ import {
 import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 import { isEvmHexAddress } from "@/lib/passport/passport-owner";
+import { txWriteAvailability } from "@/lib/web3/tx-write-availability";
 
 /** EVM-only AuctionAgentAuth shape — refuse to invent hex from SVM base58. */
 function ascendingMandateAsAuth(
@@ -107,8 +108,8 @@ export function PassportSellPanel({
 }: Props) {
   const router = useRouter();
   const { account } = useActiveAccount();
-  const evm = requireEvmSession(account);
-  const address = evm.ok ? evm.address : undefined;
+  const writeAvail = txWriteAvailability(account, chainId);
+  const address = connectedAddress(account);
   const [fixedPriceDialogOpen, setFixedPriceDialogOpen] = useState(false);
   const [ascendingDialogOpen, setAscendingDialogOpen] = useState(false);
 
@@ -138,9 +139,14 @@ export function PassportSellPanel({
     address: staking,
     abi: KarProStakingAbi,
     functionName: "isActiveVerifier",
-    args: address ? [address] : undefined,
+    args:
+      address != null && isEvmHexAddress(address) ? [address] : undefined,
     chainId: wc,
-    query: { enabled: Boolean(staking && address && wc != null) },
+    query: {
+      enabled: Boolean(
+        staking && address && isEvmHexAddress(address) && wc != null,
+      ),
+    },
   });
 
   const effectiveOwner = resolveEffectiveOnChainOwner(
@@ -178,15 +184,15 @@ export function PassportSellPanel({
     void refetchVerifier();
   };
 
-  // Sell needs an EVM session to prove ownership — name the family, never vanish.
-  if (!evm.ok) {
+  // Sell needs a write-capable session — name the family, never vanish.
+  if (!writeAvail.available) {
     return (
       <section className="space-y-3 rounded-md border border-border-default bg-bg-card p-4">
         <h2 className="font-sans text-base font-medium text-text-primary">
           {SELL_HEADING}
         </h2>
-        <EvmSessionRefusal
-          cause={evm.cause}
+        <TxWriteRefusal
+          refusal={writeAvail}
           disconnectedTitle="Connect your wallet to list or authorize a sale."
         />
       </section>

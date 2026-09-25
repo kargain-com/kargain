@@ -975,7 +975,7 @@ pub fn read_owner() {
 
     const expected =
       owners.length * sessions.length * namespaces.length;
-    assert.equal(expected, 144, "matrix must remain 12 × 3 × 4");
+    assert.equal(expected, 156, "matrix must remain 13 × 3 × 4");
     assert.equal(
       comparisons,
       expected,

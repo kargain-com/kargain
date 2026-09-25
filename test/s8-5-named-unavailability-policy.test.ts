@@ -249,12 +249,12 @@ describe("S8-5 named unavailability owners", () => {
 
   it("sell panel names session before silent !isOwner hide", () => {
     const src = readSrc("components/passport/passport-sell-panel.tsx");
-    assert.match(src, /!evm\.ok/);
-    assert.match(src, /EvmSessionRefusal/);
+    assert.match(src, /!writeAvail\.available/);
+    assert.match(src, /TxWriteRefusal/);
     const planted = `
       if (!isOwner) return null;
     `;
-    assert.doesNotMatch(planted, /EvmSessionRefusal/);
+    assert.doesNotMatch(planted, /TxWriteRefusal/);
   });
 });
 

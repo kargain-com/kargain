@@ -76,6 +76,7 @@ const ENUMERATED_WRITE_FILES: readonly string[] = [
   "hooks/use-judge-challenge.ts",
   "hooks/use-conclude-challenge.ts",
   "hooks/use-set-verification-fee.ts",
+  "hooks/use-open-fixed-price-consignment.ts",
 ].sort();
 
 function listTsFiles(dir: string): string[] {
@@ -134,10 +135,14 @@ describe("svm write census policy", () => {
     );
 
     // Compared objects: one sorted file path per write-site file.
-    assert.equal(detected.length, 41);
+    assert.equal(detected.length, 42);
     assert.ok(
       detected.includes("hooks/use-passport-approval.ts"),
       "passport approval owner must be in the write-file set (runTx grep undercount)",
+    );
+    assert.ok(
+      detected.includes("hooks/use-open-fixed-price-consignment.ts"),
+      "open-fixed-price-consignment port hook must be in the write-file set",
     );
     assert.ok(
       detected.includes("hooks/use-set-passport-uri.ts"),

@@ -68,6 +68,8 @@ export const VM_BRANCH_ALLOWLIST = [
   "lib/verifier/set-verification-fee.ts",
   "lib/verifier/verification-fee-surface.ts",
   "lib/kar-pro/kar-pro-hub-admit.ts",
+  // S8-D4 unit 3 FixedPrice OpenDirect — dual-VM commerce owner; panels stay blind.
+  "lib/commerce/open-fixed-price-consignment.ts",
 ] as const;
 
 /**

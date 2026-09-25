@@ -63,6 +63,9 @@ async function MarketplaceListingEditInner({
         passportStatus={
           passportResult.ok ? passportResult.passport.status : undefined
         }
+        passportOwner={
+          passportResult.ok ? passportResult.passport.owner : undefined
+        }
       />
     </div>
   );
