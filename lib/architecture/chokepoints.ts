@@ -188,6 +188,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["commerce-mode-resolution-policy.test.ts"],
   },
   {
+    id: "profile-subject",
+    owner:
+      "lib/profile/resolve-profile-subject.ts · lib/profile/profile-section-support.ts",
+    rule: "Profile handle → resolveProfileSubject (mintProtocolOwner across commercial namespaces); notFound only when absent; unserved sections refuse product_owner_owed via surfaceSupportCauseCopy; guest EVM chain from subject namespaces only (never invent hub); no getAddress parse in the profile route",
+    guardTests: ["profile-subject-policy.test.ts"],
+  },
+  {
     id: "policy-suite-scanned-tree-mutation",
     owner: "test/policy-suite-scanned-tree-mutation-policy.test.ts",
     rule: "Policy suites must not writeFileSync/mkdirSync/rmSync/… into live scanned roots (app|components|hooks|lib|src|scripts); plants use in-memory or mkdtemp outside the repository",

@@ -10,7 +10,6 @@ import {
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
-import type { Address } from "viem";
 
 import type {
   KarProVerifierProfile,
@@ -61,7 +60,13 @@ import {
   hydrateBridgeTransitFromSession,
   subscribeBridgeTransit,
 } from "@/lib/passport/bridge-transit-store";
+import { isEvmHexAddress } from "@/lib/passport/passport-owner";
 import { arUriToHttp } from "@/lib/passport/index-passport-metadata";
+import {
+  profileSectionRefusalCopy,
+  type ProfileSectionId,
+  type ProfileSectionSupport,
+} from "@/lib/profile/profile-section-support";
 import type { PonderVerifierAttestation } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/format/relative-time";
@@ -69,6 +74,7 @@ import type {
   ProfileListingRow,
   ProfilePassportRow,
 } from "@/lib/passport/map-profile-passport";
+import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 import { shortChainName } from "@/lib/web3/supported-chains";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
@@ -88,8 +94,11 @@ type TabId =
   | "claims";
 
 export type ProfilePageProps = {
-  wallet: Address;
-  chainId: number;
+  wallet: ProtocolOwner;
+  /** Guest EVM chain for mandate tabs — null when the subject has no EVM namespace. */
+  chainId: number | null;
+  namespaces: readonly number[];
+  sectionSupport: Readonly<Record<ProfileSectionId, ProfileSectionSupport>>;
   isActiveVerifier: boolean;
   membershipRows: readonly KarProMembershipRow[];
   activeMembershipFacts: readonly KarProActiveMembershipFact[];
@@ -176,9 +185,21 @@ function tabFromSearchParams(
   return "passports";
 }
 
-function profileTabUrl(wallet: Address, tab: TabId): string {
+function profileTabUrl(wallet: string, tab: TabId): string {
   if (tab === "passports") return `/profile/${wallet}`;
   return `/profile/${wallet}?tab=${tab}`;
+}
+
+function sectionRefusalState(support: ProfileSectionSupport): ReactNode {
+  const copy = profileSectionRefusalCopy(support);
+  return (
+    <EmptyState
+      variant="content"
+      level="B"
+      title={copy}
+      description="This profile section is not available for this network yet."
+    />
+  );
 }
 
 function tabButtonClass(active: boolean): string {
@@ -306,6 +327,8 @@ function AttestationRow({
 export function ProfilePage({
   wallet,
   chainId,
+  namespaces: _namespaces,
+  sectionSupport,
   isActiveVerifier,
   membershipRows,
   activeMembershipFacts,
@@ -320,13 +343,15 @@ export function ProfilePage({
   consignedCount = null,
   delegatedCount = null,
 }: ProfilePageProps) {
+  void _namespaces;
   const searchParams = useSearchParams();
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
   const isConnected = evm.ok;
   const isOwner = useIsProfileOwner(wallet);
-  const { profile } = useNostrProfile(wallet, initialNostrProfile);
+  const evmWallet = isEvmHexAddress(wallet) ? wallet : undefined;
+  const { profile } = useNostrProfile(evmWallet, initialNostrProfile);
 
   const transitStoreVersion = useSyncExternalStore(
     subscribeBridgeTransit,
@@ -373,9 +398,10 @@ export function ProfilePage({
 
   const { total: claimsTotal } = usePendingClaims();
   const { count: outstandingTotal } = useOutstandingObligations({
-      address: isOwner ? wallet : undefined,
+      address:
+        isOwner && sectionSupport.outstanding.available ? evmWallet : undefined,
       isActiveVerifier: isOwner ? isActiveVerifier : false,
-      enabled: isOwner,
+      enabled: isOwner && sectionSupport.outstanding.available && evmWallet != null,
     });
 
   const tabs = useMemo(
@@ -486,18 +512,24 @@ export function ProfilePage({
 
         {isOwner && <CommerceGuardianOpsLink />}
 
-        <ProfileKarProNetworks facts={activeMembershipFacts} isOwner={isOwner} />
+        {sectionSupport.kar_pro.available ? (
+          <>
+            <ProfileKarProNetworks facts={activeMembershipFacts} isOwner={isOwner} />
 
-        <ProfileVerifierStatsBand
-          membershipRows={membershipRows}
-          isOwner={isOwner}
-        />
+            <ProfileVerifierStatsBand
+              membershipRows={membershipRows}
+              isOwner={isOwner}
+            />
 
-        <KarProStatusWidget
-          isOwner={isOwner}
-          isActiveVerifier={isActiveVerifier}
-          membershipRows={membershipRows}
-        />
+            <KarProStatusWidget
+              isOwner={isOwner}
+              isActiveVerifier={isActiveVerifier}
+              membershipRows={membershipRows}
+            />
+          </>
+        ) : (
+          sectionRefusalState(sectionSupport.kar_pro)
+        )}
 
         <ProfileActionBanner
           isOwner={isOwner}
@@ -505,7 +537,9 @@ export function ProfilePage({
           subjectIsKarPro={isActiveVerifier}
           subjectName={subjectName}
           subjectWallet={wallet}
-          outstandingCount={outstandingTotal}
+          outstandingCount={
+            sectionSupport.outstanding.available ? outstandingTotal : null
+          }
           outstandingHref={profileTabUrl(wallet, "outstanding")}
         />
 
@@ -597,7 +631,9 @@ export function ProfilePage({
               id="profile-panel-listings"
               aria-labelledby="profile-tab-listings"
             >
-              {listings.length === 0 && !ponderErr ? (
+              {!sectionSupport.listings.available ? (
+                sectionRefusalState(sectionSupport.listings)
+              ) : listings.length === 0 && !ponderErr ? (
                 <EmptyState
                   variant="content"
                   level="B"
@@ -636,7 +672,11 @@ export function ProfilePage({
               id="profile-panel-saved"
               aria-labelledby="profile-tab-saved"
             >
-              <WatchlistClient layout="narrow" />
+              {!sectionSupport.saved.available ? (
+                sectionRefusalState(sectionSupport.saved)
+              ) : (
+                <WatchlistClient layout="narrow" />
+              )}
             </section>
           )}
 
@@ -646,7 +686,9 @@ export function ProfilePage({
               id="profile-panel-verified"
               aria-labelledby="profile-tab-verified"
             >
-              {verifiedPassports.length === 0 ? (
+              {!sectionSupport.verified.available ? (
+                sectionRefusalState(sectionSupport.verified)
+              ) : verifiedPassports.length === 0 ? (
                 <div className="rounded-md border border-border-default p-8 text-center">
                   <EmptyState
                     variant="content"
@@ -684,10 +726,14 @@ export function ProfilePage({
               id="profile-panel-outstanding"
               aria-labelledby="profile-tab-outstanding"
             >
-              <ProfileOutstandingTab
-                address={wallet}
-                isActiveVerifier={isActiveVerifier}
-              />
+              {!sectionSupport.outstanding.available || evmWallet == null ? (
+                sectionRefusalState(sectionSupport.outstanding)
+              ) : (
+                <ProfileOutstandingTab
+                  address={evmWallet}
+                  isActiveVerifier={isActiveVerifier}
+                />
+              )}
             </section>
           )}
 
@@ -697,7 +743,11 @@ export function ProfilePage({
               id="profile-panel-claims"
               aria-labelledby="profile-tab-claims"
             >
-              <ProfileClaimsTab />
+              {!sectionSupport.claims.available ? (
+                sectionRefusalState(sectionSupport.claims)
+              ) : (
+                <ProfileClaimsTab />
+              )}
             </section>
           )}
 
@@ -707,7 +757,13 @@ export function ProfilePage({
               id="profile-panel-delegated"
               aria-labelledby="profile-tab-delegated"
             >
-              <DelegatedVehiclesTab wallet={wallet} chainId={chainId} />
+              {!sectionSupport.delegated.available ||
+              evmWallet == null ||
+              chainId == null ? (
+                sectionRefusalState(sectionSupport.delegated)
+              ) : (
+                <DelegatedVehiclesTab wallet={evmWallet} chainId={chainId} />
+              )}
             </section>
           )}
 
@@ -717,7 +773,13 @@ export function ProfilePage({
               id="profile-panel-consigned"
               aria-labelledby="profile-tab-consigned"
             >
-              <ConsignedVehiclesTab wallet={wallet} chainId={chainId} />
+              {!sectionSupport.consigned.available ||
+              evmWallet == null ||
+              chainId == null ? (
+                sectionRefusalState(sectionSupport.consigned)
+              ) : (
+                <ConsignedVehiclesTab wallet={evmWallet} chainId={chainId} />
+              )}
             </section>
           )}
 
@@ -727,24 +789,30 @@ export function ProfilePage({
               id="profile-panel-attestations"
               aria-labelledby="profile-tab-attestations"
             >
-              <p className={cn(serialLabel, "mb-4")}>Attestation feed</p>
-              {attestations.length === 0 ? (
-                <EmptyState
-                  variant="content"
-                  level="B"
-                  className="py-8"
-                  title="No attestations yet"
-                />
+              {!sectionSupport.attestations.available || chainId == null ? (
+                sectionRefusalState(sectionSupport.attestations)
               ) : (
-                <ul className="divide-y divide-border-default rounded-md border border-border-default bg-bg-primary/80">
-                  {attestations.map((attestation) => (
-                    <AttestationRow
-                      key={`${attestation.tokenId}-${attestation.timestamp}`}
-                      attestation={attestation}
-                      chainId={chainId}
+                <>
+                  <p className={cn(serialLabel, "mb-4")}>Attestation feed</p>
+                  {attestations.length === 0 ? (
+                    <EmptyState
+                      variant="content"
+                      level="B"
+                      className="py-8"
+                      title="No attestations yet"
                     />
-                  ))}
-                </ul>
+                  ) : (
+                    <ul className="divide-y divide-border-default rounded-md border border-border-default bg-bg-primary/80">
+                      {attestations.map((attestation) => (
+                        <AttestationRow
+                          key={`${attestation.tokenId}-${attestation.timestamp}`}
+                          attestation={attestation}
+                          chainId={chainId}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                </>
               )}
             </section>
           )}

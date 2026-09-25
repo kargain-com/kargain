@@ -2,17 +2,17 @@
 
 import { UserCheckIcon, WarningIcon } from "@/components/ui/icons";
 import Link from "next/link";
-import type { Address } from "viem";
 
 import { Button } from "@/components/ui/button";
 import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachability";
+import { isEvmHexAddress } from "@/lib/passport/passport-owner";
 
 export type ProfileActionBannerProps = {
   isOwner: boolean;
   isConnected: boolean;
   subjectIsKarPro: boolean;
   subjectName: string;
-  subjectWallet: Address;
+  subjectWallet: string;
   /** From deriveOutstandingObligations — null while unresolved. */
   outstandingCount: number | null;
   outstandingHref: string;
@@ -27,9 +27,14 @@ export function ProfileActionBanner({
   outstandingCount,
   outstandingHref,
 }: ProfileActionBannerProps) {
-  const { reachable, isLoading } = usePeerMessagingReachability(
-    !isOwner && isConnected && subjectIsKarPro ? subjectWallet : undefined,
-  );
+  const messagingPeer =
+    !isOwner &&
+    isConnected &&
+    subjectIsKarPro &&
+    isEvmHexAddress(subjectWallet)
+      ? subjectWallet
+      : undefined;
+  const { reachable, isLoading } = usePeerMessagingReachability(messagingPeer);
 
   if (!isOwner && isConnected && subjectIsKarPro) {
     return (

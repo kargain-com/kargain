@@ -207,24 +207,35 @@ export async function getPassportFromPonder(tokenId: string) {
   }
 }
 
-export async function getProfileData(address: string): Promise<{
+export async function getProfileData(
+  address: string,
+  opts?: { includeListings?: boolean },
+): Promise<{
   passports: ProfilePassportRow[];
   listings: ProfileListingRow[];
 }> {
+  const includeListings = opts?.includeListings !== false;
   try {
-    const [passportsRes, consignmentsPage] = await Promise.all([
-      ponderFetch(
-        "profile-passports",
-        buildPonderUrl("profile.passports", { address }).toString(),
-      ),
-      getConsignments({ seller: address, live: true, limit: 100 }),
-    ]);
+    const passportsRes = await ponderFetch(
+      "profile-passports",
+      buildPonderUrl("profile.passports", { address }).toString(),
+    );
 
     const passports = passportsRes.ok
       ? (passportsRes.body as { passports: unknown[] }).passports
           .map(mapProfilePassport)
           .filter((p): p is ProfilePassportRow => p != null)
       : [];
+
+    if (!includeListings) {
+      return { passports, listings: [] };
+    }
+
+    const consignmentsPage = await getConsignments({
+      seller: address,
+      live: true,
+      limit: 100,
+    });
 
     const listings = consignmentsPage.ponderError
       ? []

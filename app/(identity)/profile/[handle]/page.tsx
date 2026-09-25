@@ -1,32 +1,25 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cache, Suspense } from "react";
-import { getAddress } from "viem";
 
 import { getProfileData } from "@/app/actions/marketplace-listings";
 import { getAgentMandateCount, getOwnerMandateCount } from "@/app/actions/commerce-mandates";
 import { ProfilePage } from "@/components/profile/profile-page";
 import { loadMembershipRoster } from "@/lib/kar-pro/load-membership-roster";
 import { karProAnyActive, preferActiveMembershipChainId } from "@/lib/kar-pro/membership-roster";
-import { fetchVerifierPublicData } from "@/lib/verifier/fetch-verifier-public-data";
-import { commercialChainIds } from "@/lib/web3/chain-context";
+import { isEvmHexAddress } from "@/lib/passport/passport-owner";
 import {
-  isProtocolAddressOnCommercialChains,
-  readAccountKindOnCommercialChains,
-} from "@/lib/web3/wallet-account";
+  profileSectionSupportMap,
+} from "@/lib/profile/profile-section-support";
+import {
+  profileGuestEvmChainId,
+  resolveProfileSubject,
+} from "@/lib/profile/resolve-profile-subject";
+import { fetchVerifierPublicData } from "@/lib/verifier/fetch-verifier-public-data";
+import { readAccountKindOnCommercialChains } from "@/lib/web3/wallet-account";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
 const getCachedVerifierPublicData = cache(fetchVerifierPublicData);
-
-function parseProfileWallet(raw: string): `0x${string}` | null {
-  const handle = decodeURIComponent(raw);
-  if (!handle) return null;
-  try {
-    return getAddress(handle);
-  } catch {
-    return null;
-  }
-}
 
 export async function generateMetadata({
   params,
@@ -34,11 +27,15 @@ export async function generateMetadata({
   params: Promise<{ handle: string }>;
 }): Promise<Metadata> {
   const { handle: raw } = await params;
-  const wallet = parseProfileWallet(raw);
-  if (!wallet) return { title: "Profile" };
+  const subject = resolveProfileSubject(raw);
+  if (subject.status !== "found") return { title: "Profile" };
 
-  const verifierData = await getCachedVerifierPublicData(wallet);
-  const name = verifierData.profile?.name?.trim() || navShortAddress(wallet);
+  if (!isEvmHexAddress(subject.owner)) {
+    return { title: `${navShortAddress(subject.owner)} — Kargain` };
+  }
+
+  const verifierData = await getCachedVerifierPublicData(subject.owner);
+  const name = verifierData.profile?.name?.trim() || navShortAddress(subject.owner);
   return { title: `${name} — Kargain` };
 }
 
@@ -48,32 +45,47 @@ export default async function PublicProfilePage({
   params: Promise<{ handle: string }>;
 }) {
   const { handle: raw } = await params;
-  const wallet = parseProfileWallet(raw);
-  if (!wallet) notFound();
+  const subject = resolveProfileSubject(raw);
+  if (subject.status !== "found") notFound();
 
-  // Guest tab fallback = first commercial (not hub invent via DEFAULT export).
-  // Account kind = commercial OR-union. Passport/listing cards use per-row custody.
-  const chainId = commercialChainIds()[0];
-  if (chainId == null) notFound();
+  const { owner, namespaces } = subject;
+  const sections = profileSectionSupportMap(namespaces);
+  const guestChainId = profileGuestEvmChainId(namespaces);
 
-  if (isProtocolAddressOnCommercialChains(wallet)) notFound();
-  const accountKind = await readAccountKindOnCommercialChains(wallet);
-  if (accountKind === "contract") notFound();
-
-  const [roster, profileData] = await Promise.all([
-    loadMembershipRoster(wallet, { enrichActive: true }),
-    getProfileData(wallet),
-  ]);
-
-  const isActiveVerifier = karProAnyActive(roster.rows);
-  const preferredShowroomChainId = preferActiveMembershipChainId(roster.rows, null);
-
-  let consignedCount: number | null = null;
-  if (isActiveVerifier) {
-    consignedCount = await getAgentMandateCount(wallet);
+  // Contract accounts are not profiles (EVM bytecode OR across commercial EIP-155).
+  if (isEvmHexAddress(owner)) {
+    const accountKind = await readAccountKindOnCommercialChains(owner);
+    if (accountKind === "contract") notFound();
   }
 
-  const delegatedCount = await getOwnerMandateCount(wallet);
+  const karProAvailable = sections.kar_pro.available;
+  const listingsAvailable = sections.listings.available;
+  const passportsAvailable = sections.passports.available;
+
+  const [roster, profileData] = await Promise.all([
+    karProAvailable && isEvmHexAddress(owner)
+      ? loadMembershipRoster(owner, { enrichActive: true })
+      : Promise.resolve({ rows: [], activeFacts: [] }),
+    passportsAvailable
+      ? getProfileData(owner, { includeListings: listingsAvailable })
+      : Promise.resolve({ passports: [], listings: [] }),
+  ]);
+
+  const isActiveVerifier = karProAvailable
+    ? karProAnyActive(roster.rows)
+    : false;
+  const preferredShowroomChainId = karProAvailable
+    ? preferActiveMembershipChainId(roster.rows, null)
+    : null;
+
+  let consignedCount: number | null = null;
+  let delegatedCount: number | null = null;
+  if (sections.consigned.available && isActiveVerifier && isEvmHexAddress(owner)) {
+    consignedCount = await getAgentMandateCount(owner);
+  }
+  if (sections.delegated.available && isEvmHexAddress(owner)) {
+    delegatedCount = await getOwnerMandateCount(owner);
+  }
 
   let ponderErr: string | null = null;
   let passports: Awaited<ReturnType<typeof getProfileData>>["passports"] = [];
@@ -89,23 +101,25 @@ export default async function PublicProfilePage({
   >["attestations"] = [];
 
   try {
-    // Prefer membership-scoped detail when we know an active chain.
-    const verifierData = await getCachedVerifierPublicData(
-      wallet,
-      preferredShowroomChainId ?? undefined,
-    );
-
-    verifierProfile = verifierData.profile;
-    verifiedPassports = verifierData.verifiedPassports;
-    attestations = verifierData.attestations;
+    if (
+      (sections.verified.available || sections.attestations.available) &&
+      isEvmHexAddress(owner)
+    ) {
+      const verifierData = await getCachedVerifierPublicData(
+        owner,
+        preferredShowroomChainId ?? undefined,
+      );
+      verifierProfile = verifierData.profile;
+      verifiedPassports = verifierData.verifiedPassports;
+      attestations = verifierData.attestations;
+    }
 
     passports = profileData.passports;
-    listings = profileData.listings;
+    listings = listingsAvailable ? profileData.listings : [];
   } catch {
     ponderErr = "PONDER_UNAVAILABLE";
   }
 
-  // Prefer slug from enriched active fact matching preferred chain.
   const preferredFact =
     preferredShowroomChainId != null
       ? roster.activeFacts.find((f) => f.chainId === preferredShowroomChainId)
@@ -123,8 +137,10 @@ export default async function PublicProfilePage({
     <div className="min-h-dvh bg-bg-primary text-text-primary">
       <Suspense fallback={null}>
         <ProfilePage
-          wallet={wallet}
-          chainId={chainId}
+          wallet={owner}
+          chainId={guestChainId}
+          namespaces={namespaces}
+          sectionSupport={sections}
           isActiveVerifier={isActiveVerifier}
           membershipRows={roster.rows}
           activeMembershipFacts={roster.activeFacts}

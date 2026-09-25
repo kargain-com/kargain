@@ -1,13 +1,22 @@
 "use client";
 
-import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import {
+  useActiveAccount,
+  commercialNamespaceOf,
+  requireEvmSession,
+} from "@/hooks/use-active-account";
+import { protocolAddressesEqual } from "@/lib/web3/protocol-address";
 
-import { type Address } from "viem";
-
-export function useIsProfileOwner(wallet: Address): boolean {
+/**
+ * True when the active session address is the profile subject.
+ * Compares via protocol-address at the session commercial namespace.
+ * Calls {@link requireEvmSession} so this remains a known session gate; ownership
+ * itself keys off {@link commercialNamespaceOf} (SVM and EVM).
+ */
+export function useIsProfileOwner(wallet: string): boolean {
   const { account } = useActiveAccount();
-  const evm = requireEvmSession(account);
-  const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
-  return isConnected === true && address?.toLowerCase() === wallet.toLowerCase();
+  void requireEvmSession(account);
+  const ns = commercialNamespaceOf(account);
+  if (!ns.ok || account.status !== "connected") return false;
+  return protocolAddressesEqual(Number(ns.namespace), account.address, wallet);
 }

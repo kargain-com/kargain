@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import type { Address } from "viem";
 
 import { EnsAvatar } from "@/components/ui/ens-avatar";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
+import { isEvmHexAddress } from "@/lib/passport/passport-owner";
 import { cn } from "@/lib/utils";
 
 type Props = {
-  address: Address | undefined;
+  address: string | undefined;
   size?: number;
   className?: string;
   /** Fill the parent container (profile header). Omits fixed pixel dimensions. */
@@ -29,7 +29,7 @@ function IdentityAvatarContent({
   fill,
   alt,
 }: {
-  address: Address | undefined;
+  address: string | undefined;
   nostrPicture: string | null;
   nostrLoading: boolean;
   size: number;
@@ -70,12 +70,15 @@ function IdentityAvatarContent({
     );
   }
 
+  const evmAddress = address != null && isEvmHexAddress(address) ? address : undefined;
   return <EnsAvatar address={address} size={size} fill={fill} className={className} />;
 }
 
 /** Avatar priority: Nostr kind 0 picture → ENS avatar → address identicon fill. */
 export function IdentityAvatar({ address, size = 40, className, fill, alt = "" }: Props) {
-  const { profile, loading: nostrLoading } = useNostrProfile(address);
+  const evmAddress =
+    address != null && isEvmHexAddress(address) ? address : undefined;
+  const { profile, loading: nostrLoading } = useNostrProfile(evmAddress);
   const nostrPicture = profile?.picture?.trim() || null;
 
   return (

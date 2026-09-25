@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/icons";
 import Link from "next/link";
 import { useCallback, useState, type ReactNode } from "react";
-import { type Address } from "viem";
 import { useEnsName } from "wagmi";
 
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
@@ -20,13 +19,14 @@ import { ENS_CHAIN_ID } from "@/hooks/use-ens-profile";
 import { useIsProfileOwner } from "@/hooks/use-is-profile-owner";
 import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachability";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
+import { isEvmHexAddress } from "@/lib/passport/passport-owner";
 import { proShowroomHref } from "@/lib/kar-pro/pro-showroom-href";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
 const headerActionClassName = "min-h-9 h-9 px-3 py-1.5 text-xs";
 
 export interface IdentityHeaderProps {
-  wallet: Address;
+  wallet: string;
   karProName?: string;
   karProCategory?: number;
   isActiveVerifier?: boolean;
@@ -67,18 +67,21 @@ export function IdentityHeader({
   const evm = requireEvmSession(account);
   const isConnected = evm.ok;
   const isOwner = useIsProfileOwner(wallet);
+  const evmWallet = isEvmHexAddress(wallet) ? wallet : undefined;
   const { reachable, isLoading: reachabilityLoading, message: reachabilityMessage } =
-    usePeerMessagingReachability(!isOwner ? wallet : undefined);
+    usePeerMessagingReachability(!isOwner ? evmWallet : undefined);
   const { data: ensName, isLoading: ensNameLoading } = useEnsName({
-    address: wallet,
+    address: evmWallet,
     chainId: ENS_CHAIN_ID,
+    query: { enabled: evmWallet != null },
   });
   const [copied, setCopied] = useState(false);
 
   const trimmedKarProName = karProName?.trim() ?? "";
   const headingName =
     trimmedKarProName || ensName?.trim() || navShortAddress(wallet);
-  const showEnsSkeleton = trimmedKarProName.length === 0 && ensNameLoading;
+  const showEnsSkeleton =
+    trimmedKarProName.length === 0 && evmWallet != null && ensNameLoading;
 
   const onCopy = useCallback(async () => {
     try {

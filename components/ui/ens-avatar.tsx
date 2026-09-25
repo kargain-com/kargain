@@ -3,11 +3,12 @@
 import type { Address } from "viem";
 
 import { useEnsProfile } from "@/hooks/use-ens-profile";
+import { isEvmHexAddress } from "@/lib/passport/passport-owner";
 import { identiconBackground } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
 
 type Props = {
-  address: Address | undefined;
+  address: string | undefined;
   size?: number;
   className?: string;
   /** Fill the parent container (profile header). Omits fixed pixel dimensions. */
@@ -19,7 +20,9 @@ function sizeStyle(fill: boolean | undefined, size: number): { width: number; he
 }
 
 export function EnsAvatar({ address, size = 40, className, fill }: Props) {
-  const { avatarUrl, isLoading } = useEnsProfile(address);
+  const evmAddress =
+    address != null && isEvmHexAddress(address) ? (address as Address) : undefined;
+  const { avatarUrl, isLoading } = useEnsProfile(evmAddress);
   const dimensions = sizeStyle(fill, size);
   const layout = cn(fill ? "block h-full w-full" : "inline-block shrink-0", "rounded-full", className);
 
@@ -33,7 +36,7 @@ export function EnsAvatar({ address, size = 40, className, fill }: Props) {
     );
   }
 
-  if (isLoading) {
+  if (evmAddress != null && isLoading) {
     return (
       <span
         aria-hidden
@@ -43,7 +46,7 @@ export function EnsAvatar({ address, size = 40, className, fill }: Props) {
     );
   }
 
-  if (avatarUrl) {
+  if (evmAddress != null && avatarUrl) {
     return (
       <span aria-hidden className={layout}>
         <img
