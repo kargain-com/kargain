@@ -327,7 +327,6 @@ export function bridgeBlockReasonCopy(
     case "construction":
     case "simulation_unavailable":
     case "unmapped_program_error":
-      // D2 names these at the control — empty this unit (no wait-as-refusal).
       return encumbrancePermissionCopy(
         { status: "blocked", cause: reason },
         "leaveChain",

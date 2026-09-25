@@ -1,7 +1,7 @@
 /**
- * S8-D1b — sole commerce-fact shape: known | pending | refused(cause).
+ * S8-D1b / D2 — sole commerce-fact shape: known | pending | refused(cause).
  * Causes are KeyedReadCause (network/decoding) or surfaceSupport causes.
- * No second cause list.
+ * No second cause list. Refused facts always carry a non-empty sentence (§4.21).
  */
 
 import type { KeyedReadCause } from "@/lib/web3/keyed-multicall";
@@ -13,6 +13,18 @@ export type SurfaceSupportCause =
   | "authority_only";
 
 export type CommerceFactCause = KeyedReadCause | SurfaceSupportCause;
+
+/** Closed list for exhaustive copy plants. */
+export const COMMERCE_FACT_CAUSES = [
+  "rpc_unavailable",
+  "account_not_found",
+  "malformed_response",
+  "unresolved_namespace",
+  "evm_call_failed",
+  "not_in_program",
+  "product_owner_owed",
+  "authority_only",
+] as const satisfies ReadonlyArray<CommerceFactCause>;
 
 export type CommerceFact<T> =
   | { readonly status: "known"; readonly value: T }
@@ -31,6 +43,35 @@ export function commerceFactRefused<T>(
   cause: CommerceFactCause,
 ): CommerceFact<T> {
   return { status: "refused", cause };
+}
+
+/**
+ * Refusal sentence for a refused commerce fact. Never empty. Waiting
+ * (`pending`) is not a cause and must not call this.
+ */
+export function commerceFactCauseCopy(cause: CommerceFactCause): string {
+  switch (cause) {
+    case "rpc_unavailable":
+      return "The network did not answer.";
+    case "account_not_found":
+      return "This account does not exist on this network.";
+    case "malformed_response":
+      return "The network's answer could not be read.";
+    case "unresolved_namespace":
+      return "This network is not configured in the app.";
+    case "evm_call_failed":
+      return "The chain did not return this value.";
+    case "not_in_program":
+      return "This network's passport program does not answer this permission.";
+    case "authority_only":
+      return "Only the program authority can do this on this network.";
+    case "product_owner_owed":
+      return "This app does not read this on this network yet.";
+    default: {
+      const _exhaustive: never = cause;
+      return _exhaustive;
+    }
+  }
 }
 
 /**

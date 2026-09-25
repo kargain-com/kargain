@@ -6,7 +6,11 @@ import {
 import type { MandateSnapshot } from "@/lib/commerce/mandate";
 import { isMandateExpired, mandateHasAgent } from "@/lib/commerce/mandate";
 import type { CommerceMode } from "@/lib/commerce/mode";
-import type { CommerceFact, CommerceFactCause } from "@/lib/passport/commerce-fact";
+import {
+  commerceFactCauseCopy,
+  type CommerceFact,
+  type CommerceFactCause,
+} from "@/lib/passport/commerce-fact";
 import {
   isEncumbrancePermissionAvailable,
   type EncumbrancePermissionGate,
@@ -35,15 +39,15 @@ export type SellSurfaceFlags = {
   showAscendingRunnerNote: boolean;
 };
 
-/** Closed cause carried for D2 — never invent CTAs while pending/refused. */
+/**
+ * Sell-only closed causes. Live/mandate refusals carry `CommerceFactCause`
+ * directly. Dead `mandate_*` / `live_refused` members deleted in D2.
+ */
 export type SellSurfaceClosedCause =
   | "not_owner"
   | "live_consignment"
   | "live_pending"
-  | "live_refused"
-  | "permission_blocked"
-  | "mandate_pending"
-  | "mandate_refused";
+  | "permission_blocked";
 
 export type SellSurfaceResult = SellSurfaceFlags & {
   /** Null when CTAs may show; set when fail-closed. */
@@ -190,6 +194,40 @@ export function deriveSellSurface(input: SellSurfaceInput): SellSurfaceResult {
       input.ascendingConfigured && input.isActiveVerifier === false,
     closedCause: null,
   };
+}
+
+/**
+ * Chrome for a carried sell closed-cause. Never empty. Waiting (`live_pending`)
+ * is waiting copy, never a refusal sentence. `permission_blocked` is a fallback
+ * when the panel already rendered the live gate; it must not invent a definite
+ * refused/unanswerable claim.
+ */
+export function sellSurfaceClosedCopy(
+  cause: SellSurfaceClosedCause | CommerceFactCause,
+): string {
+  switch (cause) {
+    case "not_owner":
+      return "Only the passport owner can list or authorize a sale.";
+    case "live_consignment":
+      return "This passport is already in a live consignment.";
+    case "live_pending":
+      return "Waiting for consignment status…";
+    case "permission_blocked":
+      return "Waiting for chain permission…";
+    case "rpc_unavailable":
+    case "account_not_found":
+    case "malformed_response":
+    case "unresolved_namespace":
+    case "evm_call_failed":
+    case "not_in_program":
+    case "product_owner_owed":
+    case "authority_only":
+      return commerceFactCauseCopy(cause);
+    default: {
+      const _exhaustive: never = cause;
+      return _exhaustive;
+    }
+  }
 }
 
 export function sellModeLabel(mode: CommerceMode): string {

@@ -11,10 +11,12 @@ import { zeroAddress } from "viem";
 import { COMPENSATION_FORM, DENOMINATION_KIND } from "../lib/commerce/denomination.ts";
 import type { MandateSnapshot } from "../lib/commerce/mandate.ts";
 import {
+  commerceFactCauseCopy,
   commerceFactKnown,
   commerceFactPending,
   commerceFactRefused,
   combinePhaseFacts,
+  COMMERCE_FACT_CAUSES,
 } from "../lib/passport/commerce-fact.ts";
 import { deriveBridgeSurface } from "../lib/passport/bridge-surface.ts";
 import {
@@ -320,5 +322,31 @@ describe("S8-D1b commerce-fact behaviour matrix", () => {
         "reads_unresolved",
       );
     });
+  });
+});
+
+describe("commerceFactCauseCopy", () => {
+  it("every CommerceFactCause returns a non-empty sentence", () => {
+    assert.equal(COMMERCE_FACT_CAUSES.length, 8);
+    for (const cause of COMMERCE_FACT_CAUSES) {
+      const copy = commerceFactCauseCopy(cause);
+      assert.ok(copy.length > 0, cause);
+      assert.doesNotMatch(copy, /Waiting/, cause);
+    }
+  });
+
+  it("pins support and keyed sentences", () => {
+    assert.match(
+      commerceFactCauseCopy("rpc_unavailable"),
+      /The network did not answer/,
+    );
+    assert.match(
+      commerceFactCauseCopy("product_owner_owed"),
+      /does not read this on this network yet/i,
+    );
+    assert.match(
+      commerceFactCauseCopy("authority_only"),
+      /Only the program authority/i,
+    );
   });
 });

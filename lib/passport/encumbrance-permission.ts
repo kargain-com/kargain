@@ -1,9 +1,9 @@
 /**
- * Sole derivation for passport `may(intent)` outcomes (E0 / E6 / S8-D1b / 9.3c).
+ * Sole derivation for passport `may(intent)` outcomes (E0 / E6 / S8-D1b / 9.3c / D2).
  * Available | blocked with named cause — source_unanswerable carries a known
  * address or named absence (`not_carried_by_vm`). Support causes are distinct
  * from chain-refused and from wait. Sell and bridge consume this; they do not
- * invent permission copy.
+ * invent permission copy. Blocked gates always carry a non-empty sentence (§4.21).
  */
 
 import { isAddress, getAddress, type Abi } from "viem";
@@ -54,6 +54,21 @@ export type EncumbrancePermissionGate =
     };
 
 export type EncumbrancePermissionIntent = "openConsignment" | "leaveChain";
+
+/** Closed list of blocked causes for exhaustive copy plants (excl. source arm). */
+export const ENCUMBRANCE_PERMISSION_BLOCKED_CAUSES = [
+  "refused",
+  "reads_unresolved",
+  "fee_payer_required",
+  "construction",
+  "simulation_unavailable",
+  "unmapped_program_error",
+  "not_in_program",
+  "product_owner_owed",
+  "authority_only",
+] as const satisfies ReadonlyArray<
+  Exclude<EncumbrancePermissionCause, "source_unanswerable">
+>;
 
 const ABI = KarPassportAbi as Abi;
 
@@ -130,8 +145,7 @@ export function isEncumbrancePermissionAvailable(
 /**
  * Body copy for a blocked gate. Unanswerable names the source as a fact
  * when presence is known. Unresolved is waiting copy, never a definite refusal.
- * Support / construction / simulation / fee-payer / not_carried_by_vm return
- * empty — D2 names them at the control.
+ * Every blocked cause returns a non-empty sentence (§4.21).
  */
 export function encumbrancePermissionCopy(
   gate: EncumbrancePermissionGate,
@@ -146,13 +160,19 @@ export function encumbrancePermissionCopy(
     case "source_unanswerable":
       return sourceUnanswerableCopy(gate.source);
     case "product_owner_owed":
+      return "This app does not read this on this network yet.";
     case "not_in_program":
+      return "This network's passport program does not answer this permission.";
     case "authority_only":
+      return "Only the program authority can do this on this network.";
     case "fee_payer_required":
+      return "Connect a Solana wallet to check this permission on this network.";
     case "construction":
+      return "The network rejected the permission check as invalid for this passport.";
     case "simulation_unavailable":
+      return "The network did not answer whether this action is permitted.";
     case "unmapped_program_error":
-      return "";
+      return "The passport program refused the check for a reason this app does not recognize yet.";
     case "refused":
       if (intent === "openConsignment") {
         return "This passport cannot open a consignment right now.";
@@ -167,12 +187,14 @@ export function encumbrancePermissionCopy(
 
 /**
  * Shared E6 refusal copy for preview and write-path mapper — one vocabulary.
- * Named absence carries no invented address sentence (D2).
+ * Named absence never invents an address.
  */
 export function sourceUnanswerableCopy(
   source: EncumbranceUnanswerableSource,
 ): string {
-  if (source.presence === "not_carried_by_vm") return "";
+  if (source.presence === "not_carried_by_vm") {
+    return "A registered encumbrance source could not answer. This network does not name which one, so the registered sources must be reviewed before this action can proceed.";
+  }
   const label = shortAddress(source.address);
   return `A registered encumbrance source (${label}) could not answer. Governance must remove or replace that source before this action can proceed.`;
 }

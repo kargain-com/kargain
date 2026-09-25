@@ -6,13 +6,16 @@ import { AVAILABLE, blocked } from "../lib/challenge/action-gate.ts";
 import type { MandateSnapshot } from "../lib/commerce/mandate.ts";
 import { COMPENSATION_FORM, DENOMINATION_KIND } from "../lib/commerce/denomination.ts";
 import {
+  commerceFactCauseCopy,
   commerceFactKnown,
   commerceFactPending,
   commerceFactRefused,
+  COMMERCE_FACT_CAUSES,
 } from "../lib/passport/commerce-fact.ts";
 import type { EncumbrancePermissionGate } from "../lib/passport/encumbrance-permission.ts";
 import {
   deriveSellSurface,
+  sellSurfaceClosedCopy,
   type SellSurfaceFlags,
   type SellSurfaceInput,
 } from "../lib/passport/sell-surface.ts";
@@ -306,5 +309,39 @@ describe("deriveSellSurface", () => {
     const flags = flagsOf(deriveSellSurface(input({ ascendingConfigured: false })));
     assert.equal(flags.showAscendingGrant, false);
     assert.equal(flags.showAscendingRunnerNote, false);
+  });
+});
+
+describe("sellSurfaceClosedCopy", () => {
+  it("names every sell-only closed cause without empty chrome", () => {
+    assert.match(sellSurfaceClosedCopy("not_owner"), /Only the passport owner/i);
+    assert.match(
+      sellSurfaceClosedCopy("live_consignment"),
+      /already in a live consignment/i,
+    );
+    const waiting = sellSurfaceClosedCopy("live_pending");
+    assert.match(waiting, /Waiting/);
+    assert.doesNotMatch(waiting, /cannot|refused|does not/i);
+    const permFallback = sellSurfaceClosedCopy("permission_blocked");
+    assert.ok(permFallback.length > 0);
+    assert.match(permFallback, /Waiting/);
+  });
+
+  it("delegates CommerceFactCause to commerceFactCauseCopy", () => {
+    for (const cause of COMMERCE_FACT_CAUSES) {
+      assert.equal(
+        sellSurfaceClosedCopy(cause),
+        commerceFactCauseCopy(cause),
+        cause,
+      );
+    }
+  });
+
+  it("waiting never equals a refusal sentence", () => {
+    const waiting = sellSurfaceClosedCopy("live_pending");
+    const refusal = commerceFactCauseCopy("product_owner_owed");
+    assert.notEqual(waiting, refusal);
+    assert.match(waiting, /Waiting/);
+    assert.doesNotMatch(refusal, /Waiting/);
   });
 });

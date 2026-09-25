@@ -42,7 +42,10 @@ import {
   SELL_LIST,
 } from "@/lib/passport/sell-copy";
 import { presenceBlocksWrites } from "@/lib/passport/presence";
-import { deriveSellSurface } from "@/lib/passport/sell-surface";
+import {
+  deriveSellSurface,
+  sellSurfaceClosedCopy,
+} from "@/lib/passport/sell-surface";
 import {
   isOnChainNftOwner,
   resolveEffectiveOnChainOwner,
@@ -226,18 +229,24 @@ export function PassportSellPanel({
   if (!anyVisible) {
     const openGate = facts.openConsignmentPermission;
     if (openGate.status === "blocked") {
-      // Unresolved is waiting copy; refused / unanswerable are definite facts.
-      // Support causes return empty copy — hide rather than invent D2 sentences.
       if (
         openGate.cause !== "reads_unresolved" ||
         facts.fixedPrice.configured ||
         facts.ascending.configured
       ) {
-        const copy = encumbrancePermissionCopy(openGate, "openConsignment");
-        if (copy) {
-          return <p className="text-sm text-text-secondary">{copy}</p>;
-        }
+        return (
+          <p className="text-sm text-text-secondary">
+            {encumbrancePermissionCopy(openGate, "openConsignment")}
+          </p>
+        );
       }
+    }
+    if (surface.closedCause != null) {
+      return (
+        <p className="text-sm text-text-secondary">
+          {sellSurfaceClosedCopy(surface.closedCause)}
+        </p>
+      );
     }
     if (!facts.fixedPrice.configured && !facts.ascending.configured) {
       return (

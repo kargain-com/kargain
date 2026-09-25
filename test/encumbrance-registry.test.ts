@@ -154,5 +154,7 @@ describe("encumbrance registry UI", () => {
     assert.match(panel, /unanswerableSource/);
     assert.match(panel, /registry\.status === "pending"/);
     assert.match(panel, /registry\.status === "refused"/);
+    assert.match(panel, /commerceFactCauseCopy\(registry\.cause\)/);
+    assert.doesNotMatch(panel, /return null;\s*\n\s*\}\s*\n\s*\n\s*const sources/);
   });
 });

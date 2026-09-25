@@ -10,6 +10,7 @@ import {
 import { KarPassportAbi } from "../lib/contracts/abis.generated.ts";
 import {
   deriveEncumbrancePermission,
+  ENCUMBRANCE_PERMISSION_BLOCKED_CAUSES,
   encumbrancePermissionCopy,
   encumbrancePermissionFromSupport,
   encumbranceUnanswerableKnownAddress,
@@ -139,28 +140,34 @@ describe("encumbrancePermissionCopy", () => {
     assert.match(copy, /Governance/);
   });
 
-  it("returns empty copy for not_carried_by_vm and new simulate causes", () => {
+  it("names not_carried_by_vm and simulate causes without inventing an address", () => {
     const absent: EncumbrancePermissionGate = {
       status: "blocked",
       cause: "source_unanswerable",
       source: { presence: "not_carried_by_vm" },
     };
-    assert.equal(encumbrancePermissionCopy(absent, "leaveChain"), "");
+    const absentCopy = encumbrancePermissionCopy(absent, "leaveChain");
+    assert.ok(absentCopy.length > 0);
+    assert.match(absentCopy, /does not name which one/i);
+    assert.doesNotMatch(absentCopy, /0x/);
     assert.equal(encumbranceUnanswerableKnownAddress(absent), null);
-    for (const cause of [
-      "fee_payer_required",
-      "construction",
-      "simulation_unavailable",
-      "unmapped_program_error",
-    ] as const) {
-      assert.equal(
-        encumbrancePermissionCopy(
-          { status: "blocked", cause },
-          "openConsignment",
-        ),
-        "",
-        cause,
+    const expected: Record<
+      "fee_payer_required" | "construction" | "simulation_unavailable" | "unmapped_program_error",
+      RegExp
+    > = {
+      fee_payer_required: /Connect a Solana wallet/i,
+      construction: /rejected the permission check/i,
+      simulation_unavailable: /did not answer whether this action is permitted/i,
+      unmapped_program_error: /does not recognize yet/i,
+    };
+    for (const cause of Object.keys(expected) as (keyof typeof expected)[]) {
+      const copy = encumbrancePermissionCopy(
+        { status: "blocked", cause },
+        "openConsignment",
       );
+      assert.ok(copy.length > 0, cause);
+      assert.match(copy, expected[cause], cause);
+      assert.doesNotMatch(copy, /Waiting/, cause);
     }
   });
 
@@ -182,19 +189,53 @@ describe("encumbrancePermissionCopy", () => {
     assert.doesNotMatch(copy, /0x/);
   });
 
-  it("support causes return empty copy (D2 names them; never wait-as-refusal)", () => {
-    for (const cause of [
-      "product_owner_owed",
-      "not_in_program",
-      "authority_only",
-    ] as const) {
+  it("support causes return non-empty refusal copy (never wait-as-refusal)", () => {
+    const expected: Record<
+      "product_owner_owed" | "not_in_program" | "authority_only",
+      RegExp
+    > = {
+      product_owner_owed: /does not read this on this network yet/i,
+      not_in_program: /does not answer this permission/i,
+      authority_only: /Only the program authority/i,
+    };
+    for (const cause of Object.keys(expected) as (keyof typeof expected)[]) {
       const copy = encumbrancePermissionCopy(
         { status: "blocked", cause },
         "openConsignment",
       );
-      assert.equal(copy, "", cause);
-      assert.doesNotMatch(copy, /Waiting/);
+      assert.ok(copy.length > 0, cause);
+      assert.match(copy, expected[cause], cause);
+      assert.doesNotMatch(copy, /Waiting/, cause);
     }
+  });
+
+  it("every blocked cause returns a non-empty sentence", () => {
+    for (const cause of ENCUMBRANCE_PERMISSION_BLOCKED_CAUSES) {
+      const copy = encumbrancePermissionCopy(
+        { status: "blocked", cause },
+        "openConsignment",
+      );
+      assert.ok(copy.length > 0, cause);
+    }
+    const known = encumbrancePermissionCopy(
+      {
+        status: "blocked",
+        cause: "source_unanswerable",
+        source: KNOWN_SOURCE,
+      },
+      "leaveChain",
+    );
+    const absent = encumbrancePermissionCopy(
+      {
+        status: "blocked",
+        cause: "source_unanswerable",
+        source: { presence: "not_carried_by_vm" },
+      },
+      "leaveChain",
+    );
+    assert.ok(known.length > 0);
+    assert.ok(absent.length > 0);
+    assert.notEqual(known, absent);
   });
 });
 
@@ -213,16 +254,19 @@ describe("encumbrancePermissionFromSupport", () => {
 });
 
 describe("encumbrance permission consume policy", () => {
-  it("sell panel uses permission copy and does not invent may refusal", () => {
+  it("sell panel uses permission copy and closed-cause copy; never hides on empty", () => {
     const src = readFileSync(
       join(process.cwd(), "components/passport/passport-sell-panel.tsx"),
       "utf8",
     );
     assert.match(src, /encumbrancePermissionCopy/);
+    assert.match(src, /sellSurfaceClosedCopy/);
     assert.doesNotMatch(
       src,
       /This passport cannot open a consignment right now\./,
     );
+    assert.doesNotMatch(src, /if\s*\(\s*copy\s*\)/);
+    assert.doesNotMatch(src, /D2/);
   });
 
   it("bridge panel uses bridgeBlockReasonCopy with unanswerableSource", () => {

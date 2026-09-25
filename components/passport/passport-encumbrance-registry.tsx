@@ -5,6 +5,7 @@ import {
   instrumentReadoutPanel,
   serialLabel,
 } from "@/lib/design/instrument-classes";
+import { commerceFactCauseCopy } from "@/lib/passport/commerce-fact";
 import {
   isRegisteredEncumbranceSource,
   type EncumbranceRegistry,
@@ -42,8 +43,14 @@ export function PassportEncumbranceRegistry({
   }
 
   if (registry.status === "refused") {
-    // Support / decode refusal — D2 names it; empty body this unit (no wait lie).
-    return null;
+    return (
+      <section className={cn(instrumentReadoutPanel, "space-y-2")}>
+        <p className={serialLabel}>Encumbrance sources</p>
+        <p className="text-sm text-text-secondary">
+          {commerceFactCauseCopy(registry.cause)}
+        </p>
+      </section>
+    );
   }
 
   const sources = registry.value;
