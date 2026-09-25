@@ -9,6 +9,7 @@ import {
 import { AuctionCard } from "@/components/auction/auction-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useNow } from "@/hooks/use-now";
+import { commerceBrowseSourceRefusalCopy } from "@/lib/commerce/browse-source";
 import { LISTING_CARD_GRID_WIDE } from "@/lib/marketplace/listing-card-grid";
 import { MARKETPLACE_SHELL_CONTAINER } from "@/lib/marketplace/listing-card-grid";
 import { cn } from "@/lib/utils";
@@ -33,6 +34,18 @@ export function AuctionBrowse({ initialPage, chainId }: Props) {
     initialData: initialPage,
     staleTime: 30_000,
   });
+
+  if (data != null && data.ok === false) {
+    return (
+      <div className={MARKETPLACE_SHELL_CONTAINER}>
+        <EmptyState
+          variant="content"
+          level="B"
+          title={commerceBrowseSourceRefusalCopy(data.cause)}
+        />
+      </div>
+    );
+  }
 
   const rows = data?.rows ?? [];
   const ponderError = data?.ponderError;

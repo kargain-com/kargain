@@ -195,6 +195,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["profile-subject-policy.test.ts"],
   },
   {
+    id: "commerce-browse-source",
+    owner: "lib/commerce/browse-source.ts",
+    rule: "Sole admit for catalog browse namespace: unscoped|available(EIP-155 indexed consignment)|refused(no_indexed_commerce|unresolved_namespace); sentence for no_indexed_commerce owned here; marketplace + auctions honour chainId or refuse — never void discard, never foreign-network rows, never empty-grid copy for source absence",
+    guardTests: ["commerce-browse-source-policy.test.ts"],
+  },
+  {
     id: "policy-suite-scanned-tree-mutation",
     owner: "test/policy-suite-scanned-tree-mutation-policy.test.ts",
     rule: "Policy suites must not writeFileSync/mkdirSync/rmSync/… into live scanned roots (app|components|hooks|lib|src|scripts); plants use in-memory or mkdtemp outside the repository",

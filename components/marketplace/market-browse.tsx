@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { FadeUp } from "@/components/ui/fade-up";
 import { useMarketRatesRequest } from "@/hooks/use-market-rates-request";
 import { useMarketFiltersFromUrl } from "@/hooks/use-market-filters";
+import { commerceBrowseSourceRefusalCopy } from "@/lib/commerce/browse-source";
 import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
 import { LISTING_CARD_GRID_WIDE } from "@/lib/marketplace/listing-card-grid";
 import { marketFiltersToApiInput } from "@/lib/marketplace/filter-params";
@@ -31,9 +32,10 @@ import { cn } from "@/lib/utils";
 
 type MarketBrowseProps = {
   initialListingsPage?: MarketplaceListingsResult;
+  chainId: number | null;
 };
 
-export function MarketBrowse({ initialListingsPage }: MarketBrowseProps) {
+export function MarketBrowse({ initialListingsPage, chainId }: MarketBrowseProps) {
   const filters = useMarketFiltersFromUrl();
   const needsRates = marketplaceListingsNeedClientRates(filters);
   useMarketRatesRequest(needsRates);
@@ -43,18 +45,24 @@ export function MarketBrowse({ initialListingsPage }: MarketBrowseProps) {
   const ratesReady = marketplaceListingsRatesReady(filters, filterRates);
 
   const apiInput = useMemo(
-    () =>
-      marketFiltersToApiInput(
+    () => ({
+      ...marketFiltersToApiInput(
         filters,
         marketplaceListingsShouldForwardRates(filters) ? filterRates : undefined,
       ),
-    [filters, filterRates],
+      ...(chainId != null ? { chainId } : {}),
+    }),
+    [filters, filterRates, chainId],
   );
   const queryKey = useMemo(() => JSON.stringify(apiInput), [apiInput]);
 
   const prefetchedQueryKey = useMemo(
-    () => JSON.stringify(marketFiltersToApiInput(filters)),
-    [filters],
+    () =>
+      JSON.stringify({
+        ...marketFiltersToApiInput(filters),
+        ...(chainId != null ? { chainId } : {}),
+      }),
+    [filters, chainId],
   );
 
   const initialData =
@@ -72,25 +80,44 @@ export function MarketBrowse({ initialListingsPage }: MarketBrowseProps) {
       initialData,
       staleTime: 30_000,
       getNextPageParam: (last) => {
+        if (!last.ok) return undefined;
         if (last.page < last.totalPages) return last.page + 1;
         return undefined;
       },
       enabled: !needsRates || ratesReady,
     });
 
+  const firstPage = data?.pages[0];
+
   const rows: MarketplaceListingRow[] = useMemo(
-    () => data?.pages.flatMap((p) => p.rows) ?? [],
+    () => data?.pages.flatMap((p) => (p.ok ? p.rows : [])) ?? [],
     [data],
   );
 
-  const total = data?.pages[0]?.total ?? 0;
-  const ponderError = data?.pages[0]?.ponderError;
+  const total = firstPage?.ok ? firstPage.total : 0;
+  const ponderError = firstPage?.ok ? firstPage.ponderError : undefined;
 
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const inView = useInView(loadMoreRef, { margin: "200px" });
   useEffect(() => {
     if (inView && hasNextPage && !isFetchingNextPage) void fetchNextPage();
   }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  if (firstPage != null && firstPage.ok === false) {
+    return (
+      <div className="min-h-dvh bg-bg-primary text-text-primary">
+        <MarketFilterBar />
+        <MarketFilterChips />
+        <div className="mx-auto max-w-7xl px-6 py-8 md:px-8 sm:py-10 xl:max-w-[80rem]">
+          <EmptyState
+            variant="content"
+            level="B"
+            title={commerceBrowseSourceRefusalCopy(firstPage.cause)}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-dvh bg-bg-primary text-text-primary">

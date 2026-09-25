@@ -3,6 +3,11 @@
 import { getConsignments } from "@/app/actions/commerce-consignments";
 import { z } from "zod";
 
+import {
+  admitCommerceBrowseSource,
+  browseSourceChainIdQuery,
+  type CommerceBrowseSourceCause,
+} from "@/lib/commerce/browse-source";
 import { DISPLAY_CURRENCIES } from "@/lib/marketplace/currency-code";
 import {
   filtersFromSearchParams,
@@ -21,6 +26,7 @@ import {
   type ProfilePassportRow,
 } from "@/lib/passport/map-profile-passport";
 import type { PassportStatus } from "@/lib/types/ponder";
+import { parseOptionalChainParam } from "@/lib/web3/chain-context";
 import {
   buildConsignmentsListUrl,
   buildPassportListUrl,
@@ -66,16 +72,23 @@ const filterSchema = z.object({
   sort: z.enum(["newest", "price_asc", "price_desc", "mileage_asc"]).default("newest"),
   page: z.number().int().min(1).default(1),
   limit: z.number().int().min(1).max(48).default(20),
+  /** Selected commercial namespace from URL `?chain=` — admitted before fetch. */
+  chainId: z.number().int().positive().optional(),
 });
 
-export type MarketplaceListingsResult = {
-  ok: true;
-  rows: MarketplaceListingRow[];
-  total: number;
-  page: number;
-  totalPages: number;
-  ponderError?: string;
-};
+export type MarketplaceListingsResult =
+  | {
+      ok: true;
+      rows: MarketplaceListingRow[];
+      total: number;
+      page: number;
+      totalPages: number;
+      ponderError?: string;
+    }
+  | {
+      ok: false;
+      cause: CommerceBrowseSourceCause | "unresolved_namespace";
+    };
 
 type ConsignmentsResponse = {
   consignments?: PonderConsignmentRow[];
@@ -127,6 +140,7 @@ function buildMarketplaceBrowseUrl(p: z.infer<typeof filterSchema>): URL {
     colour: p.colour,
     status: p.status === "all" ? undefined : p.status,
     sort: p.sort,
+    ...(p.chainId !== undefined ? { chainId: p.chainId } : {}),
   });
 }
 
@@ -134,10 +148,18 @@ export async function searchMarketplaceListings(
   input: z.infer<typeof filterSchema>,
 ): Promise<MarketplaceListingsResult> {
   const p = filterSchema.parse(input);
+  const admission = admitCommerceBrowseSource(p.chainId);
+  if (admission.status === "refused") {
+    return { ok: false, cause: admission.cause };
+  }
+  const admitted: z.infer<typeof filterSchema> = {
+    ...p,
+    chainId: browseSourceChainIdQuery(admission),
+  };
   try {
     const res = await ponderFetch(
       "marketplace-listings",
-      buildMarketplaceBrowseUrl(p).toString(),
+      buildMarketplaceBrowseUrl(admitted).toString(),
     );
     if (!res.ok) {
       return {
@@ -176,8 +198,13 @@ export async function searchMarketplaceListings(
 export async function searchMarketplaceFromUrlQuery(
   queryString: string,
 ): Promise<MarketplaceListingsResult> {
-  const filters = filtersFromSearchParams(new URLSearchParams(queryString));
-  return searchMarketplaceListings(marketFiltersToApiInput(filters));
+  const sp = new URLSearchParams(queryString);
+  const filters = filtersFromSearchParams(sp);
+  const chainId = parseOptionalChainParam(sp.get("chain") ?? undefined);
+  return searchMarketplaceListings({
+    ...marketFiltersToApiInput(filters),
+    ...(chainId != null ? { chainId } : {}),
+  });
 }
 
 export async function getPassportFromPonder(tokenId: string) {

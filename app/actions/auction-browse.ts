@@ -5,18 +5,28 @@ import {
   partitionActiveAuctions,
   type AuctionRow,
 } from "@/lib/auction/map-ponder-auction";
+import {
+  admitCommerceBrowseSource,
+  browseSourceChainIdQuery,
+  type CommerceBrowseSourceCause,
+} from "@/lib/commerce/browse-source";
 import { consignmentToAuctionRaw } from "@/lib/commerce/auction-view";
 import type { PonderConsignmentRow } from "@/lib/commerce/ponder-consignment";
 import { buildConsignmentsListUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
-export type AuctionBrowseResult = {
-  ok: true;
-  rows: AuctionRow[];
-  total: number;
-  page: number;
-  totalPages: number;
-  ponderError?: string;
-};
+export type AuctionBrowseResult =
+  | {
+      ok: true;
+      rows: AuctionRow[];
+      total: number;
+      page: number;
+      totalPages: number;
+      ponderError?: string;
+    }
+  | {
+      ok: false;
+      cause: CommerceBrowseSourceCause | "unresolved_namespace";
+    };
 
 type ConsignmentsResponse = {
   consignments?: PonderConsignmentRow[];
@@ -25,16 +35,21 @@ type ConsignmentsResponse = {
   limit?: number;
 };
 
-function ascendingUrl(page: number, limit: number): URL {
+function ascendingUrl(
+  page: number,
+  limit: number,
+  chainId?: number,
+): URL {
   return buildConsignmentsListUrl({
     mode: "ascending",
     active: true,
     page,
     limit,
+    ...(chainId !== undefined ? { chainId } : {}),
   });
 }
 
-/** Live ascending-lot total for homepage stats — no row mapping. */
+/** Live ascending-lot total for homepage stats — no row mapping; always unscoped. */
 export async function fetchActiveAuctionCount(): Promise<number> {
   try {
     const res = await ponderFetch("ascending-browse", ascendingUrl(1, 1).toString());
@@ -53,15 +68,21 @@ export async function fetchActiveAuctionCount(): Promise<number> {
 export async function searchActiveAuctions(opts?: {
   page?: number;
   limit?: number;
-  /** Retained for callers; mapped rows use the indexed consignment chainId. */
   chainId?: number;
 }): Promise<AuctionBrowseResult> {
   const page = opts?.page ?? 1;
   const limit = opts?.limit ?? 48;
-  void opts?.chainId;
+  const admission = admitCommerceBrowseSource(opts?.chainId);
+  if (admission.status === "refused") {
+    return { ok: false, cause: admission.cause };
+  }
+  const chainId = browseSourceChainIdQuery(admission);
 
   try {
-    const res = await ponderFetch("ascending-browse", ascendingUrl(page, limit).toString());
+    const res = await ponderFetch(
+      "ascending-browse",
+      ascendingUrl(page, limit, chainId).toString(),
+    );
     if (!res.ok) {
       return {
         ok: true,
