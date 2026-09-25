@@ -11,7 +11,7 @@ import { useListingOffers } from "@/hooks/use-listing-offers";
 import { useKarProVerifierProfile } from "@/hooks/use-kar-pro-verifier-profile";
 import { usePeerIdentity } from "@/hooks/use-peer-identity";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
-import { commerceModeAddress } from "@/lib/commerce/mode";
+import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { commerceConfirmedLabel } from "@/lib/design/instrument-classes";
@@ -145,7 +145,7 @@ export function ListingOffersPanel({
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 
-  const market = commerceModeAddress("fixedPrice", chainId);
+  const market = commerceModeEvmAddress("fixedPrice", chainId);
   const tid = BigInt(tokenId);
   const wrongChain = evm.ok && walletChain !== chainId;
 

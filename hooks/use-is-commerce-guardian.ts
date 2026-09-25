@@ -9,7 +9,7 @@ import type { Address } from "viem";
 import {
   COMMERCE_MODES,
   commerceModeAbi,
-  commerceModeAddress,
+  commerceModeEvmAddress,
 } from "@/lib/commerce/mode";
 import { normalizeAddress } from "@/lib/commerce/pause-surface";
 import { commercialChainIds } from "@/lib/web3/chain-context";
@@ -38,7 +38,7 @@ export function useIsCommerceGuardian(enabled = true): {
     }[] = [];
     for (const chainId of commercialChainIds()) {
       for (const mode of COMMERCE_MODES) {
-        const address = commerceModeAddress(mode, chainId);
+        const address = commerceModeEvmAddress(mode, chainId);
         if (address) out.push({ chainId, mode, address });
       }
     }

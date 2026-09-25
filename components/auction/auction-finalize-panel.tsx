@@ -8,7 +8,7 @@ import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { formatAuctionAmount } from "@/lib/auction/format-auction";
 import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
 import { formatWindowDurationLabel } from "@/lib/commerce/format-window-duration";
-import { commerceModeAddress } from "@/lib/commerce/mode";
+import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
 import {
   commercialActive,
@@ -45,7 +45,7 @@ export function AuctionFinalizePanel({
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = phase !== "idle";
 
-  const mode = commerceModeAddress("ascending", chainId);
+  const mode = commerceModeEvmAddress("ascending", chainId);
   const nativeUnit = nativeUnitOf(commercialActive(chainId)!);
   const finalBid =
     auction.highestBid > 0n

@@ -7,7 +7,7 @@ import { useCallback, useState } from "react";
 import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
-import { commerceModeAddress } from "@/lib/commerce/mode";
+import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
@@ -33,7 +33,7 @@ export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 
-  const market = commerceModeAddress("fixedPrice", chainId);
+  const market = commerceModeEvmAddress("fixedPrice", chainId);
   const tid = BigInt(tokenId);
   const wrongChain = evm.ok && walletChain !== chainId;
 

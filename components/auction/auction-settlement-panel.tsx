@@ -24,7 +24,7 @@ import {
   type ChallengeSnapshot,
 } from "@/lib/challenge";
 import { addressesMatch } from "@/lib/commerce/consignment";
-import { commerceModeAddress } from "@/lib/commerce/mode";
+import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import type { AscendingHoldSnapshot } from "@/lib/commerce/parse-ascending";
 import {
   REVERSAL_ABANDONMENT_CONSEQUENCE,
@@ -105,7 +105,7 @@ export function AuctionSettlementPanel({
   const { runTx, awaitReceipt, busy, error, syncLagged } = useTxSync(chainId);
   const [txError, setTxError] = useState<string | null>(null);
 
-  const mode = commerceModeAddress("ascending", chainId);
+  const mode = commerceModeEvmAddress("ascending", chainId);
   const wrongChain = evm.ok && (() => { const _wc = eip155WagmiChainId(chainId); return _wc != null && walletChainId !== _wc; })();
   const tid = BigInt(tokenId);
   const staking = karProStakingAddress(chainId);

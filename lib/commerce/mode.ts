@@ -1,20 +1,112 @@
+/**
+ * Sole owner of "which program/contract implements a commerce mode on a
+ * namespace" — {@link resolveCommerceMode}. Presence is never inferred from the
+ * EVM-only hex accessor.
+ *
+ * {@link commerceModeAddress} remains EVM-only (`0x…`) for ABI/wagmi callers
+ * that already know they need hex. It must not be used as a presence gate.
+ */
+
 import {
   AscendingConsignmentAbi,
   FixedPriceConsignmentAbi,
 } from "@/lib/contracts/abis.generated";
+import { isEvmHexAddress } from "@/lib/passport/passport-owner";
+import {
+  commercialActive,
+  type CommercialRegistry,
+} from "@/lib/web3/commercial-active";
 import {
   ascendingConsignmentAddress,
   fixedPriceConsignmentAddress,
 } from "@/lib/web3/deployment-addresses";
+import {
+  mintProtocolOwner,
+  type ProtocolOwner,
+} from "@/lib/web3/protocol-address";
 
 /** Selling modes deployed against a passport (commerce model §2). */
 export type CommerceMode = "fixedPrice" | "ascending";
 
 export const COMMERCE_MODES: readonly CommerceMode[] = ["fixedPrice", "ascending"];
 
+export type CommerceModeAbsentCause = "mode_not_on_namespace";
+
+export type CommerceModeResolution =
+  | {
+      readonly status: "configured";
+      readonly address: ProtocolOwner;
+      readonly namespace: number;
+    }
+  | {
+      readonly status: "absent";
+      readonly cause: CommerceModeAbsentCause;
+      readonly namespace: number;
+    };
+
 /**
- * Mode contract address for a chain, or `undefined` when the mode is not
- * deployed there. Callers must fail closed: disable writes, hide CTAs.
+ * Namespace-keyed mode answer. Configured when the commercial registry names a
+ * mode program/contract id that mints as {@link ProtocolOwner}. Absent is a
+ * named cause — never `undefined` / empty string standing for "not deployed".
+ */
+export function resolveCommerceMode(
+  mode: CommerceMode,
+  namespace: number | null | undefined,
+  registry?: CommercialRegistry,
+): CommerceModeResolution {
+  if (namespace == null || !Number.isFinite(namespace)) {
+    return {
+      status: "absent",
+      cause: "mode_not_on_namespace",
+      namespace: Number.NaN,
+    };
+  }
+  const stack = commercialActive(namespace, registry);
+  if (stack == null) {
+    return {
+      status: "absent",
+      cause: "mode_not_on_namespace",
+      namespace,
+    };
+  }
+  const raw =
+    mode === "fixedPrice"
+      ? stack.fixedPriceConsignment
+      : stack.ascendingConsignment;
+  if (raw == null || raw.length === 0) {
+    return {
+      status: "absent",
+      cause: "mode_not_on_namespace",
+      namespace,
+    };
+  }
+  const address = mintProtocolOwner(namespace, raw);
+  if (address == null) {
+    return {
+      status: "absent",
+      cause: "mode_not_on_namespace",
+      namespace,
+    };
+  }
+  return { status: "configured", address, namespace };
+}
+
+/** Non-empty sentence for a mode-absence cause (§4.21). */
+export function commerceModeAbsentCopy(cause: CommerceModeAbsentCause): string {
+  switch (cause) {
+    case "mode_not_on_namespace":
+      return "This selling mode is not available on this network.";
+    default: {
+      const _exhaustive: never = cause;
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * EVM-only hex mode address. Presence/absence of a mode is owned by
+ * {@link resolveCommerceMode} — do not treat `undefined` here as "not deployed"
+ * on a commercial SVM namespace (hex cannot represent base58 program ids).
  */
 export function commerceModeAddress(
   mode: CommerceMode,
@@ -29,8 +121,9 @@ export function commerceModeAddress(
 export function hasCommerceMode(
   mode: CommerceMode,
   chainId: number | null | undefined,
+  registry?: CommercialRegistry,
 ): boolean {
-  return commerceModeAddress(mode, chainId) != null;
+  return resolveCommerceMode(mode, chainId, registry).status === "configured";
 }
 
 /**
@@ -47,14 +140,34 @@ export function commerceModeLabel(mode: CommerceMode): string {
   return mode === "fixedPrice" ? "Fixed price" : "Ascending";
 }
 
-/** Lowercased mode contract addresses on a chain, for owner/agent matching. */
+/**
+ * Configured mode addresses on a namespace (EVM hex or SVM base58 ProtocolOwner).
+ * Empty when neither mode is configured — not a presence gate by itself.
+ */
 export function commerceModeAddresses(
   chainId: number | null | undefined,
-): Partial<Record<CommerceMode, `0x${string}`>> {
-  const out: Partial<Record<CommerceMode, `0x${string}`>> = {};
+  registry?: CommercialRegistry,
+): Partial<Record<CommerceMode, ProtocolOwner>> {
+  const out: Partial<Record<CommerceMode, ProtocolOwner>> = {};
   for (const mode of COMMERCE_MODES) {
-    const address = commerceModeAddress(mode, chainId);
-    if (address) out[mode] = address;
+    const resolved = resolveCommerceMode(mode, chainId, registry);
+    if (resolved.status === "configured") out[mode] = resolved.address;
   }
   return out;
+}
+
+/**
+ * Hex address for EVM ABI/wagmi when the mode is configured and EVM-shaped.
+ * Prefer this over {@link commerceModeAddress} when presence was already
+ * answered by {@link resolveCommerceMode} and only the hex wire is needed.
+ */
+export function commerceModeEvmAddress(
+  mode: CommerceMode,
+  namespace: number | null | undefined,
+  registry?: CommercialRegistry,
+): `0x${string}` | undefined {
+  const resolved = resolveCommerceMode(mode, namespace, registry);
+  if (resolved.status !== "configured") return undefined;
+  if (!isEvmHexAddress(resolved.address)) return undefined;
+  return resolved.address;
 }

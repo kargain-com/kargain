@@ -5,7 +5,7 @@ import { useMemo } from "react";
 import { parseMandate, type MandateSnapshot } from "@/lib/commerce/mandate";
 import {
   commerceModeAbi,
-  commerceModeAddress,
+  commerceModeEvmAddress,
   type CommerceMode,
 } from "@/lib/commerce/mode";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
@@ -39,7 +39,7 @@ export function useMandate(input: {
   enabled?: boolean;
 }): UseMandateResult {
   const { mode, chainId, tokenId, enabled = true } = input;
-  const address = commerceModeAddress(mode, chainId);
+  const address = commerceModeEvmAddress(mode, chainId);
   const abi = commerceModeAbi(mode);
   const wc = eip155WagmiChainId(chainId);
 

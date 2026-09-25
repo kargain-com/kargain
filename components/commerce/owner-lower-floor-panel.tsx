@@ -25,7 +25,7 @@ import {
 import type { CompensationForm } from "@/lib/commerce/denomination";
 import {
   commerceModeAbi,
-  commerceModeAddress,
+  commerceModeEvmAddress,
   type CommerceMode,
 } from "@/lib/commerce/mode";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
@@ -84,7 +84,7 @@ export function OwnerLowerFloorPanel({
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 
-  const market = commerceModeAddress(mode, chainId);
+  const market = commerceModeEvmAddress(mode, chainId);
   const abi = commerceModeAbi(mode);
   const tid = useMemo(() => BigInt(tokenId), [tokenId]);
   const wrongChain = evm.ok && walletChain !== chainId;

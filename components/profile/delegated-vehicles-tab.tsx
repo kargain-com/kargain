@@ -14,7 +14,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { isZeroAddress } from "@/lib/commerce/consignment";
 import { DENOMINATION_KIND } from "@/lib/commerce/denomination";
 import { floorDisplayUnits } from "@/lib/commerce/floor-display";
-import { commerceModeAddress } from "@/lib/commerce/mode";
+import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import { deriveOwnerMandateReadout } from "@/lib/commerce/owner-mandate-readout";
 import type {
   ConsignmentRecord,
@@ -149,8 +149,8 @@ function DelegatedLiveFloor({
  */
 export function DelegatedVehiclesTab({ wallet, chainId }: Props) {
   const targetChain = resolveKarProTargetChainId(chainId) ?? chainId;
-  const fixedPrice = commerceModeAddress("fixedPrice", targetChain);
-  const ascending = commerceModeAddress("ascending", targetChain);
+  const fixedPrice = commerceModeEvmAddress("fixedPrice", targetChain);
+  const ascending = commerceModeEvmAddress("ascending", targetChain);
   const modesReady = Boolean(fixedPrice || ascending);
 
   const awaitingQuery = useQuery({

@@ -11,7 +11,7 @@ import {
 } from "@/lib/auction/ascending-public-claims";
 import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
 import { addressesMatch, isZeroAddress } from "@/lib/commerce/consignment";
-import { commerceModeAddress } from "@/lib/commerce/mode";
+import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
@@ -38,7 +38,7 @@ export function AuctionCancelPanel({
 
   const busy = phase !== "idle";
 
-  const mode = commerceModeAddress("ascending", chainId);
+  const mode = commerceModeEvmAddress("ascending", chainId);
 
   if (!mode || auction.startedAt !== 0n) {
     return null;

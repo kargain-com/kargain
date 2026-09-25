@@ -26,7 +26,7 @@ import {
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import { DENOMINATION_KIND } from "@/lib/commerce/denomination";
 import { floorDisplayUnits } from "@/lib/commerce/floor-display";
-import { commerceModeAddress, hasCommerceMode } from "@/lib/commerce/mode";
+import { hasCommerceMode } from "@/lib/commerce/mode";
 import { isZeroAddress } from "@/lib/commerce/consignment";
 import { effectiveRecallRequestedAt } from "@/lib/commerce/recall";
 import { resolveSettlementAssetMeta } from "@/lib/commerce/settlement-asset-meta";

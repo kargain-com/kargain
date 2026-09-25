@@ -21,7 +21,7 @@ import type { AuctionRow, AuctionUiState } from "@/lib/auction/map-ponder-auctio
 import { parseOwnerMinAsset } from "@/lib/auction/owner-min-asset";
 import { isZeroAddress } from "@/lib/commerce/consignment";
 import { formatWindowDurationLabel } from "@/lib/commerce/format-window-duration";
-import { commerceModeAddress } from "@/lib/commerce/mode";
+import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
 import {
   formatBidTooLowMessage,
@@ -104,7 +104,7 @@ export function AuctionBidPanel({
   const [amountStr, setAmountStr] = useState("");
   const [txError, setTxError] = useState<string | null>(null);
 
-  const mode = commerceModeAddress("ascending", chainId);
+  const mode = commerceModeEvmAddress("ascending", chainId);
   const isUsdcAuction = auction.assetLabel === "USDC";
   const usdc =
     isUsdcAuction &&

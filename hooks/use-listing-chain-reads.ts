@@ -8,7 +8,7 @@ import {
   type CompensationForm,
   type DenominationKind,
 } from "@/lib/commerce/denomination";
-import { commerceModeAddress } from "@/lib/commerce/mode";
+import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import type { ChainListingRead } from "@/lib/marketplace/effective-listing";
 import {
@@ -32,7 +32,7 @@ export function useListingChainReads(input: {
   enabled?: boolean;
 }) {
   const { chainId, tokenId, enabled = true } = input;
-  const market = commerceModeAddress("fixedPrice", chainId);
+  const market = commerceModeEvmAddress("fixedPrice", chainId);
   const wc = eip155WagmiChainId(chainId);
 
   const tid = useMemo(() => {

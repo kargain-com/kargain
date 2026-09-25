@@ -23,7 +23,7 @@ import {
 } from "@/lib/commerce/denomination";
 import { ZERO_ADDRESS } from "@/lib/commerce/consignment";
 import { deriveOpenableTerms } from "@/lib/commerce/openable-terms";
-import { commerceModeAddress } from "@/lib/commerce/mode";
+import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 import type { ListingCurrencyCode } from "@/lib/marketplace/currency-code";
@@ -99,7 +99,7 @@ export function AgentUpdateListingPanel({
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 
-  const market = commerceModeAddress("fixedPrice", chainId);
+  const market = commerceModeEvmAddress("fixedPrice", chainId);
   const tid = BigInt(tokenId);
   const wrongChain = evm.ok && walletChain !== chainId;
   const listingCurrency: ListingCurrencyCode = "USD";

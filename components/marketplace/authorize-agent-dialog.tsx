@@ -45,7 +45,7 @@ import {
   type CompensationForm,
   type DenominationKind,
 } from "@/lib/commerce/denomination";
-import { commerceModeAddress } from "@/lib/commerce/mode";
+import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import { ZERO_ADDRESS } from "@/lib/commerce/consignment";
 import { gateOpenablePairing } from "@/lib/commerce/openable-terms";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
@@ -105,7 +105,7 @@ export function AuthorizeAgentDialog({
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 
-  const market = commerceModeAddress("fixedPrice", chainId);
+  const market = commerceModeEvmAddress("fixedPrice", chainId);
   const tid = BigInt(tokenId);
   const wrongChain = evm.ok && walletChain !== chainId;
 

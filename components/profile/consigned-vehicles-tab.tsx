@@ -17,7 +17,7 @@ import {
   COMPENSATION_FORM,
 } from "@/lib/commerce/denomination";
 import type { MandateSnapshot } from "@/lib/commerce/mandate";
-import { commerceModeAddress } from "@/lib/commerce/mode";
+import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import type { MandateRecord } from "@/lib/commerce/ponder-consignment";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { categoryLabel } from "@/lib/design/instrument-classes";
@@ -59,8 +59,8 @@ function mandateRecordToSnapshot(
  */
 export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
   const targetChain = resolveKarProTargetChainId(chainId) ?? chainId;
-  const fixedPrice = commerceModeAddress("fixedPrice", targetChain);
-  const ascending = commerceModeAddress("ascending", targetChain);
+  const fixedPrice = commerceModeEvmAddress("fixedPrice", targetChain);
+  const ascending = commerceModeEvmAddress("ascending", targetChain);
   const modesReady = Boolean(fixedPrice || ascending);
 
   const { data: platformFeeBps } = useReadContract({

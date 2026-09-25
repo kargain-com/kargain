@@ -19,7 +19,7 @@ import {
 } from "@/components/marketplace/seller-net-calculator";
 import { COMPENSATION_FORM } from "@/lib/commerce/denomination";
 import type { MandateSnapshot } from "@/lib/commerce/mandate";
-import { commerceModeAddress } from "@/lib/commerce/mode";
+import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import type { ListingCurrencyCode } from "@/lib/marketplace/currency-code";
 import { SETTLEMENT_NOTE_WRITE_DISCLOSURE } from "@/lib/marketplace/settlement-note";
@@ -72,7 +72,7 @@ export function AgentListOnBehalfPanel({
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
 
-  const market = commerceModeAddress("fixedPrice", chainId);
+  const market = commerceModeEvmAddress("fixedPrice", chainId);
   const tid = BigInt(tokenId);
   const wrongChain = evm.ok && walletChain !== chainId;
   const { paused: modePaused } = useCommerceModePaused({

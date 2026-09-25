@@ -9,7 +9,8 @@ import {
   type OpenableTerms,
 } from "@/lib/commerce/openable-terms";
 import {
-  commerceModeAddress,
+  commerceModeEvmAddress,
+  resolveCommerceMode,
   type CommerceMode,
 } from "@/lib/commerce/mode";
 import { resolveSettlementAssetMeta } from "@/lib/commerce/settlement-asset-meta";
@@ -132,13 +133,29 @@ export async function getOpenableTerms(
   chainId: number,
   mode: CommerceMode,
 ): Promise<OpenableTermsResult> {
-  const modeAddress = commerceModeAddress(mode, chainId);
-  if (!modeAddress) {
+  const resolved = resolveCommerceMode(mode, chainId);
+  if (resolved.status === "absent") {
     return {
       ok: true,
       options: deriveOpenableTerms({
         mode,
         modeAvailable: false,
+        configResolved: true,
+        native: nativeFromChain(chainId),
+        paymentTokens: [],
+        currencyFeeds: [],
+      }),
+    };
+  }
+
+  const modeAddress = commerceModeEvmAddress(mode, chainId);
+  if (!modeAddress) {
+    // Mode configured on a non-EVM namespace — no Ponder commerce projection yet.
+    return {
+      ok: true,
+      options: deriveOpenableTerms({
+        mode,
+        modeAvailable: true,
         configResolved: true,
         native: nativeFromChain(chainId),
         paymentTokens: [],

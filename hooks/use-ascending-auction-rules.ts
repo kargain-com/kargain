@@ -2,7 +2,7 @@
 
 import { useReadContract } from "wagmi";
 
-import { commerceModeAddress } from "@/lib/commerce/mode";
+import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import {
   parseAuctionRules,
   type AuctionRules,
@@ -25,7 +25,7 @@ export function useAscendingAuctionRules(args: {
   isPending: boolean;
 } {
   const { chainId, enabled = true } = args;
-  const mode = commerceModeAddress("ascending", chainId);
+  const mode = commerceModeEvmAddress("ascending", chainId);
   const wc = eip155WagmiChainId(chainId);
 
   const { data, isPending } = useReadContract({

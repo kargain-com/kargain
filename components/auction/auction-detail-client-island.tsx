@@ -26,7 +26,10 @@ import { addressesMatch, isZeroAddress } from "@/lib/commerce/consignment";
 import { DENOMINATION_KIND } from "@/lib/commerce/denomination";
 import { floorDisplayUnits } from "@/lib/commerce/floor-display";
 import { canAgentOpenFromMandate } from "@/lib/commerce/mandate";
-import { commerceModeAddress } from "@/lib/commerce/mode";
+import {
+  commerceModeAbsentCopy,
+  resolveCommerceMode,
+} from "@/lib/commerce/mode";
 import { presenceBlocksWrites } from "@/lib/passport/presence";
 import {
   commercialActive,
@@ -71,7 +74,7 @@ export function AuctionDetailClientIsland({
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const mode = commerceModeAddress("ascending", chainId);
+  const ascendingMode = resolveCommerceMode("ascending", chainId);
 
   const { presence, presenceCopy } = usePassportPresence({
     chainId,
@@ -190,7 +193,16 @@ export function AuctionDetailClientIsland({
     enabled: Boolean(auction && showLiveCommerce),
   });
 
-  if (!mode) return null;
+  if (ascendingMode.status === "absent") {
+    return (
+      <p
+        className="rounded-md border border-border-default bg-bg-surface p-4 text-sm text-text-secondary"
+        role="status"
+      >
+        {commerceModeAbsentCopy(ascendingMode.cause)}
+      </p>
+    );
+  }
 
   if (!showLiveCommerce && !showAgentCreate) {
     // Listed (or isListed unread): create impossible — do not flash checking UI over Manage listing.

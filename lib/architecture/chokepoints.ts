@@ -182,6 +182,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-write-census-policy.test.ts"],
   },
   {
+    id: "commerce-mode",
+    owner: "lib/commerce/mode.ts",
+    rule: "Sole namespace-keyed commerce mode presence: resolveCommerceMode → configured(ProtocolOwner)|absent(mode_not_on_namespace); commerceModeAbsentCopy non-empty; hasCommerceMode/Addresses derived from resolve; commerceModeAddress EVM-only hex and banned from app|components|hooks; surfaces must not treat hex undefined as mode absence",
+    guardTests: ["commerce-mode-resolution-policy.test.ts"],
+  },
+  {
     id: "policy-suite-scanned-tree-mutation",
     owner: "test/policy-suite-scanned-tree-mutation-policy.test.ts",
     rule: "Policy suites must not writeFileSync/mkdirSync/rmSync/… into live scanned roots (app|components|hooks|lib|src|scripts); plants use in-memory or mkdtemp outside the repository",

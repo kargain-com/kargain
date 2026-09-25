@@ -9,7 +9,7 @@ import type { Address } from "viem";
 import {
   COMMERCE_MODES,
   commerceModeAbi,
-  commerceModeAddress,
+  commerceModeEvmAddress,
   commerceModeLabel,
   type CommerceMode,
 } from "@/lib/commerce/mode";
@@ -59,7 +59,7 @@ export function useCommercePauseOps() {
     const out: Target[] = [];
     for (const chainId of commercialChainIds()) {
       for (const mode of COMMERCE_MODES) {
-        const address = commerceModeAddress(mode, chainId);
+        const address = commerceModeEvmAddress(mode, chainId);
         if (address) out.push({ chainId, mode, address });
       }
     }

@@ -30,7 +30,7 @@ import {
   protectionBoundsErrorMessage,
 } from "@/lib/commerce/format-window-duration";
 import { canAgentOpenFromMandate } from "@/lib/commerce/mandate";
-import { commerceModeAddress } from "@/lib/commerce/mode";
+import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import {
   AscendingConsignmentAbi,
   KarPassportAbi,
@@ -75,7 +75,7 @@ export function AgentCreateAuctionPanel({
   const [txError, setTxError] = useState<string | null>(null);
   const busy = phase !== "idle";
 
-  const mode = commerceModeAddress("ascending", chainId);
+  const mode = commerceModeEvmAddress("ascending", chainId);
   const passport = karPassportAddress(chainId);
   const wrongChain = evm.ok && (() => { const _wc = eip155WagmiChainId(chainId); return _wc != null && walletChainId !== _wc; })();
   const { paused: modePaused } = useCommerceModePaused({

@@ -37,7 +37,7 @@ import {
   type CompensationForm,
 } from "@/lib/commerce/denomination";
 import { isMandateExpired, mandateHasAgent } from "@/lib/commerce/mandate";
-import { commerceModeAddress } from "@/lib/commerce/mode";
+import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import { gateOpenablePairing, fiatUnavailableReasonForAsset } from "@/lib/commerce/openable-terms";
 import { resolveSettlementAssetMeta } from "@/lib/commerce/settlement-asset-meta";
 import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
@@ -117,7 +117,7 @@ export function AuthorizeAuctionAgentDialog({
         const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
 
-  const mode = commerceModeAddress("ascending", chainId);
+  const mode = commerceModeEvmAddress("ascending", chainId);
   const tid = BigInt(tokenId);
   const wrongChain = evm.ok && walletChain !== wc;
   const busy = isPending || phase !== "idle";

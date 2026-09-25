@@ -16,7 +16,7 @@ import {
   parseCompensationForm,
   type CompensationForm,
 } from "@/lib/commerce/denomination";
-import { commerceModeAddress } from "@/lib/commerce/mode";
+import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import {
   parseAscendingHold,
   type AscendingHoldSnapshot,
@@ -79,7 +79,7 @@ export function useAuctionChainReads({
   tokenId,
   enabled = true,
 }: UseAuctionChainReadsArgs) {
-  const mode = commerceModeAddress("ascending", chainId);
+  const mode = commerceModeEvmAddress("ascending", chainId);
   const passport = karPassportAddress(chainId);
   const wc = eip155WagmiChainId(chainId);
   const tokenIdBig = useMemo(() => {

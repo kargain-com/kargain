@@ -21,7 +21,7 @@ import {
   formatListingAssetAsking,
   toAskingDisplaySource,
 } from "@/lib/commerce/listing-price-display";
-import { commerceModeAddress } from "@/lib/commerce/mode";
+import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import type { ActiveEffectiveListing } from "@/lib/marketplace/effective-listing";
 import { useDisplayCurrency } from "@/lib/marketplace/display-currency-context";
@@ -95,7 +95,7 @@ export function ListingBuyPanel({
   const [txError, setTxError] = useState<string | null>(null);
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
 
-  const market = commerceModeAddress("fixedPrice", chainId);
+  const market = commerceModeEvmAddress("fixedPrice", chainId);
   const wc = eip155WagmiChainId(chainId);
   const wrongChain = evm.ok && walletChain !== chainId;
   const tid = BigInt(tokenId);

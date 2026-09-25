@@ -28,7 +28,7 @@ import {
   durationDayOptions,
   protectionBoundsErrorMessage,
 } from "@/lib/commerce/format-window-duration";
-import { commerceModeAddress } from "@/lib/commerce/mode";
+import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import {
   fiatUnavailableReasonForAsset,
   gateOpenablePairing,
@@ -77,7 +77,7 @@ export function CreateAuctionPanel({
   const [protectionDays, setProtectionDays] = useState(7);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const mode = commerceModeAddress("ascending", chainId);
+  const mode = commerceModeEvmAddress("ascending", chainId);
   const wrongChain = evm.ok && (() => { const _wc = eip155WagmiChainId(chainId); return _wc != null && walletChainId !== _wc; })();
   const busy = phase !== "idle";
   const { paused: modePaused } = useCommerceModePaused({

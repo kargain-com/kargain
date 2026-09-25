@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { formatWindowDurationLabel } from "@/lib/commerce/format-window-duration";
-import { commerceModeAbi, commerceModeAddress } from "@/lib/commerce/mode";
+import { commerceModeAbi, commerceModeEvmAddress } from "@/lib/commerce/mode";
 import type { CommerceMode } from "@/lib/commerce/mode";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
@@ -65,7 +65,7 @@ export function OwnerRecallPanel({
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const [txError, setTxError] = useState<string | null>(null);
 
-  const market = commerceModeAddress(mode, chainId);
+  const market = commerceModeEvmAddress(mode, chainId);
   const abi = commerceModeAbi(mode);
   const tid = useMemo(() => BigInt(tokenId), [tokenId]);
   const wrongChain = evm.ok && walletChain !== chainId;

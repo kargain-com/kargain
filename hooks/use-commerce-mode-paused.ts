@@ -5,7 +5,7 @@ import { useReadContract } from "wagmi";
 
 import {
   commerceModeAbi,
-  commerceModeAddress,
+  commerceModeEvmAddress,
   type CommerceMode,
 } from "@/lib/commerce/mode";
 import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
@@ -26,7 +26,7 @@ export function useCommerceModePaused(input: {
   refetch: () => void;
 } {
   const { mode, chainId, enabled = true } = input;
-  const address = commerceModeAddress(mode, chainId);
+  const address = commerceModeEvmAddress(mode, chainId);
   const wc = eip155WagmiChainId(chainId);
   const readsEnabled = Boolean(enabled && address && wc != null);
 

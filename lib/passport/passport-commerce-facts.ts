@@ -14,7 +14,11 @@ import {
   parseConsignmentPhase,
 } from "@/lib/commerce/consignment";
 import { parseMandate, type MandateSnapshot } from "@/lib/commerce/mandate";
-import { commerceModeAddress, type CommerceMode } from "@/lib/commerce/mode";
+import {
+  commerceModeEvmAddress,
+  resolveCommerceMode,
+  type CommerceMode,
+} from "@/lib/commerce/mode";
 import {
   AscendingConsignmentAbi,
   FixedPriceConsignmentAbi,
@@ -284,15 +288,19 @@ export async function planPassportCommerceReads(args: {
         detail: args.tokenId,
       };
     }
-    const fixedPrice = commerceModeAddress("fixedPrice", args.chainId);
-    const ascending = commerceModeAddress("ascending", args.chainId);
+    const fixedPriceConfigured =
+      resolveCommerceMode("fixedPrice", args.chainId).status === "configured";
+    const ascendingConfigured =
+      resolveCommerceMode("ascending", args.chainId).status === "configured";
+    const fixedPrice = commerceModeEvmAddress("fixedPrice", args.chainId);
+    const ascending = commerceModeEvmAddress("ascending", args.chainId);
     const wc = wagmiChainId(args.chainId);
     return {
       ok: true,
       vm: "evm",
       tokenId: args.tokenId,
-      fixedPriceConfigured: Boolean(fixedPrice),
-      ascendingConfigured: Boolean(ascending),
+      fixedPriceConfigured,
+      ascendingConfigured,
       contracts: buildEvmContracts({
         passport,
         fixedPrice,

@@ -6,8 +6,10 @@
  * entity-sourced owner through viem `getAddress`.
  */
 
-import { commerceModeAddresses } from "@/lib/commerce/mode";
-import { commercialActive } from "@/lib/web3/commercial-active";
+import {
+  COMMERCE_MODES,
+  resolveCommerceMode,
+} from "@/lib/commerce/mode";
 import {
   normalizeProtocolAddress,
   protocolAddressesEqual,
@@ -29,31 +31,12 @@ type ResolvePassportCustodyInput = {
   } | null;
 };
 
-/** Mode program/contract ids on this namespace — EVM hex or SVM base58. */
+/** Mode program/contract ids on this namespace — via resolveCommerceMode only. */
 function modeAddressStrings(chainId: number): string[] {
-  const fromEvmAccessors = Object.values(commerceModeAddresses(chainId)).filter(
-    (a): a is NonNullable<typeof a> => a != null && a.length > 0,
-  );
-  if (fromEvmAccessors.length > 0) return [...fromEvmAccessors];
-
-  // Commercial rows may carry mode ids as strings when EVM accessors are unset.
-  // Read optional fields when present — no VM identity fork here.
-  const stack = commercialActive(chainId);
-  if (stack == null) return [];
   const out: string[] = [];
-  if (
-    "fixedPriceConsignment" in stack &&
-    typeof stack.fixedPriceConsignment === "string" &&
-    stack.fixedPriceConsignment.length > 0
-  ) {
-    out.push(stack.fixedPriceConsignment);
-  }
-  if (
-    "ascendingConsignment" in stack &&
-    typeof stack.ascendingConsignment === "string" &&
-    stack.ascendingConsignment.length > 0
-  ) {
-    out.push(stack.ascendingConsignment);
+  for (const mode of COMMERCE_MODES) {
+    const resolved = resolveCommerceMode(mode, chainId);
+    if (resolved.status === "configured") out.push(resolved.address);
   }
   return out;
 }
