@@ -30,17 +30,37 @@ export type CommerceMode = "fixedPrice" | "ascending";
 
 export const COMMERCE_MODES: readonly CommerceMode[] = ["fixedPrice", "ascending"];
 
-export type CommerceModeAbsentCause = "mode_not_on_namespace";
+/**
+ * Closed absence causes for {@link resolveCommerceMode}.
+ * - unresolved_namespace — input is null / non-finite (no network to name)
+ * - mode_not_on_namespace — known namespace, registry has no mode address
+ * - mode_address_unusable — registry names an address that will not mint
+ */
+export type CommerceModeAbsentCause =
+  | "unresolved_namespace"
+  | "mode_not_on_namespace"
+  | "mode_address_unusable";
 
+export const COMMERCE_MODE_ABSENT_CAUSES = [
+  "unresolved_namespace",
+  "mode_not_on_namespace",
+  "mode_address_unusable",
+] as const satisfies ReadonlyArray<CommerceModeAbsentCause>;
+
+/**
+ * Configured carries a real namespace. Absent-without-namespace has no
+ * namespace field — never NaN / -1 / empty invent.
+ */
 export type CommerceModeResolution =
   | {
       readonly status: "configured";
       readonly address: ProtocolOwner;
       readonly namespace: number;
     }
+  | { readonly status: "absent"; readonly cause: "unresolved_namespace" }
   | {
       readonly status: "absent";
-      readonly cause: CommerceModeAbsentCause;
+      readonly cause: "mode_not_on_namespace" | "mode_address_unusable";
       readonly namespace: number;
     };
 
@@ -55,11 +75,7 @@ export function resolveCommerceMode(
   registry?: CommercialRegistry,
 ): CommerceModeResolution {
   if (namespace == null || !Number.isFinite(namespace)) {
-    return {
-      status: "absent",
-      cause: "mode_not_on_namespace",
-      namespace: Number.NaN,
-    };
+    return { status: "absent", cause: "unresolved_namespace" };
   }
   const stack = commercialActive(namespace, registry);
   if (stack == null) {
@@ -84,7 +100,7 @@ export function resolveCommerceMode(
   if (address == null) {
     return {
       status: "absent",
-      cause: "mode_not_on_namespace",
+      cause: "mode_address_unusable",
       namespace,
     };
   }
@@ -94,8 +110,12 @@ export function resolveCommerceMode(
 /** Non-empty sentence for a mode-absence cause (§4.21). */
 export function commerceModeAbsentCopy(cause: CommerceModeAbsentCause): string {
   switch (cause) {
+    case "unresolved_namespace":
+      return "This network is not configured in the app.";
     case "mode_not_on_namespace":
       return "This selling mode is not available on this network.";
+    case "mode_address_unusable":
+      return "This network's mode address cannot be used.";
     default: {
       const _exhaustive: never = cause;
       return _exhaustive;

@@ -1,9 +1,10 @@
 /**
  * Commerce mode resolution — presence is namespace-keyed, never hex-undefined.
  *
- * Pins: Solana registry modes are configured; genuine absence is named;
- * app|components|hooks never call commerceModeAddress(; EVM hex identity
- * equals resolveCommerceMode address; auction island consumes the owner.
+ * Pins: Solana registry modes are configured; three absence causes are distinct;
+ * unresolved_namespace carries no namespace (never NaN); app|components|hooks
+ * never call commerceModeAddress(; EVM hex identity equals resolveCommerceMode
+ * address; auction island consumes the owner.
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -11,10 +12,12 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  COMMERCE_MODE_ABSENT_CAUSES,
   commerceModeAbsentCopy,
   commerceModeAddress,
   hasCommerceMode,
   resolveCommerceMode,
+  type CommerceModeResolution,
 } from "@/lib/commerce/mode";
 import {
   COMMERCIAL_ACTIVE,
@@ -31,6 +34,16 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SOLANA_NS = 2_000_040_168;
 
 const HEX_CALL = /\bcommerceModeAddress\s*\(/;
+
+function assertNoFabricatedNamespace(result: CommerceModeResolution): void {
+  if ("namespace" in result) {
+    assert.equal(
+      Number.isNaN(result.namespace),
+      false,
+      "resolution must never carry NaN as namespace",
+    );
+  }
+}
 
 describe("commerce mode resolution policy", () => {
   it("Solana commercial row: both modes configured with ProtocolOwner program ids", () => {
@@ -53,9 +66,29 @@ describe("commerce mode resolution policy", () => {
       undefined,
       "hex accessor must stay undefined on SVM",
     );
+    assertNoFabricatedNamespace(fp);
+    assertNoFabricatedNamespace(asc);
   });
 
-  it("genuine absence: commercial stack without mode fields → absent + non-empty copy", () => {
+  it("unresolved_namespace: null / non-finite → cause arm without namespace field", () => {
+    for (const input of [null, undefined, Number.NaN, Infinity, -Infinity] as const) {
+      const result = resolveCommerceMode("ascending", input);
+      assert.equal(result.status, "absent");
+      if (result.status !== "absent") return;
+      assert.equal(result.cause, "unresolved_namespace");
+      assert.equal(
+        "namespace" in result,
+        false,
+        "unresolved_namespace must omit namespace",
+      );
+      assertNoFabricatedNamespace(result);
+      const copy = commerceModeAbsentCopy(result.cause);
+      assert.ok(copy.length > 0);
+      assert.match(copy, /not configured/i);
+    }
+  });
+
+  it("mode_not_on_namespace: commercial stack without mode fields → absent + non-empty copy", () => {
     const bare: SvmCommercialActiveStack = {
       ...FIXTURE_SVM_STACK,
       fixedPriceConsignment: undefined,
@@ -70,10 +103,42 @@ describe("commerce mode resolution policy", () => {
     assert.equal(asc.status, "absent");
     if (asc.status !== "absent") return;
     assert.equal(asc.cause, "mode_not_on_namespace");
+    assert.equal(asc.namespace, ns);
+    assertNoFabricatedNamespace(asc);
     const copy = commerceModeAbsentCopy(asc.cause);
     assert.ok(copy.length > 0);
     assert.match(copy, /not available/i);
     assert.equal(hasCommerceMode("ascending", ns, registry), false);
+  });
+
+  it("mode_address_unusable: garbage registry address → this cause, not mode_not_on_namespace", () => {
+    const garbage: SvmCommercialActiveStack = {
+      ...FIXTURE_SVM_STACK,
+      ascendingConsignment: "!!!not-a-base58-pubkey!!!",
+    };
+    const ns = Number(garbage.namespace);
+    const registry: CommercialRegistry = {
+      ...COMMERCIAL_ACTIVE,
+      [ns]: garbage,
+    };
+    const asc = resolveCommerceMode("ascending", ns, registry);
+    assert.equal(asc.status, "absent");
+    if (asc.status !== "absent") return;
+    assert.equal(asc.cause, "mode_address_unusable");
+    assert.notEqual(asc.cause, "mode_not_on_namespace");
+    assert.equal(asc.namespace, ns);
+    assertNoFabricatedNamespace(asc);
+    const copy = commerceModeAbsentCopy(asc.cause);
+    assert.ok(copy.length > 0);
+    assert.match(copy, /cannot be used/i);
+    assert.equal(hasCommerceMode("ascending", ns, registry), false);
+  });
+
+  it("commerceModeAbsentCopy exhaustive over COMMERCE_MODE_ABSENT_CAUSES", () => {
+    for (const cause of COMMERCE_MODE_ABSENT_CAUSES) {
+      const copy = commerceModeAbsentCopy(cause);
+      assert.ok(copy.length > 0, `empty copy for ${cause}`);
+    }
   });
 
   it("constructed: treating a configured Solana mode as hex-absent is red", () => {
@@ -103,6 +168,7 @@ describe("commerce mode resolution policy", () => {
         assert.ok(hex, `hex required on ${chainId} ${mode}`);
         if (resolved.status !== "configured") continue;
         assert.equal(resolved.address, hex);
+        assertNoFabricatedNamespace(resolved);
       }
     }
   });
