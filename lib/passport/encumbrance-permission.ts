@@ -10,13 +10,16 @@ import { isAddress, getAddress, type Abi } from "viem";
 
 import { AVAILABLE } from "@/lib/challenge/action-gate";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
-import type { SurfaceSupportCause } from "@/lib/passport/commerce-fact";
 import type { KeyedEntry } from "@/lib/web3/keyed-multicall";
 import { decodeCustomError } from "@/lib/web3/decode-custom-error";
 import {
   mintProtocolOwner,
   type ProtocolOwner,
 } from "@/lib/web3/protocol-address";
+import {
+  surfaceSupportCauseCopy,
+  type SurfaceSupportCause,
+} from "@/lib/web3/surface-support";
 import { shortAddress } from "@/lib/web3/wallet-display";
 
 /** Named absence: EVM carries an address; SVM Custom(20) does not. */
@@ -160,11 +163,9 @@ export function encumbrancePermissionCopy(
     case "source_unanswerable":
       return sourceUnanswerableCopy(gate.source);
     case "product_owner_owed":
-      return "This app does not read this on this network yet.";
     case "not_in_program":
-      return "This network's passport program does not answer this permission.";
     case "authority_only":
-      return "Only the program authority can do this on this network.";
+      return surfaceSupportCauseCopy(cause);
     case "fee_payer_required":
       return "Connect a Solana wallet to check this permission on this network.";
     case "construction":

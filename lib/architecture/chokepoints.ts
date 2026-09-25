@@ -172,7 +172,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "lib/web3/write-lifecycle.ts",
       "lib/web3/evm-write-lifecycle.ts",
     ],
-    rule: "Sole reader for capability × commercial namespace support + wanted wallet family; class derived from SVM cell (never a second table); txWriteAvailabilityForCapability composes support then session (disconnected first); census fixture adds descriptive columns only; no parallel capability address registry",
+    rule: "Sole reader for capability × commercial namespace support + wanted wallet family; class derived from SVM cell (never a second table); txWriteAvailabilityForCapability composes support then session (disconnected first); census fixture adds descriptive columns only; no parallel capability address registry; SurfaceSupportCause sentences sole in surfaceSupportCauseCopy (no re-inline in product)",
     guardTests: ["surface-support-policy.test.ts"],
   },
   {

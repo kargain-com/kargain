@@ -20,8 +20,10 @@ import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import {
   SURFACE_CAPABILITIES,
   SURFACE_CLASS_C_CAPABILITIES,
+  SURFACE_SUPPORT_CAUSES,
   SURFACE_SUPPORT_TABLE,
   surfaceClassOf,
+  surfaceSupportCauseCopy,
   type SurfaceCapability,
   type SurfaceSupportTable,
 } from "@/lib/web3/surface-support";
@@ -67,6 +69,10 @@ import {
   SURFACE_SUPPORT_FLOORS,
   type SurfaceFileContents,
 } from "./surface-support-derive.ts";
+import {
+  assertCleanProductScan,
+  scanProductSources,
+} from "./policy-scan-helpers.ts";
 import {
   ABI_FN_TO_CAPABILITY,
   assertNoFragmentKeysInMap,
@@ -1041,5 +1047,89 @@ pub fn read_owner() {
       /fragment ABI key forbidden/,
     );
     assertNoFragmentKeysInMap();
+  });
+});
+
+/** Exact chrome sentences owned solely by surfaceSupportCauseCopy. */
+const SUPPORT_CAUSE_SENTENCES = SURFACE_SUPPORT_CAUSES.map((c) =>
+  surfaceSupportCauseCopy(c),
+);
+
+/**
+ * Product file that embeds a support-cause sentence literal outside the owner.
+ * Exported so the plant can call the same helper as the live scan.
+ */
+export function findSupportCauseSentenceLiteralHits(
+  rel: string,
+  source: string,
+): string | false {
+  for (const sentence of SUPPORT_CAUSE_SENTENCES) {
+    if (source.includes(JSON.stringify(sentence))) {
+      return `re-inlined SurfaceSupportCause sentence (sole owner: lib/web3/surface-support.ts surfaceSupportCauseCopy): ${sentence}`;
+    }
+  }
+  return false;
+}
+
+describe("surfaceSupportCauseCopy sole owner", () => {
+  it("exhaustive subject-neutral sentences for every SurfaceSupportCause", () => {
+    assert.deepEqual([...SURFACE_SUPPORT_CAUSES].sort(), [
+      "authority_only",
+      "not_in_program",
+      "product_owner_owed",
+    ]);
+    assert.equal(
+      surfaceSupportCauseCopy("not_in_program"),
+      "This network's passport program does not provide this.",
+    );
+    assert.equal(
+      surfaceSupportCauseCopy("authority_only"),
+      "Only the program authority can do this on this network.",
+    );
+    assert.equal(
+      surfaceSupportCauseCopy("product_owner_owed"),
+      "This app does not read this on this network yet.",
+    );
+    for (const cause of SURFACE_SUPPORT_CAUSES) {
+      assert.ok(surfaceSupportCauseCopy(cause).length > 0, cause);
+    }
+  });
+
+  it("product tree never re-inlines support-cause sentences (planted copy red then green)", () => {
+    const owners = ["lib/web3/surface-support.ts"];
+    const planted = `export const bad = ${JSON.stringify(SUPPORT_CAUSE_SENTENCES[0])};\n`;
+    assert.equal(
+      findSupportCauseSentenceLiteralHits(
+        "lib/passport/commerce-fact.ts",
+        planted,
+      ) !== false,
+      true,
+      "planted re-inline must be detected",
+    );
+    assert.throws(
+      () =>
+        assertCleanProductScan(
+          {
+            filesRead: 1,
+            violations: [
+              {
+                path: "lib/passport/commerce-fact.ts",
+                reason: findSupportCauseSentenceLiteralHits(
+                  "lib/passport/commerce-fact.ts",
+                  planted,
+                ) as string,
+              },
+            ],
+            unreadable: [],
+          },
+          { owners, allowEmptyTargets: true },
+        ),
+      /re-inlined SurfaceSupportCause sentence/,
+    );
+
+    const scan = scanProductSources(findSupportCauseSentenceLiteralHits, {
+      owners,
+    });
+    assertCleanProductScan(scan, { owners });
   });
 });

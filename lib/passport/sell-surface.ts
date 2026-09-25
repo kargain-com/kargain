@@ -41,7 +41,7 @@ export type SellSurfaceFlags = {
 
 /**
  * Sell-only closed causes. Live/mandate refusals carry `CommerceFactCause`
- * directly. Dead `mandate_*` / `live_refused` members deleted in D2.
+ * directly.
  */
 export type SellSurfaceClosedCause =
   | "not_owner"

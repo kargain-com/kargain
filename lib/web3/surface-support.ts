@@ -157,11 +157,42 @@ export const SURFACE_CHAIN_EVIDENCE_ITEMS = [
 export type SurfaceChainEvidenceItem =
   (typeof SURFACE_CHAIN_EVIDENCE_ITEMS)[number];
 
+/** Closed support-refusal vocabulary — one cause, one sentence owner below. */
+export type SurfaceSupportCause =
+  | "not_in_program"
+  | "product_owner_owed"
+  | "authority_only";
+
+export const SURFACE_SUPPORT_CAUSES = [
+  "not_in_program",
+  "product_owner_owed",
+  "authority_only",
+] as const satisfies ReadonlyArray<SurfaceSupportCause>;
+
+/**
+ * Sole chrome sentences for SurfaceSupportCause. Subject-neutral so permission
+ * gates and refused commerce facts share one meaning. Never empty.
+ */
+export function surfaceSupportCauseCopy(cause: SurfaceSupportCause): string {
+  switch (cause) {
+    case "not_in_program":
+      return "This network's passport program does not provide this.";
+    case "authority_only":
+      return "Only the program authority can do this on this network.";
+    case "product_owner_owed":
+      return "This app does not read this on this network yet.";
+    default: {
+      const _exhaustive: never = cause;
+      return _exhaustive;
+    }
+  }
+}
+
 export type SurfaceSupportCell =
   | { supported: true; family: "evm" | "svm" }
   | {
       supported: false;
-      cause: "not_in_program" | "product_owner_owed" | "authority_only";
+      cause: SurfaceSupportCause;
     };
 
 export type SurfaceSupportResult =

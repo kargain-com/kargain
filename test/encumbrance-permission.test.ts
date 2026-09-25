@@ -195,7 +195,7 @@ describe("encumbrancePermissionCopy", () => {
       RegExp
     > = {
       product_owner_owed: /does not read this on this network yet/i,
-      not_in_program: /does not answer this permission/i,
+      not_in_program: /does not provide this/i,
       authority_only: /Only the program authority/i,
     };
     for (const cause of Object.keys(expected) as (keyof typeof expected)[]) {

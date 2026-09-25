@@ -340,6 +340,10 @@ describe("commerceFactCauseCopy", () => {
       commerceFactCauseCopy("rpc_unavailable"),
       /The network did not answer/,
     );
+    assert.equal(
+      commerceFactCauseCopy("not_in_program"),
+      "This network's passport program does not provide this.",
+    );
     assert.match(
       commerceFactCauseCopy("product_owner_owed"),
       /does not read this on this network yet/i,

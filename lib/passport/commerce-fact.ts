@@ -5,12 +5,12 @@
  */
 
 import type { KeyedReadCause } from "@/lib/web3/keyed-multicall";
+import {
+  surfaceSupportCauseCopy,
+  type SurfaceSupportCause,
+} from "@/lib/web3/surface-support";
 
-/** Support causes from surfaceSupport — never invent a parallel vocabulary. */
-export type SurfaceSupportCause =
-  | "not_in_program"
-  | "product_owner_owed"
-  | "authority_only";
+export type { SurfaceSupportCause };
 
 export type CommerceFactCause = KeyedReadCause | SurfaceSupportCause;
 
@@ -47,7 +47,8 @@ export function commerceFactRefused<T>(
 
 /**
  * Refusal sentence for a refused commerce fact. Never empty. Waiting
- * (`pending`) is not a cause and must not call this.
+ * (`pending`) is not a cause and must not call this. Support causes delegate
+ * to {@link surfaceSupportCauseCopy}.
  */
 export function commerceFactCauseCopy(cause: CommerceFactCause): string {
   switch (cause) {
@@ -62,11 +63,9 @@ export function commerceFactCauseCopy(cause: CommerceFactCause): string {
     case "evm_call_failed":
       return "The chain did not return this value.";
     case "not_in_program":
-      return "This network's passport program does not answer this permission.";
     case "authority_only":
-      return "Only the program authority can do this on this network.";
     case "product_owner_owed":
-      return "This app does not read this on this network yet.";
+      return surfaceSupportCauseCopy(cause);
     default: {
       const _exhaustive: never = cause;
       return _exhaustive;
