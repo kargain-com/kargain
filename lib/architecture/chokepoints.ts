@@ -559,7 +559,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "bridge-route-resolver",
     owner: "lib/web3/bridge/bridge-config.ts",
-    rule: "resolveBridgeRoute owns hub/spoke hops; no second counterpart map under lib/hooks/components",
+    rule: "resolveBridgeRoute owns hub/spoke hops; admitBridgeCrossingRoute + bridgeCrossingRouteCauseCopy own star membership (no_crossing_route); EID_BY_CHAIN stays hub+spoke only; no second counterpart map or re-inlined route sentence under lib/hooks/components",
     guardTests: ["bridge-route-policy.test.ts"],
   },
   {

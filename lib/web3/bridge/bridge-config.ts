@@ -6,6 +6,7 @@ import {
   bridgeGatewayAddress,
   karPassportAddress,
 } from "@/lib/web3/deployment-addresses";
+import { unresolvedNamespaceCopy } from "@/lib/web3/commercial-active";
 
 /** Star hub chain id (reference). */
 export const BRIDGE_HUB_CHAIN_ID = SEPOLIA_CHAIN_ID;
@@ -23,6 +24,73 @@ export const BRIDGE_DELIVERY_POLL_MS = 8_000;
 export const BRIDGE_DELIVERY_TIMEOUT_MS = 10 * 60 * 1000;
 
 const LZ_SCAN_TESTNET_TX = "https://testnet.layerzeroscan.com/tx";
+
+/**
+ * Closed cause when a namespace is not a member of the LayerZero star
+ * ({@link EID_BY_CHAIN}). Distinct from leave-permission / SurfaceSupportCause.
+ */
+export type BridgeCrossingRouteCause = "no_crossing_route";
+
+export const BRIDGE_CROSSING_ROUTE_CAUSES = [
+  "no_crossing_route",
+] as const satisfies ReadonlyArray<BridgeCrossingRouteCause>;
+
+/** Sole chrome sentence for {@link BridgeCrossingRouteCause}. Never empty. */
+export function bridgeCrossingRouteCauseCopy(
+  cause: BridgeCrossingRouteCause,
+): string {
+  switch (cause) {
+    case "no_crossing_route":
+      return "This network has no bridge crossing route.";
+    default: {
+      const _exhaustive: never = cause;
+      return _exhaustive;
+    }
+  }
+}
+
+export type BridgeCrossingRouteAdmission =
+  | { readonly status: "configured"; readonly namespace: number }
+  | {
+      readonly status: "absent";
+      readonly cause: "no_crossing_route";
+      readonly namespace: number;
+    }
+  | { readonly status: "absent"; readonly cause: "unresolved_namespace" };
+
+/**
+ * Whether this namespace is in the LayerZero star (has a crossing route).
+ * Membership is {@link EID_BY_CHAIN} — not leave permission, not commercial
+ * registry mode presence. Does not invent Solana into the star.
+ */
+export function admitBridgeCrossingRoute(
+  namespace: number | null | undefined,
+): BridgeCrossingRouteAdmission {
+  if (namespace == null || !Number.isFinite(namespace)) {
+    return { status: "absent", cause: "unresolved_namespace" };
+  }
+  if (isCommercialBridgeChain(namespace)) {
+    return { status: "configured", namespace };
+  }
+  return {
+    status: "absent",
+    cause: "no_crossing_route",
+    namespace,
+  };
+}
+
+/**
+ * Chrome for a crossing-route refusal. no_crossing_route from this owner;
+ * unresolved_namespace delegates to commercial-active.
+ */
+export function bridgeCrossingRouteRefusalCopy(
+  cause: BridgeCrossingRouteCause | "unresolved_namespace",
+): string {
+  if (cause === "unresolved_namespace") {
+    return unresolvedNamespaceCopy();
+  }
+  return bridgeCrossingRouteCauseCopy(cause);
+}
 
 export type BridgeRouteHop = {
   srcChainId: number;

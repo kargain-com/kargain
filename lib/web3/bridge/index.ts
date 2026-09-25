@@ -1,17 +1,23 @@
 export {
+  BRIDGE_CROSSING_ROUTE_CAUSES,
   BRIDGE_DELIVERY_POLL_MS,
   BRIDGE_DELIVERY_TIMEOUT_MS,
   BRIDGE_HUB_CHAIN_ID,
   BRIDGE_SPOKE_CHAIN_ID,
   EID_BY_CHAIN,
+  admitBridgeCrossingRoute,
   bridgeAdapterAddress,
   bridgeCounterpartChainId,
+  bridgeCrossingRouteCauseCopy,
+  bridgeCrossingRouteRefusalCopy,
   bridgeDstEid,
   bridgeTokenAddress,
   layerZeroScanTxUrl,
   resolveBridgeRoute,
 } from "./bridge-config";
 export type {
+  BridgeCrossingRouteAdmission,
+  BridgeCrossingRouteCause,
   BridgeRouteHop,
   BridgeRouteOk,
   BridgeRouteRefusal,

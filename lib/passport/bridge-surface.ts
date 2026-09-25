@@ -16,7 +16,7 @@ import {
   type CustodyLockRead,
   type PassportPresence,
 } from "@/lib/passport/presence";
-import { bridgeCounterpartChainId } from "@/lib/web3/bridge";
+import { admitBridgeCrossingRoute } from "@/lib/web3/bridge";
 import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 
 export type BridgeBlockReason =
@@ -33,6 +33,14 @@ export type BridgeBlockReason =
 
 export type BridgeSurfaceMode = "hidden" | "action";
 
+/**
+ * Star membership for this custody namespace — distinct from leave permission.
+ * Never folded into {@link BridgeBlockReason}.
+ */
+export type BridgeCrossingRouteFact =
+  | { readonly status: "configured" }
+  | { readonly status: "absent"; readonly cause: "no_crossing_route" };
+
 export type BridgeSurfaceResult = {
   visible: boolean;
   mode: BridgeSurfaceMode;
@@ -40,6 +48,11 @@ export type BridgeSurfaceResult = {
   blockReason: BridgeBlockReason | null;
   /** Known address when `source_unanswerable` carries one; never invented. */
   unanswerableSource: ProtocolOwner | null;
+  /**
+   * Whether this namespace has a LayerZero crossing route.
+   * Absent is named chrome — never silent hide for an owner.
+   */
+  crossingRoute: BridgeCrossingRouteFact;
   /**
    * Location answer from presence (§4.21). Null when here or when the panel
    * is hidden. Fold gaps and lock-unread never become `blockReason: "unresolved"`.
@@ -86,29 +99,41 @@ export type BridgeSurfaceInput = {
   ponderCustodyChain?: number | null;
 };
 
-const HIDDEN: BridgeSurfaceResult = {
-  visible: false,
-  mode: "hidden",
-  canBridge: false,
-  blockReason: null,
-  unanswerableSource: null,
-  location: null,
-  locationCopy: null,
-};
+function crossingRouteFact(chainId: number): BridgeCrossingRouteFact {
+  const admission = admitBridgeCrossingRoute(chainId);
+  if (admission.status === "configured") {
+    return { status: "configured" };
+  }
+  return { status: "absent", cause: "no_crossing_route" };
+}
+
+function hiddenResult(chainId: number): BridgeSurfaceResult {
+  return {
+    visible: false,
+    mode: "hidden",
+    canBridge: false,
+    blockReason: null,
+    unanswerableSource: null,
+    crossingRoute: crossingRouteFact(chainId),
+    location: null,
+    locationCopy: null,
+  };
+}
 
 /**
  * Pure owner bridge-surface policy. Unknown listing/auction facts fail closed.
  * Action is available on either star chain (hub or spoke) when custody is there.
  */
-const TRANSIT_VISIBLE: BridgeSurfaceResult = {
-  visible: true,
-  mode: "action",
-  canBridge: false,
-  blockReason: null,
-  unanswerableSource: null,
-  location: null,
-  locationCopy: null,
-};
+function transitVisibleBase(chainId: number) {
+  return {
+    visible: true as const,
+    mode: "action" as const,
+    canBridge: false,
+    blockReason: null,
+    unanswerableSource: null,
+    crossingRoute: crossingRouteFact(chainId),
+  };
+}
 
 function locationFields(
   input: BridgeSurfaceInput,
@@ -146,23 +171,36 @@ function withLocation(
 /**
  * Sole owner bridge-surface policy — including §4.21 location.
  * Fold gaps and leave-permission unread stay distinct.
+ * Crossing-route membership is a separate fact from leave permission.
  */
 export function deriveBridgeSurface(
   input: BridgeSurfaceInput,
 ): BridgeSurfaceResult {
+  const route = crossingRouteFact(input.chainId);
+
   if (!input.isOwner) {
     // In-flight: NFT may be burned/locked — keep transit chrome visible.
     if (input.transitActive) {
-      return withLocation({ ...TRANSIT_VISIBLE }, input);
+      return withLocation(transitVisibleBase(input.chainId), input);
     }
-    return { ...HIDDEN };
+    return hiddenResult(input.chainId);
   }
 
-  if (bridgeCounterpartChainId(input.chainId) == null) {
+  if (route.status === "absent") {
     if (input.transitActive) {
-      return withLocation({ ...TRANSIT_VISIBLE }, input);
+      return withLocation(transitVisibleBase(input.chainId), input);
     }
-    return { ...HIDDEN };
+    // Owner on a non-star network: name the missing route — never silent null.
+    return {
+      visible: true,
+      mode: "action",
+      canBridge: false,
+      blockReason: null,
+      unanswerableSource: null,
+      crossingRoute: route,
+      location: null,
+      locationCopy: null,
+    };
   }
 
   const loc = locationFields(input);
@@ -176,6 +214,7 @@ export function deriveBridgeSurface(
       canBridge: false,
       blockReason: null,
       unanswerableSource: null,
+      crossingRoute: route,
       ...loc,
     };
   }
@@ -183,11 +222,11 @@ export function deriveBridgeSurface(
   if (input.leaveChainPermission == null) {
     if (input.transitActive) {
       return {
-        ...TRANSIT_VISIBLE,
+        ...transitVisibleBase(input.chainId),
         ...loc,
       };
     }
-    return { ...HIDDEN };
+    return hiddenResult(input.chainId);
   }
 
   const gate = input.leaveChainPermission;
@@ -199,6 +238,7 @@ export function deriveBridgeSurface(
       canBridge: false,
       blockReason: "unresolved",
       unanswerableSource: null,
+      crossingRoute: route,
       ...loc,
     };
   }
@@ -210,6 +250,7 @@ export function deriveBridgeSurface(
       canBridge: false,
       blockReason: "source_unanswerable",
       unanswerableSource: encumbranceUnanswerableKnownAddress(gate),
+      crossingRoute: route,
       ...loc,
     };
   }
@@ -231,6 +272,7 @@ export function deriveBridgeSurface(
       canBridge: false,
       blockReason: gate.cause,
       unanswerableSource: null,
+      crossingRoute: route,
       ...loc,
     };
   }
@@ -254,13 +296,14 @@ export function deriveBridgeSurface(
       canBridge: false,
       blockReason: reason,
       unanswerableSource: null,
+      crossingRoute: route,
       ...loc,
     };
   }
 
   if (input.transitActive) {
     return {
-      ...TRANSIT_VISIBLE,
+      ...transitVisibleBase(input.chainId),
       ...loc,
     };
   }
@@ -272,6 +315,7 @@ export function deriveBridgeSurface(
       canBridge: false,
       blockReason: "unresolved",
       unanswerableSource: null,
+      crossingRoute: route,
       ...loc,
     };
   }
@@ -282,10 +326,10 @@ export function deriveBridgeSurface(
     canBridge: true,
     blockReason: null,
     unanswerableSource: null,
+    crossingRoute: route,
     ...loc,
   };
 }
-
 export function bridgeBlockReasonCopy(
   reason: BridgeBlockReason,
   unanswerableSource: ProtocolOwner | null = null,

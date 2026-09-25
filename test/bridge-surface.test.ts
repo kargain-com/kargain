@@ -25,6 +25,7 @@ import {
   locationUnresolvedCauseCopy,
   passportAwayActionCopy,
 } from "../lib/passport/presence.ts";
+import { admitBridgeCrossingRoute } from "../lib/web3/bridge/bridge-config.ts";
 import { mintProtocolOwner } from "../lib/web3/protocol-address.ts";
 
 const AVAILABLE: EncumbrancePermissionGate = { status: "available" };
@@ -55,15 +56,26 @@ const SUPPORT_OWED: EncumbrancePermissionGate = {
   cause: "product_owner_owed",
 };
 
-const HIDDEN: BridgeSurfaceResult = {
-  visible: false,
-  mode: "hidden",
-  canBridge: false,
-  blockReason: null,
-  unanswerableSource: null,
-  location: null,
-  locationCopy: null,
+const CONFIGURED_ROUTE = { status: "configured" as const };
+const ABSENT_ROUTE = {
+  status: "absent" as const,
+  cause: "no_crossing_route" as const,
 };
+
+function hiddenOn(chainId: number): BridgeSurfaceResult {
+  const admission = admitBridgeCrossingRoute(chainId);
+  return {
+    visible: false,
+    mode: "hidden",
+    canBridge: false,
+    blockReason: null,
+    unanswerableSource: null,
+    crossingRoute:
+      admission.status === "configured" ? CONFIGURED_ROUTE : ABSENT_ROUTE,
+    location: null,
+    locationCopy: null,
+  };
+}
 
 /** Happy-path facts: lock read answered unlocked — never invent this in product without a read. */
 function input(overrides: Partial<BridgeSurfaceInput> = {}): BridgeSurfaceInput {
@@ -92,6 +104,7 @@ describe("deriveBridgeSurface", () => {
       canBridge: true,
       blockReason: null,
       unanswerableSource: null,
+      crossingRoute: CONFIGURED_ROUTE,
       ...hereLoc(),
     });
   });
@@ -107,17 +120,76 @@ describe("deriveBridgeSurface", () => {
         canBridge: true,
         blockReason: null,
         unanswerableSource: null,
+        crossingRoute: CONFIGURED_ROUTE,
         ...hereLoc(),
       },
     );
   });
 
   it("hides for non-owner", () => {
-    assert.deepEqual(deriveBridgeSurface(input({ isOwner: false })), HIDDEN);
+    assert.deepEqual(deriveBridgeSurface(input({ isOwner: false })), hiddenOn(84532));
   });
 
-  it("hides on non-star chain", () => {
-    assert.deepEqual(deriveBridgeSurface(input({ chainId: 31337 })), HIDDEN);
+  it("owner on non-star chain: visible with absent crossing route (not silent hide)", () => {
+    const surface = deriveBridgeSurface(input({ chainId: 31337 }));
+    assert.deepEqual(surface, {
+      visible: true,
+      mode: "action",
+      canBridge: false,
+      blockReason: null,
+      unanswerableSource: null,
+      crossingRoute: ABSENT_ROUTE,
+      location: null,
+      locationCopy: null,
+    });
+  });
+
+  it("Solana commercial owner: named no_crossing_route, never HIDDEN", () => {
+    const surface = deriveBridgeSurface(
+      input({ chainId: 2000040168, ponderCustodyChain: 2000040168 }),
+    );
+    assert.equal(surface.visible, true);
+    assert.equal(surface.canBridge, false);
+    assert.equal(surface.blockReason, null);
+    assert.deepEqual(surface.crossingRoute, ABSENT_ROUTE);
+    assert.equal(
+      surface.crossingRoute.status === "absent"
+        ? surface.crossingRoute.cause
+        : null,
+      "no_crossing_route",
+    );
+    // plant: silent hide via counterpart-null (pre-2c defect)
+    const plantedHide = {
+      visible: false,
+      mode: "hidden" as const,
+      canBridge: false,
+      blockReason: null,
+      unanswerableSource: null,
+      crossingRoute: ABSENT_ROUTE,
+      location: null,
+      locationCopy: null,
+    };
+    assert.notDeepEqual(surface, plantedHide);
+  });
+
+  it("route absence is never a BridgeBlockReason / leave-permission cause", () => {
+    const surface = deriveBridgeSurface(input({ chainId: 2000040168 }));
+    assert.equal(surface.blockReason, null);
+    assert.deepEqual(surface.crossingRoute, ABSENT_ROUTE);
+    const surfaceSrc = readFileSync(
+      join(process.cwd(), "lib/passport/bridge-surface.ts"),
+      "utf8",
+    );
+    const blockReasonDecl = surfaceSrc.match(
+      /export type BridgeBlockReason =([\s\S]*?);/,
+    );
+    assert.ok(blockReasonDecl);
+    assert.doesNotMatch(blockReasonDecl[1]!, /no_crossing_route/);
+    assert.doesNotMatch(surfaceSrc, /case "no_crossing_route"/);
+    // plant: folding route into leave-permission blockReason
+    const plantedFold = 'blockReason: "no_crossing_route" as BridgeBlockReason';
+    assert.match(plantedFold, /blockReason: "no_crossing_route"/);
+    assert.doesNotMatch(surfaceSrc, /blockReason:\s*"no_crossing_route"/);
   });
 
   it("fail-closes while may(LeaveChain) is unresolved", () => {
@@ -209,8 +281,12 @@ describe("deriveBridgeSurface", () => {
     );
     assert.equal(surface.canBridge, false);
     assert.equal(surface.blockReason, "product_owner_owed");
-    assert.equal(bridgeBlockReasonCopy(surface.blockReason!), "");
+    assert.match(
+      bridgeBlockReasonCopy(surface.blockReason!),
+      /does not read this on this network/,
+    );
     assert.notEqual(surface.blockReason, "unresolved");
+    assert.deepEqual(surface.crossingRoute, CONFIGURED_ROUTE);
   });
 
   it("refused liveConsignmentMode never invents consigned", () => {
@@ -330,6 +406,23 @@ describe("bridge panel consumes surface location — derives nothing", () => {
     const locationFirst = src.indexOf("surface.locationCopy != null");
     const blockReason = src.indexOf("surface.blockReason != null");
     assert.ok(locationFirst > 0 && blockReason > locationFirst);
+  });
+
+  it("absent crossing route renders owner sentence; no invented not-configured fallback", () => {
+    const src = readFileSync(
+      join(process.cwd(), "components/passport/passport-bridge-panel.tsx"),
+      "utf8",
+    );
+    assert.match(src, /surface\.crossingRoute\.status === "absent"/);
+    assert.match(src, /bridgeCrossingRouteCauseCopy/);
+    assert.doesNotMatch(
+      src,
+      /Bridge is not configured on this chain/,
+    );
+    assert.doesNotMatch(
+      src,
+      /This network has no bridge crossing route/,
+    );
   });
 });
 

@@ -8,6 +8,7 @@ import { useReadContract } from "wagmi";
 
 import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { InstrumentLink } from "@/components/ui/instrument-link";
 import { useBridge } from "@/hooks/use-bridge";
 import { useBridgeTransit } from "@/hooks/use-bridge-transit";
@@ -34,6 +35,7 @@ import { parsePassportTokenId } from "@/lib/passport/passport-token-id";
 import type { PassportStatus } from "@/lib/types/ponder";
 import {
   bridgeCounterpartChainId,
+  bridgeCrossingRouteCauseCopy,
   resolveBridgeRoute,
 } from "@/lib/web3/bridge";
 import {
@@ -192,16 +194,29 @@ export function PassportBridgePanel({
 
   if (!surface.visible) return null;
 
+  if (surface.crossingRoute.status === "absent") {
+    return (
+      <section className="space-y-3 rounded-md border border-border-default bg-bg-card p-4">
+        <h2 className="font-sans text-base font-medium text-text-primary">
+          Bridge
+        </h2>
+        <EmptyState
+          variant="infrastructure"
+          level="B"
+          title={bridgeCrossingRouteCauseCopy(surface.crossingRoute.cause)}
+        />
+      </section>
+    );
+  }
+
   const disabledReason =
     surface.locationCopy != null
       ? surface.locationCopy
       : surface.blockReason != null
-      ? bridgeBlockReasonCopy(
-          surface.blockReason,
-          surface.unanswerableSource,
-        )
-      : !hasBridgeActionContext || !configured || dstChainId == null
-        ? "Bridge is not configured on this chain."
+        ? bridgeBlockReasonCopy(
+            surface.blockReason,
+            surface.unanswerableSource,
+          )
         : null;
 
   const inTransitUi = transitActive && ui != null;
