@@ -1,12 +1,15 @@
 "use client";
 
-import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import {
+  connectedAddress,
+  requireEvmSession,
+  useActiveAccount,
+} from "@/hooks/use-active-account";
 
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import type { Address } from "viem";
 
 import { IdentityAvatar } from "@/components/identity/identity-avatar";
 import {
@@ -17,6 +20,7 @@ import {
   UserIcon,
   type IconComponent,
 } from "@/components/ui/icons";
+import { profileHrefForAccount } from "@/lib/profile/resolve-profile-subject";
 import { cn } from "@/lib/utils";
 
 const MessagingNavStatus = dynamic(
@@ -68,17 +72,17 @@ function NavTab({
 
 function ProfileNavTab({
   active,
-  isConnected,
+  profileHref,
   address,
 }: {
   active: boolean;
-  isConnected: boolean;
-  address: Address | undefined;
+  profileHref: string | null;
+  address: string | undefined;
 }) {
-  if (isConnected && address) {
+  if (profileHref != null && address) {
     return (
       <Link
-        href={`/profile/${encodeURIComponent(address)}`}
+        href={profileHref}
         className={cn(
           "flex min-h-11 w-full min-w-0 flex-col items-center justify-end gap-1 px-0.5 pb-2 pt-1",
           "font-sans text-[10px] leading-tight transition-colors duration-200",
@@ -118,8 +122,10 @@ export function MobileBottomNav({
   const path = usePathname();
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
-  const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
+  /** Badges stay EVM-session-bound (messaging / Nostr); Profile tab follows either VM. */
+  const badgesConnected = evm.ok;
+  const address = connectedAddress(account);
+  const profileHref = profileHrefForAccount(account);
 
   return (
     <nav
@@ -148,7 +154,7 @@ export function MobileBottomNav({
             icon={MessageAltIcon}
             active={path.startsWith("/messages")}
             badge={
-              isConnected && identityBadges ? (
+              badgesConnected && identityBadges ? (
                 <MessagingNavStatus className="-top-0.5 -right-0.5" />
               ) : undefined
             }
@@ -176,7 +182,7 @@ export function MobileBottomNav({
             icon={NotificationIcon}
             active={path.startsWith("/notifications")}
             badge={
-              isConnected && identityBadges ? (
+              badgesConnected && identityBadges ? (
                 <NotificationsUnreadBadge className="-top-0.5 -right-0.5" />
               ) : undefined
             }
@@ -184,7 +190,7 @@ export function MobileBottomNav({
 
           <ProfileNavTab
             active={path.startsWith("/profile")}
-            isConnected={isConnected}
+            profileHref={profileHref}
             address={address}
           />
         </div>

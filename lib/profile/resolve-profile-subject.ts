@@ -2,8 +2,10 @@
  * Sole “is this handle a profile subject on a commercial namespace?” owner.
  * Parses via {@link mintProtocolOwner} only — never viem getAddress / hex invent.
  * No VM-discriminant fork — EVM membership via {@link isCommercialEip155Id}.
+ * Session → profile href uses the same resolve path ({@link profileHrefForAccount}).
  */
 
+import type { ActiveAccount } from "@/lib/web3/active-account";
 import {
   commercialActive,
   isCommercialEip155Id,
@@ -116,4 +118,19 @@ export function profileGuestEvmChainId(
     if (isCommercialEip155Id(ns, registry)) return ns;
   }
   return null;
+}
+
+/**
+ * Profile entry href for the connected account — same subject resolve as the route.
+ * Disconnected / non-subject → null (Connect chrome / no menu item).
+ * Never gates on requireEvmSession: SVM sessions link to their base58 handle.
+ */
+export function profileHrefForAccount(
+  account: ActiveAccount,
+  registry: CommercialRegistry = COMMERCIAL_ACTIVE,
+): string | null {
+  if (account.status !== "connected") return null;
+  const subject = resolveProfileSubject(account.address, registry);
+  if (subject.status !== "found") return null;
+  return `/profile/${encodeURIComponent(subject.owner)}`;
 }

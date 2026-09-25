@@ -1,6 +1,7 @@
 /**
  * Profile subject honesty — commercial-namespace handle resolves to a shell;
  * unserved sections refuse with product_owner_owed; notFound only for non-subjects.
+ * Session profile entry uses profileHrefForAccount (not requireEvmSession).
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -15,8 +16,14 @@ import {
 } from "@/lib/profile/profile-section-support";
 import {
   profileGuestEvmChainId,
+  profileHrefForAccount,
   resolveProfileSubject,
 } from "@/lib/profile/resolve-profile-subject";
+import {
+  DISCONNECTED_ACCOUNT,
+  type ActiveAccount,
+} from "@/lib/web3/active-account";
+import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import { surfaceSupportCauseCopy } from "@/lib/web3/surface-support";
 import { COMMERCIAL_ACTIVE } from "@/lib/web3/commercial-active";
 import {
@@ -27,11 +34,59 @@ import {
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SOLANA_NS = 2_000_040_168;
 const PROFILE_ROUTE = "app/(identity)/profile/[handle]/page.tsx";
+const WALLET_LOGIN = "components/wallet-login-button.tsx";
+const MOBILE_NAV = "components/shell/mobile-bottom-nav.tsx";
 
 /** Valid base58 pubkey that is not a commercial stack identity field on live Solana. */
 const SAMPLE_SVM_OWNER = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 
 const EVM_EOA = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+
+const SVM_ACCOUNT: ActiveAccount = {
+  status: "connected",
+  vm: "svm",
+  address: SAMPLE_SVM_OWNER,
+};
+
+const EVM_ACCOUNT: ActiveAccount = {
+  status: "connected",
+  vm: "evm",
+  address: EVM_EOA,
+  namespace: mintKargainNamespace(84532),
+  chainId: 84532,
+};
+
+/** Old gate: profile href only when requireEvmSession succeeds. */
+const EVM_OK_PROFILE_HREF_PLANT =
+  "const profileHref = evm.ok ? `/profile/${evm.address}` : null;";
+
+/** Old mobile feed: Profile tab address only from EVM session. */
+const EVM_OK_MOBILE_ADDRESS_PLANT = [
+  "const evm = requireEvmSession(account);",
+  "const address = evm.ok ? evm.address : undefined;",
+  "const isConnected = evm.ok;",
+].join("\n");
+
+function entryGateViolationInSource(rel: string, source: string): string | false {
+  if (/evm\.ok\s*\?\s*[`'"]\/profile\//.test(source)) {
+    return `${rel}: profile href gated on evm.ok (use profileHrefForAccount)`;
+  }
+  if (
+    rel === MOBILE_NAV &&
+    /const\s+address\s*=\s*evm\.ok\s*\?\s*evm\.address/.test(source)
+  ) {
+    return `${rel}: Profile tab address from evm.ok (use connectedAddress + profileHrefForAccount)`;
+  }
+  if (
+    rel === MOBILE_NAV &&
+    /const\s+isConnected\s*=\s*evm\.ok\b/.test(source) &&
+    /ProfileNavTab/.test(source) &&
+    !/badgesConnected/.test(source)
+  ) {
+    return `${rel}: Profile tab isConnected = evm.ok (use profileHrefForAccount)`;
+  }
+  return false;
+}
 
 describe("profile subject resolution", () => {
   it("SVM base58 owner → found with Solana namespace; nonsense → absent", () => {
@@ -62,6 +117,51 @@ describe("profile subject resolution", () => {
 
     const svmPassport = COMMERCIAL_ACTIVE[SOLANA_NS]!.karPassport;
     assert.equal(resolveProfileSubject(svmPassport).status, "absent");
+  });
+});
+
+describe("profileHrefForAccount (session entry)", () => {
+  it("SVM session → base58 profile href (desktop and mobile share owner)", () => {
+    const href = profileHrefForAccount(SVM_ACCOUNT);
+    assert.equal(
+      href,
+      `/profile/${encodeURIComponent(SAMPLE_SVM_OWNER)}`,
+    );
+    assert.ok(href != null, "My profile / Profile tab must be present");
+  });
+
+  it("EVM session → today's checksum profile href", () => {
+    const href = profileHrefForAccount(EVM_ACCOUNT);
+    assert.equal(href, `/profile/${EVM_EOA}`);
+    const subject = resolveProfileSubject(EVM_EOA);
+    assert.equal(subject.status, "found");
+    if (subject.status !== "found") return;
+    assert.equal(href, `/profile/${encodeURIComponent(subject.owner)}`);
+  });
+
+  it("disconnected → null (Connect / no menu item)", () => {
+    assert.equal(profileHrefForAccount(DISCONNECTED_ACCOUNT), null);
+  });
+
+  it("constructed: old evm.ok profile href gate is red; live entry chrome green", () => {
+    assert.ok(
+      entryGateViolationInSource(WALLET_LOGIN, EVM_OK_PROFILE_HREF_PLANT),
+      "planted evm.ok profileHref must be detected",
+    );
+    assert.ok(
+      entryGateViolationInSource(MOBILE_NAV, EVM_OK_MOBILE_ADDRESS_PLANT),
+      "planted mobile evm.ok address feed must be detected",
+    );
+
+    for (const rel of [WALLET_LOGIN, MOBILE_NAV] as const) {
+      const src = fs.readFileSync(path.join(ROOT, rel), "utf8");
+      assert.equal(
+        entryGateViolationInSource(rel, src),
+        false,
+        `${rel} must not gate profile entry on evm.ok`,
+      );
+      assert.match(src, /profileHrefForAccount/);
+    }
   });
 });
 

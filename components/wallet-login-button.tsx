@@ -41,6 +41,7 @@ import { useClientMounted } from "@/hooks/use-client-mounted";
 import { useEnsProfile } from "@/hooks/use-ens-profile";
 import { endWalletSession } from "@/lib/auth/end-wallet-session";
 import { shellControlHover } from "@/lib/design/instrument-classes";
+import { profileHrefForAccount } from "@/lib/profile/resolve-profile-subject";
 import { commercialActive } from "@/lib/web3/commercial-active";
 import { explorerAddressUrl } from "@/lib/web3/network-explorer";
 import {
@@ -132,7 +133,7 @@ export function WalletLoginButton() {
     const explorerUrl =
       stack != null ? explorerAddressUrl(stack, normalized) : null;
 
-    const profileHref = evm.ok ? `/profile/${evm.address}` : null;
+    const profileHref = profileHrefForAccount(account);
 
     return (
       <>
