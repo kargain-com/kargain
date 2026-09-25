@@ -11,6 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { commerceFactCauseCopy } from "@/lib/passport/commerce-fact";
 import {
   COMMERCE_MODE_ABSENT_CAUSES,
   commerceModeAbsentCopy,
@@ -21,6 +22,7 @@ import {
 } from "@/lib/commerce/mode";
 import {
   COMMERCIAL_ACTIVE,
+  unresolvedNamespaceCopy,
   type CommercialRegistry,
   type SvmCommercialActiveStack,
 } from "@/lib/web3/commercial-active";
@@ -222,5 +224,86 @@ describe("commerce mode resolution policy", () => {
     assert.match(src, /hasCommerceMode\s*\(\s*["']ascending["']/);
     assert.doesNotMatch(src, /\bcommerceModeAddress\s*\(/);
     assert.equal(hasCommerceMode("ascending", SOLANA_NS), true);
+  });
+});
+
+/** Exact chrome sentence owned solely by unresolvedNamespaceCopy. */
+const UNRESOLVED_NAMESPACE_SENTENCE = unresolvedNamespaceCopy();
+
+/**
+ * Product file that embeds the unresolved-namespace sentence outside the owner.
+ * Exported so the plant can call the same helper as the live scan.
+ */
+export function findUnresolvedNamespaceSentenceLiteralHits(
+  _rel: string,
+  source: string,
+): string | false {
+  if (source.includes(JSON.stringify(UNRESOLVED_NAMESPACE_SENTENCE))) {
+    return `re-inlined unresolved_namespace sentence (sole owner: lib/web3/commercial-active.ts unresolvedNamespaceCopy): ${UNRESOLVED_NAMESPACE_SENTENCE}`;
+  }
+  return false;
+}
+
+describe("unresolvedNamespaceCopy sole owner", () => {
+  it("commerce-fact and commerce-mode both delegate to unresolvedNamespaceCopy", () => {
+    assert.equal(
+      unresolvedNamespaceCopy(),
+      "This network is not configured in the app.",
+    );
+    assert.equal(
+      commerceModeAbsentCopy("unresolved_namespace"),
+      unresolvedNamespaceCopy(),
+    );
+    assert.equal(
+      commerceFactCauseCopy("unresolved_namespace"),
+      unresolvedNamespaceCopy(),
+    );
+  });
+
+  it("product tree never re-inlines unresolved-namespace sentence (planted copy red then green)", () => {
+    const owners = ["lib/web3/commercial-active.ts"];
+    const planted = `export const bad = ${JSON.stringify(UNRESOLVED_NAMESPACE_SENTENCE)};\n`;
+    assert.equal(
+      findUnresolvedNamespaceSentenceLiteralHits(
+        "lib/passport/commerce-fact.ts",
+        planted,
+      ) !== false,
+      true,
+      "planted re-inline must be detected",
+    );
+    assert.equal(
+      findUnresolvedNamespaceSentenceLiteralHits(
+        "lib/commerce/mode.ts",
+        planted,
+      ) !== false,
+      true,
+      "planted re-inline in mode must be detected",
+    );
+    assert.throws(
+      () =>
+        assertCleanProductScan(
+          {
+            filesRead: 1,
+            violations: [
+              {
+                path: "lib/passport/commerce-fact.ts",
+                reason: findUnresolvedNamespaceSentenceLiteralHits(
+                  "lib/passport/commerce-fact.ts",
+                  planted,
+                ) as string,
+              },
+            ],
+            unreadable: [],
+          },
+          { owners, allowEmptyTargets: true },
+        ),
+      /re-inlined unresolved_namespace sentence/,
+    );
+
+    const scan = scanProductSources(
+      findUnresolvedNamespaceSentenceLiteralHits,
+      { owners },
+    );
+    assertCleanProductScan(scan, { owners });
   });
 });

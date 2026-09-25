@@ -340,6 +340,14 @@ export function commercialActive(
 }
 
 /**
+ * Sole chrome sentence when a namespace is not a commercial registry key.
+ * Commerce-fact and commerce-mode copy switches delegate here — never re-inline.
+ */
+export function unresolvedNamespaceCopy(): string {
+  return "This network is not configured in the app.";
+}
+
+/**
  * True when `id` is a committed **EVM** commercial EIP-155 chain id.
  * Never true for reserved-band SVM namespaces — use {@link isCommercialNamespace}.
  * Live map (no registry arg) narrows to {@link CommercialChainId}; injected

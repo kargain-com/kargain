@@ -4,6 +4,7 @@
  * No second cause list. Refused facts always carry a non-empty sentence (§4.21).
  */
 
+import { unresolvedNamespaceCopy } from "@/lib/web3/commercial-active";
 import type { KeyedReadCause } from "@/lib/web3/keyed-multicall";
 import {
   surfaceSupportCauseCopy,
@@ -48,7 +49,8 @@ export function commerceFactRefused<T>(
 /**
  * Refusal sentence for a refused commerce fact. Never empty. Waiting
  * (`pending`) is not a cause and must not call this. Support causes delegate
- * to {@link surfaceSupportCauseCopy}.
+ * to {@link surfaceSupportCauseCopy}; unresolved_namespace to
+ * {@link unresolvedNamespaceCopy}.
  */
 export function commerceFactCauseCopy(cause: CommerceFactCause): string {
   switch (cause) {
@@ -59,7 +61,7 @@ export function commerceFactCauseCopy(cause: CommerceFactCause): string {
     case "malformed_response":
       return "The network's answer could not be read.";
     case "unresolved_namespace":
-      return "This network is not configured in the app.";
+      return unresolvedNamespaceCopy();
     case "evm_call_failed":
       return "The chain did not return this value.";
     case "not_in_program":

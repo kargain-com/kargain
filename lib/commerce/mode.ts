@@ -14,6 +14,7 @@ import {
 import { isEvmHexAddress } from "@/lib/passport/passport-owner";
 import {
   commercialActive,
+  unresolvedNamespaceCopy,
   type CommercialRegistry,
 } from "@/lib/web3/commercial-active";
 import {
@@ -111,7 +112,7 @@ export function resolveCommerceMode(
 export function commerceModeAbsentCopy(cause: CommerceModeAbsentCause): string {
   switch (cause) {
     case "unresolved_namespace":
-      return "This network is not configured in the app.";
+      return unresolvedNamespaceCopy();
     case "mode_not_on_namespace":
       return "This selling mode is not available on this network.";
     case "mode_address_unusable":

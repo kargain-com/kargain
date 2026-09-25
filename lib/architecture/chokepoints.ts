@@ -184,7 +184,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "commerce-mode",
     owner: "lib/commerce/mode.ts",
-    rule: "Sole namespace-keyed commerce mode presence: resolveCommerceMode → configured(ProtocolOwner)|absent(unresolved_namespace|mode_not_on_namespace|mode_address_unusable); unresolved_namespace carries no namespace field (never NaN/-1/empty invent); commerceModeAbsentCopy exhaustive non-empty; hasCommerceMode/Addresses derived from resolve; commerceModeAddress EVM-only hex and banned from app|components|hooks; surfaces must not treat hex undefined as mode absence",
+    rule: "Sole namespace-keyed commerce mode presence: resolveCommerceMode → configured(ProtocolOwner)|absent(unresolved_namespace|mode_not_on_namespace|mode_address_unusable); unresolved_namespace carries no namespace field (never NaN/-1/empty invent); commerceModeAbsentCopy exhaustive non-empty; unresolved_namespace sentence delegates to commercial-active unresolvedNamespaceCopy (no re-inline); hasCommerceMode/Addresses derived from resolve; commerceModeAddress EVM-only hex and banned from app|components|hooks; surfaces must not treat hex undefined as mode absence",
     guardTests: ["commerce-mode-resolution-policy.test.ts"],
   },
   {
@@ -357,7 +357,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "commercial-stack-registry",
     owner: "lib/web3/commercial-active.ts · lib/web3/kargain-namespace.ts",
-    rule: "Sole commercial-network set; isCommercialEip155Id ≠ isCommercialNamespace; injectable vm-filtered enumerators; eip155Of",
+    rule: "Sole commercial-network set; isCommercialEip155Id ≠ isCommercialNamespace; injectable vm-filtered enumerators; eip155Of; unresolved-namespace chrome sentence sole in unresolvedNamespaceCopy (no re-inline in product)",
     guardTests: [
       "network-class-policy.test.ts",
       "commercial-enumerators-policy.test.ts",
