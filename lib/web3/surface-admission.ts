@@ -118,7 +118,6 @@ export function admitSurface(
  * Reads the packed admission — components must not compare `.family`.
  */
 export function admitSurfaceEvmAddress(
-  _account: ActiveAccount,
   admission: SurfaceAdmission,
 ): `0x${string}` | undefined {
   if (admission.status === "available" && admission.family === "evm") {

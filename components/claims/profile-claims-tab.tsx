@@ -9,8 +9,8 @@ import { claimablePayoutsAbi } from "@/lib/claims/claimable-payouts-abi";
 import { formatClaimAmount } from "@/lib/claims/format-claim-amount";
 import { explainClaimFromCredits } from "@/lib/claims/explain-credits";
 import type { PendingClaimView } from "@/lib/claims/map-pending-claim";
+import { pendingClaimsRefusalCopy } from "@/lib/claims/pending-claims-fact";
 import { monoNumeric } from "@/lib/design/instrument-classes";
-import { surfaceSupportCauseCopy } from "@/lib/web3/surface-support";
 import { shortChainName } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 import { CreditCardIcon } from "@/components/ui/icons";
@@ -105,33 +105,16 @@ export function ProfileClaimsTab() {
   }
 
   if (fact.status === "refused") {
-    const title =
-      fact.cause === "product_owner_owed" ||
-      fact.cause === "not_in_program" ||
-      fact.cause === "authority_only"
-        ? surfaceSupportCauseCopy(fact.cause)
-        : fact.cause === "disconnected"
-          ? "Connect a wallet to see claims."
-          : "Claims are not available for this session.";
+    const copy = pendingClaimsRefusalCopy(fact.cause);
     return (
       <EmptyState
-        variant="content"
+        variant={
+          fact.cause === "PONDER_UNAVAILABLE" ? "infrastructure" : "content"
+        }
         level="B"
         icon={CreditCardIcon}
-        title={title}
-        description=""
-      />
-    );
-  }
-
-  if (fact.ponderError) {
-    return (
-      <EmptyState
-        variant="infrastructure"
-        level="B"
-        icon={CreditCardIcon}
-        title="Claims unavailable"
-        description="The indexer could not be reached. Try again shortly."
+        title={copy.title}
+        description={copy.description}
       />
     );
   }

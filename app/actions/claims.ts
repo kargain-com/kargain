@@ -2,6 +2,7 @@
 
 import { getAddress } from "viem";
 
+import type { PonderErrorCode } from "@/lib/types/ponder";
 import { buildPonderUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 export type PendingClaimCreditApiRow = {
@@ -25,20 +26,15 @@ export type PendingClaimApiRow = {
   credits: PendingClaimCreditApiRow[];
 };
 
-export type PendingClaimsResponse = {
-  claims: PendingClaimApiRow[];
-  total: number;
-  page: number;
-  limit: number;
-  ponderError?: string;
-};
-
-const EMPTY: PendingClaimsResponse = {
-  claims: [],
-  total: 0,
-  page: 1,
-  limit: 50,
-};
+export type PendingClaimsResult =
+  | {
+      ok: true;
+      claims: PendingClaimApiRow[];
+      total: number;
+      page: number;
+      limit: number;
+    }
+  | { ok: false; error: PonderErrorCode | "INVALID_ADDRESS" };
 
 function parseAccount(address: string): `0x${string}` | null {
   try {
@@ -53,9 +49,9 @@ export async function getPendingClaims(
   page = 1,
   limit = 50,
   chainId?: number,
-): Promise<PendingClaimsResponse> {
+): Promise<PendingClaimsResult> {
   const account = parseAccount(address);
-  if (!account) return { ...EMPTY, page, limit };
+  if (!account) return { ok: false, error: "INVALID_ADDRESS" };
 
   try {
     const url = buildPonderUrl(
@@ -70,10 +66,22 @@ export async function getPendingClaims(
     );
     const res = await ponderFetch("pending-claims", url.toString());
     if (!res.ok) {
-      return { ...EMPTY, page, limit, ponderError: "PONDER_UNAVAILABLE" };
+      return { ok: false, error: "PONDER_UNAVAILABLE" };
     }
-    return res.body as PendingClaimsResponse;
+    const body = res.body as {
+      claims: PendingClaimApiRow[];
+      total: number;
+      page?: number;
+      limit?: number;
+    };
+    return {
+      ok: true,
+      claims: body.claims,
+      total: body.total,
+      page: body.page ?? page,
+      limit: body.limit ?? limit,
+    };
   } catch {
-    return { ...EMPTY, page, limit, ponderError: "PONDER_UNAVAILABLE" };
+    return { ok: false, error: "PONDER_UNAVAILABLE" };
   }
 }

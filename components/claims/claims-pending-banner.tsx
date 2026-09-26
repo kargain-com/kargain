@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 export function ClaimsPendingBanner({ className }: { className?: string }) {
   const { account } = useActiveAccount();
   const admission = admitSessionSurface(account, "pending_claims");
-  const address = admitSurfaceEvmAddress(account, admission);
+  const address = admitSurfaceEvmAddress(admission);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const fact = usePendingClaims();

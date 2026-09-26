@@ -306,6 +306,60 @@ describe("activeVerifierFact reachability", () => {
     assert.equal(unbound.contracts.length, 0);
   });
 
+  it("unregistered chainId → namespaceAbsent → unresolved (not inactive)", async () => {
+    const plan = await planActiveVerifierRead({
+      account: { status: "disconnected" },
+      chainId: 999_999_999,
+    });
+    assert.equal(plan.ok, true);
+    if (!plan.ok) return;
+    assert.equal(plan.sessionBound, false);
+    assert.equal(plan.namespaceAbsent, true);
+    assert.equal(plan.contracts.length, 0);
+
+    const live = resolveActiveVerifierFact({
+      entry: undefined,
+      sessionBound: false,
+      vm: null,
+      namespaceAbsent: true,
+    });
+    assert.equal(live.kind, "unresolved");
+
+    // Plant: coerce namespaceAbsent → inactive (pre-amend sentinel behaviour class).
+    function plantedNamespaceAbsentAsInactive(namespaceAbsent: boolean): ActiveVerifierFact {
+      if (namespaceAbsent) return { kind: "inactive" };
+      return resolveActiveVerifierFact({
+        entry: undefined,
+        sessionBound: false,
+        vm: null,
+        namespaceAbsent: true,
+      });
+    }
+    const planted = plantedNamespaceAbsentAsInactive(true);
+    assert.equal(planted.kind, "inactive");
+    assert.throws(() => {
+      assert.equal(planted.kind, "unresolved");
+    });
+  });
+
+  it("undefined chainId → namespaceAbsent → unresolved", async () => {
+    const plan = await planActiveVerifierRead({
+      account: { status: "disconnected" },
+    });
+    assert.equal(plan.ok, true);
+    if (!plan.ok || plan.sessionBound) return;
+    assert.equal(plan.namespaceAbsent, true);
+    assert.equal(
+      resolveActiveVerifierFact({
+        entry: undefined,
+        sessionBound: false,
+        vm: null,
+        namespaceAbsent: true,
+      }).kind,
+      "unresolved",
+    );
+  });
+
   it("SVM session plans stake keyed-read; EVM session on SVM target is unbound", async () => {
     const namespaces = commercialSvmNamespaceIds();
     assert.ok(namespaces.length > 0);

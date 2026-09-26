@@ -69,7 +69,7 @@ export function KarProJoinForm({
 }) {
   const { account, signingBinding, svmWallet } = useActiveAccount();
   const admission = admitSurface(account, "kar_pro_join", chainId);
-  const address = admitSurfaceEvmAddress(account, admission);
+  const address = admitSurfaceEvmAddress(admission);
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const { writeContractAsync } = useEvmWriteContract();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);

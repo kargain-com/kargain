@@ -33,7 +33,7 @@ export function KarProPageContent() {
   const ns = commercialNamespaceOf(account);
   const chainId = ns.ok ? Number(ns.namespace) : undefined;
   const joinAdmission = admitSessionSurface(account, "kar_pro_join");
-  const address = admitSurfaceEvmAddress(account, joinAdmission);
+  const address = admitSurfaceEvmAddress(joinAdmission);
   const [postTxActive, setPostTxActive] = useState<boolean | null>(null);
 
   const { fact, isActiveVerifier: onChainActive } = useActiveVerifierFact({

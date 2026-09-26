@@ -39,6 +39,12 @@ import {
   type SurfaceCapability,
 } from "@/lib/web3/surface-support";
 import {
+  PENDING_CLAIMS_REFUSED_CAUSES,
+  pendingClaimsFactFromQueryResult,
+  pendingClaimsFactFromQueryResultCa3164e,
+  pendingClaimsRefusalCopy,
+} from "@/lib/claims/pending-claims-fact";
+import {
   assertCleanProductScan,
   scanProductSources,
   type ProductSourceScanResult,
@@ -362,6 +368,10 @@ describe("sentence sole owners (c)", () => {
   const CLASS_C_SENTENCES = SURFACE_CLASS_C_CAPABILITIES.map((c) =>
     surfaceClassCCauseCopy(c),
   );
+  const CLAIMS_REFUSAL_SENTENCES = PENDING_CLAIMS_REFUSED_CAUSES.flatMap((c) => {
+    const copy = pendingClaimsRefusalCopy(c);
+    return [copy.title, copy.description].filter((s) => s.length > 0);
+  });
 
   function sentenceLiteralViolation(
     rel: string,
@@ -369,7 +379,8 @@ describe("sentence sole owners (c)", () => {
   ): string | false {
     if (
       rel === "lib/web3/surface-support.ts" ||
-      rel === "lib/messaging/snapshot-ui.ts"
+      rel === "lib/messaging/snapshot-ui.ts" ||
+      rel === "lib/claims/pending-claims-fact.ts"
     ) {
       return false;
     }
@@ -381,6 +392,13 @@ describe("sentence sole owners (c)", () => {
     for (const sentence of CLASS_C_SENTENCES) {
       if (source.includes(JSON.stringify(sentence))) {
         return `re-inlined class-C sentence: ${sentence}`;
+      }
+    }
+    if (rel.startsWith("components/claims/")) {
+      for (const sentence of CLAIMS_REFUSAL_SENTENCES) {
+        if (source.includes(JSON.stringify(sentence))) {
+          return `re-inlined pending-claims refusal sentence: ${sentence}`;
+        }
       }
     }
     return false;
@@ -400,6 +418,17 @@ describe("sentence sole owners (c)", () => {
     assertCleanProductScan(scanProductSources(sentenceLiteralViolation));
   });
 
+  it("(c) plant: claims refusal literal in components/claims is red then green", () => {
+    const sentence = pendingClaimsRefusalCopy("disconnected").title;
+    const planted = `const title = ${JSON.stringify(sentence)};\n`;
+    const rel = "components/claims/profile-claims-tab.tsx";
+    assertPlantedViolation(
+      sentenceLiteralViolation(rel, planted),
+      `re-inlined pending-claims refusal sentence: ${sentence}`,
+    );
+    assertCleanProductScan(scanProductSources(sentenceLiteralViolation));
+  });
+
   it("class-C sentences name the family and never on this network", () => {
     for (const cap of SURFACE_CLASS_C_CAPABILITIES) {
       const sentence = surfaceClassCCauseCopy(cap);
@@ -413,6 +442,39 @@ describe("sentence sole owners (c)", () => {
         `${cap}: ${sentence}`,
       );
     }
+  });
+
+  it("PONDER_UNAVAILABLE yields refused, never known (ca3164e plant red)", () => {
+    const live = pendingClaimsFactFromQueryResult({
+      isError: false,
+      isPending: false,
+      data: { ok: false, error: "PONDER_UNAVAILABLE" },
+    });
+    assert.equal(live.status, "refused");
+    if (live.status === "refused") {
+      assert.equal(live.cause, "PONDER_UNAVAILABLE");
+    }
+
+    const planted = pendingClaimsFactFromQueryResultCa3164e({
+      isError: false,
+      isPending: false,
+      data: {
+        claims: [],
+        total: 0,
+        ponderError: "PONDER_UNAVAILABLE",
+      },
+    });
+    assert.equal(
+      planted.status,
+      "known",
+      "ca3164e defect plant must still report known",
+    );
+    assertPlantedViolation(
+      planted.status === "known"
+        ? "ca3164e mapping: PONDER_UNAVAILABLE must not yield known"
+        : false,
+      "ca3164e mapping: PONDER_UNAVAILABLE must not yield known",
+    );
   });
 });
 

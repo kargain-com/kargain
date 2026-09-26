@@ -5,9 +5,15 @@ import { useActiveAccount } from "@/hooks/use-active-account";
 import { useQuery } from "@tanstack/react-query";
 
 import { getPendingClaims } from "@/app/actions/claims";
-import type { PendingClaimsFact } from "@/lib/claims/pending-claims-fact";
+import {
+  pendingClaimsFactFromQueryResult,
+  type PendingClaimsFact,
+} from "@/lib/claims/pending-claims-fact";
 import { mapPendingClaimsResponse } from "@/lib/claims/map-pending-claim";
-import { admitSessionSurface, admitSurfaceEvmAddress } from "@/lib/web3/surface-admission";
+import {
+  admitSessionSurface,
+  admitSurfaceEvmAddress,
+} from "@/lib/web3/surface-admission";
 
 export function pendingClaimsQueryKey(address: string | undefined) {
   return ["pending-claims", address?.toLowerCase()] as const;
@@ -19,16 +25,19 @@ export function usePendingClaims(): PendingClaimsFact & {
 } {
   const { account } = useActiveAccount();
   const admission = admitSessionSurface(account, "pending_claims");
-  const address = admitSurfaceEvmAddress(account, admission);
+  const address = admitSurfaceEvmAddress(admission);
 
   const query = useQuery({
     queryKey: pendingClaimsQueryKey(address),
     queryFn: async () => {
       const res = await getPendingClaims(address!, 1, 100);
+      if (!res.ok) {
+        return { ok: false as const, error: res.error };
+      }
       return {
+        ok: true as const,
         claims: mapPendingClaimsResponse(res.claims),
         total: res.total,
-        ponderError: res.ponderError ?? null,
       };
     },
     enabled: address != null,
@@ -66,25 +75,17 @@ export function usePendingClaims(): PendingClaimsFact & {
     case "family_required":
     case "wrong_family":
       return { status: "refused", cause: "wrong_vm", isLoading: false, refetch };
-    case "available":
-      if (query.isError) {
-        return {
-          status: "refused",
-          cause: "evm_call_failed",
-          isLoading: false,
-          refetch,
-        };
-      }
-      if (query.isPending || query.data == null) {
-        return { status: "pending", isLoading: true, refetch };
-      }
+    case "available": {
+      const fact = pendingClaimsFactFromQueryResult({
+        isError: query.isError,
+        isPending: query.isPending,
+        data: query.data,
+      });
       return {
-        status: "known",
-        claims: query.data.claims,
-        total: query.data.total,
-        ponderError: query.data.ponderError,
-        isLoading: false,
+        ...fact,
+        isLoading: fact.status === "pending",
         refetch,
       };
+    }
   }
 }
