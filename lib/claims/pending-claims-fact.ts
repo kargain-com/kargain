@@ -5,10 +5,7 @@
  */
 
 import type { PendingClaimView } from "@/lib/claims/map-pending-claim";
-import {
-  type SurfaceAdmissionRefusal,
-  surfaceAdmissionRefusalCopy,
-} from "@/lib/web3/surface-admission";
+import type { SurfaceAdmissionRefusal } from "@/lib/web3/surface-admission";
 
 /** Indexer / address read causes — never remapped admission statuses. */
 export type PendingClaimsReadCause =
@@ -21,6 +18,17 @@ export const PENDING_CLAIMS_READ_CAUSES = [
   "PONDER_MALFORMED_RESPONSE",
   "INVALID_ADDRESS",
 ] as const satisfies ReadonlyArray<PendingClaimsReadCause>;
+
+/** Const array covers every PendingClaimsReadCause (cannot drift). */
+type _PendingClaimsReadCausesExhaustive = Exclude<
+  PendingClaimsReadCause,
+  (typeof PENDING_CLAIMS_READ_CAUSES)[number]
+> extends never
+  ? true
+  : never;
+const _pendingClaimsReadCausesExhaustive: _PendingClaimsReadCausesExhaustive =
+  true;
+void _pendingClaimsReadCausesExhaustive;
 
 export type PendingClaimsFact =
   | {
@@ -38,33 +46,39 @@ export type PendingClaimsFact =
       readonly cause: PendingClaimsReadCause;
     };
 
-export type PendingClaimsRefusalCopy = {
+export type PendingClaimsRefusalPresentation = {
   readonly title: string;
   readonly description: string;
+  readonly variant: "infrastructure" | "content";
 };
 
+const CLAIMS_DISCONNECTED_TITLE = "Connect a wallet to see claims.";
+
 /**
- * Read-cause sentences only. Admission refusals use
- * {@link surfaceAdmissionRefusalCopy}.
+ * Read-cause sentences + EmptyState variant. Classification lives here — chrome
+ * never enumerates causes.
  */
 export function pendingClaimsRefusalCopy(
   cause: PendingClaimsReadCause,
-): PendingClaimsRefusalCopy {
+): PendingClaimsRefusalPresentation {
   switch (cause) {
     case "PONDER_UNAVAILABLE":
       return {
         title: "Claims unavailable",
         description: "The indexer could not be reached. Try again shortly.",
+        variant: "infrastructure",
       };
     case "PONDER_MALFORMED_RESPONSE":
       return {
         title: "Claims unavailable",
         description: "The indexer returned an unreadable response.",
+        variant: "infrastructure",
       };
     case "INVALID_ADDRESS":
       return {
         title: "Claims need a valid Ethereum address.",
         description: "",
+        variant: "content",
       };
     default: {
       const _exhaustive: never = cause;
@@ -73,16 +87,40 @@ export function pendingClaimsRefusalCopy(
   }
 }
 
-/** Chrome copy for any refused pending-claims fact. */
-export function pendingClaimsFactRefusalCopy(
+export type PendingClaimsRefusedPresentation =
+  | {
+      readonly mode: "admission";
+      readonly refusal: SurfaceAdmissionRefusal;
+      readonly disconnectedTitle: string;
+    }
+  | {
+      readonly mode: "read";
+      readonly title: string;
+      readonly description: string;
+      readonly variant: "infrastructure" | "content";
+    };
+
+/**
+ * Sole refused chrome for pending-claims — admission vs read. Screens switch
+ * only on `mode` from this owner.
+ */
+export function pendingClaimsRefusedPresentation(
   fact: Extract<PendingClaimsFact, { status: "refused" }>,
-): PendingClaimsRefusalCopy {
+): PendingClaimsRefusedPresentation {
   if ("refusal" in fact) {
-    return surfaceAdmissionRefusalCopy(fact.refusal, {
-      disconnectedTitle: "Connect a wallet to see claims.",
-    });
+    return {
+      mode: "admission",
+      refusal: fact.refusal,
+      disconnectedTitle: CLAIMS_DISCONNECTED_TITLE,
+    };
   }
-  return pendingClaimsRefusalCopy(fact.cause);
+  const copy = pendingClaimsRefusalCopy(fact.cause);
+  return {
+    mode: "read",
+    title: copy.title,
+    description: copy.description,
+    variant: copy.variant,
+  };
 }
 
 /**

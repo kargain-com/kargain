@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { SurfaceAdmissionRefusalView } from "@/components/shell/surface-admission-refusal";
 import { useClaimAssetMeta } from "@/hooks/use-claim-asset-meta";
 import { usePendingClaims } from "@/hooks/use-pending-claims";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
@@ -9,7 +10,7 @@ import { claimablePayoutsAbi } from "@/lib/claims/claimable-payouts-abi";
 import { formatClaimAmount } from "@/lib/claims/format-claim-amount";
 import { explainClaimFromCredits } from "@/lib/claims/explain-credits";
 import type { PendingClaimView } from "@/lib/claims/map-pending-claim";
-import { pendingClaimsFactRefusalCopy } from "@/lib/claims/pending-claims-fact";
+import { pendingClaimsRefusedPresentation } from "@/lib/claims/pending-claims-fact";
 import { monoNumeric } from "@/lib/design/instrument-classes";
 import { shortChainName } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
@@ -105,18 +106,22 @@ export function ProfileClaimsTab() {
   }
 
   if (fact.status === "refused") {
-    const copy = pendingClaimsFactRefusalCopy(fact);
-    const isInfrastructure =
-      "cause" in fact &&
-      (fact.cause === "PONDER_UNAVAILABLE" ||
-        fact.cause === "PONDER_MALFORMED_RESPONSE");
+    const chrome = pendingClaimsRefusedPresentation(fact);
+    if (chrome.mode === "admission") {
+      return (
+        <SurfaceAdmissionRefusalView
+          refusal={chrome.refusal}
+          disconnectedTitle={chrome.disconnectedTitle}
+        />
+      );
+    }
     return (
       <EmptyState
-        variant={isInfrastructure ? "infrastructure" : "content"}
+        variant={chrome.variant}
         level="B"
         icon={CreditCardIcon}
-        title={copy.title}
-        description={copy.description}
+        title={chrome.title}
+        description={chrome.description}
       />
     );
   }

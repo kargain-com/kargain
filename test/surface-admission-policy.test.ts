@@ -3,7 +3,8 @@
  * (S8-D4 2e + five-defect amend).
  *
  * Guards (RED plant → green):
- * (a) refusal status compare outside admission + refusal component
+ * (a) refusal status compare outside admission + refusal component;
+ *     claims read-cause compares outside pending-claims-fact
  * (b) second unresolved_namespace / wrong_vm sentence
  * (c) ?? "evm" / ?? "svm" supplying family
  * (d) lib/** export imported only by tests (ca3164e class)
@@ -89,6 +90,17 @@ const REFUSAL_STATUS_COMPARE_ALLOWLIST = [
 const REFUSAL_STATUS_COMPARE_RE =
   /\.status\s*===\s*"(support_refused|family_required|wrong_family|unresolved_namespace|disconnected)"/;
 
+/**
+ * Claims read-cause compares — sole owner is pending-claims-fact (lib).
+ * Chrome must not branch on PONDER_* / INVALID_ADDRESS.
+ */
+const CLAIMS_READ_CAUSE_COMPARE_ALLOWLIST = [
+  "lib/claims/pending-claims-fact.ts",
+] as const;
+
+const CLAIMS_READ_CAUSE_COMPARE_RE =
+  /\.cause\s*===\s*"(PONDER_UNAVAILABLE|PONDER_MALFORMED_RESPONSE|INVALID_ADDRESS)"/;
+
 /** Owners that may emit unresolved / wrong_vm sentences. */
 const UNRESOLVED_WRONG_VM_SENTENCE_OWNERS = [
   "lib/web3/commercial-active.ts",
@@ -121,6 +133,24 @@ function refusalStatusCompareViolation(
   }
   if (!REFUSAL_STATUS_COMPARE_RE.test(source)) return false;
   return `refusal status compare outside admission + refusal component: ${rel}`;
+}
+
+function claimsReadCauseCompareViolation(
+  rel: string,
+  source: string,
+): string | false {
+  if (
+    !rel.startsWith("app/") &&
+    !rel.startsWith("components/") &&
+    !rel.startsWith("hooks/")
+  ) {
+    return false;
+  }
+  if ((CLAIMS_READ_CAUSE_COMPARE_ALLOWLIST as readonly string[]).includes(rel)) {
+    return false;
+  }
+  if (!CLAIMS_READ_CAUSE_COMPARE_RE.test(source)) return false;
+  return `claims read-cause compare outside pending-claims-fact: ${rel}`;
 }
 
 function unresolvedWrongVmSentenceViolation(
@@ -384,6 +414,23 @@ describe("refusal status compare ban (a)", () => {
       `refusal status compare outside admission + refusal component: ${rel}`,
     );
     assertCleanProductScan(scanProductSources(refusalStatusCompareViolation));
+  });
+
+  it("app|components|hooks never compare claims read causes outside owner", () => {
+    const scan = scanProductSources(claimsReadCauseCompareViolation);
+    assertCleanProductScan(scan);
+    assert.ok(scan.filesRead > 0);
+  });
+
+  it("(a) plant: cause === PONDER_UNAVAILABLE in claims tab is red then green", () => {
+    const planted =
+      'const isInfrastructure =\n  "cause" in fact &&\n  (fact.cause === "PONDER_UNAVAILABLE" ||\n    fact.cause === "PONDER_MALFORMED_RESPONSE");\n';
+    const rel = "components/claims/profile-claims-tab.tsx";
+    assertPlantedViolation(
+      claimsReadCauseCompareViolation(rel, planted),
+      `claims read-cause compare outside pending-claims-fact: ${rel}`,
+    );
+    assertCleanProductScan(scanProductSources(claimsReadCauseCompareViolation));
   });
 });
 
@@ -649,12 +696,14 @@ describe("census rows pending_claims + kar_pro_min_stake", () => {
 /** Exported for report — filesRead derivation. */
 export function reportAdmissionGuardScans(): {
   a: ProductSourceScanResult;
+  aClaimsRead: ProductSourceScanResult;
   b: ProductSourceScanResult;
   c: ProductSourceScanResult;
   disconnected: ProductSourceScanResult;
 } {
   return {
     a: scanProductSources(refusalStatusCompareViolation),
+    aClaimsRead: scanProductSources(claimsReadCauseCompareViolation),
     b: scanProductSources(unresolvedWrongVmSentenceViolation),
     c: scanProductSources(familyInventViolation),
     disconnected: scanProductSources(disconnectedSentenceViolation),

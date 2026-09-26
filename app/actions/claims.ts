@@ -3,6 +3,7 @@
 import { getAddress } from "viem";
 import { z } from "zod";
 
+import type { PendingClaimsReadCause } from "@/lib/claims/pending-claims-fact";
 import { buildPonderUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 export type PendingClaimCreditApiRow = {
@@ -34,10 +35,7 @@ export type PendingClaimsResult =
     }
   | {
       ok: false;
-      error:
-        | "PONDER_UNAVAILABLE"
-        | "PONDER_MALFORMED_RESPONSE"
-        | "INVALID_ADDRESS";
+      error: PendingClaimsReadCause;
     };
 
 const pendingClaimCreditSchema = z.object({
