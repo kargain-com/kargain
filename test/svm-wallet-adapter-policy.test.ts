@@ -14,6 +14,8 @@ import {
 const SVM_OWNERS = [
   "lib/web3/svm-account-adapter.ts",
   "lib/web3/svm-account-session.tsx",
+  "lib/web3/svm-session-connect.ts",
+  "lib/web3/svm-session-preference.ts",
   "lib/web3/svm-wallet-discovery.ts",
   "lib/web3/active-account.ts",
   "lib/web3/active-account-provider.tsx",

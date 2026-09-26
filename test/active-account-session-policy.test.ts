@@ -438,3 +438,77 @@ export function Bad(setSession: (u: (p: unknown) => null) => void) {
     );
   });
 });
+
+describe("SVM session restore (silent preference)", () => {
+  const PREFERENCE = "lib/web3/svm-session-preference.ts";
+  const CONNECT_PICK = "lib/web3/svm-session-connect.ts";
+
+  it("session owns silent restore + preference; interactive connect is non-silent", () => {
+    const session = fs.readFileSync(path.join(ROOT, SESSION), "utf8");
+    assert.match(session, /readSvmLastWalletName/);
+    assert.match(session, /writeSvmLastWalletName/);
+    assert.match(session, /clearSvmLastWalletName/);
+    assert.match(session, /ensureSvmWalletDiscovery/);
+    assert.match(session, /subscribeSvmWalletDiscovery/);
+    assert.match(session, /silent:\s*true/);
+    assert.match(session, /silent:\s*false/);
+    assert.match(session, /pickSvmConnectAccount/);
+    assert.match(session, /hydrateFromWallet/);
+
+    // Interactive path must not pass silent:true
+    assert.match(
+      session,
+      /hydrateFromWallet\(discovered\.wallet,\s*\{\s*silent:\s*false\s*\}\)/,
+    );
+    assert.match(
+      session,
+      /hydrateFromWallet\(discovered\.wallet,\s*\{\s*silent:\s*true\s*\}\)/,
+    );
+  });
+
+  it("preference and pick helpers are not reimplemented outside owners", () => {
+    const owners = new Set([SESSION, PREFERENCE, CONNECT_PICK]);
+    for (const abs of walkProductTsFiles(ROOT)) {
+      const rel = path.relative(ROOT, abs).split(path.sep).join("/");
+      const text = fs.readFileSync(abs, "utf8");
+      if (text.includes("kargain:svm-last-wallet") && !owners.has(rel)) {
+        assert.fail(`SVM preference storage key outside owner (${rel})`);
+      }
+      if (
+        /\bconnect\s*\(\s*\{\s*silent:\s*true/.test(text) &&
+        rel !== SESSION
+      ) {
+        assert.fail(`silent connect outside svm-account-session (${rel})`);
+      }
+    }
+  });
+
+  it("constructed: restore / silent connect outside session is red", () => {
+    const planted = `
+import { readSvmLastWalletName } from "@/lib/web3/svm-session-preference";
+export function BadRestore(wallet: { features: Record<string, { connect: (i?: { silent?: boolean }) => Promise<unknown> } }>) {
+  const name = readSvmLastWalletName();
+  if (name) void wallet.features["standard:connect"].connect({ silent: true });
+}
+`;
+    assert.match(planted, /silent:\s*true/);
+    assert.throws(() => {
+      if (/\bconnect\s*\(\s*\{\s*silent:\s*true/.test(planted)) {
+        throw new Error("silent connect outside svm-account-session (plant)");
+      }
+    }, /silent connect outside/);
+  });
+
+  it("disconnect and clear clear preference; preference never holds an address invent path", () => {
+    const session = fs.readFileSync(path.join(ROOT, SESSION), "utf8");
+    assert.match(session, /const clear = useCallback\(\(\) => \{\s*clearSvmLastWalletName/);
+    assert.match(
+      session,
+      /const disconnect = useCallback\(async \(\) => \{[\s\S]*clearSvmLastWalletName/,
+    );
+    assert.doesNotMatch(
+      session,
+      /readSvmLastWalletName\(\)[\s\S]{0,80}svmActiveAccountFromAddress/,
+    );
+  });
+});

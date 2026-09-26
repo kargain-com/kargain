@@ -1,8 +1,13 @@
 "use client";
 
 /**
- * In-memory SVM wallet session — one connected Solana account at a time.
+ * SVM Wallet Standard session — one connected Solana account at a time.
  * Cleared on EVM connect (mutual exclusion with the EVM adapter).
+ *
+ * React state holds the live session. Authorization preference (last wallet
+ * name only) persists via {@link writeSvmLastWalletName} so a trusted wallet
+ * can silent-reconnect on reload. Addresses are never stored — they come only
+ * from Wallet Standard accounts after connect / silent connect.
  *
  * The ActiveAccountSvm value is built once via {@link svmActiveAccountFromAddress}
  * at connect and on an accepted `set_address` change — never during render.
@@ -24,6 +29,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -45,7 +51,15 @@ import {
   type ActiveAccountSvm,
 } from "@/lib/web3/active-account";
 import {
+  clearSvmLastWalletName,
+  readSvmLastWalletName,
+  writeSvmLastWalletName,
+} from "@/lib/web3/svm-session-preference";
+import { pickSvmConnectAccount } from "@/lib/web3/svm-session-connect";
+import {
+  ensureSvmWalletDiscovery,
   findDiscoveredSvmWallet,
+  subscribeSvmWalletDiscovery,
   type SvmDiscoveredWallet,
 } from "@/lib/web3/svm-wallet-discovery";
 
@@ -109,13 +123,22 @@ export function SvmAccountSessionProvider({
   children: ReactNode;
 }) {
   const [session, setSession] = useState<SvmSessionState>(null);
+  const sessionRef = useRef<SvmSessionState>(null);
+  /** One silent attempt per preferred wallet appearance this mount. */
+  const silentAttemptedForRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
 
   const clear = useCallback(() => {
+    clearSvmLastWalletName();
     setSession(null);
   }, []);
 
   const disconnect = useCallback(async () => {
     const current = session;
+    clearSvmLastWalletName();
     setSession(null);
     if (!current) return;
     const feature = disconnectFeature(current.wallet);
@@ -128,26 +151,67 @@ export function SvmAccountSessionProvider({
     }
   }, [session]);
 
-  const connect = useCallback(async (walletName: string) => {
-    const discovered: SvmDiscoveredWallet | undefined =
-      findDiscoveredSvmWallet(walletName);
-    if (!discovered) {
-      throw new Error(`Solana wallet not found: ${walletName}`);
-    }
-    const { wallet } = discovered;
-    const feature = connectFeature(wallet);
-    const { accounts } = await feature.connect();
-    const account = accounts[0] ?? wallet.accounts[0];
-    if (!account) {
-      throw new Error(`Solana wallet ${wallet.name} returned no accounts`);
-    }
-    const canonical = assertSolanaAddress(account.address);
-    setSession({
-      walletName: wallet.name,
-      wallet,
-      account: svmActiveAccountFromAddress(canonical),
+  const hydrateFromWallet = useCallback(
+    async (wallet: Wallet, opts: { silent: boolean }): Promise<void> => {
+      const feature = connectFeature(wallet);
+      const output = opts.silent
+        ? await feature.connect({ silent: true })
+        : await feature.connect();
+      const account = pickSvmConnectAccount(output.accounts, wallet);
+      if (!account) {
+        throw new Error(`Solana wallet ${wallet.name} returned no accounts`);
+      }
+      const canonical = assertSolanaAddress(account.address);
+      writeSvmLastWalletName(wallet.name);
+      setSession({
+        walletName: wallet.name,
+        wallet,
+        account: svmActiveAccountFromAddress(canonical),
+      });
+    },
+    [],
+  );
+
+  const connect = useCallback(
+    async (walletName: string) => {
+      const discovered: SvmDiscoveredWallet | undefined =
+        findDiscoveredSvmWallet(walletName);
+      if (!discovered) {
+        throw new Error(`Solana wallet not found: ${walletName}`);
+      }
+      await hydrateFromWallet(discovered.wallet, { silent: false });
+    },
+    [hydrateFromWallet],
+  );
+
+  // Silent restore: preference + discovery → connect({ silent: true }).
+  // Never invent an address from storage alone.
+  useEffect(() => {
+    let cancelled = false;
+
+    const trySilentRestore = () => {
+      if (cancelled || sessionRef.current != null) return;
+      const preferred = readSvmLastWalletName();
+      if (preferred == null) return;
+      if (silentAttemptedForRef.current === preferred) return;
+      const discovered = findDiscoveredSvmWallet(preferred);
+      if (!discovered) return;
+      silentAttemptedForRef.current = preferred;
+      void hydrateFromWallet(discovered.wallet, { silent: true }).catch(() => {
+        /* unauthorized / not ready — stay disconnected; preference kept */
+      });
+    };
+
+    ensureSvmWalletDiscovery();
+    trySilentRestore();
+    const unsub = subscribeSvmWalletDiscovery(() => {
+      trySilentRestore();
     });
-  }, []);
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [hydrateFromWallet]);
 
   // Wallet Standard account change while session is live.
   // Named limitation: wallets without standard:events keep a connect-time
