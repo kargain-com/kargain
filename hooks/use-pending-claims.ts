@@ -13,6 +13,7 @@ import { mapPendingClaimsResponse } from "@/lib/claims/map-pending-claim";
 import {
   admitSessionSurface,
   admitSurfaceEvmAddress,
+  isSurfaceAdmissionAvailable,
 } from "@/lib/web3/surface-admission";
 
 export function pendingClaimsQueryKey(address: string | undefined) {
@@ -50,42 +51,23 @@ export function usePendingClaims(): PendingClaimsFact & {
     void query.refetch();
   };
 
-  switch (admission.status) {
-    case "disconnected":
-      return {
-        status: "refused",
-        cause: "disconnected",
-        isLoading: false,
-        refetch,
-      };
-    case "unresolved_namespace":
-      return {
-        status: "refused",
-        cause: "unresolved_namespace",
-        isLoading: false,
-        refetch,
-      };
-    case "support_refused":
-      return {
-        status: "refused",
-        cause: admission.cause,
-        isLoading: false,
-        refetch,
-      };
-    case "family_required":
-    case "wrong_family":
-      return { status: "refused", cause: "wrong_vm", isLoading: false, refetch };
-    case "available": {
-      const fact = pendingClaimsFactFromQueryResult({
-        isError: query.isError,
-        isPending: query.isPending,
-        data: query.data,
-      });
-      return {
-        ...fact,
-        isLoading: fact.status === "pending",
-        refetch,
-      };
-    }
+  if (!isSurfaceAdmissionAvailable(admission)) {
+    return {
+      status: "refused",
+      refusal: admission,
+      isLoading: false,
+      refetch,
+    };
   }
+
+  const fact = pendingClaimsFactFromQueryResult({
+    isError: query.isError,
+    isPending: query.isPending,
+    data: query.data,
+  });
+  return {
+    ...fact,
+    isLoading: fact.status === "pending",
+    refetch,
+  };
 }

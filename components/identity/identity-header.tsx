@@ -24,8 +24,9 @@ import { proShowroomHref } from "@/lib/kar-pro/pro-showroom-href";
 import {
   admitSessionSurface,
   admitSurfaceAllowsEvmRead,
+  isSurfaceAdmissionAvailable,
 } from "@/lib/web3/surface-admission";
-import { surfaceClassCCauseCopy } from "@/lib/web3/surface-support";
+import { SurfaceAdmissionRefusalView } from "@/components/shell/surface-admission-refusal";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
 const headerActionClassName = "min-h-9 h-9 px-3 py-1.5 text-xs";
@@ -131,10 +132,15 @@ export function IdentityHeader({
                   <Link href="/profile/edit">Edit profile</Link>
                 </Button>
               )}
-              {!isOwner && isConnected && messagingAdmission.status === "family_required" && (
-                <p className="text-xs text-text-secondary" role="status">
-                  {surfaceClassCCauseCopy(messagingAdmission.capability)}
-                </p>
+              {!isOwner &&
+                isConnected &&
+                !isSurfaceAdmissionAvailable(messagingAdmission) && (
+                <SurfaceAdmissionRefusalView
+                  refusal={messagingAdmission}
+                  className="max-w-xs"
+                  variant="content"
+                  level="B"
+                />
               )}
               {!isOwner &&
                 isConnected &&

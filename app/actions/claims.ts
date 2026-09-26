@@ -1,6 +1,7 @@
 "use server";
 
 import { getAddress } from "viem";
+import { z } from "zod";
 
 import type { PonderErrorCode } from "@/lib/types/ponder";
 import { buildPonderUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
@@ -31,10 +32,33 @@ export type PendingClaimsResult =
       ok: true;
       claims: PendingClaimApiRow[];
       total: number;
-      page: number;
-      limit: number;
     }
   | { ok: false; error: PonderErrorCode | "INVALID_ADDRESS" };
+
+const pendingClaimCreditSchema = z.object({
+  id: z.string(),
+  amount: z.string(),
+  reasonCode: z.string(),
+  timestamp: z.string(),
+});
+
+const pendingClaimRowSchema = z.object({
+  id: z.string(),
+  chainId: z.number(),
+  contract: z.string(),
+  account: z.string(),
+  asset: z.string(),
+  amount: z.string(),
+  reasonCode: z.string(),
+  updatedAt: z.string(),
+  firstCreditedAt: z.string(),
+  credits: z.array(pendingClaimCreditSchema),
+});
+
+const pendingClaimsBodySchema = z.object({
+  claims: z.array(pendingClaimRowSchema),
+  total: z.number(),
+});
 
 function parseAccount(address: string): `0x${string}` | null {
   try {
@@ -68,18 +92,14 @@ export async function getPendingClaims(
     if (!res.ok) {
       return { ok: false, error: "PONDER_UNAVAILABLE" };
     }
-    const body = res.body as {
-      claims: PendingClaimApiRow[];
-      total: number;
-      page?: number;
-      limit?: number;
-    };
+    const parsed = pendingClaimsBodySchema.safeParse(res.body);
+    if (!parsed.success) {
+      return { ok: false, error: "PONDER_UNAVAILABLE" };
+    }
     return {
       ok: true,
-      claims: body.claims,
-      total: body.total,
-      page: body.page ?? page,
-      limit: body.limit ?? limit,
+      claims: parsed.data.claims,
+      total: parsed.data.total,
     };
   } catch {
     return { ok: false, error: "PONDER_UNAVAILABLE" };

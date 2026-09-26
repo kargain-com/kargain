@@ -9,7 +9,7 @@ import { claimablePayoutsAbi } from "@/lib/claims/claimable-payouts-abi";
 import { formatClaimAmount } from "@/lib/claims/format-claim-amount";
 import { explainClaimFromCredits } from "@/lib/claims/explain-credits";
 import type { PendingClaimView } from "@/lib/claims/map-pending-claim";
-import { pendingClaimsRefusalCopy } from "@/lib/claims/pending-claims-fact";
+import { pendingClaimsFactRefusalCopy } from "@/lib/claims/pending-claims-fact";
 import { monoNumeric } from "@/lib/design/instrument-classes";
 import { shortChainName } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
@@ -105,12 +105,14 @@ export function ProfileClaimsTab() {
   }
 
   if (fact.status === "refused") {
-    const copy = pendingClaimsRefusalCopy(fact.cause);
+    const copy = pendingClaimsFactRefusalCopy(fact);
+    const isInfrastructure =
+      "cause" in fact &&
+      (fact.cause === "PONDER_UNAVAILABLE" ||
+        fact.cause === "PONDER_NOT_CONFIGURED");
     return (
       <EmptyState
-        variant={
-          fact.cause === "PONDER_UNAVAILABLE" ? "infrastructure" : "content"
-        }
+        variant={isInfrastructure ? "infrastructure" : "content"}
         level="B"
         icon={CreditCardIcon}
         title={copy.title}

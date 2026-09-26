@@ -2,7 +2,7 @@
  * Create passport surface — support before session.
  *
  * Pins: Solana shows authority_only (not Ethereum wrong_vm); EVM disconnected
- * sentence unchanged; admitting ns + SVM → wrong_vm; wizard consumes owners;
+ * sentence unchanged; admitting ns + SVM → wrong_family; wizard consumes owners;
  * no inlined sentences; plant of requireEvmSession-first is red.
  */
 
@@ -24,10 +24,14 @@ import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
 import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import {
   admitCreatePassport,
+  createPassportAdmissionDetail,
   createPassportSupportRefusalCopy,
   createPassportWhereAvailableCopy,
   resolveCreatePassportNamespace,
 } from "@/lib/passport/create-passport-surface";
+import {
+  surfaceAdmissionRefusalCopy,
+} from "@/lib/web3/surface-admission";
 import {
   surfaceSupport,
   surfaceSupportCauseCopy,
@@ -76,6 +80,10 @@ describe("admitCreatePassport — support before session", () => {
       assert.notEqual(copy.title, ethereum);
       assert.ok(!copy.title.includes("Ethereum"));
       assert.ok(!copy.detail.includes("Ethereum wallet"));
+      assert.equal(
+        createPassportAdmissionDetail(admission),
+        copy.detail || undefined,
+      );
     }
     const cell = surfaceSupport("create_passport", SOLANA_NS);
     assert.ok(!("unresolved" in cell) && !cell.supported);
@@ -104,25 +112,22 @@ describe("admitCreatePassport — support before session", () => {
     assert.equal(liveTitle, surfaceSupportCauseCopy("authority_only"));
   });
 
-  it("84532 disconnected: disconnected sentence unchanged", () => {
+  it("84532 disconnected: disconnected sentence via SurfaceAdmission", () => {
     const admission = admitCreatePassport(DISCONNECTED_ACCOUNT, 84532);
-    assert.equal(admission.status, "session_refused");
-    if (admission.status !== "session_refused") return;
-    assert.equal(admission.cause, "disconnected");
+    assert.equal(admission.status, "disconnected");
     assert.equal(
-      evmSessionRefusalCopy(admission.cause),
+      surfaceAdmissionRefusalCopy(admission).title,
       "Connect a wallet to continue.",
     );
   });
 
-  it("84532 + SVM session: wrong_vm Ethereum sentence (creation admitted)", () => {
+  it("84532 + SVM session: wrong_family Ethereum sentence (creation admitted)", () => {
     const admission = admitCreatePassport(SVM_ACCOUNT, 84532);
-    assert.equal(admission.status, "session_refused");
-    if (admission.status !== "session_refused") return;
-    assert.equal(admission.cause, "wrong_vm");
+    assert.equal(admission.status, "wrong_family");
+    if (admission.status !== "wrong_family") return;
     assert.equal(admission.wanted, "evm");
     assert.equal(
-      evmSessionRefusalCopy(admission.cause),
+      surfaceAdmissionRefusalCopy(admission).title,
       wrongVmActionCopy("evm"),
     );
   });
@@ -130,7 +135,7 @@ describe("admitCreatePassport — support before session", () => {
   it("84532 + EVM connected: available with mint address/chain", () => {
     const admission = admitCreatePassport(EVM_ACCOUNT, 84532);
     assert.equal(admission.status, "available");
-    if (admission.status !== "available") return;
+    if (admission.status !== "available" || admission.family !== "evm") return;
     assert.equal(admission.address, EVM_ACCOUNT.address);
     assert.equal(admission.chainId, 84532);
     assert.equal(admission.namespace, 84532);
@@ -177,15 +182,19 @@ describe("createPassportWhereAvailableCopy", () => {
 });
 
 describe("wizard consumes owners — no invent", () => {
-  it("wizard calls admit + support refusal copy; no requireEvmSession gate", () => {
+  it("wizard calls admit + refusal chrome; no requireEvmSession gate", () => {
     const src = read(WIZARD_REL);
     assert.ok(
       /admitCreatePassport/.test(src),
       "wizard must call admitCreatePassport",
     );
     assert.ok(
-      /createPassportSupportRefusalCopy/.test(src),
-      "wizard must call createPassportSupportRefusalCopy",
+      /createPassportAdmissionDetail/.test(src),
+      "wizard must call createPassportAdmissionDetail",
+    );
+    assert.ok(
+      /SurfaceAdmissionRefusalView/.test(src),
+      "wizard must render SurfaceAdmissionRefusalView",
     );
     assert.ok(
       /resolveCreatePassportNamespace/.test(src),
@@ -239,10 +248,10 @@ describe("wizard consumes owners — no invent", () => {
 });
 
 describe("owner file exists", () => {
-  it("create-passport-surface.ts is the sole copy home", () => {
+  it("create-passport-surface.ts is the sole where-available home", () => {
     const src = read(OWNER_REL);
     assert.ok(/surfaceSupport\(\s*"create_passport"/.test(src));
-    assert.ok(/surfaceSupportCauseCopy/.test(src));
     assert.ok(/createPassportWhereAvailableCopy/.test(src));
+    assert.ok(/admitSurface/.test(src));
   });
 });

@@ -1,17 +1,14 @@
 /**
  * Create-passport surface — support before session.
  *
- * The network's census answer for `create_passport` is named first. Wallet-family
- * refusal appears only when that namespace admits creation. Second line (where
- * creation is available) is owned here beside the capability — never inlined in
- * the page. Nothing promises Solana will admit creation later.
+ * Admits via {@link admitSurface} (SurfaceAdmission). Where-available line
+ * stays beside the capability — never inlined in the page. Nothing promises
+ * Solana will admit creation later.
  */
 
 import {
   type ActiveAccount,
   commercialNamespaceOf,
-  type EvmSessionCause,
-  type WalletFamilyWanted,
 } from "@/lib/web3/active-account";
 import {
   commercialActive,
@@ -20,7 +17,11 @@ import {
   type CommercialRegistry,
 } from "@/lib/web3/commercial-active";
 import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
-import { admitSurface } from "@/lib/web3/surface-admission";
+import {
+  admitSurface,
+  type SurfaceAdmission,
+  type SurfaceAdmissionRefusal,
+} from "@/lib/web3/surface-admission";
 import {
   surfaceSupport,
   surfaceSupportCauseCopy,
@@ -59,26 +60,6 @@ export function resolveCreatePassportNamespace(input: {
   return { ok: true, namespace: Number(session.namespace) };
 }
 
-export type CreatePassportAdmission =
-  | {
-      readonly status: "available";
-      readonly namespace: number;
-      readonly address: `0x${string}`;
-      readonly chainId: number;
-    }
-  | {
-      readonly status: "support_refused";
-      readonly cause: SurfaceSupportCause;
-      readonly namespace: number;
-    }
-  | {
-      readonly status: "session_refused";
-      readonly cause: EvmSessionCause;
-      readonly wanted?: WalletFamilyWanted;
-      readonly namespace: number;
-    }
-  | { readonly status: "unresolved_namespace" };
-
 /**
  * Admit Create on `namespace`: census support first, then session
  * via {@link admitSurface}. Unsupported namespaces never surface a
@@ -89,53 +70,8 @@ export function admitCreatePassport(
   namespace: number,
   registry: CommercialRegistry = COMMERCIAL_ACTIVE,
   table?: SurfaceSupportTable,
-): CreatePassportAdmission {
-  const admission = admitSurface(
-    account,
-    "create_passport",
-    namespace,
-    registry,
-    table,
-  );
-  switch (admission.status) {
-    case "unresolved_namespace":
-      return { status: "unresolved_namespace" };
-    case "support_refused":
-      return {
-        status: "support_refused",
-        cause: admission.cause,
-        namespace: admission.namespace,
-      };
-    case "disconnected":
-      return {
-        status: "session_refused",
-        cause: "disconnected",
-        namespace,
-      };
-    case "family_required":
-    case "wrong_family":
-      return {
-        status: "session_refused",
-        cause: "wrong_vm",
-        wanted: admission.wanted,
-        namespace: admission.namespace,
-      };
-    case "available":
-      if (admission.family !== "evm") {
-        return {
-          status: "session_refused",
-          cause: "wrong_vm",
-          wanted: "evm",
-          namespace: admission.namespace,
-        };
-      }
-      return {
-        status: "available",
-        namespace: admission.namespace,
-        address: admission.address,
-        chainId: admission.chainId,
-      };
-  }
+): SurfaceAdmission {
+  return admitSurface(account, "create_passport", namespace, registry, table);
 }
 
 /**
@@ -164,6 +100,31 @@ export function createPassportWhereAvailableCopy(
   return `Creation is available on ${head}, and ${last}.`;
 }
 
+/**
+ * Extra EmptyState description for Create refusals — where-available only on
+ * support_refused (status compare lives here, not in chrome).
+ */
+export function createPassportAdmissionDetail(
+  refusal: SurfaceAdmissionRefusal,
+  registry: CommercialRegistry = COMMERCIAL_ACTIVE,
+  table?: SurfaceSupportTable,
+): string | undefined {
+  if (refusal.status !== "support_refused") return undefined;
+  const detail = createPassportWhereAvailableCopy(registry, table);
+  return detail === "" ? undefined : detail;
+}
+
+/** Whether Create chrome should show the mint intro above the refusal. */
+export function createPassportShowsMintIntro(
+  refusal: SurfaceAdmissionRefusal,
+): boolean {
+  return (
+    refusal.status === "disconnected" ||
+    refusal.status === "family_required" ||
+    refusal.status === "wrong_family"
+  );
+}
+
 export type CreatePassportSupportRefusalCopy = {
   readonly title: string;
   readonly detail: string;
@@ -182,11 +143,4 @@ export function createPassportSupportRefusalCopy(
     title: surfaceSupportCauseCopy(cause),
     detail: createPassportWhereAvailableCopy(registry, table),
   };
-}
-
-/** Session chrome cause for admitting namespaces — maps to {@link EvmSessionRefusal}. */
-export function createPassportSessionRefusalCause(
-  admission: Extract<CreatePassportAdmission, { status: "session_refused" }>,
-): EvmSessionCause {
-  return admission.cause;
 }

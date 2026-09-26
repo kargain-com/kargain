@@ -7,15 +7,15 @@ import { useMemo } from "react";
 
 import { NotificationRow, NotificationRowSkeletonList } from "@/components/notifications/notification-row";
 import { EmptyState } from "@/components/ui/empty-state";
+import { SurfaceAdmissionRefusalView } from "@/components/shell/surface-admission-refusal";
 import { useNotificationsFeed } from "@/hooks/use-notifications-feed";
 
 import type { NotificationItem } from "@/lib/notifications/types";
 import { formatPassportTitle } from "@/lib/passport/passport-token-id";
-import { admitSessionSurface } from "@/lib/web3/surface-admission";
 import {
-  surfaceClassCCauseCopy,
-  surfaceSupportCauseCopy,
-} from "@/lib/web3/surface-support";
+  admitSessionSurface,
+  isSurfaceAdmissionAvailable,
+} from "@/lib/web3/surface-admission";
 
 function groupLabel(groupKey: string, items: NotificationItem[]) {
   const first = items[0];
@@ -46,64 +46,14 @@ export function NotificationsClient() {
     }));
   }, [items]);
 
-  if (admission.status === "disconnected") {
+  if (!isSurfaceAdmissionAvailable(admission)) {
     return (
       <div className="mt-8">
-        <EmptyState
+        <SurfaceAdmissionRefusalView
+          refusal={admission}
+          disconnectedTitle="Connect your wallet to see alerts from your passports and watchlist."
           variant="content"
           level="A"
-          icon={NotificationIcon}
-          title="Connect your wallet to see alerts from your passports and watchlist."
-          description=""
-        />
-      </div>
-    );
-  }
-
-  if (admission.status === "family_required") {
-    return (
-      <div className="mt-8">
-        <EmptyState
-          variant="content"
-          level="A"
-          icon={NotificationIcon}
-          title={surfaceClassCCauseCopy(admission.capability)}
-          description=""
-        />
-      </div>
-    );
-  }
-
-  if (admission.status === "support_refused") {
-    return (
-      <div className="mt-8">
-        <EmptyState
-          variant="content"
-          level="A"
-          icon={NotificationIcon}
-          title={surfaceSupportCauseCopy(admission.cause)}
-          description=""
-        />
-      </div>
-    );
-  }
-
-  if (
-    admission.status === "unresolved_namespace" ||
-    admission.status === "wrong_family"
-  ) {
-    return (
-      <div className="mt-8">
-        <EmptyState
-          variant="content"
-          level="A"
-          icon={NotificationIcon}
-          title={
-            admission.status === "wrong_family"
-              ? surfaceClassCCauseCopy("nostr_identity")
-              : "This network is not available."
-          }
-          description=""
         />
       </div>
     );

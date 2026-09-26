@@ -2,39 +2,35 @@
  * Sole surface admission composer — census (surfaceSupport) then session.
  * No second composer: create-passport and txWriteAvailabilityForCapability
  * adapt from this owner.
+ *
+ * Refusal half has one sentence owner ({@link surfaceAdmissionRefusalCopy})
+ * and one chrome component (components/shell/surface-admission-refusal).
  */
 
 import {
   type ActiveAccount,
   commercialNamespaceOf,
+  wrongVmActionCopy,
   type WalletFamilyWanted,
 } from "@/lib/web3/active-account";
 import {
   COMMERCIAL_ACTIVE,
+  unresolvedNamespaceCopy,
   type CommercialRegistry,
 } from "@/lib/web3/commercial-active";
 import {
   isSurfaceClassCCapability,
+  surfaceClassCCauseCopy,
   surfaceSupport,
+  surfaceSupportCauseCopy,
   type SurfaceCapability,
   type SurfaceClassCCapability,
   type SurfaceSupportCause,
   type SurfaceSupportTable,
 } from "@/lib/web3/surface-support";
 
-export type SurfaceAdmission =
-  | {
-      readonly status: "available";
-      readonly family: "evm";
-      readonly namespace: number;
-      readonly address: `0x${string}`;
-      readonly chainId: number;
-    }
-  | {
-      readonly status: "available";
-      readonly family: "svm";
-      readonly namespace: number;
-    }
+/** Refusal half of SurfaceAdmission — one union, one sentence owner. */
+export type SurfaceAdmissionRefusal =
   | {
       readonly status: "support_refused";
       readonly cause: SurfaceSupportCause;
@@ -53,6 +49,95 @@ export type SurfaceAdmission =
     }
   | { readonly status: "disconnected" }
   | { readonly status: "unresolved_namespace" };
+
+export type SurfaceAdmissionAvailable =
+  | {
+      readonly status: "available";
+      readonly family: "evm";
+      readonly namespace: number;
+      readonly address: `0x${string}`;
+      readonly chainId: number;
+    }
+  | {
+      readonly status: "available";
+      readonly family: "svm";
+      readonly namespace: number;
+    };
+
+export type SurfaceAdmission =
+  | SurfaceAdmissionAvailable
+  | SurfaceAdmissionRefusal;
+
+/** Session entry — wrong_family absent (unreachable via admitSessionSurface). */
+export type SessionSurfaceAdmission = Exclude<
+  SurfaceAdmission,
+  { readonly status: "wrong_family" }
+>;
+
+/** Session refusal — available excluded. */
+export type SessionSurfaceAdmissionRefusal = Exclude<
+  SessionSurfaceAdmission,
+  SurfaceAdmissionAvailable
+>;
+
+export type SurfaceAdmissionRefusalCopy = {
+  readonly title: string;
+  readonly description: string;
+};
+
+const DEFAULT_DISCONNECTED_TITLE = "Connect a wallet to continue.";
+
+/**
+ * Sole sentence owner for {@link SurfaceAdmissionRefusal}.
+ * Surface-specific `disconnectedTitle` applies only to `disconnected` (§4.7).
+ */
+export function surfaceAdmissionRefusalCopy(
+  refusal: SurfaceAdmissionRefusal,
+  opts?: { readonly disconnectedTitle?: string },
+): SurfaceAdmissionRefusalCopy {
+  switch (refusal.status) {
+    case "support_refused":
+      return {
+        title: surfaceSupportCauseCopy(refusal.cause),
+        description: "",
+      };
+    case "family_required":
+      return {
+        title: surfaceClassCCauseCopy(refusal.capability),
+        description: "",
+      };
+    case "wrong_family":
+      return {
+        title: wrongVmActionCopy(refusal.wanted),
+        description: "",
+      };
+    case "unresolved_namespace":
+      return { title: unresolvedNamespaceCopy(), description: "" };
+    case "disconnected":
+      return {
+        title: opts?.disconnectedTitle ?? DEFAULT_DISCONNECTED_TITLE,
+        description: "",
+      };
+    default: {
+      const _exhaustive: never = refusal;
+      return _exhaustive;
+    }
+  }
+}
+
+/** Narrow available — chrome gates CTAs without comparing refusal statuses. */
+export function isSurfaceAdmissionAvailable(
+  admission: SurfaceAdmission,
+): admission is SurfaceAdmissionAvailable {
+  return admission.status === "available";
+}
+
+/** Narrow refusal — for the shell component and fact carriers. */
+export function isSurfaceAdmissionRefusal(
+  admission: SurfaceAdmission,
+): admission is SurfaceAdmissionRefusal {
+  return admission.status !== "available";
+}
 
 /**
  * Admit a capability on an explicit commercial namespace.
@@ -96,7 +181,6 @@ export function admitSurface(
       namespace,
     };
   }
-  // Session family already matches support.family; narrow for packed fields.
   if (account.vm === "evm") {
     return {
       status: "available",
@@ -114,16 +198,26 @@ export function admitSurface(
 }
 
 /**
+ * EVM address + chainId when admission is available on the EVM family.
+ * Reads the packed admission — components must not compare `.family`.
+ */
+export function admitSurfaceEvmPacked(
+  admission: SurfaceAdmission,
+): { readonly address: `0x${string}`; readonly chainId: number } | undefined {
+  if (admission.status === "available" && admission.family === "evm") {
+    return { address: admission.address, chainId: admission.chainId };
+  }
+  return undefined;
+}
+
+/**
  * EVM address when admission is available on the EVM family.
  * Reads the packed admission — components must not compare `.family`.
  */
 export function admitSurfaceEvmAddress(
   admission: SurfaceAdmission,
 ): `0x${string}` | undefined {
-  if (admission.status === "available" && admission.family === "evm") {
-    return admission.address;
-  }
-  return undefined;
+  return admitSurfaceEvmPacked(admission)?.address;
 }
 
 /**
@@ -139,13 +233,14 @@ export function admitSurfaceAllowsEvmRead(
 /**
  * Chrome entry: namespace from the session commercial stack, then admit.
  * Disconnected / unresolved session namespace never invents a hub.
+ * Return type excludes `wrong_family` (unreachable via session ns).
  */
 export function admitSessionSurface(
   account: ActiveAccount,
   capability: SurfaceCapability,
   registry: CommercialRegistry = COMMERCIAL_ACTIVE,
   table?: SurfaceSupportTable,
-): SurfaceAdmission {
+): SessionSurfaceAdmission {
   const session = commercialNamespaceOf(account, registry);
   if (!session.ok) {
     if (session.cause === "disconnected") {
@@ -153,11 +248,13 @@ export function admitSessionSurface(
     }
     return { status: "unresolved_namespace" };
   }
-  return admitSurface(
+  const admission = admitSurface(
     account,
     capability,
     Number(session.namespace),
     registry,
     table,
   );
+  // Session namespace always matches session family — wrong_family unreachable.
+  return admission as SessionSurfaceAdmission;
 }

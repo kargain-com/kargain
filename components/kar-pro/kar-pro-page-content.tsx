@@ -19,8 +19,9 @@ import {
   admitSessionSurface,
   admitSurfaceAllowsEvmRead,
   admitSurfaceEvmAddress,
+  isSurfaceAdmissionAvailable,
+  surfaceAdmissionRefusalCopy,
 } from "@/lib/web3/surface-admission";
-import { surfaceSupportCauseCopy } from "@/lib/web3/surface-support";
 
 const VALUE_PROPS = [
   { label: "Refundable stake", stakeStat: true as const },
@@ -47,12 +48,11 @@ export function KarProPageContent() {
 
   const stack = chainId != null ? commercialActive(chainId) : undefined;
   const unit = stack ? nativeUnitOf(stack) : null;
-  const stakeLabel =
-    minStakeAdmission.status === "support_refused"
-      ? surfaceSupportCauseCopy(minStakeAdmission.cause)
-      : unit != null
-        ? `${formatStakeNative(minStake, unit)} ${unit.symbol}`
-        : null;
+  const stakeLabel = !isSurfaceAdmissionAvailable(minStakeAdmission)
+    ? surfaceAdmissionRefusalCopy(minStakeAdmission).title
+    : unit != null
+      ? `${formatStakeNative(minStake, unit)} ${unit.symbol}`
+      : null;
 
   const [prevIdentity, setPrevIdentity] = useState(
     `${address}:${account.status}:${chainId}`,
@@ -82,7 +82,7 @@ export function KarProPageContent() {
               <p className="font-mono text-2xl md:text-4xl font-normal tabular-nums tracking-tight text-text-primary">
                 {"stakeStat" in prop ? (
                   chainId == null ||
-                  (minStakeAdmission.status === "available" &&
+                  (isSurfaceAdmissionAvailable(minStakeAdmission) &&
                     (unit == null || minStakePending || stakeLabel == null)) ? (
                     <span
                       className="inline-block h-4 w-16 animate-pulse rounded-sm bg-bg-surface align-baseline"

@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { useActiveAccount } from "@/hooks/use-active-account";
 import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachability";
 import { isEvmHexAddress } from "@/lib/passport/passport-owner";
-import { admitSessionSurface, admitSurfaceAllowsEvmRead } from "@/lib/web3/surface-admission";
-import { surfaceClassCCauseCopy } from "@/lib/web3/surface-support";
+import { admitSessionSurface, admitSurfaceAllowsEvmRead, isSurfaceAdmissionAvailable } from "@/lib/web3/surface-admission";
+import { SurfaceAdmissionRefusalView } from "@/components/shell/surface-admission-refusal";
 
 export type ProfileActionBannerProps = {
   isOwner: boolean;
@@ -50,18 +50,23 @@ export function ProfileActionBanner({
         <p className="flex-1 font-sans text-sm font-normal text-text-secondary">
           Ask {subjectName} to verify your passport
         </p>
-        {messagingAdmission.status === "family_required" ? (
-          <p className="shrink-0 text-xs text-text-secondary" role="status">
-            {surfaceClassCCauseCopy(messagingAdmission.capability)}
-          </p>
-        ) : isLoading ? null : reachable ? (
-          <Button variant="secondary" size="sm" className="shrink-0" asChild>
-            <Link href={`/messages?to=${subjectWallet}`}>Send request</Link>
-          </Button>
+        {isSurfaceAdmissionAvailable(messagingAdmission) ? (
+          isLoading ? null : reachable ? (
+            <Button variant="secondary" size="sm" className="shrink-0" asChild>
+              <Link href={`/messages?to=${subjectWallet}`}>Send request</Link>
+            </Button>
+          ) : (
+            <p className="shrink-0 text-xs text-text-secondary" role="status">
+              Messages not available
+            </p>
+          )
         ) : (
-          <p className="shrink-0 text-xs text-text-secondary" role="status">
-            Messages not available
-          </p>
+          <SurfaceAdmissionRefusalView
+            refusal={messagingAdmission}
+            className="shrink-0 max-w-xs"
+            variant="content"
+            level="B"
+          />
         )}
       </div>
     );

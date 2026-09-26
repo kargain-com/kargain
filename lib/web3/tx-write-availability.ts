@@ -9,6 +9,7 @@
 
 import {
   commercialActive,
+  unresolvedNamespaceCopy,
   type CommercialRegistry,
 } from "@/lib/web3/commercial-active";
 import {
@@ -121,7 +122,7 @@ export function txWriteRefusalMessage(refusal: TxWriteUnavailable): string {
     case "wrong_vm":
       return wrongVmActionCopy(refusal.wanted);
     case "unresolved_namespace":
-      return "This network is not available for commercial writes.";
+      return unresolvedNamespaceCopy();
     case "not_in_program":
     case "product_owner_owed":
     case "authority_only":

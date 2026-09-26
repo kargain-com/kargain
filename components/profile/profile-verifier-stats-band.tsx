@@ -17,8 +17,8 @@ import {
   commercialActive,
   nativeUnitOf,
 } from "@/lib/web3/commercial-active";
-import { admitSessionSurface, admitSurfaceAllowsEvmRead } from "@/lib/web3/surface-admission";
-import { surfaceSupportCauseCopy } from "@/lib/web3/surface-support";
+import { admitSessionSurface, admitSurfaceAllowsEvmRead, isSurfaceAdmissionAvailable } from "@/lib/web3/surface-admission";
+import { SurfaceAdmissionRefusalView } from "@/components/shell/surface-admission-refusal";
 import { shortChainName } from "@/lib/web3/supported-chains";
 
 type ProfileVerifierStatsBandProps = {
@@ -54,14 +54,24 @@ export function ProfileVerifierStatsBand({
     return null;
   }
 
+  if (!isSurfaceAdmissionAvailable(stakeAdmission)) {
+    return (
+      <div className="border-y border-border-default py-4">
+        <SurfaceAdmissionRefusalView
+          refusal={stakeAdmission}
+          variant="content"
+          level="B"
+        />
+      </div>
+    );
+  }
+
   const amountLine =
-    stakeAdmission.status === "support_refused"
-      ? surfaceSupportCauseCopy(stakeAdmission.cause)
-      : isPending
-        ? null
-        : unit != null
-          ? `${stakeLabel} ${unit.symbol}`
-          : stakeLabel;
+    isPending
+      ? null
+      : unit != null
+        ? `${stakeLabel} ${unit.symbol}`
+        : stakeLabel;
 
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-y border-border-default py-4">
@@ -74,11 +84,9 @@ export function ProfileVerifierStatsBand({
         ) : (
           <span className="font-medium text-text-primary">{amountLine}</span>
         )}
-        {stakeAdmission.status !== "support_refused" ? (
-          <span className="ml-1.5 text-text-secondary">
-            staked on {shortChainName(sessionNs)}
-          </span>
-        ) : null}
+        <span className="ml-1.5 text-text-secondary">
+          staked on {shortChainName(sessionNs)}
+        </span>
       </span>
       <Link href={karProSectionHref("membership")} className={monoLinkSm}>
         Manage →

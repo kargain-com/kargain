@@ -14,8 +14,7 @@ import { PassportUploadPreflightBanner } from "@/components/passport/passport-up
 import { PassportUploadProgressPanel } from "@/components/passport/passport-upload-progress";
 import { PhotoUploadZone } from "@/components/passport/photo-upload-zone";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/empty-state";
-import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
+import { SurfaceAdmissionRefusalView } from "@/components/shell/surface-admission-refusal";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useWalletAccountKind } from "@/hooks/use-wallet-account-kind";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
@@ -24,8 +23,8 @@ import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { buildMetadataWire } from "@/lib/passport/build-metadata-json";
 import {
   admitCreatePassport,
-  createPassportSessionRefusalCause,
-  createPassportSupportRefusalCopy,
+  createPassportAdmissionDetail,
+  createPassportShowsMintIntro,
   resolveCreatePassportNamespace,
 } from "@/lib/passport/create-passport-surface";
 import { MAX_PHOTOS } from "@/lib/passport/metadata-constants";
@@ -46,6 +45,10 @@ import { reorderArrayItem } from "@/lib/reorder-array";
 import { resetIrysUploaderCache } from "@/lib/storage/irys-client";
 import type { ActiveAccount } from "@/lib/web3/active-account";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import {
+  admitSurfaceEvmPacked,
+  isSurfaceAdmissionAvailable,
+} from "@/lib/web3/surface-admission";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
@@ -102,41 +105,48 @@ export function CreatePassportWizard() {
 
   const nsResult = resolveCreatePassportNamespace({ account, urlChain });
   if (!nsResult.ok) {
-    if (nsResult.cause === "disconnected") {
-      return (
-        <CreatePassportShell centered>
+    const refusal =
+      nsResult.cause === "disconnected"
+        ? ({ status: "disconnected" } as const)
+        : ({ status: "unresolved_namespace" } as const);
+    return (
+      <CreatePassportShell centered={nsResult.cause === "disconnected"}>
+        {nsResult.cause === "disconnected" ? (
           <p className="text-sm text-text-secondary">
             Mint a KarPassport NFT with basic vehicle details and photos stored on
             Arweave.
           </p>
-          <EvmSessionRefusal cause="disconnected" />
-        </CreatePassportShell>
-      );
-    }
-    return (
-      <CreatePassportShell>
-        <KarProNetworkPrompt title="Switch to a Kargain network to mint a passport." />
+        ) : null}
+        {nsResult.cause === "unresolved_namespace" ? (
+          <KarProNetworkPrompt title="Switch to a Kargain network to mint a passport." />
+        ) : (
+          <SurfaceAdmissionRefusalView refusal={refusal} />
+        )}
       </CreatePassportShell>
     );
   }
 
   const admission = admitCreatePassport(account, nsResult.namespace);
 
-  if (admission.status === "support_refused") {
-    const copy = createPassportSupportRefusalCopy(admission.cause);
+  if (!isSurfaceAdmissionAvailable(admission)) {
     return (
       <CreatePassportShell centered>
-        <EmptyState
-          variant="infrastructure"
-          level="B"
-          title={copy.title}
-          description={copy.detail || undefined}
+        {createPassportShowsMintIntro(admission) ? (
+          <p className="text-sm text-text-secondary">
+            Mint a KarPassport NFT with basic vehicle details and photos stored on
+            Arweave.
+          </p>
+        ) : null}
+        <SurfaceAdmissionRefusalView
+          refusal={admission}
+          description={createPassportAdmissionDetail(admission)}
         />
       </CreatePassportShell>
     );
   }
 
-  if (admission.status === "unresolved_namespace") {
+  const packed = admitSurfaceEvmPacked(admission);
+  if (packed == null) {
     return (
       <CreatePassportShell>
         <KarProNetworkPrompt title="Switch to a Kargain network to mint a passport." />
@@ -144,19 +154,7 @@ export function CreatePassportWizard() {
     );
   }
 
-  if (admission.status === "session_refused") {
-    return (
-      <CreatePassportShell centered>
-        <p className="text-sm text-text-secondary">
-          Mint a KarPassport NFT with basic vehicle details and photos stored on
-          Arweave.
-        </p>
-        <EvmSessionRefusal cause={createPassportSessionRefusalCause(admission)} />
-      </CreatePassportShell>
-    );
-  }
-
-  const chainId = resolveKarProTargetChainId(admission.chainId);
+  const chainId = resolveKarProTargetChainId(packed.chainId);
   if (chainId == null) {
     return (
       <CreatePassportShell>
@@ -170,7 +168,7 @@ export function CreatePassportWizard() {
   return (
     <CreatePassportWizardBody
       chainId={chainId}
-      address={admission.address}
+      address={packed.address}
       account={account}
       connector={connector}
       svmWallet={svmWallet}

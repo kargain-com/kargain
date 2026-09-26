@@ -177,15 +177,15 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   },
   {
     id: "surface-admission",
-    owner: "lib/web3/surface-admission.ts",
-    rule: "Sole census-then-session composer for capability × namespace: surfaceSupport before disconnected / family; admitCreatePassport and txWriteAvailabilityForCapability adapt from admitSurface — no second composer; admitSessionSurface uses commercialNamespaceOf for chrome; class C family mismatch → family_required",
+    owner: "lib/web3/surface-admission.ts · components/shell/surface-admission-refusal.tsx",
+    rule: "Sole census-then-session composer: SurfaceAdmissionRefusal union + surfaceAdmissionRefusalCopy sole sentences + SurfaceAdmissionRefusal chrome; admitSessionSurface excludes wrong_family; admitCreatePassport and txWriteAvailabilityForCapability adapt admitSurface; facts carry refusal unchanged; chrome gates via isSurfaceAdmissionAvailable — no refusal-status compares outside owner+component",
     guardTests: ["surface-admission-policy.test.ts"],
   },
   {
     id: "create-passport-surface",
     owner:
       "lib/passport/create-passport-surface.ts · components/passport/create-passport-wizard.tsx",
-    rule: "admitCreatePassport asks surfaceSupport(create_passport) before session; unsupported namespaces show surfaceSupportCauseCopy + createPassportWhereAvailableCopy (never wrong_vm Ethereum sentence); session refusal only when the namespace admits creation; wizard consumes owners — no inlined sentences, no requireEvmSession-first gate, no VM fork in the page",
+    rule: "admitCreatePassport returns SurfaceAdmission from admitSurface; unsupported namespaces → SurfaceAdmissionRefusal + createPassportWhereAvailableCopy detail (never wrong_vm Ethereum sentence); wizard consumes owners — no inlined sentences, no requireEvmSession-first gate, no VM fork in the page",
     guardTests: ["create-passport-surface-policy.test.ts"],
   },
   {

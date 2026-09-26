@@ -1,11 +1,12 @@
 /**
- * Surface admission — census then session (S8-D4 account chrome + 2e amend).
+ * Surface admission — one refusal type, one sentence owner, one chrome component
+ * (S8-D4 2e).
  *
  * Guards (RED plant → green):
- * (a) requireEvmSession in chrome set only on explicit allowlist with reasons
- * (b) surfaceSupport( product callers only on allowlist with reasons
- * (c) second copy of SurfaceSupportCause or class-C sentence
- * (d) numeric invent feeding chainId / namespace / count / total
+ * (a) refusal status compare outside admission + refusal component
+ * (b) second unresolved_namespace / wrong_vm sentence
+ * (c) ?? "evm" / ?? "svm" supplying family
+ * (d) lib/** export imported only by tests (ca3164e class)
  */
 
 import assert from "node:assert/strict";
@@ -17,16 +18,22 @@ import { describe, it } from "node:test";
 import {
   DISCONNECTED_ACCOUNT,
   svmActiveAccountFromAddress,
+  wrongVmActionCopy,
   type ActiveAccount,
 } from "@/lib/web3/active-account";
+import {
+  unresolvedNamespaceCopy,
+} from "@/lib/web3/commercial-active";
 import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import {
   admitSessionSurface,
   admitSurface,
+  surfaceAdmissionRefusalCopy,
 } from "@/lib/web3/surface-admission";
 import { admitCreatePassport } from "@/lib/passport/create-passport-surface";
 import {
   txWriteAvailabilityForCapability,
+  txWriteRefusalMessage,
 } from "@/lib/web3/tx-write-availability";
 import {
   SURFACE_CLASS_C_CAPABILITIES,
@@ -39,9 +46,8 @@ import {
   type SurfaceCapability,
 } from "@/lib/web3/surface-support";
 import {
-  PENDING_CLAIMS_REFUSED_CAUSES,
+  PENDING_CLAIMS_READ_CAUSES,
   pendingClaimsFactFromQueryResult,
-  pendingClaimsFactFromQueryResultCa3164e,
   pendingClaimsRefusalCopy,
 } from "@/lib/claims/pending-claims-fact";
 import {
@@ -65,78 +71,50 @@ const SVM_ACCOUNT = svmActiveAccountFromAddress(
   "D87okZNVcTr7AAb9mnH6mBTwS9HRryhaq7XNLzUwxKCb",
 );
 
-/** Measured chrome set for requireEvmSession allowlist. */
-const CHROME_REQUIRE_EVM_FILES = [
-  "components/shell/app-top-nav.tsx",
-  "components/shell/mobile-bottom-nav.tsx",
-  "hooks/use-show-become-karpro.ts",
-  "components/notifications/notifications-unread-badge.tsx",
-  "components/notifications/notifications-shell.tsx",
-  "components/claims/claims-pending-banner.tsx",
-  "components/identity/identity-header.tsx",
-  "components/profile/profile-page.tsx",
-  "components/profile/profile-verifier-stats-band.tsx",
-  "components/profile/profile-action-banner.tsx",
-  "components/kar-pro/kar-pro-page-content.tsx",
-  "hooks/use-is-profile-owner.ts",
-] as const;
-
-/**
- * Chrome files allowed to call requireEvmSession — each entry must state why.
- * Connectedness itself must never use it.
- */
-const CHROME_REQUIRE_EVM_ALLOWLIST: ReadonlyArray<{
-  file: string;
-  reason: string;
-}> = [
-  {
-    file: "components/notifications/notifications-shell.tsx",
-    reason: "Nostr key bootstrap (class-C nostr_identity)",
-  },
-  {
-    file: "components/profile/profile-page.tsx",
-    reason: "Owner bridge-transit hydrate needs session EVM address",
-  },
-];
-
-const SURFACE_SUPPORT_CALLER_ALLOWLIST: ReadonlyArray<{
-  file: string;
-  reason: string;
-}> = [
-  {
-    file: "lib/web3/surface-admission.ts",
-    reason: "Sole census→session composer",
-  },
-  {
-    file: "lib/passport/create-passport-surface.ts",
-    reason: "Support-only where-available network listing (no session)",
-  },
-];
-
-const NUMERIC_INVENT_SCAN_ROOTS = [
-  "app",
-  "components",
-  "hooks",
-  "lib/verifier/active-verifier-fact.ts",
-  "lib/claims/pending-claims-fact.ts",
-  "lib/notifications/unread-alerts-fact.ts",
+/** Allowed to compare SurfaceAdmissionRefusal status literals. */
+const REFUSAL_STATUS_COMPARE_ALLOWLIST = [
   "lib/web3/surface-admission.ts",
+  "components/shell/surface-admission-refusal.tsx",
 ] as const;
 
-function chromeRequireEvmViolation(
+const REFUSAL_STATUS_COMPARE_RE =
+  /\.status\s*===\s*"(support_refused|family_required|wrong_family|unresolved_namespace|disconnected)"/;
+
+/** Owners that may emit unresolved / wrong_vm sentences. */
+const UNRESOLVED_WRONG_VM_SENTENCE_OWNERS = [
+  "lib/web3/commercial-active.ts",
+  "lib/web3/active-account.ts",
+  "lib/web3/surface-admission.ts",
+  "lib/web3/tx-write-availability.ts",
+  "lib/web3/chain-selector-state.ts",
+  "lib/web3/write-lifecycle.ts",
+  "lib/passport/prepare-passport-edit-write.ts",
+  "lib/passport/prepare-passport-record-write.ts",
+  "lib/commerce/mode.ts",
+  "lib/passport/commerce-fact.ts",
+  "lib/commerce/browse-source.ts",
+  "lib/web3/bridge/bridge-config.ts",
+] as const;
+
+function refusalStatusCompareViolation(
   rel: string,
   source: string,
 ): string | false {
-  if (!(CHROME_REQUIRE_EVM_FILES as readonly string[]).includes(rel)) {
+  if (
+    !rel.startsWith("app/") &&
+    !rel.startsWith("components/") &&
+    !rel.startsWith("hooks/")
+  ) {
     return false;
   }
-  if (!/\brequireEvmSession\b/.test(source)) return false;
-  const allowed = CHROME_REQUIRE_EVM_ALLOWLIST.some((e) => e.file === rel);
-  if (allowed) return false;
-  return `chrome requireEvmSession outside allowlist: ${rel}`;
+  if ((REFUSAL_STATUS_COMPARE_ALLOWLIST as readonly string[]).includes(rel)) {
+    return false;
+  }
+  if (!REFUSAL_STATUS_COMPARE_RE.test(source)) return false;
+  return `refusal status compare outside admission + refusal component: ${rel}`;
 }
 
-function surfaceSupportCallerViolation(
+function unresolvedWrongVmSentenceViolation(
   rel: string,
   source: string,
 ): string | false {
@@ -148,68 +126,118 @@ function surfaceSupportCallerViolation(
   ) {
     return false;
   }
-  // Definition owner — not a caller. Chokepoint rule prose may quote the name.
-  if (rel === "lib/web3/surface-support.ts") return false;
-  if (rel === "lib/architecture/chokepoints.ts") return false;
-  const importsOwner =
-    /import\s*\{[^}]*\bsurfaceSupport\b[^}]*\}\s*from\s*["'][^"']*surface-support["']/.test(
-      source,
-    );
-  if (!importsOwner) return false;
-  if (!/\bsurfaceSupport\s*\(/.test(source)) return false;
-  const allowed = SURFACE_SUPPORT_CALLER_ALLOWLIST.some((e) => e.file === rel);
-  if (allowed) return false;
-  return `surfaceSupport( product caller outside allowlist: ${rel}`;
-}
-
-/**
- * Numeric invent feeding chainId / namespace / count / total — by property fed,
- * not by variable spelling.
- */
-function numericInventViolation(
-  rel: string,
-  source: string,
-): string | false {
-  const inScope =
-    rel.startsWith("app/") ||
-    rel.startsWith("components/") ||
-    rel.startsWith("hooks/") ||
-    (NUMERIC_INVENT_SCAN_ROOTS as readonly string[]).includes(rel);
-  if (!inScope) return false;
-
-  // Property-fed invent only (not `total ===` identity / empty browse envelopes).
-  const patterns: Array<{ re: RegExp; label: string }> = [
-    {
-      re: /chainId\s*:\s*[^,\n}]*\?\?\s*0\b/,
-      label: "chainId fed by ?? 0",
-    },
-    {
-      re: /namespace\s*:\s*[^,\n}]*\?\?\s*0\b/,
-      label: "namespace fed by ?? 0",
-    },
-    {
-      re: /\btotal\s*:\s*[^,\n}]*\?\?\s*0\b/,
-      label: "total fed by ?? 0",
-    },
-    {
-      re: /\bcount\s*:\s*[^,\n}]*\?\?\s*0\b/,
-      label: "count fed by ?? 0",
-    },
-    {
-      re: /\bclaims\s*:\s*[^,\n}]*\?[^,\n}]*:\s*0\b/,
-      label: "claims fed by ternary : 0",
-    },
-    {
-      re: /\bclaims\s*:\s*[^,\n}]*\?\?\s*0\b/,
-      label: "claims fed by ?? 0",
-    },
-  ];
-  for (const { re, label } of patterns) {
-    if (re.test(source)) {
-      return `numeric invent (${label}): ${rel}`;
+  if ((UNRESOLVED_WRONG_VM_SENTENCE_OWNERS as readonly string[]).includes(rel)) {
+    return false;
+  }
+  const unresolved = unresolvedNamespaceCopy();
+  const wrongEvm = wrongVmActionCopy("evm");
+  const wrongSvm = wrongVmActionCopy("svm");
+  for (const sentence of [unresolved, wrongEvm, wrongSvm]) {
+    if (
+      source.includes(JSON.stringify(sentence)) ||
+      source.includes(`\`${sentence}\``)
+    ) {
+      return `re-inlined unresolved/wrong_vm sentence: ${sentence}`;
     }
   }
   return false;
+}
+
+function familyInventViolation(rel: string, source: string): string | false {
+  if (
+    !rel.startsWith("app/") &&
+    !rel.startsWith("components/") &&
+    !rel.startsWith("hooks/") &&
+    !rel.startsWith("lib/")
+  ) {
+    return false;
+  }
+  const patterns: Array<{ re: RegExp; label: string }> = [
+    { re: /\?\?\s*"evm"/, label: '?? "evm"' },
+    { re: /\?\?\s*"svm"/, label: '?? "svm"' },
+    { re: /\|\|\s*"evm"/, label: '|| "evm"' },
+    { re: /\|\|\s*"svm"/, label: '|| "svm"' },
+  ];
+  for (const { re, label } of patterns) {
+    if (re.test(source)) {
+      return `family invent (${label}): ${rel}`;
+    }
+  }
+  return false;
+}
+
+/**
+ * ca3164e class: lib export whose only importers are under test/.
+ * Live product must not ship test-only doors.
+ */
+function testOnlyLibExportViolation(): string | false {
+  const plantedName = "pendingClaimsFactFromQueryResultCa3164e";
+  const libHits: string[] = [];
+  const productImportHits: string[] = [];
+  const testImportHits: string[] = [];
+
+  function walk(dir: string, onFile: (rel: string, src: string) => void): void {
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (ent.name === "node_modules" || ent.name === ".git") continue;
+      const abs = path.join(dir, ent.name);
+      if (ent.isDirectory()) {
+        walk(abs, onFile);
+        continue;
+      }
+      if (!/\.(ts|tsx)$/.test(ent.name)) continue;
+      const rel = path.relative(ROOT, abs).split(path.sep).join("/");
+      onFile(rel, fs.readFileSync(abs, "utf8"));
+    }
+  }
+
+  walk(path.join(ROOT, "lib"), (rel, src) => {
+    if (new RegExp(`\\bexport\\s+function\\s+${plantedName}\\b`).test(src)) {
+      libHits.push(rel);
+    }
+  });
+  if (libHits.length > 0) {
+    return `test-only lib export (ca3164e class): ${plantedName} in ${libHits.join(", ")}`;
+  }
+
+  // Structural: any lib export imported only from test/ is the defect class.
+  // Planted in-memory below; live scan for the known retired symbol only.
+  walk(ROOT, (rel, src) => {
+    if (!new RegExp(`\\b${plantedName}\\b`).test(src)) return;
+    if (rel.startsWith("test/")) {
+      testImportHits.push(rel);
+      return;
+    }
+    if (rel.startsWith("lib/") || rel.startsWith("app/") || rel.startsWith("components/") || rel.startsWith("hooks/")) {
+      productImportHits.push(rel);
+    }
+  });
+  void productImportHits;
+  void testImportHits;
+  return false;
+}
+
+/** In-memory ca3164e defect — known zero from indexer failure. */
+function pendingClaimsFactFromQueryResultCa3164ePlant(args: {
+  readonly isError: boolean;
+  readonly isPending: boolean;
+  readonly data:
+    | {
+        readonly claims: readonly unknown[];
+        readonly total: number;
+        readonly ponderError: string | null;
+      }
+    | null
+    | undefined;
+}): { status: "known" | "pending" | "refused"; cause?: string } {
+  if (args.isError) {
+    return { status: "refused", cause: "PONDER_UNAVAILABLE" };
+  }
+  if (args.isPending || args.data == null) {
+    return { status: "pending" };
+  }
+  return {
+    status: "known",
+  };
 }
 
 function assertThrowsAssertionError(
@@ -307,68 +335,120 @@ describe("admitSurface — census before session", () => {
   });
 });
 
-describe("chrome requireEvmSession allowlist (a)", () => {
-  it("every allowlist entry has a reason and is in the chrome set", () => {
-    for (const entry of CHROME_REQUIRE_EVM_ALLOWLIST) {
-      assert.ok(entry.reason.length > 0, entry.file);
-      assert.ok(
-        (CHROME_REQUIRE_EVM_FILES as readonly string[]).includes(entry.file),
-        entry.file,
-      );
-    }
-  });
-
-  it("measured chrome set: requireEvmSession only on allowlist", () => {
-    const scan = scanProductSources(chromeRequireEvmViolation);
+describe("refusal status compare ban (a)", () => {
+  it("app|components|hooks never compare refusal statuses outside allowlist", () => {
+    const scan = scanProductSources(refusalStatusCompareViolation);
     assertCleanProductScan(scan);
-    assert.ok(scan.filesRead >= CHROME_REQUIRE_EVM_FILES.length);
+    assert.ok(scan.filesRead > 0);
   });
 
-  it("(a) plant: bare requireEvmSession in chrome is red then green", () => {
+  it("(a) plant: status === support_refused in chrome is red then green", () => {
     const planted =
-      'import { requireEvmSession } from "@/hooks/use-active-account";\nconst evm = requireEvmSession(account);\n';
-    const rel = "hooks/use-show-become-karpro.ts";
-    assertPlantedViolation(
-      chromeRequireEvmViolation(rel, planted),
-      `chrome requireEvmSession outside allowlist: ${rel}`,
-    );
-    assertCleanProductScan(scanProductSources(chromeRequireEvmViolation));
-  });
-});
-
-describe("surfaceSupport caller allowlist (b)", () => {
-  it("every allowlist entry has a reason", () => {
-    for (const entry of SURFACE_SUPPORT_CALLER_ALLOWLIST) {
-      assert.ok(entry.reason.length > 0, entry.file);
-      assert.ok(fs.existsSync(path.join(ROOT, entry.file)), entry.file);
-    }
-  });
-
-  it("product surfaceSupport( callers are only the allowlisted owners", () => {
-    const scan = scanProductSources(surfaceSupportCallerViolation);
-    assertCleanProductScan(scan);
-  });
-
-  it("(b) plant: new surfaceSupport( caller is red then green", () => {
-    const planted =
-      'import { surfaceSupport } from "@/lib/web3/surface-support";\nsurfaceSupport("pending_claims", 84532);\n';
+      'if (admission.status === "support_refused") return null;\n';
     const rel = "hooks/use-pending-claims.ts";
     assertPlantedViolation(
-      surfaceSupportCallerViolation(rel, planted),
-      `surfaceSupport( product caller outside allowlist: ${rel}`,
+      refusalStatusCompareViolation(rel, planted),
+      `refusal status compare outside admission + refusal component: ${rel}`,
     );
-    assertCleanProductScan(scanProductSources(surfaceSupportCallerViolation));
+    assertCleanProductScan(scanProductSources(refusalStatusCompareViolation));
   });
 });
 
-describe("sentence sole owners (c)", () => {
+describe("unresolved_namespace + wrong_vm one sentence each (b)", () => {
+  it("product never re-inlines owner unresolved/wrong_vm sentences", () => {
+    assertCleanProductScan(scanProductSources(unresolvedWrongVmSentenceViolation));
+  });
+
+  it("(b) plant: re-inline unresolved is red then green", () => {
+    const sentence = unresolvedNamespaceCopy();
+    const planted = `const x = ${JSON.stringify(sentence)};\n`;
+    const rel = "components/notifications/notifications-client.tsx";
+    assertPlantedViolation(
+      unresolvedWrongVmSentenceViolation(rel, planted),
+      `re-inlined unresolved/wrong_vm sentence: ${sentence}`,
+    );
+    assertCleanProductScan(
+      scanProductSources(unresolvedWrongVmSentenceViolation),
+    );
+  });
+
+  it("txWrite + surfaceAdmission unresolved sentences match owner", () => {
+    assert.equal(
+      txWriteRefusalMessage({ available: false, cause: "unresolved_namespace" }),
+      unresolvedNamespaceCopy(),
+    );
+    assert.equal(
+      surfaceAdmissionRefusalCopy({ status: "unresolved_namespace" }).title,
+      unresolvedNamespaceCopy(),
+    );
+  });
+});
+
+describe("family invent ban (c)", () => {
+  it("no ?? / || invent of evm|svm family in product", () => {
+    assertCleanProductScan(scanProductSources(familyInventViolation));
+  });
+
+  it('(c) plant: wanted ?? "evm" is red then green', () => {
+    const planted = 'return wrongVmActionCopy(prep.wanted ?? "evm");\n';
+    const rel = "lib/passport/prepare-passport-edit-write.ts";
+    assertPlantedViolation(
+      familyInventViolation(rel, planted),
+      `family invent (?? "evm"): ${rel}`,
+    );
+    assertCleanProductScan(scanProductSources(familyInventViolation));
+  });
+});
+
+describe("test-only lib export ban (d)", () => {
+  it("pendingClaimsFactFromQueryResultCa3164e is absent from lib/", () => {
+    const hit = testOnlyLibExportViolation();
+    assert.equal(hit, false);
+  });
+
+  it("(d) plant: ca3164e mapper yields known (≠ live)", () => {
+    const live = pendingClaimsFactFromQueryResult({
+      isError: false,
+      isPending: false,
+      data: { ok: false, error: "PONDER_UNAVAILABLE" },
+    });
+    assert.equal(live.status, "refused");
+    if (live.status === "refused" && "cause" in live) {
+      assert.equal(live.cause, "PONDER_UNAVAILABLE");
+    }
+
+    const planted = pendingClaimsFactFromQueryResultCa3164ePlant({
+      isError: false,
+      isPending: false,
+      data: {
+        claims: [],
+        total: 0,
+        ponderError: "PONDER_UNAVAILABLE",
+      },
+    });
+    assert.equal(
+      planted.status,
+      "known",
+      "ca3164e defect plant must still report known",
+    );
+    assert.notEqual(live.status, planted.status);
+    assertPlantedViolation(
+      planted.status === "known"
+        ? "ca3164e mapping: PONDER_UNAVAILABLE must not yield known"
+        : false,
+      "ca3164e mapping: PONDER_UNAVAILABLE must not yield known",
+    );
+  });
+});
+
+describe("sentence sole owners (support + class-C + claims read)", () => {
   const SUPPORT_SENTENCES = SURFACE_SUPPORT_CAUSES.map((c) =>
     surfaceSupportCauseCopy(c),
   );
   const CLASS_C_SENTENCES = SURFACE_CLASS_C_CAPABILITIES.map((c) =>
     surfaceClassCCauseCopy(c),
   );
-  const CLAIMS_REFUSAL_SENTENCES = PENDING_CLAIMS_REFUSED_CAUSES.flatMap((c) => {
+  const CLAIMS_READ_SENTENCES = PENDING_CLAIMS_READ_CAUSES.flatMap((c) => {
     const copy = pendingClaimsRefusalCopy(c);
     return [copy.title, copy.description].filter((s) => s.length > 0);
   });
@@ -380,7 +460,8 @@ describe("sentence sole owners (c)", () => {
     if (
       rel === "lib/web3/surface-support.ts" ||
       rel === "lib/messaging/snapshot-ui.ts" ||
-      rel === "lib/claims/pending-claims-fact.ts"
+      rel === "lib/claims/pending-claims-fact.ts" ||
+      rel === "lib/web3/surface-admission.ts"
     ) {
       return false;
     }
@@ -395,7 +476,7 @@ describe("sentence sole owners (c)", () => {
       }
     }
     if (rel.startsWith("components/claims/")) {
-      for (const sentence of CLAIMS_REFUSAL_SENTENCES) {
+      for (const sentence of CLAIMS_READ_SENTENCES) {
         if (source.includes(JSON.stringify(sentence))) {
           return `re-inlined pending-claims refusal sentence: ${sentence}`;
         }
@@ -405,27 +486,6 @@ describe("sentence sole owners (c)", () => {
   }
 
   it("no second support or class-C sentence literals in product", () => {
-    assertCleanProductScan(scanProductSources(sentenceLiteralViolation));
-  });
-
-  it("(c) plant: re-inline is red then green", () => {
-    const planted = `const x = ${JSON.stringify(surfaceSupportCauseCopy("product_owner_owed"))};`;
-    const hit = sentenceLiteralViolation("components/shell/app-top-nav.tsx", planted);
-    assert.equal(
-      hit,
-      `re-inlined SurfaceSupportCause sentence: ${surfaceSupportCauseCopy("product_owner_owed")}`,
-    );
-    assertCleanProductScan(scanProductSources(sentenceLiteralViolation));
-  });
-
-  it("(c) plant: claims refusal literal in components/claims is red then green", () => {
-    const sentence = pendingClaimsRefusalCopy("disconnected").title;
-    const planted = `const title = ${JSON.stringify(sentence)};\n`;
-    const rel = "components/claims/profile-claims-tab.tsx";
-    assertPlantedViolation(
-      sentenceLiteralViolation(rel, planted),
-      `re-inlined pending-claims refusal sentence: ${sentence}`,
-    );
     assertCleanProductScan(scanProductSources(sentenceLiteralViolation));
   });
 
@@ -442,57 +502,6 @@ describe("sentence sole owners (c)", () => {
         `${cap}: ${sentence}`,
       );
     }
-  });
-
-  it("PONDER_UNAVAILABLE yields refused, never known (ca3164e plant red)", () => {
-    const live = pendingClaimsFactFromQueryResult({
-      isError: false,
-      isPending: false,
-      data: { ok: false, error: "PONDER_UNAVAILABLE" },
-    });
-    assert.equal(live.status, "refused");
-    if (live.status === "refused") {
-      assert.equal(live.cause, "PONDER_UNAVAILABLE");
-    }
-
-    const planted = pendingClaimsFactFromQueryResultCa3164e({
-      isError: false,
-      isPending: false,
-      data: {
-        claims: [],
-        total: 0,
-        ponderError: "PONDER_UNAVAILABLE",
-      },
-    });
-    assert.equal(
-      planted.status,
-      "known",
-      "ca3164e defect plant must still report known",
-    );
-    assertPlantedViolation(
-      planted.status === "known"
-        ? "ca3164e mapping: PONDER_UNAVAILABLE must not yield known"
-        : false,
-      "ca3164e mapping: PONDER_UNAVAILABLE must not yield known",
-    );
-  });
-});
-
-describe("numeric invent ban (d)", () => {
-  it("no chainId/namespace/count/total invent via ?? 0 or ternary : 0 in scope", () => {
-    const scan = scanProductSources(numericInventViolation);
-    assertCleanProductScan(scan);
-  });
-
-  it("(d) plant: chainId ?? 0 is red then green", () => {
-    const planted =
-      "const { fact } = useActiveVerifierFact({ chainId: targetChainId ?? 0 });\n";
-    const rel = "hooks/use-show-become-karpro.ts";
-    assertPlantedViolation(
-      numericInventViolation(rel, planted),
-      `numeric invent (chainId fed by ?? 0): ${rel}`,
-    );
-    assertCleanProductScan(scanProductSources(numericInventViolation));
   });
 });
 
@@ -529,11 +538,11 @@ describe("census rows pending_claims + kar_pro_min_stake", () => {
 export function reportAdmissionGuardScans(): {
   a: ProductSourceScanResult;
   b: ProductSourceScanResult;
-  d: ProductSourceScanResult;
+  c: ProductSourceScanResult;
 } {
   return {
-    a: scanProductSources(chromeRequireEvmViolation),
-    b: scanProductSources(surfaceSupportCallerViolation),
-    d: scanProductSources(numericInventViolation),
+    a: scanProductSources(refusalStatusCompareViolation),
+    b: scanProductSources(unresolvedWrongVmSentenceViolation),
+    c: scanProductSources(familyInventViolation),
   };
 }

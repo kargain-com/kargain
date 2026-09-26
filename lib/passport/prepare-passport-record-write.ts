@@ -11,12 +11,15 @@
 
 import { ensureSiweSession as defaultEnsureSiweSession } from "@/lib/auth/ensure-siwe-session";
 import {
+  unresolvedNamespaceCopy,
+  type CommercialRegistry,
+} from "@/lib/web3/commercial-active";
+import {
   requireEvmSession,
   wrongVmActionCopy,
   type ActiveAccount,
   type WalletFamilyWanted,
 } from "@/lib/web3/active-account";
-import type { CommercialRegistry } from "@/lib/web3/commercial-active";
 import {
   txWriteAvailabilityForCapability,
   type TxWriteUnavailable,
@@ -32,11 +35,9 @@ export type PassportRecordWritePrep =
   | { ok: true; prep: "evm_prepared" }
   | { ok: true; prep: "svm_none_required" }
   | { ok: true; prep: "none_required" }
-  | {
-      ok: false;
-      cause: "disconnected" | "wrong_vm" | "unresolved_namespace";
-      wanted?: WalletFamilyWanted;
-    };
+  | { ok: false; cause: "disconnected" }
+  | { ok: false; cause: "unresolved_namespace" }
+  | { ok: false; cause: "wrong_vm"; wanted: WalletFamilyWanted };
 
 type EnsureSiwe = typeof defaultEnsureSiweSession;
 
@@ -73,7 +74,10 @@ export async function preparePassportRecordWrite(args: {
 
   const session = requireEvmSession(args.account);
   if (!session.ok) {
-    return { ok: false, cause: session.cause };
+    if (session.cause === "wrong_vm") {
+      return { ok: false, cause: "wrong_vm", wanted: "evm" };
+    }
+    return { ok: false, cause: "disconnected" };
   }
 
   const ensureSiwe = args.ensureSiweSession ?? defaultEnsureSiweSession;
@@ -109,8 +113,8 @@ export function passportRecordWritePrepRefusalMessage(
     case "disconnected":
       return "Connect a wallet to continue.";
     case "wrong_vm":
-      return wrongVmActionCopy(prep.wanted ?? "evm");
+      return wrongVmActionCopy(prep.wanted);
     case "unresolved_namespace":
-      return "This network is not available for commercial writes.";
+      return unresolvedNamespaceCopy();
   }
 }

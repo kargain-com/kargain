@@ -1,6 +1,6 @@
 "use client";
 
-import { useActiveAccount, wrongVmActionCopy } from "@/hooks/use-active-account";
+import { useActiveAccount } from "@/hooks/use-active-account";
 
 import { useState } from "react";
 
@@ -10,7 +10,7 @@ import {
   type SlugAvailabilityStatus,
 } from "@/components/kar-pro/kar-pro-profile-fields";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/empty-state";
+import { SurfaceAdmissionRefusalView } from "@/components/shell/surface-admission-refusal";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
@@ -24,12 +24,11 @@ import { uploadKarProMetadata } from "@/lib/kar-pro/upload-kar-pro-metadata";
 import {
   admitSurface,
   admitSurfaceEvmAddress,
+  isSurfaceAdmissionAvailable,
 } from "@/lib/web3/surface-admission";
-import { surfaceSupportCauseCopy } from "@/lib/web3/surface-support";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
-import { UserCheckIcon } from "@/components/ui/icons";
 
 type LoadingPhase = "idle" | "uploading";
 
@@ -91,42 +90,18 @@ export function KarProJoinForm({
   const staking = karProStakingAddress(chainId);
 
   const { minStake, stakeLabel } = useMinStakeNative(
-    admission.status === "available" ? chainId : undefined,
+    isSurfaceAdmissionAvailable(admission) ? chainId : undefined,
   );
   const isBusy = loadingPhase !== "idle" || txPhase !== "idle";
   const stakeReady = minStake !== undefined;
 
-  if (admission.status === "support_refused") {
+  if (!isSurfaceAdmissionAvailable(admission)) {
     return (
-      <EmptyState
+      <SurfaceAdmissionRefusalView
+        refusal={admission}
+        disconnectedTitle="Connect a wallet to join KarPro."
         variant="content"
         level="A"
-        icon={UserCheckIcon}
-        title={surfaceSupportCauseCopy(admission.cause)}
-        description=""
-      />
-    );
-  }
-  if (
-    admission.status === "wrong_family" ||
-    admission.status === "family_required" ||
-    admission.status === "disconnected" ||
-    admission.status === "unresolved_namespace"
-  ) {
-    const title =
-      admission.status === "wrong_family" ||
-      admission.status === "family_required"
-        ? wrongVmActionCopy(admission.wanted)
-        : admission.status === "disconnected"
-          ? "Connect a wallet to join KarPro."
-          : "This network is not available.";
-    return (
-      <EmptyState
-        variant="content"
-        level="A"
-        icon={UserCheckIcon}
-        title={title}
-        description=""
       />
     );
   }
