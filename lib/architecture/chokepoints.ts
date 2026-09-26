@@ -172,8 +172,14 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "lib/web3/write-lifecycle.ts",
       "lib/web3/evm-write-lifecycle.ts",
     ],
-    rule: "Sole reader for capability × commercial namespace support + wanted wallet family; class derived from SVM cell (never a second table); txWriteAvailabilityForCapability composes support then session (disconnected first); census fixture adds descriptive columns only; no parallel capability address registry; SurfaceSupportCause sentences sole in surfaceSupportCauseCopy (no re-inline in product)",
+    rule: "Sole reader for capability × commercial namespace support + wanted wallet family; class derived from SVM cell (never a second table); census fixture adds descriptive columns only; no parallel capability address registry; SurfaceSupportCause sentences sole in surfaceSupportCauseCopy; class-C family sentences sole in surfaceClassCCauseCopy (no re-inline in product); txWriteAvailabilityForCapability adapts admitSurface (census then session)",
     guardTests: ["surface-support-policy.test.ts"],
+  },
+  {
+    id: "surface-admission",
+    owner: "lib/web3/surface-admission.ts",
+    rule: "Sole census-then-session composer for capability × namespace: surfaceSupport before disconnected / family; admitCreatePassport and txWriteAvailabilityForCapability adapt from admitSurface — no second composer; admitSessionSurface uses commercialNamespaceOf for chrome; class C family mismatch → family_required",
+    guardTests: ["surface-admission-policy.test.ts"],
   },
   {
     id: "create-passport-surface",

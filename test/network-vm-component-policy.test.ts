@@ -72,6 +72,8 @@ export const VM_BRANCH_ALLOWLIST = [
   "lib/commerce/open-fixed-price-consignment.ts",
   // S8-D4 Create passport — support-before-session admit; wizard stays blind.
   "lib/passport/create-passport-surface.ts",
+  // S8-D4 surface admission — census then session; chrome stays blind to .family/.vm.
+  "lib/web3/surface-admission.ts",
 ] as const;
 
 /**

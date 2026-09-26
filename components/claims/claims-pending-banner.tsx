@@ -1,6 +1,6 @@
 "use client";
 
-import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import { useActiveAccount } from "@/hooks/use-active-account";
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -11,19 +11,19 @@ import {
   elevatedAdvisoryPanel,
   elevatedAdvisoryText,
 } from "@/lib/design/instrument-classes";
+import { admitSessionSurface, admitSurfaceEvmAddress } from "@/lib/web3/surface-admission";
 import { cn } from "@/lib/utils";
 
-/** Global indication when the connected wallet has outstanding claims. */
+/** Global indication when the connected wallet has a known outstanding claim total. */
 export function ClaimsPendingBanner({ className }: { className?: string }) {
   const { account } = useActiveAccount();
-  const evm = requireEvmSession(account);
-  const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
+  const admission = admitSessionSurface(account, "pending_claims");
+  const address = admitSurfaceEvmAddress(account, admission);
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { total, isLoading } = usePendingClaims();
+  const fact = usePendingClaims();
 
-  if (!isConnected || !address || isLoading || total <= 0) return null;
+  if (fact.status !== "known" || fact.total <= 0 || !address) return null;
 
   const onOwnClaimsTab =
     searchParams.get("tab") === "claims" &&
@@ -32,9 +32,9 @@ export function ClaimsPendingBanner({ className }: { className?: string }) {
   if (onOwnClaimsTab) return null;
 
   const label =
-    total === 1
+    fact.total === 1
       ? "You have funds waiting to withdraw."
-      : `You have ${total} claims waiting to withdraw.`;
+      : `You have ${fact.total} claims waiting to withdraw.`;
 
   return (
     <div

@@ -24,7 +24,9 @@ describe("peer identity KarPro policy", () => {
       join(root, "components/marketplace/agent-authorization-status.tsx"),
       "utf8",
     );
-    assert.match(src, /usePeerIdentity\(mandate\.agent,\s*\{\s*chainId/);
+    // ProtocolOwner wall: narrow mandate.agent to hex before peer identity.
+    assert.match(src, /isEvmHexAddress\(mandate\.agent\)/);
+    assert.match(src, /usePeerIdentity\(agentHex,\s*\{\s*chainId/);
   });
 
   it("Commons reviews/confirmations consume shared membership active gate", () => {

@@ -79,7 +79,7 @@ describe("resolveAuctionsNavChainId", () => {
   it("connected on Eth with ascending mode → Eth (not hub)", () => {
     assert.equal(
       resolveAuctionsNavChainId({
-        walletChainId: 11155111,
+        sessionNamespace: 11155111,
         isConnected: true,
         hasAscendingMode: hasAscending,
       }),
@@ -90,7 +90,7 @@ describe("resolveAuctionsNavChainId", () => {
   it("connected non-commercial → null (not silent hub)", () => {
     assert.equal(
       resolveAuctionsNavChainId({
-        walletChainId: 1,
+        sessionNamespace: 1,
         isConnected: true,
         hasAscendingMode: hasAscending,
       }),
@@ -101,7 +101,7 @@ describe("resolveAuctionsNavChainId", () => {
   it("connected commercial without ascending mode → null", () => {
     assert.equal(
       resolveAuctionsNavChainId({
-        walletChainId: 84532,
+        sessionNamespace: 84532,
         isConnected: true,
         hasAscendingMode: () => false,
       }),
@@ -109,10 +109,21 @@ describe("resolveAuctionsNavChainId", () => {
     );
   });
 
+  it("connected SVM commercial with ascending → that namespace", () => {
+    assert.equal(
+      resolveAuctionsNavChainId({
+        sessionNamespace: 2000040168,
+        isConnected: true,
+        hasAscendingMode: (id) => id === 2000040168,
+      }),
+      2000040168,
+    );
+  });
+
   it("guest → first commercial with ascending mode", () => {
     assert.equal(
       resolveAuctionsNavChainId({
-        walletChainId: undefined,
+        sessionNamespace: undefined,
         isConnected: false,
         hasAscendingMode: hasAscending,
       }),
@@ -123,7 +134,7 @@ describe("resolveAuctionsNavChainId", () => {
   it("guest with no ascending mode anywhere → null", () => {
     assert.equal(
       resolveAuctionsNavChainId({
-        walletChainId: undefined,
+        sessionNamespace: undefined,
         isConnected: false,
         hasAscendingMode: () => false,
       }),

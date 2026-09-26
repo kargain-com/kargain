@@ -10,6 +10,7 @@ import { formatClaimAmount } from "@/lib/claims/format-claim-amount";
 import { explainClaimFromCredits } from "@/lib/claims/explain-credits";
 import type { PendingClaimView } from "@/lib/claims/map-pending-claim";
 import { monoNumeric } from "@/lib/design/instrument-classes";
+import { surfaceSupportCauseCopy } from "@/lib/web3/surface-support";
 import { shortChainName } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 import { CreditCardIcon } from "@/components/ui/icons";
@@ -93,9 +94,9 @@ function ClaimRow({ claim }: { claim: PendingClaimView }) {
 }
 
 export function ProfileClaimsTab() {
-  const { claims, total, isLoading, ponderError } = usePendingClaims();
+  const fact = usePendingClaims();
 
-  if (isLoading) {
+  if (fact.status === "pending" || fact.isLoading) {
     return (
       <p className="text-sm text-text-secondary" role="status">
         Loading claims…
@@ -103,7 +104,27 @@ export function ProfileClaimsTab() {
     );
   }
 
-  if (ponderError) {
+  if (fact.status === "refused") {
+    const title =
+      fact.cause === "product_owner_owed" ||
+      fact.cause === "not_in_program" ||
+      fact.cause === "authority_only"
+        ? surfaceSupportCauseCopy(fact.cause)
+        : fact.cause === "disconnected"
+          ? "Connect a wallet to see claims."
+          : "Claims are not available for this session.";
+    return (
+      <EmptyState
+        variant="content"
+        level="B"
+        icon={CreditCardIcon}
+        title={title}
+        description=""
+      />
+    );
+  }
+
+  if (fact.ponderError) {
     return (
       <EmptyState
         variant="infrastructure"
@@ -115,7 +136,7 @@ export function ProfileClaimsTab() {
     );
   }
 
-  if (total === 0 || claims.length === 0) {
+  if (fact.total === 0 || fact.claims.length === 0) {
     return (
       <EmptyState
         variant="content"
@@ -129,7 +150,7 @@ export function ProfileClaimsTab() {
 
   return (
     <ul className="divide-y-0">
-      {claims.map((claim) => (
+      {fact.claims.map((claim) => (
         <ClaimRow key={claim.id} claim={claim} />
       ))}
     </ul>

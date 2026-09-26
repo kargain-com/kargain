@@ -2,8 +2,8 @@
  * Write-lifecycle availability causes (S8-3).
  * Parallel to requireEvmSession — never an absent value.
  *
- * S8-D0: {@link txWriteAvailabilityForCapability} composes surface-support
- * (capability × namespace) then the session check. Lifecycle callers keep
+ * S8-D4: {@link txWriteAvailabilityForCapability} adapts
+ * {@link admitSurface} (census then session). Lifecycle callers keep
  * {@link txWriteAvailability} unchanged.
  */
 
@@ -16,8 +16,9 @@ import {
   type WalletFamilyWanted,
   wrongVmActionCopy,
 } from "@/lib/web3/active-account";
+import { admitSurface } from "@/lib/web3/surface-admission";
 import {
-  surfaceSupport,
+  surfaceSupportCauseCopy,
   type SurfaceCapability,
   type SurfaceSupportTable,
 } from "@/lib/web3/surface-support";
@@ -68,10 +69,9 @@ export function txWriteAvailability(
 }
 
 /**
- * Capability × namespace support, then session check against the wanted family.
+ * Capability × namespace via {@link admitSurface} (census then session).
  * Behaviour-neutral vs {@link txWriteAvailability} for capabilities that are
  * supported with family === stack.vm on every commercial namespace (S8-D0 migrate set).
- * Disconnected is named before namespace resolution (same order as {@link txWriteAvailability}).
  */
 export function txWriteAvailabilityForCapability(
   account: ActiveAccount,
@@ -80,23 +80,32 @@ export function txWriteAvailabilityForCapability(
   registry?: CommercialRegistry,
   table?: SurfaceSupportTable,
 ): TxWriteAvailability {
-  if (account.status !== "connected") {
-    return { available: false, cause: "disconnected" };
+  const admission = admitSurface(
+    account,
+    capability,
+    namespace,
+    registry,
+    table,
+  );
+  switch (admission.status) {
+    case "unresolved_namespace":
+      return { available: false, cause: "unresolved_namespace" };
+    case "support_refused":
+      return { available: false, cause: admission.cause };
+    case "disconnected":
+      return { available: false, cause: "disconnected" };
+    case "family_required":
+    case "wrong_family":
+      return { available: false, cause: "wrong_vm", wanted: admission.wanted };
+    case "available":
+      if (account.status !== "connected") {
+        return { available: false, cause: "disconnected" };
+      }
+      if (admission.family === "evm" && account.vm === "evm") {
+        return { available: true, vm: "evm", walletChainId: account.chainId };
+      }
+      return { available: true, vm: "svm", namespace: admission.namespace };
   }
-  const support = surfaceSupport(capability, namespace, registry, table);
-  if ("unresolved" in support) {
-    return { available: false, cause: "unresolved_namespace" };
-  }
-  if (!support.supported) {
-    return { available: false, cause: support.cause };
-  }
-  if (account.vm !== support.family) {
-    return { available: false, cause: "wrong_vm", wanted: support.family };
-  }
-  if (account.vm === "evm") {
-    return { available: true, vm: "evm", walletChainId: account.chainId };
-  }
-  return { available: true, vm: "svm", namespace };
 }
 
 /** Stable English for write refusals — §4.7 vocabulary for wrong_vm. */
@@ -109,11 +118,9 @@ export function txWriteRefusalMessage(refusal: TxWriteUnavailable): string {
     case "unresolved_namespace":
       return "This network is not available for commercial writes.";
     case "not_in_program":
-      return "This action is not available on this network.";
     case "product_owner_owed":
-      return "This action is not available on this network yet.";
     case "authority_only":
-      return "This action requires network authority on this network.";
+      return surfaceSupportCauseCopy(refusal.cause);
   }
 }
 

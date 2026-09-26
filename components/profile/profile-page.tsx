@@ -348,7 +348,7 @@ export function ProfilePage({
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
+  const isConnected = account.status === "connected";
   const isOwner = useIsProfileOwner(wallet);
   const evmWallet = isEvmHexAddress(wallet) ? wallet : undefined;
   const { profile } = useNostrProfile(evmWallet, initialNostrProfile);
@@ -396,7 +396,9 @@ export function ProfilePage({
     attestations.length > 0 ||
     (verifierProfile?.verificationCount ?? 0) > 0;
 
-  const { total: claimsTotal } = usePendingClaims();
+  const claimsFact = usePendingClaims();
+  const claimsTotal =
+    isOwner && claimsFact.status === "known" ? claimsFact.total : 0;
   const { count: outstandingTotal } = useOutstandingObligations({
       address:
         isOwner && sectionSupport.outstanding.available ? evmWallet : undefined,

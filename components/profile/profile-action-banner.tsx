@@ -4,8 +4,11 @@ import { UserCheckIcon, WarningIcon } from "@/components/ui/icons";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { useActiveAccount } from "@/hooks/use-active-account";
 import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachability";
 import { isEvmHexAddress } from "@/lib/passport/passport-owner";
+import { admitSessionSurface, admitSurfaceAllowsEvmRead } from "@/lib/web3/surface-admission";
+import { surfaceClassCCauseCopy } from "@/lib/web3/surface-support";
 
 export type ProfileActionBannerProps = {
   isOwner: boolean;
@@ -27,10 +30,14 @@ export function ProfileActionBanner({
   outstandingCount,
   outstandingHref,
 }: ProfileActionBannerProps) {
+  const { account } = useActiveAccount();
+  const messagingAdmission = admitSessionSurface(account, "messaging_session");
+  const messagingAvailable = admitSurfaceAllowsEvmRead(messagingAdmission);
   const messagingPeer =
     !isOwner &&
     isConnected &&
     subjectIsKarPro &&
+    messagingAvailable &&
     isEvmHexAddress(subjectWallet)
       ? subjectWallet
       : undefined;
@@ -43,7 +50,11 @@ export function ProfileActionBanner({
         <p className="flex-1 font-sans text-sm font-normal text-text-secondary">
           Ask {subjectName} to verify your passport
         </p>
-        {isLoading ? null : reachable ? (
+        {messagingAdmission.status === "family_required" ? (
+          <p className="shrink-0 text-xs text-text-secondary" role="status">
+            {surfaceClassCCauseCopy(messagingAdmission.capability)}
+          </p>
+        ) : isLoading ? null : reachable ? (
           <Button variant="secondary" size="sm" className="shrink-0" asChild>
             <Link href={`/messages?to=${subjectWallet}`}>Send request</Link>
           </Button>

@@ -80,20 +80,23 @@ export function resolveOriginChainId(
 
 /**
  * Nav Auctions chain without hub invent:
- * - connected + wallet commercial with the ascending mode → that chain
- * - connected + non-commercial (or commercial without the mode) → null (hide)
- * - guest → first commercial (sorted) that has the ascending mode deployed
+ * - connected + session commercial namespace with ascending mode → that namespace
+ * - connected + non-commercial / no mode → null (hide)
+ * - guest → first commercial EIP-155 (sorted) that has the ascending mode
  */
 export function resolveAuctionsNavChainId(input: {
-  walletChainId: number | undefined;
+  /** Session commercial namespace when connected (either VM). */
+  sessionNamespace: number | undefined;
   isConnected: boolean;
   hasAscendingMode: (chainId: number) => boolean;
 }): number | null {
-  const { walletChainId, isConnected, hasAscendingMode } = input;
+  const { sessionNamespace, isConnected, hasAscendingMode } = input;
   if (isConnected) {
-    const commercial = resolveWalletCommercialChainId(walletChainId);
-    if (commercial == null) return null;
-    return hasAscendingMode(commercial) ? commercial : null;
+    if (sessionNamespace == null || !Number.isFinite(sessionNamespace)) {
+      return null;
+    }
+    if (!isCommercialNamespace(sessionNamespace)) return null;
+    return hasAscendingMode(sessionNamespace) ? sessionNamespace : null;
   }
   for (const id of commercialChainIds()) {
     if (hasAscendingMode(id)) return id;

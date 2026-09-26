@@ -31,7 +31,7 @@ export const SURFACE_SUPPORT_ENTRY_ROOTS: readonly string[] = [
 ];
 
 export const SURFACE_SUPPORT_FLOORS = {
-  requireEvmSessionFilesInAppComponentsHooks: 75,
+  requireEvmSessionFilesInAppComponentsHooks: 62,
   txWriteAvailabilityComponentPlusLibOwners: 3 + 13,
   wagmiReadHookFiles: 28,
   derivedConsumerPairs: 1,

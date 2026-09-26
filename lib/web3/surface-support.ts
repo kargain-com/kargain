@@ -115,6 +115,10 @@ export const SURFACE_CAPABILITIES = [
   "spl_mint_decimals",
   "fiat_price_feed",
   "claim_asset_meta",
+  /** Pending claimable payouts — SVM ClaimAccount (product reader owed). */
+  "pending_claims",
+  /** KarPro min stake — StakingConfig.min_stake_lamports (product reader owed). */
+  "kar_pro_min_stake",
   // Class C — EVM family on both namespaces (session-bound surfaces)
   "nostr_identity",
   "messaging_session",
@@ -132,6 +136,31 @@ export const SURFACE_CLASS_C_CAPABILITIES = [
   "ens_profile",
 ] as const satisfies readonly SurfaceCapability[];
 
+export type SurfaceClassCCapability =
+  (typeof SURFACE_CLASS_C_CAPABILITIES)[number];
+
+/**
+ * Sole chrome sentences for class-C family refusal.
+ * Names the wallet family the capability needs — never "on this network".
+ */
+export function surfaceClassCCauseCopy(
+  capability: SurfaceClassCCapability,
+): string {
+  switch (capability) {
+    case "nostr_identity":
+      return "Alerts need an Ethereum wallet.";
+    case "messaging_session":
+      return "Private messages are not available on this account.";
+    case "nwc_lightning":
+      return "Lightning payments need an Ethereum wallet.";
+    case "ens_profile":
+      return "ENS names need an Ethereum wallet.";
+    default: {
+      const _exhaustive: never = capability;
+      return _exhaustive;
+    }
+  }
+}
 /**
  * Chain-fact capability allowlist — only these may use evidence source "chain".
  */
@@ -368,6 +397,8 @@ export const SURFACE_SUPPORT_TABLE: Readonly<
   // D-07: fiat price via kargain-price / Pyth — product reader owed
   fiat_price_feed: productOwnerOwed(),
   claim_asset_meta: productOwnerOwed(),
+  pending_claims: productOwnerOwed(),
+  kar_pro_min_stake: productOwnerOwed(),
   nostr_identity: classCEvmOnBoth(),
   messaging_session: classCEvmOnBoth(),
   nwc_lightning: classCEvmOnBoth(),

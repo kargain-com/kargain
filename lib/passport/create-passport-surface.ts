@@ -20,6 +20,7 @@ import {
   type CommercialRegistry,
 } from "@/lib/web3/commercial-active";
 import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
+import { admitSurface } from "@/lib/web3/surface-admission";
 import {
   surfaceSupport,
   surfaceSupportCauseCopy,
@@ -79,8 +80,9 @@ export type CreatePassportAdmission =
   | { readonly status: "unresolved_namespace" };
 
 /**
- * Admit Create on `namespace`: census support first, then session.
- * Unsupported namespaces never surface a wallet-family sentence.
+ * Admit Create on `namespace`: census support first, then session
+ * via {@link admitSurface}. Unsupported namespaces never surface a
+ * wallet-family sentence.
  */
 export function admitCreatePassport(
   account: ActiveAccount,
@@ -88,52 +90,52 @@ export function admitCreatePassport(
   registry: CommercialRegistry = COMMERCIAL_ACTIVE,
   table?: SurfaceSupportTable,
 ): CreatePassportAdmission {
-  const support = surfaceSupport(
+  const admission = admitSurface(
+    account,
     "create_passport",
     namespace,
     registry,
     table,
   );
-  if ("unresolved" in support) {
-    return { status: "unresolved_namespace" };
+  switch (admission.status) {
+    case "unresolved_namespace":
+      return { status: "unresolved_namespace" };
+    case "support_refused":
+      return {
+        status: "support_refused",
+        cause: admission.cause,
+        namespace: admission.namespace,
+      };
+    case "disconnected":
+      return {
+        status: "session_refused",
+        cause: "disconnected",
+        namespace,
+      };
+    case "family_required":
+    case "wrong_family":
+      return {
+        status: "session_refused",
+        cause: "wrong_vm",
+        wanted: admission.wanted,
+        namespace: admission.namespace,
+      };
+    case "available":
+      if (account.status !== "connected" || account.vm !== "evm") {
+        return {
+          status: "session_refused",
+          cause: "wrong_vm",
+          wanted: "evm",
+          namespace: admission.namespace,
+        };
+      }
+      return {
+        status: "available",
+        namespace: admission.namespace,
+        address: account.address,
+        chainId: account.chainId,
+      };
   }
-  if (!support.supported) {
-    return {
-      status: "support_refused",
-      cause: support.cause,
-      namespace,
-    };
-  }
-  if (account.status !== "connected") {
-    return {
-      status: "session_refused",
-      cause: "disconnected",
-      namespace,
-    };
-  }
-  if (account.vm !== support.family) {
-    return {
-      status: "session_refused",
-      cause: "wrong_vm",
-      wanted: support.family,
-      namespace,
-    };
-  }
-  if (account.vm !== "evm") {
-    // create_passport supported family is always evm today; refuse by name if census changes.
-    return {
-      status: "session_refused",
-      cause: "wrong_vm",
-      wanted: "evm",
-      namespace,
-    };
-  }
-  return {
-    status: "available",
-    namespace,
-    address: account.address,
-    chainId: account.chainId,
-  };
 }
 
 /**

@@ -939,10 +939,9 @@ pub fn read_owner() {
       `owner floor: ${owners.length}`,
     );
 
-    const namespaces = [
-      ...Object.keys(COMMERCIAL_ACTIVE).map(Number),
-      999_999_999,
-    ];
+    const commercialNamespaces = Object.keys(COMMERCIAL_ACTIVE).map(Number);
+    const unresolvedNs = 999_999_999;
+    const namespaces = [...commercialNamespaces, unresolvedNs];
     const sessions: ActiveAccount[] = [
       disconnectedAccount(),
       evmSession(),
@@ -963,11 +962,23 @@ pub fn read_owner() {
             ns,
           );
           const prev = txWriteAvailability(account, ns);
-          assertMatrixEqual(
-            next,
-            prev,
-            `${file} cap=${capability} ns=${ns} account=${account.status}/${"vm" in account ? account.vm : "-"}`,
-          );
+          const detail: string = `${file} cap=${capability} ns=${ns} account=${account.status}/${"vm" in account ? account.vm : "-"}`;
+          // S8-D4 census-first: disconnected + unresolved → ForCapability names
+          // unresolved_namespace; bare txWriteAvailability stays disconnected-first.
+          if (account.status === "disconnected" && ns === unresolvedNs) {
+            assert.deepEqual(
+              next,
+              { available: false, cause: "unresolved_namespace" },
+              `${detail} (census-first)`,
+            );
+            assert.notDeepEqual(
+              next,
+              prev,
+              `${detail} must diverge from disconnect-first bare write`,
+            );
+          } else {
+            assertMatrixEqual(next, prev, detail);
+          }
           comparisons += 1;
         }
       }

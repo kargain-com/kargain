@@ -2,7 +2,6 @@
 
 import {
   connectedAddress,
-  requireEvmSession,
   useActiveAccount,
 } from "@/hooks/use-active-account";
 
@@ -121,9 +120,6 @@ export function MobileBottomNav({
 }) {
   const path = usePathname();
   const { account } = useActiveAccount();
-  const evm = requireEvmSession(account);
-  /** Badges stay EVM-session-bound (messaging / Nostr); Profile tab follows either VM. */
-  const badgesConnected = evm.ok;
   const address = connectedAddress(account);
   const profileHref = profileHrefForAccount(account);
 
@@ -154,7 +150,7 @@ export function MobileBottomNav({
             icon={MessageAltIcon}
             active={path.startsWith("/messages")}
             badge={
-              badgesConnected && identityBadges ? (
+              identityBadges ? (
                 <MessagingNavStatus className="-top-0.5 -right-0.5" />
               ) : undefined
             }
@@ -182,7 +178,7 @@ export function MobileBottomNav({
             icon={NotificationIcon}
             active={path.startsWith("/notifications")}
             badge={
-              badgesConnected && identityBadges ? (
+              identityBadges ? (
                 <NotificationsUnreadBadge className="-top-0.5 -right-0.5" />
               ) : undefined
             }

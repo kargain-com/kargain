@@ -1,20 +1,24 @@
 "use client";
 
-import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import {
+  commercialNamespaceOf,
+  requireEvmSession,
+  useActiveAccount,
+} from "@/hooks/use-active-account";
 
 import { useState } from "react";
-import { useReadContract } from "wagmi";
 
 import { KarProClient } from "@/components/kar-pro/kar-pro-client";
-import { formatStakeNative } from "@/lib/kar-pro/stake-format";
+import { useActiveVerifierFact } from "@/hooks/use-active-verifier-fact";
+import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
-import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import {
   commercialActive,
   nativeUnitOf,
 } from "@/lib/web3/commercial-active";
-import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { formatStakeNative } from "@/lib/kar-pro/stake-format";
+import { admitSessionSurface, admitSurfaceAllowsEvmRead } from "@/lib/web3/surface-admission";
+import { surfaceSupportCauseCopy } from "@/lib/web3/surface-support";
 
 const VALUE_PROPS = [
   { label: "Refundable stake", stakeStat: true as const },
@@ -27,41 +31,43 @@ export function KarProPageContent() {
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
   const walletChainId = evm.ok ? evm.chainId : undefined;
-  const chainId = resolveKarProTargetChainId(walletChainId);
-  const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
-  const wc = chainId != null ? wagmiChainId(chainId) : undefined;
+  const ns = commercialNamespaceOf(account);
+  const chainId = ns.ok
+    ? Number(ns.namespace)
+    : resolveKarProTargetChainId(walletChainId);
   const [postTxActive, setPostTxActive] = useState<boolean | null>(null);
 
-  const { data: onChainActive } = useReadContract({
-    address: staking,
-    abi: KarProStakingAbi,
-    functionName: "isActiveVerifier",
-    args: address ? [address] : undefined,
-    chainId: wc,
-    query: { enabled: Boolean(staking && address && chainId != null) },
+  const { fact, isActiveVerifier: onChainActive } = useActiveVerifierFact({
+    chainId: chainId ?? 0,
   });
 
-  const { data: minStake, isPending: minStakePending } = useReadContract({
-    address: staking,
-    abi: KarProStakingAbi,
-    functionName: "minStakeNative",
-    chainId: wc,
-    query: { enabled: Boolean(staking && chainId != null) },
-  });
+  const minStakeAdmission = admitSessionSurface(account, "kar_pro_min_stake");
+  const { minStake, isPending: minStakePending } = useMinStakeNative(
+    admitSurfaceAllowsEvmRead(minStakeAdmission) ? (chainId ?? undefined) : undefined,
+  );
 
   const stack = chainId != null ? commercialActive(chainId) : undefined;
   const unit = stack ? nativeUnitOf(stack) : null;
   const stakeLabel =
-    unit != null ? `${formatStakeNative(minStake, unit)} ${unit.symbol}` : null;
+    minStakeAdmission.status === "support_refused"
+      ? surfaceSupportCauseCopy(minStakeAdmission.cause)
+      : unit != null
+        ? `${formatStakeNative(minStake, unit)} ${unit.symbol}`
+        : null;
 
-  const [prevIdentity, setPrevIdentity] = useState(`${address}:${evm.ok}:${chainId}`);
-  const identity = `${address}:${evm.ok}:${chainId}`;
+  const [prevIdentity, setPrevIdentity] = useState(
+    `${address}:${account.status}:${chainId}`,
+  );
+  const identity = `${address}:${account.status}:${chainId}`;
   if (identity !== prevIdentity) {
     setPrevIdentity(identity);
     if (postTxActive !== null) setPostTxActive(null);
   }
 
-  const isActiveVerifier = !evm.ok ? false : (postTxActive ?? onChainActive === true);
+  const isActiveVerifier =
+    postTxActive === true ||
+    (postTxActive == null &&
+      (fact.kind === "active" || onChainActive === true));
   const showValueProps = !isActiveVerifier;
 
   return (
@@ -76,7 +82,9 @@ export function KarProPageContent() {
             >
               <p className="font-mono text-2xl md:text-4xl font-normal tabular-nums tracking-tight text-text-primary">
                 {"stakeStat" in prop ? (
-                  chainId == null || unit == null || minStakePending || stakeLabel == null ? (
+                  chainId == null ||
+                  (minStakeAdmission.status === "available" &&
+                    (unit == null || minStakePending || stakeLabel == null)) ? (
                     <span
                       className="inline-block h-4 w-16 animate-pulse rounded-sm bg-bg-surface align-baseline"
                       aria-hidden
@@ -88,7 +96,9 @@ export function KarProPageContent() {
                   prop.value
                 )}
               </p>
-              <p className="font-sans text-sm font-normal text-text-secondary">{prop.label}</p>
+              <p className="font-sans text-sm font-normal text-text-secondary">
+                {prop.label}
+              </p>
             </div>
           ))}
         </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import { useActiveAccount } from "@/hooks/use-active-account";
 
 import {
   CheckDoubleIcon,
@@ -21,6 +21,11 @@ import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachab
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import { isEvmHexAddress } from "@/lib/passport/passport-owner";
 import { proShowroomHref } from "@/lib/kar-pro/pro-showroom-href";
+import {
+  admitSessionSurface,
+  admitSurfaceAllowsEvmRead,
+} from "@/lib/web3/surface-admission";
+import { surfaceClassCCauseCopy } from "@/lib/web3/surface-support";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
 const headerActionClassName = "min-h-9 h-9 px-3 py-1.5 text-xs";
@@ -64,12 +69,15 @@ export function IdentityHeader({
   showEditButton = true,
 }: IdentityHeaderProps) {
   const { account } = useActiveAccount();
-  const evm = requireEvmSession(account);
-  const isConnected = evm.ok;
+  const isConnected = account.status === "connected";
+  const messagingAdmission = admitSessionSurface(account, "messaging_session");
+  const messagingEvm = admitSurfaceAllowsEvmRead(messagingAdmission);
   const isOwner = useIsProfileOwner(wallet);
   const evmWallet = isEvmHexAddress(wallet) ? wallet : undefined;
   const { reachable, isLoading: reachabilityLoading, message: reachabilityMessage } =
-    usePeerMessagingReachability(!isOwner ? evmWallet : undefined);
+    usePeerMessagingReachability(
+      !isOwner && isConnected && messagingEvm ? evmWallet : undefined,
+    );
   const { data: ensName, isLoading: ensNameLoading } = useEnsName({
     address: evmWallet,
     chainId: ENS_CHAIN_ID,
@@ -123,7 +131,15 @@ export function IdentityHeader({
                   <Link href="/profile/edit">Edit profile</Link>
                 </Button>
               )}
-              {!isOwner && isConnected && reachable && (
+              {!isOwner && isConnected && messagingAdmission.status === "family_required" && (
+                <p className="text-xs text-text-secondary" role="status">
+                  {surfaceClassCCauseCopy(messagingAdmission.capability)}
+                </p>
+              )}
+              {!isOwner &&
+                isConnected &&
+                messagingEvm &&
+                reachable && (
                 <Button variant="secondary" size="sm" className={headerActionClassName} asChild>
                   <Link href={`/messages?to=${wallet}`}>
                     <MessageIcon size={14} aria-hidden />
@@ -131,12 +147,20 @@ export function IdentityHeader({
                   </Link>
                 </Button>
               )}
-              {!isOwner && isConnected && isActiveVerifier && reachable && (
+              {!isOwner &&
+                isConnected &&
+                messagingEvm &&
+                isActiveVerifier &&
+                reachable && (
                 <Button variant="primary" size="sm" className={headerActionClassName} asChild>
                   <Link href={`/messages?to=${wallet}`}>Request verification</Link>
                 </Button>
               )}
-              {!isOwner && isConnected && !reachabilityLoading && !reachable && (
+              {!isOwner &&
+                isConnected &&
+                messagingEvm &&
+                !reachabilityLoading &&
+                !reachable && (
                 <p className="text-xs text-text-secondary" role="status">
                   {reachabilityMessage ?? "Messages not available"}
                 </p>

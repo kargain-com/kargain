@@ -1,40 +1,36 @@
 "use client";
 
-import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import {
+  commercialNamespaceOf,
+  requireEvmSession,
+  useActiveAccount,
+} from "@/hooks/use-active-account";
 
-import { useReadContract } from "wagmi";
-
-import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
+import { useActiveVerifierFact } from "@/hooks/use-active-verifier-fact";
 import {
   resolveKarProTargetChainId,
   shouldShowBecomeKarPro,
 } from "@/lib/kar-pro/kar-pro-target-chain";
-import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 
+/**
+ * Become KarPro CTA — connected on either VM, and active-verifier fact is not
+ * known-true (pending / refused / inactive keep the entrance).
+ */
 export function useShowBecomeKarPro(): boolean {
   const { account } = useActiveAccount();
+  const isConnected = account.status === "connected";
+  const ns = commercialNamespaceOf(account);
   const evm = requireEvmSession(account);
-  const address = evm.ok ? evm.address : undefined;
-  const isConnected = evm.ok;
   const walletChainId = evm.ok ? evm.chainId : undefined;
-  const chainId = resolveKarProTargetChainId(walletChainId);
-  const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
-  const wc = chainId != null ? wagmiChainId(chainId) : undefined;
-
-  const { data: isActiveVerifier } = useReadContract({
-    address: staking,
-    abi: KarProStakingAbi,
-    functionName: "isActiveVerifier",
-    args: address ? [address] : undefined,
-    chainId: wc,
-    query: {
-      enabled: Boolean(isConnected && staking && address && chainId != null),
-    },
+  const targetChainId = ns.ok
+    ? Number(ns.namespace)
+    : resolveKarProTargetChainId(walletChainId);
+  /** Unresolved target → 0 (no commercial stack); never invent hub 84532. */
+  const { fact } = useActiveVerifierFact({
+    chainId: targetChainId ?? 0,
   });
-
-  // Non-commercial wallet → not active on target → still show CTA (/kar-pro prompts switch).
-  const isActiveOnTarget = chainId != null && isActiveVerifier === true;
+  const isActiveOnTarget =
+    targetChainId != null && fact.kind === "active";
 
   return shouldShowBecomeKarPro({ isConnected, isActiveOnTarget });
 }

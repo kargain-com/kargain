@@ -1,6 +1,6 @@
 "use client";
 
-import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import { useActiveAccount, wrongVmActionCopy } from "@/hooks/use-active-account";
 
 import { useState } from "react";
 
@@ -10,6 +10,7 @@ import {
   type SlugAvailabilityStatus,
 } from "@/components/kar-pro/kar-pro-profile-fields";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
@@ -20,9 +21,15 @@ import {
 } from "@/lib/kar-pro/membership-roster";
 import { SLUG_PATTERN } from "@/lib/kar-pro/kar-pro-slug-rules";
 import { uploadKarProMetadata } from "@/lib/kar-pro/upload-kar-pro-metadata";
+import {
+  admitSurface,
+  admitSurfaceEvmAddress,
+} from "@/lib/web3/surface-admission";
+import { surfaceSupportCauseCopy } from "@/lib/web3/surface-support";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
+import { UserCheckIcon } from "@/components/ui/icons";
 
 type LoadingPhase = "idle" | "uploading";
 
@@ -61,8 +68,8 @@ export function KarProJoinForm({
   otherActiveChainIds?: readonly number[];
 }) {
   const { account, signingBinding, svmWallet } = useActiveAccount();
-  const evm = requireEvmSession(account);
-  const address = evm.ok ? evm.address : undefined;
+  const admission = admitSurface(account, "kar_pro_join", chainId);
+  const address = admitSurfaceEvmAddress(account, admission);
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const { writeContractAsync } = useEvmWriteContract();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
@@ -83,9 +90,46 @@ export function KarProJoinForm({
 
   const staking = karProStakingAddress(chainId);
 
-  const { minStake, stakeLabel } = useMinStakeNative(chainId);
+  const { minStake, stakeLabel } = useMinStakeNative(
+    admission.status === "available" ? chainId : undefined,
+  );
   const isBusy = loadingPhase !== "idle" || txPhase !== "idle";
   const stakeReady = minStake !== undefined;
+
+  if (admission.status === "support_refused") {
+    return (
+      <EmptyState
+        variant="content"
+        level="A"
+        icon={UserCheckIcon}
+        title={surfaceSupportCauseCopy(admission.cause)}
+        description=""
+      />
+    );
+  }
+  if (
+    admission.status === "wrong_family" ||
+    admission.status === "family_required" ||
+    admission.status === "disconnected" ||
+    admission.status === "unresolved_namespace"
+  ) {
+    const title =
+      admission.status === "wrong_family" ||
+      admission.status === "family_required"
+        ? wrongVmActionCopy(admission.wanted)
+        : admission.status === "disconnected"
+          ? "Connect a wallet to join KarPro."
+          : "This network is not available.";
+    return (
+      <EmptyState
+        variant="content"
+        level="A"
+        icon={UserCheckIcon}
+        title={title}
+        description=""
+      />
+    );
+  }
 
   const onContinue = () => {
     if (!fields.name.trim()) {

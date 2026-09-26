@@ -8,6 +8,7 @@ import {
   deriveEnableWalletSignatures,
   enableWalletSignaturesCopy,
 } from "./enable-cost";
+import { surfaceClassCCauseCopy } from "@/lib/web3/surface-support";
 
 export { deriveEnableWalletSignatures, enableWalletSignaturesCopy };
 
@@ -138,9 +139,10 @@ export function messagingUnsupportedCopy(snapshot: SessionSnapshot): string | nu
 /**
  * SVM / wrong-VM messaging refusal (design-spec §4.12).
  * Entry points stay visible with this reason — never removed.
+ * Sentence literal lives in {@link surfaceClassCCauseCopy}(`messaging_session`).
  */
 export const SVM_MESSAGING_UNAVAILABLE =
-  "Private messages are not available on this account.";
+  surfaceClassCCauseCopy("messaging_session");
 
 /** Whether an EVM-session cause is the §4.12 SVM messaging refusal. */
 export function isSvmMessagingRefusal(

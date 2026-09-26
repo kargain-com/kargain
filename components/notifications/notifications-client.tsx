@@ -1,17 +1,21 @@
 "use client";
 
-import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import { useActiveAccount } from "@/hooks/use-active-account";
 
 import { NotificationIcon } from "@/components/ui/icons";
 import { useMemo } from "react";
 
 import { NotificationRow, NotificationRowSkeletonList } from "@/components/notifications/notification-row";
-import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useNotificationsFeed } from "@/hooks/use-notifications-feed";
 
 import type { NotificationItem } from "@/lib/notifications/types";
 import { formatPassportTitle } from "@/lib/passport/passport-token-id";
+import { admitSessionSurface } from "@/lib/web3/surface-admission";
+import {
+  surfaceClassCCauseCopy,
+  surfaceSupportCauseCopy,
+} from "@/lib/web3/surface-support";
 
 function groupLabel(groupKey: string, items: NotificationItem[]) {
   const first = items[0];
@@ -25,8 +29,7 @@ function groupLabel(groupKey: string, items: NotificationItem[]) {
 
 export function NotificationsClient() {
   const { account } = useActiveAccount();
-  const evm = requireEvmSession(account);
-  const isConnected = evm.ok;
+  const admission = admitSessionSurface(account, "nostr_identity");
   const { items, unreadCount, isLoading, markRead } = useNotificationsFeed();
 
   const grouped = useMemo(() => {
@@ -43,12 +46,64 @@ export function NotificationsClient() {
     }));
   }, [items]);
 
-  if (!isConnected) {
+  if (admission.status === "disconnected") {
     return (
       <div className="mt-8">
-        <EvmSessionRefusal
-          cause={evm.cause}
-          disconnectedTitle="Connect your wallet to see alerts from your passports and watchlist."
+        <EmptyState
+          variant="content"
+          level="A"
+          icon={NotificationIcon}
+          title="Connect your wallet to see alerts from your passports and watchlist."
+          description=""
+        />
+      </div>
+    );
+  }
+
+  if (admission.status === "family_required") {
+    return (
+      <div className="mt-8">
+        <EmptyState
+          variant="content"
+          level="A"
+          icon={NotificationIcon}
+          title={surfaceClassCCauseCopy(admission.capability)}
+          description=""
+        />
+      </div>
+    );
+  }
+
+  if (admission.status === "support_refused") {
+    return (
+      <div className="mt-8">
+        <EmptyState
+          variant="content"
+          level="A"
+          icon={NotificationIcon}
+          title={surfaceSupportCauseCopy(admission.cause)}
+          description=""
+        />
+      </div>
+    );
+  }
+
+  if (
+    admission.status === "unresolved_namespace" ||
+    admission.status === "wrong_family"
+  ) {
+    return (
+      <div className="mt-8">
+        <EmptyState
+          variant="content"
+          level="A"
+          icon={NotificationIcon}
+          title={
+            admission.status === "wrong_family"
+              ? surfaceClassCCauseCopy("nostr_identity")
+              : "This network is not available."
+          }
+          description=""
         />
       </div>
     );

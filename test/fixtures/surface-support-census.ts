@@ -1455,7 +1455,7 @@ export const SURFACE_CENSUS_PAIRS: SurfaceCensusPair[] = [
     "file": "hooks/use-min-stake-native.ts",
     "primitive": "useReadContract",
     "functionName": "minStakeNative",
-    "capability": "active_verifier"
+    "capability": "kar_pro_min_stake"
   },
   {
     "file": "hooks/use-passport-approval.ts",
@@ -1519,12 +1519,6 @@ export const SURFACE_CENSUS_PAIRS: SurfaceCensusPair[] = [
   },
   {
     "file": "hooks/use-peer-identity.ts",
-    "primitive": "useReadContract",
-    "functionName": "isActiveVerifier",
-    "capability": "active_verifier"
-  },
-  {
-    "file": "hooks/use-show-become-karpro.ts",
     "primitive": "useReadContract",
     "functionName": "isActiveVerifier",
     "capability": "active_verifier"
@@ -2456,6 +2450,28 @@ export const SURFACE_CENSUS_CAPABILITY_META: SurfaceCensusCapabilityMeta[] = [
     "evidence": {
       "source": "struct_field",
       "item": "PaymentTokenRecord.decimals"
+    },
+    "svmReader": "owed",
+    "observedSvmBehaviour": "known"
+  },
+  {
+    "id": "pending_claims",
+    "kind": "read_fact",
+    "evmSource": "see consuming files",
+    "evidence": {
+      "source": "struct_field",
+      "item": "ClaimAccount.amount"
+    },
+    "svmReader": "owed",
+    "observedSvmBehaviour": "known"
+  },
+  {
+    "id": "kar_pro_min_stake",
+    "kind": "read_fact",
+    "evmSource": "see consuming files",
+    "evidence": {
+      "source": "struct_field",
+      "item": "StakingConfig.min_stake_lamports"
     },
     "svmReader": "owed",
     "observedSvmBehaviour": "known"

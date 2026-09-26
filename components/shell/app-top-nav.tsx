@@ -1,6 +1,6 @@
 "use client";
 
-import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import { useActiveAccount, commercialNamespaceOf } from "@/hooks/use-active-account";
 
 import Link from "next/link";
 import {
@@ -46,13 +46,13 @@ export type AppTopNavProps = {
 
 export function AppTopNav({ identityBadges = false }: AppTopNavProps) {
   const { account } = useActiveAccount();
-  const evm = requireEvmSession(account);
-  const isConnected = evm.ok;
-  const walletChainId = evm.ok ? evm.chainId : undefined;
+  const isConnected = account.status === "connected";
+  const sessionNs = commercialNamespaceOf(account);
+  const sessionNamespace = sessionNs.ok ? Number(sessionNs.namespace) : undefined;
 
   const path = usePathname();
   const sp = useSearchParams();
-      const showBecomeKarPro = useShowBecomeKarPro();
+  const showBecomeKarPro = useShowBecomeKarPro();
   const isMarketplaceBrowse = path === "/";
 
   const urlChain = sp.get("chain");
@@ -60,7 +60,7 @@ export function AppTopNav({ identityBadges = false }: AppTopNavProps) {
   /** Only when URL sets `?chain=` — do not fall back to hub for wrong-network. */
   const expectedNamespace = Number.isFinite(parsed) ? parsed : undefined;
   const auctionsChainId = resolveAuctionsNavChainId({
-    walletChainId,
+    sessionNamespace,
     isConnected,
     hasAscendingMode: (id: number) => hasCommerceMode("ascending", id),
   });

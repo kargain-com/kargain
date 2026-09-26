@@ -26,10 +26,12 @@ describe("B5 home Server Action concurrency", () => {
     for (const rel of WALLET_HOME_HOOKS) {
       const text = fs.readFileSync(path.join(ROOT, rel), "utf8");
       assert.match(text, /useQuery\(/, `${rel} must use useQuery`);
+      // Gate on session connect OR on an admission-minted address (S8-D4
+      // pending_claims — address implies connected EVM; never invents a fetch).
       assert.match(
         text,
-        /enabled:\s*isConnected/,
-        `${rel} must gate on isConnected`,
+        /enabled:\s*(?:isConnected|address\s*!=\s*null)/,
+        `${rel} must gate on isConnected or address != null`,
       );
       assert.doesNotMatch(
         text,
