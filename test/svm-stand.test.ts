@@ -25,6 +25,10 @@ import {
   probeValidator,
   runLiveSvmRoundTrip,
 } from "../svm/stand/live-roundtrip.ts";
+import {
+  probeValidator as probePermissionlessMintValidator,
+  runLivePermissionlessMint,
+} from "../svm/stand/live-permissionless-mint.ts";
 import { runLiveVerifierFlow } from "../svm/stand/live-verifier-flow.ts";
 import {
   probeValidator as probeMoneyValidator,
@@ -170,6 +174,29 @@ describe("svm-stand live Core CPI round trip", () => {
       );
       console.warn(
         `\n[svm-stand] live PASS uri=${result.liveUriLen}B foreignMintCu=${result.foreignMintCu} foreignMintTxSize=${result.foreignMintTxSize} (mock 13-meta) homeUnlockCu=${result.homeUnlockCu}\n`,
+      );
+
+      const permReady = await probePermissionlessMintValidator("http://127.0.0.1:8899");
+      if (!permReady) {
+        throw new Error("validator lost health before permissionless mint proof");
+      }
+      const perm = await runLivePermissionlessMint();
+      assertStandArtifactBindings(perm.artifacts);
+      assert.equal(perm.artifacts.programs.kar_passport.sha256, result.artifacts.programs.kar_passport.sha256);
+      assert.equal(perm.payerEqualsAuthority, false);
+      assert.equal(perm.frozen, false);
+      assert.equal(perm.passportStatus, 0, "UNVERIFIED");
+      assert.equal(perm.nextTokenIdAdvanced, true);
+      assert.equal(perm.freezeAuthority, perm.gatewayFreeze);
+      assert.equal(perm.refusals.foreignFreeze, "InvalidSeeds");
+      assert.equal(perm.refusals.ownerIsGateway, "InvalidReceiver");
+      assert.equal(
+        typeof perm.artifacts.programs.kar_gateway.overridden,
+        "boolean",
+      );
+      console.warn(
+        `\n[svm-stand] permissionless-mint PASS payer≠authority freeze=${perm.freezeAuthority.slice(0, 8)}… ` +
+          `refusals InvalidSeeds+InvalidReceiver gateway.overridden=${perm.artifacts.programs.kar_gateway.overridden}\n`,
       );
 
       const verifier = await runLiveVerifierFlow({ reuseInited: true });

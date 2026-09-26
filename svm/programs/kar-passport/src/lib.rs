@@ -17,6 +17,7 @@ pub mod custody;
 pub mod entrypoint;
 pub mod instruction;
 pub mod may;
+pub mod mint_admit;
 pub mod records;
 pub mod seeds;
 pub mod state;

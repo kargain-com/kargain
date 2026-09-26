@@ -414,7 +414,7 @@ function encodeU128Le(n: bigint): Buffer {
   return buf;
 }
 
-function encodeString(s: string): Buffer {
+export function encodeString(s: string): Buffer {
   const b = Buffer.from(s, "utf8");
   const out = Buffer.alloc(4 + b.length);
   out.writeUInt32LE(b.length, 0);
@@ -497,8 +497,11 @@ const PLUGIN_PERMANENT_FREEZE = 5;
 const AUTH_OWNER = 1;
 const AUTH_ADDRESS = 3;
 
-/** Walk Core plugin registry; true when PermanentFreezeDelegate.frozen. */
-export function isPermanentlyFrozen(data: Buffer): boolean {
+/** Walk Core plugin registry; PermanentFreezeDelegate authority + frozen flag. */
+export function permanentFreezePlugin(data: Buffer): {
+  authority: Pk | null;
+  frozen: boolean;
+} {
   let i = 1;
   i += 32;
   const ua = data[i++]!;
@@ -509,25 +512,39 @@ export function isPermanentlyFrozen(data: Buffer): boolean {
   i += 4 + uriLen;
   const seq = data[i++]!;
   if (seq === 1) i += 8;
-  if (data[i] !== 3) return false;
+  if (data[i] !== 3) return { authority: null, frozen: false };
   i += 1;
   const registryOffset = Number(data.readBigUInt64LE(i));
   i = registryOffset;
-  if (data[i] !== 4) return false;
+  if (data[i] !== 4) return { authority: null, frozen: false };
   i += 1;
   const n = data.readUInt32LE(i);
   i += 4;
   for (let r = 0; r < n; r++) {
     const pluginType = data[i++]!;
     const authDisc = data[i++]!;
-    if (authDisc === AUTH_ADDRESS) i += 32;
+    let addr: Pk | null = null;
+    if (authDisc === AUTH_ADDRESS) {
+      addr = new PublicKey(data.subarray(i, i + 32));
+      i += 32;
+    }
     const offset = Number(data.readBigUInt64LE(i));
     i += 8;
     if (pluginType === PLUGIN_PERMANENT_FREEZE) {
-      return data[offset] === PLUGIN_PERMANENT_FREEZE && data[offset + 1]! !== 0;
+      const frozen =
+        data[offset] === PLUGIN_PERMANENT_FREEZE && data[offset + 1]! !== 0;
+      return {
+        authority: authDisc === AUTH_ADDRESS ? addr : null,
+        frozen,
+      };
     }
   }
-  return false;
+  return { authority: null, frozen: false };
+}
+
+/** Walk Core plugin registry; true when PermanentFreezeDelegate.frozen. */
+export function isPermanentlyFrozen(data: Buffer): boolean {
+  return permanentFreezePlugin(data).frozen;
 }
 
 /** Whether TransferDelegate plugin exists with Address authority == expected. */
