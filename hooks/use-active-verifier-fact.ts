@@ -1,6 +1,7 @@
 /**
  * React port wiring for the dual-VM active-verifier admission fact.
  * No VM fork — the lib owner plans contracts and resolves the tri-state.
+ * `chainId` undefined = named namespace absence → unresolved (never invent `0`).
  */
 
 "use client";
@@ -26,8 +27,9 @@ type PlannedOk = Extract<ActiveVerifierReadPlan, { ok: true }>;
 
 function accountPlanKey(
   account: ReturnType<typeof useActiveAccount>["account"],
-  chainId: number,
+  chainId: number | undefined,
 ): string {
+  if (chainId == null) return "namespace_absent";
   if (account.status !== "connected") {
     return `disconnected:${chainId}`;
   }
@@ -35,7 +37,7 @@ function accountPlanKey(
 }
 
 export function useActiveVerifierFact(args: {
-  chainId: number;
+  chainId?: number;
   registry?: CommercialRegistry;
 }): {
   fact: ActiveVerifierFact;
@@ -93,6 +95,10 @@ export function useActiveVerifierFact(args: {
     sessionBound: plan?.sessionBound === true,
     planning,
     vm: plan?.vm ?? null,
+    namespaceAbsent:
+      plan != null && plan.sessionBound === false
+        ? plan.namespaceAbsent === true
+        : false,
   });
 
   return {

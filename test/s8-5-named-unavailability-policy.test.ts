@@ -41,7 +41,7 @@ const SPEC_WRONG_VM_EVM = "Connect an Ethereum wallet to act on this network";
 const SPEC_WRONG_VM_SVM = "Connect a Solana wallet to act on this network";
 const SPEC_FIAT =
   "Fiat pricing needs a measured price feed, which this network does not have";
-const SPEC_MESSAGING = "Private messages are not available on this account.";
+const SPEC_MESSAGING = "Private messages need an Ethereum wallet.";
 
 const ACTION_PREFIXES = [
   "components/auction/",

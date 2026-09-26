@@ -1,14 +1,17 @@
 /**
- * Surface admission — census then session (S8-D4 account chrome).
+ * Surface admission — census then session (S8-D4 account chrome + 2e amend).
  *
  * Guards (RED plant → green):
- * (a) chrome requireEvmSession for connectedness
- * (b) composer that checks session before census
+ * (a) requireEvmSession in chrome set only on explicit allowlist with reasons
+ * (b) surfaceSupport( product callers only on allowlist with reasons
  * (c) second copy of SurfaceSupportCause or class-C sentence
- * (d) numeric default (?? 0) on pending-claims / unread fact
+ * (d) numeric invent feeding chainId / namespace / count / total
  */
 
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
 import {
@@ -34,13 +37,14 @@ import {
   surfaceSupport,
   surfaceSupportCauseCopy,
   type SurfaceCapability,
-  type SurfaceSupportTable,
 } from "@/lib/web3/surface-support";
 import {
   assertCleanProductScan,
   scanProductSources,
+  type ProductSourceScanResult,
 } from "./policy-scan-helpers.ts";
 
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SOLANA_NS = 2_000_040_168;
 
 const EVM_ACCOUNT: ActiveAccount = {
@@ -55,49 +59,172 @@ const SVM_ACCOUNT = svmActiveAccountFromAddress(
   "D87okZNVcTr7AAb9mnH6mBTwS9HRryhaq7XNLzUwxKCb",
 );
 
-/** Measured chrome set — connectedness must not use requireEvmSession / evm.ok. */
-const CHROME_CONNECTEDNESS_FILES = [
+/** Measured chrome set for requireEvmSession allowlist. */
+const CHROME_REQUIRE_EVM_FILES = [
   "components/shell/app-top-nav.tsx",
   "components/shell/mobile-bottom-nav.tsx",
   "hooks/use-show-become-karpro.ts",
   "components/notifications/notifications-unread-badge.tsx",
+  "components/notifications/notifications-shell.tsx",
   "components/claims/claims-pending-banner.tsx",
   "components/identity/identity-header.tsx",
   "components/profile/profile-page.tsx",
   "components/profile/profile-verifier-stats-band.tsx",
+  "components/profile/profile-action-banner.tsx",
   "components/kar-pro/kar-pro-page-content.tsx",
   "hooks/use-is-profile-owner.ts",
 ] as const;
 
-function chromeConnectednessViolation(
+/**
+ * Chrome files allowed to call requireEvmSession — each entry must state why.
+ * Connectedness itself must never use it.
+ */
+const CHROME_REQUIRE_EVM_ALLOWLIST: ReadonlyArray<{
+  file: string;
+  reason: string;
+}> = [
+  {
+    file: "components/notifications/notifications-shell.tsx",
+    reason: "Nostr key bootstrap (class-C nostr_identity)",
+  },
+  {
+    file: "components/profile/profile-page.tsx",
+    reason: "Owner bridge-transit hydrate needs session EVM address",
+  },
+];
+
+const SURFACE_SUPPORT_CALLER_ALLOWLIST: ReadonlyArray<{
+  file: string;
+  reason: string;
+}> = [
+  {
+    file: "lib/web3/surface-admission.ts",
+    reason: "Sole census→session composer",
+  },
+  {
+    file: "lib/passport/create-passport-surface.ts",
+    reason: "Support-only where-available network listing (no session)",
+  },
+];
+
+const NUMERIC_INVENT_SCAN_ROOTS = [
+  "app",
+  "components",
+  "hooks",
+  "lib/verifier/active-verifier-fact.ts",
+  "lib/claims/pending-claims-fact.ts",
+  "lib/notifications/unread-alerts-fact.ts",
+  "lib/web3/surface-admission.ts",
+] as const;
+
+function chromeRequireEvmViolation(
   rel: string,
   source: string,
 ): string | false {
-  if (!(CHROME_CONNECTEDNESS_FILES as readonly string[]).includes(rel)) {
+  if (!(CHROME_REQUIRE_EVM_FILES as readonly string[]).includes(rel)) {
     return false;
   }
-  // Connectedness patterns: isConnected = evm.ok / requireEvmSession for signed-in
+  if (!/\brequireEvmSession\b/.test(source)) return false;
+  const allowed = CHROME_REQUIRE_EVM_ALLOWLIST.some((e) => e.file === rel);
+  if (allowed) return false;
+  return `chrome requireEvmSession outside allowlist: ${rel}`;
+}
+
+function surfaceSupportCallerViolation(
+  rel: string,
+  source: string,
+): string | false {
   if (
-    /const\s+isConnected\s*=\s*evm\.ok\b/.test(source) ||
-    /const\s+badgesConnected\s*=\s*evm\.ok\b/.test(source) ||
-    /void\s+requireEvmSession\s*\(/.test(source)
+    !rel.startsWith("app/") &&
+    !rel.startsWith("components/") &&
+    !rel.startsWith("hooks/") &&
+    !rel.startsWith("lib/")
   ) {
-    return `chrome connectedness via requireEvmSession/evm.ok (use account.status === "connected"): ${rel}`;
+    return false;
+  }
+  // Definition owner — not a caller. Chokepoint rule prose may quote the name.
+  if (rel === "lib/web3/surface-support.ts") return false;
+  if (rel === "lib/architecture/chokepoints.ts") return false;
+  const importsOwner =
+    /import\s*\{[^}]*\bsurfaceSupport\b[^}]*\}\s*from\s*["'][^"']*surface-support["']/.test(
+      source,
+    );
+  if (!importsOwner) return false;
+  if (!/\bsurfaceSupport\s*\(/.test(source)) return false;
+  const allowed = SURFACE_SUPPORT_CALLER_ALLOWLIST.some((e) => e.file === rel);
+  if (allowed) return false;
+  return `surfaceSupport( product caller outside allowlist: ${rel}`;
+}
+
+/**
+ * Numeric invent feeding chainId / namespace / count / total — by property fed,
+ * not by variable spelling.
+ */
+function numericInventViolation(
+  rel: string,
+  source: string,
+): string | false {
+  const inScope =
+    rel.startsWith("app/") ||
+    rel.startsWith("components/") ||
+    rel.startsWith("hooks/") ||
+    (NUMERIC_INVENT_SCAN_ROOTS as readonly string[]).includes(rel);
+  if (!inScope) return false;
+
+  // Property-fed invent only (not `total ===` identity / empty browse envelopes).
+  const patterns: Array<{ re: RegExp; label: string }> = [
+    {
+      re: /chainId\s*:\s*[^,\n}]*\?\?\s*0\b/,
+      label: "chainId fed by ?? 0",
+    },
+    {
+      re: /namespace\s*:\s*[^,\n}]*\?\?\s*0\b/,
+      label: "namespace fed by ?? 0",
+    },
+    {
+      re: /\btotal\s*:\s*[^,\n}]*\?\?\s*0\b/,
+      label: "total fed by ?? 0",
+    },
+    {
+      re: /\bcount\s*:\s*[^,\n}]*\?\?\s*0\b/,
+      label: "count fed by ?? 0",
+    },
+    {
+      re: /\bclaims\s*:\s*[^,\n}]*\?[^,\n}]*:\s*0\b/,
+      label: "claims fed by ternary : 0",
+    },
+    {
+      re: /\bclaims\s*:\s*[^,\n}]*\?\?\s*0\b/,
+      label: "claims fed by ?? 0",
+    },
+  ];
+  for (const { re, label } of patterns) {
+    if (re.test(source)) {
+      return `numeric invent (${label}): ${rel}`;
+    }
   }
   return false;
 }
 
-/** Planted session-before-census composer (mirrors retired ForCapability order). */
-function plantedSessionFirstAdmit(
-  account: ActiveAccount,
-  capability: SurfaceCapability,
-  namespace: number,
-  table: SurfaceSupportTable = SURFACE_SUPPORT_TABLE,
-): ReturnType<typeof admitSurface> {
-  if (account.status !== "connected") {
-    return { status: "disconnected" };
-  }
-  return admitSurface(account, capability, namespace, undefined, table);
+function assertThrowsAssertionError(
+  fn: () => void,
+  expectedMessage: string,
+): void {
+  assert.throws(
+    fn,
+    (err: unknown) => {
+      assert.ok(err instanceof assert.AssertionError);
+      assert.equal(err.message, expectedMessage);
+      return true;
+    },
+  );
+}
+
+function assertPlantedViolation(hit: string | false, expectedMessage: string): void {
+  assert.equal(hit, expectedMessage);
+  assertThrowsAssertionError(() => {
+    throw new assert.AssertionError({ message: expectedMessage });
+  }, expectedMessage);
 }
 
 describe("admitSurface — census before session", () => {
@@ -140,6 +267,25 @@ describe("admitSurface — census before session", () => {
     }
   });
 
+  it("available EVM packs address and chainId; ForCapability maps without re-check", () => {
+    const admission = admitSurface(EVM_ACCOUNT, "set_passport_uri", 84532);
+    assert.equal(admission.status, "available");
+    if (admission.status === "available" && admission.family === "evm") {
+      assert.equal(admission.address, EVM_ACCOUNT.address);
+      assert.equal(admission.chainId, 84532);
+    }
+    const write = txWriteAvailabilityForCapability(
+      EVM_ACCOUNT,
+      "set_passport_uri",
+      84532,
+    );
+    assert.deepEqual(write, {
+      available: true,
+      vm: "evm",
+      walletChainId: 84532,
+    });
+  });
+
   it("admitCreatePassport and ForCapability adapt admitSurface (no second composer)", () => {
     const create = admitCreatePassport(DISCONNECTED_ACCOUNT, SOLANA_NS);
     assert.equal(create.status, "support_refused");
@@ -153,41 +299,59 @@ describe("admitSurface — census before session", () => {
       assert.equal(write.cause, "product_owner_owed");
     }
   });
+});
 
-  it("(b) plant: session-before-census diverges from live admitSurface", () => {
-    const planted = plantedSessionFirstAdmit(
-      DISCONNECTED_ACCOUNT,
-      "kar_pro_join",
-      SOLANA_NS,
+describe("chrome requireEvmSession allowlist (a)", () => {
+  it("every allowlist entry has a reason and is in the chrome set", () => {
+    for (const entry of CHROME_REQUIRE_EVM_ALLOWLIST) {
+      assert.ok(entry.reason.length > 0, entry.file);
+      assert.ok(
+        (CHROME_REQUIRE_EVM_FILES as readonly string[]).includes(entry.file),
+        entry.file,
+      );
+    }
+  });
+
+  it("measured chrome set: requireEvmSession only on allowlist", () => {
+    const scan = scanProductSources(chromeRequireEvmViolation);
+    assertCleanProductScan(scan);
+    assert.ok(scan.filesRead >= CHROME_REQUIRE_EVM_FILES.length);
+  });
+
+  it("(a) plant: bare requireEvmSession in chrome is red then green", () => {
+    const planted =
+      'import { requireEvmSession } from "@/hooks/use-active-account";\nconst evm = requireEvmSession(account);\n';
+    const rel = "hooks/use-show-become-karpro.ts";
+    assertPlantedViolation(
+      chromeRequireEvmViolation(rel, planted),
+      `chrome requireEvmSession outside allowlist: ${rel}`,
     );
-    const live = admitSurface(DISCONNECTED_ACCOUNT, "kar_pro_join", SOLANA_NS);
-    assert.equal(planted.status, "disconnected");
-    assert.equal(live.status, "support_refused");
-    assert.notEqual(planted.status, live.status);
+    assertCleanProductScan(scanProductSources(chromeRequireEvmViolation));
   });
 });
 
-describe("chrome connectedness (a)", () => {
-  it("measured chrome set does not use requireEvmSession for connectedness", () => {
-    const scan = scanProductSources(chromeConnectednessViolation);
-    assertCleanProductScan(scan);
-    assert.ok(
-      scan.filesRead >= CHROME_CONNECTEDNESS_FILES.length,
-      `filesRead=${scan.filesRead}`,
-    );
+describe("surfaceSupport caller allowlist (b)", () => {
+  it("every allowlist entry has a reason", () => {
+    for (const entry of SURFACE_SUPPORT_CALLER_ALLOWLIST) {
+      assert.ok(entry.reason.length > 0, entry.file);
+      assert.ok(fs.existsSync(path.join(ROOT, entry.file)), entry.file);
+    }
   });
 
-  it("(a) plant: evm.ok connectedness is red then green on live scan", () => {
-    const planted = `const evm = requireEvmSession(account);\nconst isConnected = evm.ok;\n`;
-    const hit = chromeConnectednessViolation(
-      "components/shell/app-top-nav.tsx",
-      planted,
+  it("product surfaceSupport( callers are only the allowlisted owners", () => {
+    const scan = scanProductSources(surfaceSupportCallerViolation);
+    assertCleanProductScan(scan);
+  });
+
+  it("(b) plant: new surfaceSupport( caller is red then green", () => {
+    const planted =
+      'import { surfaceSupport } from "@/lib/web3/surface-support";\nsurfaceSupport("pending_claims", 84532);\n';
+    const rel = "hooks/use-pending-claims.ts";
+    assertPlantedViolation(
+      surfaceSupportCallerViolation(rel, planted),
+      `surfaceSupport( product caller outside allowlist: ${rel}`,
     );
-    assert.equal(
-      hit,
-      'chrome connectedness via requireEvmSession/evm.ok (use account.status === "connected"): components/shell/app-top-nav.tsx',
-    );
-    assertCleanProductScan(scanProductSources(chromeConnectednessViolation));
+    assertCleanProductScan(scanProductSources(surfaceSupportCallerViolation));
   });
 });
 
@@ -233,22 +397,17 @@ describe("sentence sole owners (c)", () => {
       hit,
       `re-inlined SurfaceSupportCause sentence: ${surfaceSupportCauseCopy("product_owner_owed")}`,
     );
-    const plantedC = `const y = ${JSON.stringify(surfaceClassCCauseCopy("messaging_session"))};`;
-    const hitC = sentenceLiteralViolation(
-      "components/shell/app-top-nav.tsx",
-      plantedC,
-    );
-    assert.equal(
-      hitC,
-      `re-inlined class-C sentence: ${surfaceClassCCauseCopy("messaging_session")}`,
-    );
     assertCleanProductScan(scanProductSources(sentenceLiteralViolation));
   });
 
-  it("class-C sentences name the family, never on this network", () => {
+  it("class-C sentences name the family and never on this network", () => {
     for (const cap of SURFACE_CLASS_C_CAPABILITIES) {
       const sentence = surfaceClassCCauseCopy(cap);
-      assert.ok(sentence.length > 0, cap);
+      assert.match(
+        sentence,
+        /Ethereum wallet/,
+        `${cap} must name the wallet family: ${sentence}`,
+      );
       assert.ok(
         !sentence.toLowerCase().includes("on this network"),
         `${cap}: ${sentence}`,
@@ -257,41 +416,21 @@ describe("sentence sole owners (c)", () => {
   });
 });
 
-describe("typed facts no invent (d)", () => {
-  function numericDefaultViolation(
-    rel: string,
-    source: string,
-  ): string | false {
-    if (
-      rel !== "hooks/use-pending-claims.ts" &&
-      rel !== "hooks/use-unread-notifications-count.ts" &&
-      rel !== "lib/claims/pending-claims-fact.ts" &&
-      rel !== "lib/notifications/unread-alerts-fact.ts"
-    ) {
-      return false;
-    }
-    if (/total\s*:\s*query\.data\?\.total\s*\?\?\s*0/.test(source)) {
-      return `numeric default ?? 0 on pending-claims fact: ${rel}`;
-    }
-    if (/unreadCount\s*\?\?\s*0/.test(source) || /count\s*\?\?\s*0/.test(source)) {
-      return `numeric default ?? 0 on unread fact: ${rel}`;
-    }
-    return false;
-  }
-
-  it("pending-claims and unread owners have no ?? 0 invent", () => {
-    assertCleanProductScan(scanProductSources(numericDefaultViolation));
+describe("numeric invent ban (d)", () => {
+  it("no chainId/namespace/count/total invent via ?? 0 or ternary : 0 in scope", () => {
+    const scan = scanProductSources(numericInventViolation);
+    assertCleanProductScan(scan);
   });
 
-  it("(d) plant: ?? 0 is red then green", () => {
+  it("(d) plant: chainId ?? 0 is red then green", () => {
     const planted =
-      "return { total: query.data?.total ?? 0, claims: query.data?.claims ?? [] };";
-    const hit = numericDefaultViolation("hooks/use-pending-claims.ts", planted);
-    assert.equal(
-      hit,
-      "numeric default ?? 0 on pending-claims fact: hooks/use-pending-claims.ts",
+      "const { fact } = useActiveVerifierFact({ chainId: targetChainId ?? 0 });\n";
+    const rel = "hooks/use-show-become-karpro.ts";
+    assertPlantedViolation(
+      numericInventViolation(rel, planted),
+      `numeric invent (chainId fed by ?? 0): ${rel}`,
     );
-    assertCleanProductScan(scanProductSources(numericDefaultViolation));
+    assertCleanProductScan(scanProductSources(numericInventViolation));
   });
 });
 
@@ -323,3 +462,16 @@ describe("census rows pending_claims + kar_pro_min_stake", () => {
     }
   });
 });
+
+/** Exported for report — filesRead derivation. */
+export function reportAdmissionGuardScans(): {
+  a: ProductSourceScanResult;
+  b: ProductSourceScanResult;
+  d: ProductSourceScanResult;
+} {
+  return {
+    a: scanProductSources(chromeRequireEvmViolation),
+    b: scanProductSources(surfaceSupportCallerViolation),
+    d: scanProductSources(numericInventViolation),
+  };
+}

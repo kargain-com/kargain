@@ -148,9 +148,9 @@ export function surfaceClassCCauseCopy(
 ): string {
   switch (capability) {
     case "nostr_identity":
-      return "Alerts need an Ethereum wallet.";
+      return "Kargain identity (alerts, profile, and watchlist) needs an Ethereum wallet.";
     case "messaging_session":
-      return "Private messages are not available on this account.";
+      return "Private messages need an Ethereum wallet.";
     case "nwc_lightning":
       return "Lightning payments need an Ethereum wallet.";
     case "ens_profile":

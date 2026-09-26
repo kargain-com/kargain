@@ -517,7 +517,7 @@ Primary CTAs come only from [`primaryActionFromSnapshot`](../lib/messaging/snaps
 
 | Account | User-facing line | Rule |
 |---------|------------------|------|
-| SVM account | Private messages are not available on this account. | Same class as the payer-side refusal ([SPEC §7.7](./contracts/SPEC.md#77-messaging-fee-payer-normative)): the messaging protocol has no identity space for this wallet family. Named at seller contact, verification request, inbox entry and messaging settings — the entry points stay visible with the reason, never removed |
+| SVM account | Private messages need an Ethereum wallet. | Same class as the payer-side refusal ([SPEC §7.7](./contracts/SPEC.md#77-messaging-fee-payer-normative)): the messaging protocol has no identity space for this wallet family. Named at seller contact, verification request, inbox entry and messaging settings — the entry points stay visible with the reason, never removed |
 
 No per-message sender label in the bubble list. Publish/network gaps surface inline on settings (`publishError`) or via setup card states.
 

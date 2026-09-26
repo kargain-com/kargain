@@ -590,7 +590,6 @@ export const KNOWN_SESSION_GATES_WITHOUT_WRITES: readonly string[] = [
   "hooks/use-nwc-wallet.ts",
   "hooks/use-owned-passport-token-ids.ts",
   "hooks/use-ponder-notifications.ts",
-  "hooks/use-show-become-karpro.ts",
   "hooks/use-watchlist-notifications.ts",
   "hooks/use-watchlist.ts",
 ];

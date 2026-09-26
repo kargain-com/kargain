@@ -33,9 +33,3 @@ export function useUnreadAlertsFact(): UnreadAlertsFact {
       return { status: "known", count: feed.unreadCount };
   }
 }
-
-/** @deprecated Prefer {@link useUnreadAlertsFact} — returns 0 only when known. */
-export function useUnreadNotificationsCount(): number {
-  const fact = useUnreadAlertsFact();
-  return fact.status === "known" ? fact.count : 0;
-}

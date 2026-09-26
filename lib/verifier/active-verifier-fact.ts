@@ -63,6 +63,8 @@ export type ActiveVerifierReadPlan =
       sessionBound: false;
       contracts: readonly [];
       vm: "evm" | "svm" | null;
+      /** Absent / unregistered commercial namespace — resolve as unresolved, never inactive. */
+      namespaceAbsent?: true;
     }
   | {
       ok: false;
@@ -74,15 +76,31 @@ export type ActiveVerifierReadPlan =
  * Build the keyed-read contracts for the admission fact.
  * EVM: staking.isActiveVerifier(sessionAddress).
  * SVM: keyed-read of the stake PDA (address derived; data decoded in resolve).
+ * `chainId` undefined or unregistered → namespaceAbsent (unresolved), never invent `0`.
  */
 export async function planActiveVerifierRead(args: {
   account: ActiveAccount;
-  chainId: number;
+  chainId?: number;
   registry?: CommercialRegistry;
 }): Promise<ActiveVerifierReadPlan> {
+  if (args.chainId == null) {
+    return {
+      ok: true,
+      sessionBound: false,
+      contracts: [],
+      vm: null,
+      namespaceAbsent: true,
+    };
+  }
   const stack = commercialActive(args.chainId, args.registry);
   if (stack == null) {
-    return { ok: true, sessionBound: false, contracts: [], vm: null };
+    return {
+      ok: true,
+      sessionBound: false,
+      contracts: [],
+      vm: null,
+      namespaceAbsent: true,
+    };
   }
 
   if (stack.vm === "evm") {
@@ -163,8 +181,13 @@ export function resolveActiveVerifierFact(args: {
   /** True while the async plan has not yet produced contracts. */
   planning?: boolean;
   vm: "evm" | "svm" | null;
+  /** Commercial namespace missing — never collapse to inactive. */
+  namespaceAbsent?: boolean;
 }): ActiveVerifierFact {
   if (args.planning) {
+    return { kind: "unresolved" };
+  }
+  if (args.namespaceAbsent) {
     return { kind: "unresolved" };
   }
   if (!args.sessionBound) {

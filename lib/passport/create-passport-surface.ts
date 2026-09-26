@@ -121,7 +121,7 @@ export function admitCreatePassport(
         namespace: admission.namespace,
       };
     case "available":
-      if (account.status !== "connected" || account.vm !== "evm") {
+      if (admission.family !== "evm") {
         return {
           status: "session_refused",
           cause: "wrong_vm",
@@ -132,8 +132,8 @@ export function admitCreatePassport(
       return {
         status: "available",
         namespace: admission.namespace,
-        address: account.address,
-        chainId: account.chainId,
+        address: admission.address,
+        chainId: admission.chainId,
       };
   }
 }

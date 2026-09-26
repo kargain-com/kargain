@@ -67,7 +67,15 @@ export function usePendingClaims(): PendingClaimsFact & {
     case "wrong_family":
       return { status: "refused", cause: "wrong_vm", isLoading: false, refetch };
     case "available":
-      if (query.data == null) {
+      if (query.isError) {
+        return {
+          status: "refused",
+          cause: "evm_call_failed",
+          isLoading: false,
+          refetch,
+        };
+      }
+      if (query.isPending || query.data == null) {
         return { status: "pending", isLoading: true, refetch };
       }
       return {
@@ -75,7 +83,7 @@ export function usePendingClaims(): PendingClaimsFact & {
         claims: query.data.claims,
         total: query.data.total,
         ponderError: query.data.ponderError,
-        isLoading: query.isPending,
+        isLoading: false,
         refetch,
       };
   }

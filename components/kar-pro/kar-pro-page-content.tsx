@@ -2,7 +2,6 @@
 
 import {
   commercialNamespaceOf,
-  requireEvmSession,
   useActiveAccount,
 } from "@/hooks/use-active-account";
 
@@ -11,13 +10,16 @@ import { useState } from "react";
 import { KarProClient } from "@/components/kar-pro/kar-pro-client";
 import { useActiveVerifierFact } from "@/hooks/use-active-verifier-fact";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
-import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import {
   commercialActive,
   nativeUnitOf,
 } from "@/lib/web3/commercial-active";
 import { formatStakeNative } from "@/lib/kar-pro/stake-format";
-import { admitSessionSurface, admitSurfaceAllowsEvmRead } from "@/lib/web3/surface-admission";
+import {
+  admitSessionSurface,
+  admitSurfaceAllowsEvmRead,
+  admitSurfaceEvmAddress,
+} from "@/lib/web3/surface-admission";
 import { surfaceSupportCauseCopy } from "@/lib/web3/surface-support";
 
 const VALUE_PROPS = [
@@ -28,22 +30,19 @@ const VALUE_PROPS = [
 
 export function KarProPageContent() {
   const { account } = useActiveAccount();
-  const evm = requireEvmSession(account);
-  const address = evm.ok ? evm.address : undefined;
-  const walletChainId = evm.ok ? evm.chainId : undefined;
   const ns = commercialNamespaceOf(account);
-  const chainId = ns.ok
-    ? Number(ns.namespace)
-    : resolveKarProTargetChainId(walletChainId);
+  const chainId = ns.ok ? Number(ns.namespace) : undefined;
+  const joinAdmission = admitSessionSurface(account, "kar_pro_join");
+  const address = admitSurfaceEvmAddress(account, joinAdmission);
   const [postTxActive, setPostTxActive] = useState<boolean | null>(null);
 
   const { fact, isActiveVerifier: onChainActive } = useActiveVerifierFact({
-    chainId: chainId ?? 0,
+    chainId,
   });
 
   const minStakeAdmission = admitSessionSurface(account, "kar_pro_min_stake");
   const { minStake, isPending: minStakePending } = useMinStakeNative(
-    admitSurfaceAllowsEvmRead(minStakeAdmission) ? (chainId ?? undefined) : undefined,
+    admitSurfaceAllowsEvmRead(minStakeAdmission) ? chainId : undefined,
   );
 
   const stack = chainId != null ? commercialActive(chainId) : undefined;

@@ -37,7 +37,7 @@ export function ProfileVerifierStatsBand({
   const { account } = useActiveAccount();
   const ns = commercialNamespaceOf(account);
   const sessionNs = ns.ok ? Number(ns.namespace) : undefined;
-  const { fact } = useActiveVerifierFact({ chainId: sessionNs ?? 0 });
+  const { fact } = useActiveVerifierFact({ chainId: sessionNs });
   const activeIds = activeMembershipChainIds(membershipRows);
   const walletOnActive =
     sessionNs != null &&

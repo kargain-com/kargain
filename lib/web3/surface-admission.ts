@@ -25,7 +25,14 @@ import {
 export type SurfaceAdmission =
   | {
       readonly status: "available";
-      readonly family: "evm" | "svm";
+      readonly family: "evm";
+      readonly namespace: number;
+      readonly address: `0x${string}`;
+      readonly chainId: number;
+    }
+  | {
+      readonly status: "available";
+      readonly family: "svm";
       readonly namespace: number;
     }
   | {
@@ -51,6 +58,7 @@ export type SurfaceAdmission =
  * Admit a capability on an explicit commercial namespace.
  * Order: census support → then session (disconnected / family).
  * Unsupported and unresolved win over disconnected.
+ * Available packs narrowed session fields for adapters (no second account check).
  */
 export function admitSurface(
   account: ActiveAccount,
@@ -88,28 +96,35 @@ export function admitSurface(
       namespace,
     };
   }
+  // Session family already matches support.family; narrow for packed fields.
+  if (account.vm === "evm") {
+    return {
+      status: "available",
+      family: "evm",
+      namespace,
+      address: account.address,
+      chainId: account.chainId,
+    };
+  }
   return {
     status: "available",
-    family: support.family,
+    family: "svm",
     namespace,
   };
 }
 
 /**
  * EVM address when admission is available on the EVM family.
- * Keeps family narrow in the owner — components must not compare `.family`.
+ * Reads the packed admission — components must not compare `.family`.
  */
 export function admitSurfaceEvmAddress(
-  account: ActiveAccount,
+  _account: ActiveAccount,
   admission: SurfaceAdmission,
 ): `0x${string}` | undefined {
-  if (admission.status !== "available" || admission.family !== "evm") {
-    return undefined;
+  if (admission.status === "available" && admission.family === "evm") {
+    return admission.address;
   }
-  if (account.status !== "connected" || account.vm !== "evm") {
-    return undefined;
-  }
-  return account.address;
+  return undefined;
 }
 
 /**

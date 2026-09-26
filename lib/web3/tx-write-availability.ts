@@ -98,13 +98,18 @@ export function txWriteAvailabilityForCapability(
     case "wrong_family":
       return { available: false, cause: "wrong_vm", wanted: admission.wanted };
     case "available":
-      if (account.status !== "connected") {
-        return { available: false, cause: "disconnected" };
+      if (admission.family === "evm") {
+        return {
+          available: true,
+          vm: "evm",
+          walletChainId: admission.chainId,
+        };
       }
-      if (admission.family === "evm" && account.vm === "evm") {
-        return { available: true, vm: "evm", walletChainId: account.chainId };
-      }
-      return { available: true, vm: "svm", namespace: admission.namespace };
+      return {
+        available: true,
+        vm: "svm",
+        namespace: admission.namespace,
+      };
   }
 }
 

@@ -38,6 +38,7 @@ import { useIsProfileOwner } from "@/hooks/use-is-profile-owner";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { useOutstandingObligations } from "@/hooks/use-outstanding-obligations";
 import { usePendingClaims } from "@/hooks/use-pending-claims";
+import { pendingClaimsKnownTotal } from "@/lib/claims/pending-claims-fact";
 import {
   ctaLink,
   monoLink,
@@ -114,8 +115,8 @@ export type ProfilePageProps = {
   delegatedCount?: number | null;
 };
 
-function countLabel(base: string, count: number): ReactNode {
-  if (count === 0) return base;
+function countLabel(base: string, count: number | null): ReactNode {
+  if (count == null || count === 0) return base;
   return (
     <>
       {base}{" "}
@@ -136,7 +137,7 @@ function buildTabList(
     attestations: number;
     outstanding: number | null;
     consigned: number;
-    claims: number;
+    claims: number | null;
   },
 ): { id: TabId; label: ReactNode }[] {
   const tabs: { id: TabId; label: ReactNode }[] = [
@@ -398,7 +399,7 @@ export function ProfilePage({
 
   const claimsFact = usePendingClaims();
   const claimsTotal =
-    isOwner && claimsFact.status === "known" ? claimsFact.total : 0;
+    isOwner ? pendingClaimsKnownTotal(claimsFact) : null;
   const { count: outstandingTotal } = useOutstandingObligations({
       address:
         isOwner && sectionSupport.outstanding.available ? evmWallet : undefined,
@@ -416,7 +417,7 @@ export function ProfilePage({
         attestations: attestations.length,
         outstanding: outstandingTotal,
         consigned: consignedCount ?? 0,
-        claims: isOwner ? claimsTotal : 0,
+        claims: claimsTotal,
       }),
     [
       isOwner,
