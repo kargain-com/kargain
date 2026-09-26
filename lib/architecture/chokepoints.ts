@@ -176,6 +176,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["surface-support-policy.test.ts"],
   },
   {
+    id: "create-passport-surface",
+    owner:
+      "lib/passport/create-passport-surface.ts · components/passport/create-passport-wizard.tsx",
+    rule: "admitCreatePassport asks surfaceSupport(create_passport) before session; unsupported namespaces show surfaceSupportCauseCopy + createPassportWhereAvailableCopy (never wrong_vm Ethereum sentence); session refusal only when the namespace admits creation; wizard consumes owners — no inlined sentences, no requireEvmSession-first gate, no VM fork in the page",
+    guardTests: ["create-passport-surface-policy.test.ts"],
+  },
+  {
     id: "svm-write-census",
     owner: "test/svm-write-census-policy.test.ts",
     rule: "Sole enumerated set of product write-site files under app|components|hooks (excludes use-tx-sync); human action matrix is local research annex only and never imported by tests",

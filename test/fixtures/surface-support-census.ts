@@ -937,12 +937,6 @@ export const SURFACE_CENSUS_PAIRS: SurfaceCensusPair[] = [
   },
   {
     "file": "components/passport/create-passport-wizard.tsx",
-    "primitive": "requireEvmSession",
-    "functionName": null,
-    "capability": "create_passport"
-  },
-  {
-    "file": "components/passport/create-passport-wizard.tsx",
     "primitive": "runTx(",
     "functionName": null,
     "capability": "create_passport"
@@ -1740,7 +1734,7 @@ export const SURFACE_CENSUS_CAPABILITY_META: SurfaceCensusCapabilityMeta[] = [
     "evmSource": "see consuming files",
     "evidence": null,
     "svmReader": "owed",
-    "observedSvmBehaviour": "false_family_sentence"
+    "observedSvmBehaviour": "known"
   },
   {
     "id": "custody_locked",
