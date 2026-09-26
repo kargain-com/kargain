@@ -22,6 +22,8 @@ import {
   sendAndConfirmStandTransaction,
   standRequestAirdropAndConfirm,
 } from "./stand-tx-confirm.ts";
+import { expectStandTransactionRefusal } from "./stand-tx-refusal.ts";
+import { svmProgramErrorName } from "../../lib/web3/svm-program-errors.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../lab/package.json"));
@@ -441,50 +443,39 @@ export function customErrCode(e: unknown): number | null {
   return raw.startsWith("0x") ? parseInt(raw, 16) : parseInt(raw, 10);
 }
 
+/** Thin wrapper → stand-tx-refusal custom-by-name; returns the ordinal for callers. */
 export async function expectCustom(
   conn: Conn,
   tx: InstanceType<typeof Transaction>,
   signers: Kp[],
   code: number,
 ): Promise<number> {
-  try {
-    await sendAndConfirmStandTransaction(conn, tx, signers, { commitment: "confirmed" });
-    assert.fail(`expected custom error ${code}`);
-  } catch (e) {
-    const got = customErrCode(e);
-    assert.equal(got, code, `expected error ${code}, got ${got}: ${e}`);
-    return got!;
-  }
-  throw new Error("unreachable");
+  const name = svmProgramErrorName(code);
+  assert.ok(name != null, `unmapped custom ordinal ${code}`);
+  const observed = await expectStandTransactionRefusal({
+    conn,
+    transaction: tx,
+    signers,
+    expected: { kind: "custom", name },
+  });
+  assert.equal(observed.kind, "custom");
+  assert.equal(observed.ordinal, code);
+  return observed.ordinal;
 }
 
-/**
- * Solana native ProgramError::AccountAlreadyInitialized — InstructionError name,
- * not Custom(u32). Assert via logs / message (same class as InvalidSeeds).
- */
+/** Thin wrapper → stand-tx-refusal native AccountAlreadyInitialized. */
 export async function expectAccountAlreadyInitialized(
   conn: Conn,
   tx: InstanceType<typeof Transaction>,
   signers: Kp[],
 ): Promise<"AccountAlreadyInitialized"> {
-  try {
-    await sendAndConfirmStandTransaction(conn, tx, signers, { commitment: "confirmed" });
-    assert.fail("expected AccountAlreadyInitialized");
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    const code = customErrCode(e);
-    if (
-      /AccountAlreadyInitialized|already in use|already initialized|requires an uninitialized account/i.test(
-        msg,
-      )
-    ) {
-      return "AccountAlreadyInitialized";
-    }
-    assert.fail(
-      `expected AccountAlreadyInitialized, got custom=${code} msg=${msg}`,
-    );
-  }
-  throw new Error("unreachable");
+  await expectStandTransactionRefusal({
+    conn,
+    transaction: tx,
+    signers,
+    expected: { kind: "native", name: "AccountAlreadyInitialized" },
+  });
+  return "AccountAlreadyInitialized";
 }
 
 /** Core BaseAssetV1 owner. */
@@ -753,10 +744,12 @@ export async function ensurePassportCommerceStack(
     );
   }
 
-  // SetBridgeGateway if still zero
+  // SetBridgeGateway if still zero.
+  // Offset = disc+authority+namespace+eid+endpoint+dispute+staking → bridge_gateway
+  // (NOT +32 into forfeit_recipient — that skipped bind when forfeit was authority).
   {
     const cfg = (await conn.getAccountInfo(passportConfig))!.data as Buffer;
-    const gwOff = 8 + 32 + 16 + 4 + 32 + 8 + 32 + 32;
+    const gwOff = 8 + 32 + 16 + 4 + 32 + 8 + 32;
     const gw = new PublicKey(cfg.subarray(gwOff, gwOff + 32));
     if (gw.equals(PublicKey.default)) {
       await sendAndConfirmStandTransaction(

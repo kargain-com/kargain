@@ -9,16 +9,15 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-import { svmProgramErrorName } from "../../lib/web3/svm-program-errors.ts";
 import {
   withStandArtifactBindings,
   type StandArtifactBindings,
 } from "./stand-artifact-bindings.ts";
+import { expectStandTransactionRefusal } from "./stand-tx-refusal.ts";
 import {
   airdrop,
   CORE_ID,
   coreOwner,
-  customErrCode,
   encodeString,
   ensurePassportCommerceStack,
   ix,
@@ -30,7 +29,6 @@ import {
   permanentFreezePlugin,
   RPC_DEFAULT,
   SEED,
-  sendAndConfirmTransaction,
   type Conn,
   type Kp,
   type Pk,
@@ -78,27 +76,6 @@ function mintKeys(args: {
     { pubkey: CORE_ID, isSigner: false, isWritable: false },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
   ];
-}
-
-async function expectInvalidSeeds(
-  conn: Conn,
-  tx: InstanceType<typeof Transaction>,
-  signers: Kp[],
-): Promise<"InvalidSeeds"> {
-  try {
-    await sendAndConfirmTransaction(conn, tx, signers, {
-      commitment: "confirmed",
-    });
-    assert.fail("expected InvalidSeeds");
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    const code = customErrCode(e);
-    if (/InvalidSeeds|invalid seeds|ConstraintSeeds/i.test(msg) || code === null) {
-      return "InvalidSeeds";
-    }
-    assert.fail(`expected InvalidSeeds, got custom=${code} msg=${msg}`);
-  }
-  throw new Error("unreachable");
 }
 
 export async function probeValidator(rpc = RPC_DEFAULT): Promise<boolean> {
@@ -180,10 +157,10 @@ export async function runLivePermissionlessMint(): Promise<LivePermissionlessMin
   );
   const [assetForeign] = pda(stack.passportProgram, [SEED.asset, tokenIdForeign]);
   const [stateForeign] = pda(stack.passportProgram, [SEED.state, tokenIdForeign]);
-  const foreignFreeze = Keypair.generate().publicKey;
-  const foreignFreezeObs = await expectInvalidSeeds(
+  const foreignFreezeKey = Keypair.generate().publicKey;
+  const foreignFreezeObs = await expectStandTransactionRefusal({
     conn,
-    new Transaction().add(
+    transaction: new Transaction().add(
       ix(
         stack.passportProgram,
         mintKeys({
@@ -192,7 +169,7 @@ export async function runLivePermissionlessMint(): Promise<LivePermissionlessMin
           state: stateForeign,
           payer: payer.publicKey,
           owner: owner.publicKey,
-          freeze: foreignFreeze,
+          freeze: foreignFreezeKey,
           gatewayConfig: stack.gatewayConfig,
         }),
         Buffer.concat([
@@ -201,8 +178,12 @@ export async function runLivePermissionlessMint(): Promise<LivePermissionlessMin
         ]),
       ),
     ),
-    [payer],
-  );
+    signers: [payer],
+    expected: { kind: "native", name: "InvalidSeeds" },
+  });
+  assert.equal(foreignFreezeObs.kind, "native");
+  assert.equal(foreignFreezeObs.name, "InvalidSeeds");
+  const foreignFreeze = "InvalidSeeds" as const;
 
   // --- Validator refusal: owner = gateway config PDA → InvalidReceiver ---
   const cfgRecv = (await conn.getAccountInfo(stack.passportConfig))!.data as Buffer;
@@ -211,39 +192,32 @@ export async function runLivePermissionlessMint(): Promise<LivePermissionlessMin
   );
   const [assetRecv] = pda(stack.passportProgram, [SEED.asset, tokenIdRecv]);
   const [stateRecv] = pda(stack.passportProgram, [SEED.state, tokenIdRecv]);
-  let ownerIsGateway: "InvalidReceiver";
-  try {
-    await sendAndConfirmTransaction(
-      conn,
-      new Transaction().add(
-        ix(
-          stack.passportProgram,
-          mintKeys({
-            passportConfig: stack.passportConfig,
-            asset: assetRecv,
-            state: stateRecv,
-            payer: payer.publicKey,
-            owner: stack.gatewayConfig,
-            freeze: stack.gatewayFreeze,
-            gatewayConfig: stack.gatewayConfig,
-          }),
-          Buffer.concat([
-            Buffer.from([PASSPORT_IX.MintPassport]),
-            encodeString("ar://owner-is-gateway"),
-          ]),
-        ),
+  const ownerIsGatewayObs = await expectStandTransactionRefusal({
+    conn,
+    transaction: new Transaction().add(
+      ix(
+        stack.passportProgram,
+        mintKeys({
+          passportConfig: stack.passportConfig,
+          asset: assetRecv,
+          state: stateRecv,
+          payer: payer.publicKey,
+          owner: stack.gatewayConfig,
+          freeze: stack.gatewayFreeze,
+          gatewayConfig: stack.gatewayConfig,
+        }),
+        Buffer.concat([
+          Buffer.from([PASSPORT_IX.MintPassport]),
+          encodeString("ar://owner-is-gateway"),
+        ]),
       ),
-      [payer],
-      { commitment: "confirmed" },
-    );
-    assert.fail("expected InvalidReceiver");
-  } catch (e) {
-    const code = customErrCode(e);
-    assert.ok(code !== null, `expected Custom ordinal, got ${e}`);
-    const name = svmProgramErrorName(code!);
-    assert.equal(name, "InvalidReceiver", `expected InvalidReceiver, got ${name} (${code})`);
-    ownerIsGateway = "InvalidReceiver";
-  }
+    ),
+    signers: [payer],
+    expected: { kind: "custom", name: "InvalidReceiver" },
+  });
+  assert.equal(ownerIsGatewayObs.kind, "custom");
+  assert.equal(ownerIsGatewayObs.name, "InvalidReceiver");
+  const ownerIsGateway = "InvalidReceiver" as const;
 
   return withStandArtifactBindings({
     payerEqualsAuthority: false as const,
@@ -254,7 +228,7 @@ export async function runLivePermissionlessMint(): Promise<LivePermissionlessMin
     passportStatus: 0 as const,
     nextTokenIdAdvanced: true as const,
     refusals: {
-      foreignFreeze: foreignFreezeObs,
+      foreignFreeze,
       ownerIsGateway,
     },
     note: "BridgeGatewayUnbound is admit/cargo-only; stand binds gateway at init" as const,

@@ -20,7 +20,9 @@ import {
   standRequestAirdropAndConfirm,
   confirmStandSentSignature,
 } from "./stand-tx-confirm.ts";
+import { expectStandTransactionRefusal } from "./stand-tx-refusal.ts";
 import { isStandValidatorReadyNow } from "./stand-validator-ready.ts";
+import { expectCustom } from "./stand-passport-commerce.ts";
 
 import {
   withStandArtifactBindings,
@@ -97,32 +99,6 @@ function ix(
   data: Buffer,
 ) {
   return new TransactionInstruction({ programId, keys, data });
-}
-
-function customErrCode(e: unknown): number | null {
-  const msg = e instanceof Error ? e.message : String(e);
-  const m = msg.match(/custom program error: (0x[0-9a-fA-F]+|\d+)/);
-  if (!m) return null;
-  const raw = m[1]!;
-  return raw.startsWith("0x") ? parseInt(raw, 16) : parseInt(raw, 10);
-}
-
-async function expectCustom(
-  conn: InstanceType<typeof Connection>,
-  tx: InstanceType<typeof Transaction>,
-  signers: InstanceType<typeof Keypair>[],
-  code: number,
-): Promise<number> {
-  try {
-    await sendAndConfirmTransaction(conn, tx, signers, { commitment: "confirmed" });
-    assert.fail(`expected custom error ${code}`);
-  } catch (e) {
-    const got = customErrCode(e);
-    assert.equal(got, code, `expected error ${code}, got ${got}: ${e}`);
-    assert.ok(got !== null, "custom error code must be extractable from simulation");
-    return got!;
-  }
-  throw new Error("unreachable");
 }
 
 function coreOwner(data: Buffer): InstanceType<typeof PublicKey> {
@@ -402,31 +378,21 @@ export async function runLiveCoreCustody(): Promise<LiveCoreCustodyResult> {
     ),
     [payer],
   );
-  let wrongToken: "InvalidSeeds" | number;
-  try {
-    await sendAndConfirmTransaction(
-      conn,
-      new Transaction().add(
-        ix(
-          programId,
-          ownerTransferKeys(assetW, seller.publicKey, custodyPda, payer.publicKey, true),
-          Buffer.concat([Buffer.from([IX.CoreTransferOwnerToCustody]), tokenX]),
-        ),
+  const wrongTokenObs = await expectStandTransactionRefusal({
+    conn,
+    transaction: new Transaction().add(
+      ix(
+        programId,
+        ownerTransferKeys(assetW, seller.publicKey, custodyPda, payer.publicKey, true),
+        Buffer.concat([Buffer.from([IX.CoreTransferOwnerToCustody]), tokenX]),
       ),
-      [payer, seller],
-    );
-    assert.fail("expected InvalidSeeds for wrong token PDA");
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    const code = customErrCode(e);
-    // ProgramError::InvalidSeeds is InstructionError::InvalidSeeds (not Custom)
-    if (/InvalidSeeds|invalid seeds|ConstraintSeeds/i.test(msg) || code === null) {
-      wrongToken = "InvalidSeeds";
-    } else {
-      wrongToken = code;
-      assert.fail(`expected InvalidSeeds, got custom ${code}: ${e}`);
-    }
-  }
+    ),
+    signers: [payer, seller],
+    expected: { kind: "native", name: "InvalidSeeds" },
+  });
+  assert.equal(wrongTokenObs.kind, "native");
+  assert.equal(wrongTokenObs.name, "InvalidSeeds");
+  const wrongToken = "InvalidSeeds" as const;
 
   // Foreign TransferDelegate authority
   const tokenForeign = Buffer.alloc(32, 0xb3);
@@ -475,38 +441,21 @@ export async function runLiveCoreCustody(): Promise<LiveCoreCustodyResult> {
     ),
     [payer],
   );
-  let unsignedOwner: "MissingRequiredSignature" | number;
-  try {
-    await sendAndConfirmTransaction(
-      conn,
-      new Transaction().add(
-        ix(
-          programId,
-          ownerTransferKeys(assetUnsigned, seller.publicKey, custodyPda, payer.publicKey, false),
-          Buffer.concat([Buffer.from([IX.CoreTransferOwnerToCustody]), tokenUnsigned]),
-        ),
+  const unsignedOwnerObs = await expectStandTransactionRefusal({
+    conn,
+    transaction: new Transaction().add(
+      ix(
+        programId,
+        ownerTransferKeys(assetUnsigned, seller.publicKey, custodyPda, payer.publicKey, false),
+        Buffer.concat([Buffer.from([IX.CoreTransferOwnerToCustody]), tokenUnsigned]),
       ),
-      [payer], // seller not signing
-    );
-    assert.fail("expected MissingRequiredSignature");
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    const code = customErrCode(e);
-    if (/MissingRequiredSignature|missing required signature|Signature verification/i.test(msg)) {
-      unsignedOwner = "MissingRequiredSignature";
-    } else if (code !== null) {
-      unsignedOwner = code;
-      assert.fail(`expected MissingRequiredSignature, got custom ${code}: ${e}`);
-    } else {
-      unsignedOwner = "MissingRequiredSignature";
-      // Solana may surface as "Transaction simulation failed" without the name —
-      // accept only if message mentions signature.
-      assert.ok(
-        /signature/i.test(msg),
-        `expected signature refusal, got: ${e}`,
-      );
-    }
-  }
+    ),
+    signers: [payer], // seller not signing
+    expected: { kind: "native", name: "MissingRequiredSignature" },
+  });
+  assert.equal(unsignedOwnerObs.kind, "native");
+  assert.equal(unsignedOwnerObs.name, "MissingRequiredSignature");
+  const unsignedOwner = "MissingRequiredSignature" as const;
 
   return withStandArtifactBindings({
     ownerToCustody: {

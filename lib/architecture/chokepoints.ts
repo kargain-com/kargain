@@ -687,6 +687,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-stand-confirm-readiness-policy.test.ts"],
   },
   {
+    id: "svm-stand-tx-refusal",
+    owner: "svm/stand/stand-tx-refusal.ts",
+    rule: "Sole stand InstructionError refusal owner: success checked outside catch; native = InstructionError discriminant or exact Solana ProgramError Display phrase (never /InvalidSeeds/ free-text); Custom via product ordinal extract + svmProgramErrorName",
+    guardTests: ["svm-stand-tx-refusal-policy.test.ts"],
+  },
+  {
     id: "commercial-abi-events",
     owner: "lib/svm/commercial-abi-events.ts",
     rule: "Sole enumerator of the commercial ABI set (COMMERCIAL_CONTRACT_ABIS); assembling a parallel collection from abis.generated is banned except named owners (ponder.config = Ponder registration map)",

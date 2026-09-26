@@ -23,6 +23,7 @@ import {
   confirmStandSentSignature,
 } from "./stand-tx-confirm.ts";
 import { isStandValidatorReadyNow } from "./stand-validator-ready.ts";
+import { expectCustom } from "./stand-passport-commerce.ts";
 
 import {
   withStandArtifactBindings,
@@ -91,32 +92,6 @@ function encU64(n: bigint | number): Buffer {
   const b = Buffer.alloc(8);
   b.writeBigUInt64LE(BigInt(n), 0);
   return b;
-}
-
-function customErrCode(e: unknown): number | null {
-  const msg = e instanceof Error ? e.message : String(e);
-  const m = msg.match(/custom program error: (0x[0-9a-fA-F]+|\d+)/);
-  if (!m) return null;
-  const raw = m[1]!;
-  return raw.startsWith("0x") ? parseInt(raw, 16) : parseInt(raw, 10);
-}
-
-async function expectCustom(
-  conn: InstanceType<typeof Connection>,
-  tx: InstanceType<typeof Transaction>,
-  signers: InstanceType<typeof Keypair>[],
-  code: number,
-): Promise<number> {
-  try {
-    await sendAndConfirmTransaction(conn, tx, signers, { commitment: "confirmed" });
-    assert.fail(`expected custom error ${code}`);
-  } catch (e) {
-    const got = customErrCode(e);
-    assert.equal(got, code, `expected error ${code}, got ${got}: ${e}`);
-    assert.ok(got !== null, "custom error code must be extractable from simulation");
-    return got!;
-  }
-  throw new Error("unreachable");
 }
 
 function readAsset(data: Buffer): { owner: InstanceType<typeof PublicKey>; approved: InstanceType<typeof PublicKey> } {

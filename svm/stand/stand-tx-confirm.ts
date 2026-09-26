@@ -80,8 +80,12 @@ export async function confirmStandSignature(
 
     const [row] = await ports.getSignatureStatuses([signature]);
     if (row?.err) {
+      const errBlob =
+        typeof row.err === "string"
+          ? row.err
+          : JSON.stringify(row.err);
       throw new Error(
-        `${STAND_TX_FAILED}: signature=${signature} err=${String(row.err)}`,
+        `${STAND_TX_FAILED}: signature=${signature} err=${errBlob}`,
       );
     }
     const status = row?.confirmationStatus;
