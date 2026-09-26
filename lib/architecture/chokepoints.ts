@@ -178,7 +178,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "surface-admission",
     owner: "lib/web3/surface-admission.ts · components/shell/surface-admission-refusal.tsx",
-    rule: "Sole census-then-session composer: SurfaceAdmissionRefusal union + surfaceAdmissionRefusalCopy sole sentences + SurfaceAdmissionRefusal chrome; admitSessionSurface excludes wrong_family; admitCreatePassport and txWriteAvailabilityForCapability adapt admitSurface; facts carry refusal unchanged; chrome gates via isSurfaceAdmissionAvailable — no refusal-status compares outside owner+component",
+    rule: "Sole census-then-session composer: SurfaceAdmissionRefusal union + surfaceAdmissionRefusalCopy sole sentences + SurfaceAdmissionRefusal chrome; admitSessionSurface fail-closed on wrong_family (named invariant); admitCreatePassport and txWriteAvailabilityForCapability adapt admitSurface; facts carry refusal unchanged; chrome gates via isSurfaceAdmissionAvailable — no refusal-status compares outside owner+component; disconnected sentence sole in disconnectedWalletCopy",
     guardTests: ["surface-admission-policy.test.ts"],
   },
   {

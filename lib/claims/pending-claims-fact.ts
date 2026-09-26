@@ -13,12 +13,12 @@ import {
 /** Indexer / address read causes — never remapped admission statuses. */
 export type PendingClaimsReadCause =
   | "PONDER_UNAVAILABLE"
-  | "PONDER_NOT_CONFIGURED"
+  | "PONDER_MALFORMED_RESPONSE"
   | "INVALID_ADDRESS";
 
 export const PENDING_CLAIMS_READ_CAUSES = [
   "PONDER_UNAVAILABLE",
-  "PONDER_NOT_CONFIGURED",
+  "PONDER_MALFORMED_RESPONSE",
   "INVALID_ADDRESS",
 ] as const satisfies ReadonlyArray<PendingClaimsReadCause>;
 
@@ -56,10 +56,10 @@ export function pendingClaimsRefusalCopy(
         title: "Claims unavailable",
         description: "The indexer could not be reached. Try again shortly.",
       };
-    case "PONDER_NOT_CONFIGURED":
+    case "PONDER_MALFORMED_RESPONSE":
       return {
         title: "Claims unavailable",
-        description: "The indexer is not configured for this environment.",
+        description: "The indexer returned an unreadable response.",
       };
     case "INVALID_ADDRESS":
       return {

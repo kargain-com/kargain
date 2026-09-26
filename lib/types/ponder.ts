@@ -113,7 +113,10 @@ export type PonderHealthResponse = {
   latestBlock: number;
 };
 
-export type PonderErrorCode = "PONDER_NOT_CONFIGURED" | "PONDER_UNAVAILABLE";
+export type PonderErrorCode =
+  | "PONDER_NOT_CONFIGURED"
+  | "PONDER_UNAVAILABLE"
+  | "PONDER_MALFORMED_RESPONSE";
 
 export type PonderPassportRecord = {
   id: string;

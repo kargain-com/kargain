@@ -109,7 +109,7 @@ export function ProfileClaimsTab() {
     const isInfrastructure =
       "cause" in fact &&
       (fact.cause === "PONDER_UNAVAILABLE" ||
-        fact.cause === "PONDER_NOT_CONFIGURED");
+        fact.cause === "PONDER_MALFORMED_RESPONSE");
     return (
       <EmptyState
         variant={isInfrastructure ? "infrastructure" : "content"}

@@ -3,7 +3,6 @@
 import { getAddress } from "viem";
 import { z } from "zod";
 
-import type { PonderErrorCode } from "@/lib/types/ponder";
 import { buildPonderUrl, ponderFetch } from "@/lib/web3/ponder-fetch";
 
 export type PendingClaimCreditApiRow = {
@@ -33,7 +32,13 @@ export type PendingClaimsResult =
       claims: PendingClaimApiRow[];
       total: number;
     }
-  | { ok: false; error: PonderErrorCode | "INVALID_ADDRESS" };
+  | {
+      ok: false;
+      error:
+        | "PONDER_UNAVAILABLE"
+        | "PONDER_MALFORMED_RESPONSE"
+        | "INVALID_ADDRESS";
+    };
 
 const pendingClaimCreditSchema = z.object({
   id: z.string(),
@@ -68,6 +73,11 @@ function parseAccount(address: string): `0x${string}` | null {
   }
 }
 
+/**
+ * Pending claims from Ponder. Transport failure → PONDER_UNAVAILABLE;
+ * schema failure → PONDER_MALFORMED_RESPONSE. Programmer errors in URL
+ * construction throw (no catch).
+ */
 export async function getPendingClaims(
   address: string,
   page = 1,
@@ -77,31 +87,27 @@ export async function getPendingClaims(
   const account = parseAccount(address);
   if (!account) return { ok: false, error: "INVALID_ADDRESS" };
 
-  try {
-    const url = buildPonderUrl(
-      "accounts.claims",
-      { address: account },
-      {
-        page,
-        limit,
-        chainId:
-          chainId != null && Number.isFinite(chainId) ? chainId : undefined,
-      },
-    );
-    const res = await ponderFetch("pending-claims", url.toString());
-    if (!res.ok) {
-      return { ok: false, error: "PONDER_UNAVAILABLE" };
-    }
-    const parsed = pendingClaimsBodySchema.safeParse(res.body);
-    if (!parsed.success) {
-      return { ok: false, error: "PONDER_UNAVAILABLE" };
-    }
-    return {
-      ok: true,
-      claims: parsed.data.claims,
-      total: parsed.data.total,
-    };
-  } catch {
+  const url = buildPonderUrl(
+    "accounts.claims",
+    { address: account },
+    {
+      page,
+      limit,
+      chainId:
+        chainId != null && Number.isFinite(chainId) ? chainId : undefined,
+    },
+  );
+  const res = await ponderFetch("pending-claims", url.toString());
+  if (!res.ok) {
     return { ok: false, error: "PONDER_UNAVAILABLE" };
   }
+  const parsed = pendingClaimsBodySchema.safeParse(res.body);
+  if (!parsed.success) {
+    return { ok: false, error: "PONDER_MALFORMED_RESPONSE" };
+  }
+  return {
+    ok: true,
+    claims: parsed.data.claims,
+    total: parsed.data.total,
+  };
 }

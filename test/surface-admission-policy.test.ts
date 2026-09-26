@@ -1,12 +1,14 @@
 /**
  * Surface admission — one refusal type, one sentence owner, one chrome component
- * (S8-D4 2e).
+ * (S8-D4 2e + five-defect amend).
  *
  * Guards (RED plant → green):
  * (a) refusal status compare outside admission + refusal component
  * (b) second unresolved_namespace / wrong_vm sentence
  * (c) ?? "evm" / ?? "svm" supplying family
  * (d) lib/** export imported only by tests (ca3164e class)
+ * disconnected sentence sole in disconnectedWalletCopy
+ * admitSessionSurface wrong_family invariant
  */
 
 import assert from "node:assert/strict";
@@ -17,11 +19,15 @@ import { describe, it } from "node:test";
 
 import {
   DISCONNECTED_ACCOUNT,
+  disconnectedWalletCopy,
   svmActiveAccountFromAddress,
   wrongVmActionCopy,
   type ActiveAccount,
 } from "@/lib/web3/active-account";
 import {
+  commercialActive,
+  COMMERCIAL_ACTIVE,
+  registeredCommercialNamespaceIds,
   unresolvedNamespaceCopy,
 } from "@/lib/web3/commercial-active";
 import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
@@ -36,14 +42,17 @@ import {
   txWriteRefusalMessage,
 } from "@/lib/web3/tx-write-availability";
 import {
+  SURFACE_CAPABILITIES,
   SURFACE_CLASS_C_CAPABILITIES,
   SURFACE_SUPPORT_CAUSES,
   SURFACE_SUPPORT_TABLE,
+  isSurfaceClassCCapability,
   surfaceClassCCauseCopy,
   surfaceClassOf,
   surfaceSupport,
   surfaceSupportCauseCopy,
   type SurfaceCapability,
+  type SurfaceSupportTable,
 } from "@/lib/web3/surface-support";
 import {
   PENDING_CLAIMS_READ_CAUSES,
@@ -162,6 +171,30 @@ function familyInventViolation(rel: string, source: string): string | false {
     if (re.test(source)) {
       return `family invent (${label}): ${rel}`;
     }
+  }
+  return false;
+}
+
+/** Sole disconnected sentence — only active-account may hold the literal. */
+function disconnectedSentenceViolation(
+  rel: string,
+  source: string,
+): string | false {
+  if (
+    !rel.startsWith("app/") &&
+    !rel.startsWith("components/") &&
+    !rel.startsWith("hooks/") &&
+    !rel.startsWith("lib/")
+  ) {
+    return false;
+  }
+  if (rel === "lib/web3/active-account.ts") return false;
+  const sentence = disconnectedWalletCopy();
+  if (
+    source.includes(JSON.stringify(sentence)) ||
+    source.includes(`\`${sentence}\``)
+  ) {
+    return `re-inlined disconnected sentence: ${sentence}`;
   }
   return false;
 }
@@ -400,6 +433,85 @@ describe("family invent ban (c)", () => {
   });
 });
 
+describe("disconnected sentence sole owner", () => {
+  it("product never re-inlines disconnectedWalletCopy output", () => {
+    assertCleanProductScan(scanProductSources(disconnectedSentenceViolation));
+  });
+
+  it("plant: re-inline disconnected is red then green", () => {
+    const sentence = disconnectedWalletCopy();
+    const planted = `const x = ${JSON.stringify(sentence)};\n`;
+    const rel = "lib/web3/surface-admission.ts";
+    assertPlantedViolation(
+      disconnectedSentenceViolation(rel, planted),
+      `re-inlined disconnected sentence: ${sentence}`,
+    );
+    assertCleanProductScan(scanProductSources(disconnectedSentenceViolation));
+  });
+});
+
+describe("admitSessionSurface wrong_family invariant", () => {
+  it("every capability × registered namespace × matching session family never throws", () => {
+    const namespaces = registeredCommercialNamespaceIds();
+    let walked = 0;
+    for (const capability of SURFACE_CAPABILITIES) {
+      for (const ns of namespaces) {
+        const stack = commercialActive(ns);
+        assert.ok(stack, `commercial stack missing for ${ns}`);
+        const account: ActiveAccount =
+          stack.vm === "evm"
+            ? {
+                status: "connected",
+                vm: "evm",
+                address: "0x1111111111111111111111111111111111111111",
+                namespace: mintKargainNamespace(ns),
+                chainId: ns,
+              }
+            : SVM_ACCOUNT;
+        assert.doesNotThrow(() =>
+          admitSessionSurface(account, capability, COMMERCIAL_ACTIVE),
+        );
+        walked += 1;
+      }
+    }
+    assert.equal(
+      walked,
+      SURFACE_CAPABILITIES.length * namespaces.length,
+      `walked ${walked} = |CAPABILITIES| ${SURFACE_CAPABILITIES.length} × |ns| ${namespaces.length}`,
+    );
+  });
+
+  it("plant: non-class-C SVM cell with family evm throws named invariant", () => {
+    assert.equal(isSurfaceClassCCapability("set_passport_uri"), false);
+    const plantedTable = {
+      ...SURFACE_SUPPORT_TABLE,
+      set_passport_uri: {
+        evm: { supported: true as const, family: "evm" as const },
+        svm: { supported: true as const, family: "evm" as const },
+      },
+    } as SurfaceSupportTable;
+    const expected =
+      `admitSessionSurface invariant: wrong_family for set_passport_uri on namespace ${SOLANA_NS}`;
+    assert.throws(
+      () =>
+        admitSessionSurface(
+          SVM_ACCOUNT,
+          "set_passport_uri",
+          COMMERCIAL_ACTIVE,
+          plantedTable,
+        ),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.equal(err.message, expected);
+        return true;
+      },
+    );
+    assert.doesNotThrow(() =>
+      admitSessionSurface(SVM_ACCOUNT, "set_passport_uri", COMMERCIAL_ACTIVE),
+    );
+  });
+});
+
 describe("test-only lib export ban (d)", () => {
   it("pendingClaimsFactFromQueryResultCa3164e is absent from lib/", () => {
     const hit = testOnlyLibExportViolation();
@@ -539,10 +651,12 @@ export function reportAdmissionGuardScans(): {
   a: ProductSourceScanResult;
   b: ProductSourceScanResult;
   c: ProductSourceScanResult;
+  disconnected: ProductSourceScanResult;
 } {
   return {
     a: scanProductSources(refusalStatusCompareViolation),
     b: scanProductSources(unresolvedWrongVmSentenceViolation),
     c: scanProductSources(familyInventViolation),
+    disconnected: scanProductSources(disconnectedSentenceViolation),
   };
 }

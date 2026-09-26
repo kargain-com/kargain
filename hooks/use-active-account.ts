@@ -27,6 +27,7 @@ export {
   commercialNamespaceOf,
   connectedAddress,
   connectTargetFromOption,
+  disconnectedWalletCopy,
   dispatchConnect,
   evmSessionRefusalCopy,
   evmSessionRefusalTitle,

@@ -291,6 +291,11 @@ export function wrongVmActionCopy(wanted: WalletFamilyWanted): string {
   }
 }
 
+/** Sole default disconnected-wallet chrome sentence (§4.7). */
+export function disconnectedWalletCopy(): string {
+  return "Connect a wallet to continue.";
+}
+
 /**
  * Named refusal when {@link requireEvmSession} is not ok.
  * `wrong_vm` uses §4.7; disconnected keeps a connect invitation.
@@ -298,7 +303,7 @@ export function wrongVmActionCopy(wanted: WalletFamilyWanted): string {
 export function evmSessionRefusalCopy(cause: EvmSessionCause): string {
   switch (cause) {
     case "disconnected":
-      return "Connect a wallet to continue.";
+      return disconnectedWalletCopy();
     case "wrong_vm":
       return wrongVmActionCopy("evm");
   }

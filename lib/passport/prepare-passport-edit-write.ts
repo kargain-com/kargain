@@ -8,6 +8,7 @@ import { ensureSiweSession as defaultEnsureSiweSession } from "@/lib/auth/ensure
 import {
   evmSwitchChainAvailability,
   requireEvmSession,
+  disconnectedWalletCopy,
   wrongVmActionCopy,
   type ActiveAccount,
   type WalletFamilyWanted,
@@ -145,7 +146,7 @@ export function passportEditWritePrepRefusalMessage(
 ): string {
   switch (prep.cause) {
     case "disconnected":
-      return "Connect a wallet to continue.";
+      return disconnectedWalletCopy();
     case "wrong_vm":
       return wrongVmActionCopy(prep.wanted);
     case "unresolved_namespace":

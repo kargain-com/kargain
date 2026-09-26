@@ -10,6 +10,7 @@
 import {
   type ActiveAccount,
   commercialNamespaceOf,
+  disconnectedWalletCopy,
   wrongVmActionCopy,
   type WalletFamilyWanted,
 } from "@/lib/web3/active-account";
@@ -85,8 +86,6 @@ export type SurfaceAdmissionRefusalCopy = {
   readonly description: string;
 };
 
-const DEFAULT_DISCONNECTED_TITLE = "Connect a wallet to continue.";
-
 /**
  * Sole sentence owner for {@link SurfaceAdmissionRefusal}.
  * Surface-specific `disconnectedTitle` applies only to `disconnected` (§4.7).
@@ -115,7 +114,7 @@ export function surfaceAdmissionRefusalCopy(
       return { title: unresolvedNamespaceCopy(), description: "" };
     case "disconnected":
       return {
-        title: opts?.disconnectedTitle ?? DEFAULT_DISCONNECTED_TITLE,
+        title: opts?.disconnectedTitle ?? disconnectedWalletCopy(),
         description: "",
       };
     default: {
@@ -255,6 +254,12 @@ export function admitSessionSurface(
     registry,
     table,
   );
-  // Session namespace always matches session family — wrong_family unreachable.
-  return admission as SessionSurfaceAdmission;
+  // Session namespace always matches session family — wrong_family is an invariant
+  // breach (corrupted support table), not a user-facing refusal.
+  if (admission.status === "wrong_family") {
+    throw new Error(
+      `admitSessionSurface invariant: wrong_family for ${capability} on namespace ${Number(session.namespace)}`,
+    );
+  }
+  return admission;
 }

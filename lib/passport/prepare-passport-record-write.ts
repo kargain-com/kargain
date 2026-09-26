@@ -16,6 +16,7 @@ import {
 } from "@/lib/web3/commercial-active";
 import {
   requireEvmSession,
+  disconnectedWalletCopy,
   wrongVmActionCopy,
   type ActiveAccount,
   type WalletFamilyWanted,
@@ -111,7 +112,7 @@ export function passportRecordWritePrepRefusalMessage(
 ): string {
   switch (prep.cause) {
     case "disconnected":
-      return "Connect a wallet to continue.";
+      return disconnectedWalletCopy();
     case "wrong_vm":
       return wrongVmActionCopy(prep.wanted);
     case "unresolved_namespace":
