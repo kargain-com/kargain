@@ -115,7 +115,7 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   WrongAnswerFunder:
     "Encumbrance answer rent can only be reclaimed by the recorded funder.",
   BridgeGatewayUnbound:
-    "This passport has no bridge gateway bound yet.",
+    "This network's passport program has no bridge gateway bound.",
   InvalidReceiver:
     "Cannot mint a passport to the bridge gateway address.",
   PaymentTokenNotSupported: "This payment token is not supported.",

@@ -1,5 +1,6 @@
 /**
- * Sole owner: LIVE stand proof artifact attestation.
+ * Sole owner: LIVE stand proof artifact attestation + per-program `.so` path
+ * resolution (including named overrides).
  *
  * Hashes every BPF `.so` preloaded by `start-validator.sh` (preload mode) plus
  * fixture programs, and records git HEAD + dirty flag. Wired into each LIVE
@@ -7,6 +8,11 @@
  * assert "this proof ran against these binaries" — not reconstruct from mtime.
  *
  * Keep {@link STAND_PRELOAD_PROGRAMS} in sync with `start-validator.sh`.
+ *
+ * Per-program override (mixed-version stand): env
+ * `KARGAIN_SVM_STAND_SO_OVERRIDE=stem=/abs/path.so,stem2=/other.so`
+ * (comma-separated). Override wins over deploy dir; missing override path
+ * refuses by name (`stand_so_override_missing`) — never silent fallback.
  *
  * Test overrides: `KARGAIN_SVM_STAND_DEPLOY_DIR`, `KARGAIN_SVM_STAND_FIXTURES_DIR`,
  * `KARGAIN_SVM_STAND_GIT_ROOT`.
@@ -20,6 +26,11 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SVM_ROOT = path.resolve(__dirname, "..");
 const REPO_ROOT = path.resolve(SVM_ROOT, "..");
+
+/** Env key shared with `start-validator.sh` / `run-stand.sh`. */
+export const STAND_SO_OVERRIDE_ENV = "KARGAIN_SVM_STAND_SO_OVERRIDE";
+
+export const STAND_SO_OVERRIDE_MISSING = "stand_so_override_missing";
 
 function deployDir(): string {
   return process.env.KARGAIN_SVM_STAND_DEPLOY_DIR ?? path.join(SVM_ROOT, "target/deploy");
@@ -53,6 +64,10 @@ export const STAND_PRELOAD_FIXTURES = [
 export type StandProgramArtifact = {
   sha256: string;
   bytes: number;
+  /** Absolute path hashed — deploy default or override. */
+  path: string;
+  /** True when path came from {@link STAND_SO_OVERRIDE_ENV}. */
+  overridden: boolean;
 };
 
 export type StandArtifactBindings = {
@@ -67,7 +82,7 @@ export type StandArtifactBindings = {
 /** Proof result plus attested BPF/git envelope from {@link withStandArtifactBindings}. */
 export type WithStandArtifacts<T extends object> = T & { artifacts: StandArtifactBindings };
 
-function sha256File(filePath: string): StandProgramArtifact {
+function sha256File(filePath: string): Omit<StandProgramArtifact, "path" | "overridden"> {
   const buf = fs.readFileSync(filePath);
   return {
     sha256: createHash("sha256").update(buf).digest("hex"),
@@ -112,20 +127,85 @@ function standLoadMode(): "preload" | "upgradeable" {
   return process.env.KARGAIN_SVM_STAND_LOAD === "upgradeable" ? "upgradeable" : "preload";
 }
 
-/** Read and hash all stand BPF artifacts on disk (deploy dir + fixtures). */
+function isStandPreloadProgram(name: string): name is StandPreloadProgram {
+  return (STAND_PRELOAD_PROGRAMS as readonly string[]).includes(name);
+}
+
+/**
+ * Parse `KARGAIN_SVM_STAND_SO_OVERRIDE` (or injected raw). Sole syntax owner.
+ * Entries: `stem=/abs/path.so` comma-separated. Empty / unset → {}.
+ */
+export function parseStandSoOverrides(
+  raw: string | undefined = process.env[STAND_SO_OVERRIDE_ENV],
+): ReadonlyMap<StandPreloadProgram, string> {
+  const out = new Map<StandPreloadProgram, string>();
+  if (raw === undefined || raw.trim() === "") return out;
+  for (const part of raw.split(",")) {
+    const entry = part.trim();
+    if (entry === "") continue;
+    const eq = entry.indexOf("=");
+    if (eq <= 0) {
+      throw new Error(
+        `${STAND_SO_OVERRIDE_MISSING}: malformed override entry ${JSON.stringify(entry)} (want stem=/abs/path.so)`,
+      );
+    }
+    const stem = entry.slice(0, eq).trim();
+    const soPath = entry.slice(eq + 1).trim();
+    if (!isStandPreloadProgram(stem)) {
+      throw new Error(
+        `${STAND_SO_OVERRIDE_MISSING}: unknown program stem ${JSON.stringify(stem)}`,
+      );
+    }
+    if (soPath === "") {
+      throw new Error(
+        `${STAND_SO_OVERRIDE_MISSING}: empty path for ${stem}`,
+      );
+    }
+    out.set(stem, path.resolve(soPath));
+  }
+  return out;
+}
+
+/**
+ * Resolve the `.so` path the stand loads for `name`. Override wins; missing
+ * override file refuses by name — never falls back to deploy silently.
+ */
+export function resolveStandProgramSo(
+  name: StandPreloadProgram,
+  overrides: ReadonlyMap<StandPreloadProgram, string> = parseStandSoOverrides(),
+): { path: string; overridden: boolean } {
+  const overriddenPath = overrides.get(name);
+  if (overriddenPath !== undefined) {
+    if (!fs.existsSync(overriddenPath)) {
+      throw new Error(
+        `${STAND_SO_OVERRIDE_MISSING}: ${name}=${overriddenPath}`,
+      );
+    }
+    return { path: overriddenPath, overridden: true };
+  }
+  return {
+    path: path.join(deployDir(), `${name}.so`),
+    overridden: false,
+  };
+}
+
+/** Read and hash all stand BPF artifacts on disk (resolved paths + fixtures). */
 export function collectStandArtifactBindings(opts?: {
   loadMode?: "preload" | "upgradeable";
 }): StandArtifactBindings {
   const loadMode = opts?.loadMode ?? standLoadMode();
   const programs = {} as Record<StandPreloadProgram, StandProgramArtifact>;
+  const overrides = parseStandSoOverrides();
 
-  const deploy = deployDir();
   for (const name of STAND_PRELOAD_PROGRAMS) {
-    const so = path.join(deploy, `${name}.so`);
+    const { path: so, overridden } = resolveStandProgramSo(name, overrides);
     if (!fs.existsSync(so)) {
+      if (overridden) {
+        throw new Error(`${STAND_SO_OVERRIDE_MISSING}: ${name}=${so}`);
+      }
       throw new Error(`missing ${so} — build stand BPF artifacts first (cargo-build-sbf)`);
     }
-    programs[name] = sha256File(so);
+    programs[name] = { ...sha256File(so), path: so, overridden };
   }
 
   const fixtures = {} as StandArtifactBindings["fixtures"];
@@ -134,7 +214,11 @@ export function collectStandArtifactBindings(opts?: {
     if (!fs.existsSync(filePath)) {
       throw new Error(`missing fixture ${filePath}`);
     }
-    fixtures[spec.name] = sha256File(filePath);
+    fixtures[spec.name] = {
+      ...sha256File(filePath),
+      path: filePath,
+      overridden: false,
+    };
   }
 
   const { gitHead, gitDirty } = readGitState();

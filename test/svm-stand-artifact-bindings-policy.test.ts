@@ -17,7 +17,11 @@ import { fileURLToPath } from "node:url";
 import {
   STAND_PRELOAD_FIXTURES,
   STAND_PRELOAD_PROGRAMS,
+  STAND_SO_OVERRIDE_ENV,
+  STAND_SO_OVERRIDE_MISSING,
   collectStandArtifactBindings,
+  parseStandSoOverrides,
+  resolveStandProgramSo,
   withStandArtifactBindings,
 } from "../svm/stand/stand-artifact-bindings.ts";
 
@@ -212,5 +216,70 @@ describe("svm-stand-artifact-bindings-policy", () => {
     const src = fs.readFileSync(STAND_TEST, "utf8");
     assert.ok(src.includes("stand-artifact-bindings"));
     assert.ok(src.includes("assertStandArtifactBindings"));
+  });
+
+  it("SO override hashes the override path and refuses missing by name", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kargain-artifact-ov-"));
+    const payload = Buffer.from("stand-default-deploy");
+    const { deploy, fixtures } = writeStandArtifactStubs(dir, payload);
+    const overridePayload = Buffer.from("stand-gateway-override-bytes");
+    const overrideSo = path.join(dir, "old-kar_gateway.so");
+    fs.writeFileSync(overrideSo, overridePayload);
+    const expectedOverride = createHash("sha256").update(overridePayload).digest("hex");
+    const expectedDefault = createHash("sha256").update(payload).digest("hex");
+
+    withStandEnv(
+      {
+        KARGAIN_SVM_STAND_DEPLOY_DIR: deploy,
+        KARGAIN_SVM_STAND_FIXTURES_DIR: fixtures,
+        [STAND_SO_OVERRIDE_ENV]: `kar_gateway=${overrideSo}`,
+      },
+      () => {
+        const map = parseStandSoOverrides();
+        assert.equal(map.get("kar_gateway"), path.resolve(overrideSo));
+        const resolved = resolveStandProgramSo("kar_gateway", map);
+        assert.equal(resolved.overridden, true);
+        assert.equal(resolved.path, path.resolve(overrideSo));
+
+        const bindings = collectStandArtifactBindings({ loadMode: "preload" });
+        assert.equal(bindings.programs.kar_gateway.sha256, expectedOverride);
+        assert.equal(bindings.programs.kar_gateway.overridden, true);
+        assert.equal(bindings.programs.kar_gateway.path, path.resolve(overrideSo));
+        assert.equal(bindings.programs.kar_passport.sha256, expectedDefault);
+        assert.equal(bindings.programs.kar_passport.overridden, false);
+      },
+    );
+
+    withStandEnv(
+      {
+        KARGAIN_SVM_STAND_DEPLOY_DIR: deploy,
+        KARGAIN_SVM_STAND_FIXTURES_DIR: fixtures,
+        [STAND_SO_OVERRIDE_ENV]: `kar_gateway=${path.join(dir, "missing-gateway.so")}`,
+      },
+      () => {
+        assert.throws(
+          () => resolveStandProgramSo("kar_gateway"),
+          (err: unknown) =>
+            err instanceof Error && err.message.includes(STAND_SO_OVERRIDE_MISSING),
+        );
+        assert.throws(
+          () => collectStandArtifactBindings({ loadMode: "preload" }),
+          (err: unknown) =>
+            err instanceof Error && err.message.includes(STAND_SO_OVERRIDE_MISSING),
+        );
+      },
+    );
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("start-validator and run-stand share STAND_SO_OVERRIDE_ENV and named refuse", () => {
+    const start = fs.readFileSync(path.join(STAND_DIR, "start-validator.sh"), "utf8");
+    const run = fs.readFileSync(path.join(STAND_DIR, "run-stand.sh"), "utf8");
+    assert.ok(start.includes(STAND_SO_OVERRIDE_ENV));
+    assert.ok(run.includes(STAND_SO_OVERRIDE_ENV));
+    assert.ok(start.includes(STAND_SO_OVERRIDE_MISSING));
+    assert.ok(run.includes("skip") && run.includes(STAND_SO_OVERRIDE_ENV));
+    assert.ok(start.includes("resolve_program_so"));
   });
 });

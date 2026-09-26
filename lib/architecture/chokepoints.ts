@@ -676,7 +676,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-stand-artifact-bindings",
     owner: "svm/stand/stand-artifact-bindings.ts",
-    rule: "LIVE stand proofs attest sha256 of every preloaded .so + git HEAD via withStandArtifactBindings; sole deploy .so hasher under svm/stand",
+    rule: "LIVE stand proofs attest sha256 of every preloaded .so + git HEAD via withStandArtifactBindings; sole deploy .so hasher under svm/stand; KARGAIN_SVM_STAND_SO_OVERRIDE selects a program artifact path (stand_so_override_missing if absent — never silent fallback)",
     guardTests: ["svm-stand-artifact-bindings-policy.test.ts"],
   },
   {

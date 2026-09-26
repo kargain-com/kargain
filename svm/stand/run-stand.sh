@@ -44,10 +44,40 @@ case "${1:-}" in
     ;;
 esac
 
+# Stems overridden via KARGAIN_SVM_STAND_SO_OVERRIDE are not rebuilt (mixed-version).
+# Bash 3.2: scan env each time (same syntax as stand-artifact-bindings.ts).
+stand_so_override_has() {
+  local want="$1"
+  local raw="${KARGAIN_SVM_STAND_SO_OVERRIDE:-}"
+  [[ -z "$raw" ]] && return 1
+  local OLDIFS="$IFS"
+  IFS=','
+  # shellcheck disable=SC2086
+  set -- $raw
+  IFS="$OLDIFS"
+  local part stem
+  for part in "$@"; do
+    part="${part#"${part%%[![:space:]]*}"}"
+    part="${part%"${part##*[![:space:]]}"}"
+    [[ -z "$part" || "$part" != *=* ]] && continue
+    stem="${part%%=*}"
+    stem="${stem#"${stem%%[![:space:]]*}"}"
+    stem="${stem%"${stem##*[![:space:]]}"}"
+    [[ "$stem" == "$want" ]] && return 0
+  done
+  return 1
+}
+
 build_arch() {
   local arch="$1"
   echo "==> build SBF programs (--arch $arch)"
+  local prog so_stem
   for prog in mock-endpoint kar-passport kar-gateway mock-staking kar-pro-staking kar-pro-pass money-harness consignment-harness kar-fixed-price kar-ascending; do
+    so_stem="${prog//-/_}"
+    if stand_so_override_has "$so_stem"; then
+      echo "    skip $prog (KARGAIN_SVM_STAND_SO_OVERRIDE=$so_stem)"
+      continue
+    fi
     echo "    cargo-build-sbf --arch $arch ($prog)"
     (cd "svm/programs/$prog" && cargo-build-sbf --arch "$arch")
   done

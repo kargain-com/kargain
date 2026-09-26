@@ -112,6 +112,17 @@ describe("tx-error-message coverage", () => {
     );
   });
 
+  it("BridgeGatewayUnbound names the network passport program (not a token)", () => {
+    assert.equal(
+      REVERT_COPY.BridgeGatewayUnbound,
+      "This network's passport program has no bridge gateway bound.",
+    );
+    assert.ok(
+      !REVERT_COPY.BridgeGatewayUnbound.toLowerCase().includes("this passport has"),
+      "must not scope unbound to a token",
+    );
+  });
+
   it("mapper carries no copy for retired escrow errors", () => {
     for (const retired of [
       "AlreadyListed",
