@@ -47,7 +47,6 @@ const REQUIRED_HANDLERS: ReadonlyArray<{ program: string; fn: string }> = [
   { program: "consignment-harness", fn: "unpause_ix" },
   { program: "kar-passport", fn: "set_bridge_gateway" },
   { program: "kar-passport", fn: "set_staking_program" },
-  { program: "kar-passport", fn: "mint_passport" },
   { program: "kar-passport", fn: "set_dispute_deposit" },
   { program: "kar-gateway", fn: "recover_locked_home" },
   { program: "kar-gateway", fn: "register_oapp" },
@@ -56,7 +55,8 @@ const REQUIRED_HANDLERS: ReadonlyArray<{ program: string; fn: string }> = [
   { program: "kar-pro-staking", fn: "set_min_stake_native" },
 ];
 
-const HANDLER_FLOOR = 25;
+/** MintPassport is permissionless (payer only) — not in the config-authority class. */
+const HANDLER_FLOOR = 24;
 
 /** Inline authority-key vs config-authority compares (must live only in admit owner). */
 const INLINE_AUTHORITY_EQ =

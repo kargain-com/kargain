@@ -650,12 +650,12 @@ async function runIsolationC(
     programAddress: ctx.PASSPORT,
     accounts: [
       meta(passportConfig, AccountRole.WRITABLE),
-      meta(authority.address, AccountRole.READONLY_SIGNER),
       meta(asset, AccountRole.WRITABLE),
       meta(state, AccountRole.WRITABLE),
       meta(payer.address, AccountRole.WRITABLE_SIGNER),
       meta(seller.address, AccountRole.READONLY),
       meta(gatewayFreeze, AccountRole.READONLY),
+      meta(gatewayConfig, AccountRole.READONLY),
       meta(CORE, AccountRole.READONLY),
       meta(SYSTEM, AccountRole.READONLY),
     ],

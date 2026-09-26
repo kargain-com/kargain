@@ -251,7 +251,7 @@ export function assertNextTokenIdOffsetPinned(
 }
 
 describe("svm-devnet-mint-passport door policy", () => {
-  it("exports the six named refusal causes and MintPassport variant", () => {
+  it("exports the five named refusal causes and MintPassport variant", () => {
     assert.deepEqual(
       [...MINT_PASSPORT_REFUSAL_CAUSES],
       [
@@ -259,7 +259,6 @@ describe("svm-devnet-mint-passport door policy", () => {
         "config_not_found",
         "config_discriminator_mismatch",
         "config_too_short",
-        "authority_mismatch",
         "token_exists",
       ],
     );
@@ -336,7 +335,7 @@ describe("svm-devnet-mint-passport door policy", () => {
     assertMintPassportDoorClass(deriveMintPassportDoorFacts(live));
 
     const plant = live.replace(
-      /throw new MintPassportRefusal\(\s*"authority_mismatch",/,
+      /throw new MintPassportRefusal\(\s*"config_not_found",/,
       'throw new MintPassportRefusal(\n      "not_a_declared_cause",',
     );
     assert.notEqual(plant, live, "rename-throw plant must differ from live");

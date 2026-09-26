@@ -148,6 +148,8 @@ export const SVM_PROGRAM_ERROR_BY_ORDINAL = [
   "PassportProgramUnbound", // 140
   "HarnessInstructionRetired", // 141
   "WrongAnswerFunder", // 142
+  "BridgeGatewayUnbound", // 143
+  "InvalidReceiver", // 144
 ] as const;
 
 export type SvmProgramErrorName = (typeof SVM_PROGRAM_ERROR_BY_ORDINAL)[number];

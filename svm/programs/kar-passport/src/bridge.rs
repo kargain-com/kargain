@@ -114,20 +114,12 @@ pub fn check_set_bridge_gateway(
     Ok(())
 }
 
-/// True when `signer` is the bound bridge gateway.
+/// True when `signer` is the bound bridge gateway config PDA.
 ///
-/// Canonical bind is the gateway_config PDA (stand / CPI signer). Legacy Devnet init
-/// stored the gateway **program id**; accept that program's `["config"]` PDA as well.
+/// Canonical bind stores the gateway config PDA in `PassportConfig.bridge_gateway`
+/// (measured Devnet 2026-09-26). Program-id binds are no longer admitted.
 pub fn is_bridge_gateway_signer(bound: &[u8; 32], signer: &[u8; 32]) -> bool {
-    if bound == signer {
-        return true;
-    }
-    if *bound == [0u8; 32] {
-        return false;
-    }
-    let program = solana_program::pubkey::Pubkey::new_from_array(*bound);
-    let (pda, _) = crate::seeds::config_pda(&program);
-    pda.to_bytes() == *signer
+    *bound != [0u8; 32] && bound == signer
 }
 
 /// Staking stub retained for host tests that inject a boolean.
@@ -184,19 +176,21 @@ mod tests {
     }
 
     #[test]
-    fn bridge_gateway_signer_accepts_config_pda_of_bound_program() {
+    fn bridge_gateway_signer_exact_config_pda_only() {
         let program = solana_program::pubkey::Pubkey::new_unique();
         let (pda, _) = crate::seeds::config_pda(&program);
-        assert!(is_bridge_gateway_signer(
+        // Program-id bind no longer admits the config PDA as signer.
+        assert!(!is_bridge_gateway_signer(
             &program.to_bytes(),
             &pda.to_bytes()
         ));
         assert!(is_bridge_gateway_signer(&pda.to_bytes(), &pda.to_bytes()));
         let stranger = solana_program::pubkey::Pubkey::new_unique();
         assert!(!is_bridge_gateway_signer(
-            &program.to_bytes(),
+            &pda.to_bytes(),
             &stranger.to_bytes()
         ));
+        assert!(!is_bridge_gateway_signer(&[0u8; 32], &pda.to_bytes()));
     }
 
     #[test]

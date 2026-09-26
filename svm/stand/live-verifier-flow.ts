@@ -405,12 +405,12 @@ export async function runLiveVerifierFlow(opts?: {
             programId: passportProgram,
             keys: [
               { pubkey: passportConfig, isSigner: false, isWritable: true },
-              { pubkey: payer.publicKey, isSigner: true, isWritable: false },
               { pubkey: asset, isSigner: false, isWritable: true },
               { pubkey: state, isSigner: false, isWritable: true },
               { pubkey: payer.publicKey, isSigner: true, isWritable: true },
               { pubkey: owner.publicKey, isSigner: false, isWritable: false },
               { pubkey: gatewayFreeze, isSigner: false, isWritable: false },
+              { pubkey: gatewayConfig, isSigner: false, isWritable: false },
               { pubkey: CORE_ID, isSigner: false, isWritable: false },
               { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
             ],

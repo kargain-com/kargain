@@ -529,20 +529,42 @@ fn mint_passport(program_id: &Pubkey, accounts: &[AccountInfo], uri: String) -> 
     check_mint_uri(&uri).map_err(into_program_error)?;
     let iter = &mut accounts.iter();
     let config = next_account_info(iter)?;
-    let authority = next_account_info(iter)?;
     let asset = next_account_info(iter)?;
     let state = next_account_info(iter)?;
     let payer = next_account_info(iter)?;
     let owner = next_account_info(iter)?;
     let freeze_authority = next_account_info(iter)?;
+    let gateway_config = next_account_info(iter)?;
     let core = next_account_info(iter)?;
     let system = next_account_info(iter)?;
 
     if !payer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
-    let mut cfg = require_config_authority(program_id, config, authority)?;
+    let mut cfg = load_config(program_id, config)?;
+    if *owner.key == Pubkey::default() {
+        return Err(into_program_error(kargain_errors::KargainError::ZeroAddress));
+    }
+    if owner.key.to_bytes() == cfg.bridge_gateway {
+        return Err(into_program_error(
+            kargain_errors::KargainError::InvalidReceiver,
+        ));
+    }
     let token_id = cfg.next_token_id;
+    let seq = u128::from_be_bytes({
+        let mut b = [0u8; 16];
+        b.copy_from_slice(&token_id[16..32]);
+        b
+    });
+    if seq == u128::MAX {
+        return Err(into_program_error(
+            kargain_errors::KargainError::TokenIdSpaceExhausted,
+        ));
+    }
+    let expected_freeze = require_bound_gateway_freeze(&cfg, gateway_config)?;
+    if freeze_authority.key != &expected_freeze {
+        return Err(ProgramError::InvalidSeeds);
+    }
     let (asset_key, asset_bump) = asset_pda(program_id, &token_id);
     if asset.key != &asset_key {
         return Err(ProgramError::InvalidSeeds);
@@ -572,12 +594,10 @@ fn mint_passport(program_id: &Pubkey, accounts: &[AccountInfo], uri: String) -> 
     let st = PassportState::new_unverified(token_id, state_bump);
     save_state(state, &st)?;
 
-    let seq = u128::from_be_bytes({
-        let mut b = [0u8; 16];
-        b.copy_from_slice(&token_id[16..32]);
-        b
-    });
-    cfg.next_token_id = crate::state::token_id_from_parts(cfg.namespace, seq.saturating_add(1));
+    let next_seq = seq
+        .checked_add(1)
+        .ok_or_else(|| into_program_error(kargain_errors::KargainError::TokenIdSpaceExhausted))?;
+    cfg.next_token_id = crate::state::token_id_from_parts(cfg.namespace, next_seq);
     save_config(config, &cfg)?;
     generated::emit_kar_passport_passport_minted(
         owner.key.to_bytes(),
@@ -586,6 +606,32 @@ fn mint_passport(program_id: &Pubkey, accounts: &[AccountInfo], uri: String) -> 
     );
     ops_log!("kar-passport MintPassport ok");
     Ok(())
+}
+
+/// Derive the expected PermanentFreezeDelegate for a passport config.
+///
+/// `gateway_config` must be the bound config PDA; its runtime `owner` is the
+/// gateway program id. Used by [`mint_passport`] and [`bridge_mint`].
+fn require_bound_gateway_freeze(
+    cfg: &PassportConfig,
+    gateway_config: &AccountInfo,
+) -> Result<Pubkey, ProgramError> {
+    if cfg.bridge_gateway == [0u8; 32] {
+        return Err(into_program_error(
+            kargain_errors::KargainError::BridgeGatewayUnbound,
+        ));
+    }
+    if gateway_config.key.to_bytes() != cfg.bridge_gateway {
+        return Err(into_program_error(
+            kargain_errors::KargainError::NotBridgeGateway,
+        ));
+    }
+    let (expected_cfg, _) = config_pda(gateway_config.owner);
+    if &expected_cfg != gateway_config.key {
+        return Err(ProgramError::InvalidSeeds);
+    }
+    let (freeze, _) = kargain_freeze_pda::freeze_pda(gateway_config.owner);
+    Ok(freeze)
 }
 
 fn set_passport_uri(
@@ -710,6 +756,10 @@ fn bridge_mint(
     }
     let cfg = load_config(program_id, config)?;
     require_gateway(&cfg, gateway)?;
+    let expected_freeze = require_bound_gateway_freeze(&cfg, gateway)?;
+    if freeze_authority.key != &expected_freeze {
+        return Err(ProgramError::InvalidSeeds);
+    }
     let exists = is_live_core_asset(asset);
     check_bridge_mint(true, &token_id, cfg.namespace, exists, &uri).map_err(into_program_error)?;
 
@@ -1621,86 +1671,401 @@ mod config_authority_tests {
         }
     }
 
+    fn mint_cfg(
+        program_id: &Pubkey,
+        authority: &Pubkey,
+        bridge_gateway: [u8; 32],
+        next_token_id: [u8; 32],
+    ) -> (Pubkey, Vec<u8>) {
+        let (key, bump) = config_pda(program_id);
+        let cfg = PassportConfig {
+            discriminator: PASSPORT_CONFIG_DISCRIMINATOR,
+            authority: authority.to_bytes(),
+            namespace: 1,
+            local_eid: 1,
+            endpoint_program: [3u8; 32],
+            dispute_deposit: 1,
+            staking_program: [4u8; 32],
+            bridge_gateway,
+            forfeit_recipient: [5u8; 32],
+            next_token_id,
+            encumbrance_sources: vec![],
+            bump,
+        };
+        (key, borsh::to_vec(&cfg).unwrap())
+    }
+
+    fn custom(err: KargainError) -> ProgramError {
+        ProgramError::Custom(u32::from(err))
+    }
+
+    /// Host mint harness: nine empty data slots (AccountInfo exclusive borrows).
+    /// Override keys live on `self` so AccountInfo lifetimes unify on `&mut self`.
+    struct MintHarness {
+        program_id: Pubkey,
+        gateway_program: Pubkey,
+        gw_cfg_key: Pubkey,
+        #[allow(dead_code)]
+        freeze_key: Pubkey,
+        /// Account metas under test (mutate before `accounts`).
+        freeze_account: Pubkey,
+        gateway_account: Pubkey,
+        gateway_owner: Pubkey,
+        cfg_key: Pubkey,
+        cfg_data: Vec<u8>,
+        payer: Pubkey,
+        owner: Pubkey,
+        asset: Pubkey,
+        state: Pubkey,
+        core: Pubkey,
+        system: Pubkey,
+        cl: u64,
+        al: u64,
+        sl: u64,
+        pl: u64,
+        ol: u64,
+        fl: u64,
+        gl: u64,
+        col: u64,
+        syl: u64,
+        d0: [u8; 0],
+        d1: [u8; 0],
+        d2: [u8; 0],
+        d3: [u8; 0],
+        d4: [u8; 0],
+        d5: [u8; 0],
+        d6: [u8; 0],
+        d7: [u8; 0],
+    }
+
+    impl MintHarness {
+        fn bound(next_token_id: [u8; 32]) -> Self {
+            let program_id = pid();
+            let authority = auth();
+            let gateway_program = Pubkey::new_from_array([20u8; 32]);
+            let (gw_cfg_key, _) = config_pda(&gateway_program);
+            let (freeze_key, _) = kargain_freeze_pda::freeze_pda(&gateway_program);
+            let (cfg_key, cfg_data) =
+                mint_cfg(&program_id, &authority, gw_cfg_key.to_bytes(), next_token_id);
+            Self {
+                program_id,
+                gateway_program,
+                gw_cfg_key,
+                freeze_key,
+                freeze_account: freeze_key,
+                gateway_account: gw_cfg_key,
+                gateway_owner: gateway_program,
+                cfg_key,
+                cfg_data,
+                payer: Pubkey::new_from_array([30u8; 32]),
+                owner: Pubkey::new_from_array([31u8; 32]),
+                asset: Pubkey::new_from_array([32u8; 32]),
+                state: Pubkey::new_from_array([33u8; 32]),
+                core: Pubkey::new_from_array([34u8; 32]),
+                system: system_program::ID,
+                cl: 0,
+                al: 0,
+                sl: 0,
+                pl: 0,
+                ol: 0,
+                fl: 0,
+                gl: 0,
+                col: 0,
+                syl: 0,
+                d0: [],
+                d1: [],
+                d2: [],
+                d3: [],
+                d4: [],
+                d5: [],
+                d6: [],
+                d7: [],
+            }
+        }
+
+        fn unbound(next_token_id: [u8; 32]) -> Self {
+            let mut h = Self::bound(next_token_id);
+            let authority = auth();
+            let (cfg_key, cfg_data) =
+                mint_cfg(&h.program_id, &authority, [0u8; 32], next_token_id);
+            h.cfg_key = cfg_key;
+            h.cfg_data = cfg_data;
+            h
+        }
+
+        fn accounts(&mut self, payer_signed: bool) -> [AccountInfo<'_>; 9] {
+            [
+                ai(
+                    &self.cfg_key,
+                    false,
+                    true,
+                    &mut self.cl,
+                    &mut self.cfg_data,
+                    &self.program_id,
+                ),
+                ai(
+                    &self.asset,
+                    false,
+                    true,
+                    &mut self.al,
+                    &mut self.d0,
+                    &self.program_id,
+                ),
+                ai(
+                    &self.state,
+                    false,
+                    true,
+                    &mut self.sl,
+                    &mut self.d1,
+                    &self.program_id,
+                ),
+                ai(
+                    &self.payer,
+                    payer_signed,
+                    true,
+                    &mut self.pl,
+                    &mut self.d2,
+                    &self.program_id,
+                ),
+                ai(
+                    &self.owner,
+                    false,
+                    false,
+                    &mut self.ol,
+                    &mut self.d3,
+                    &self.program_id,
+                ),
+                ai(
+                    &self.freeze_account,
+                    false,
+                    false,
+                    &mut self.fl,
+                    &mut self.d4,
+                    &self.gateway_program,
+                ),
+                ai(
+                    &self.gateway_account,
+                    false,
+                    false,
+                    &mut self.gl,
+                    &mut self.d5,
+                    &self.gateway_owner,
+                ),
+                ai(
+                    &self.core,
+                    false,
+                    false,
+                    &mut self.col,
+                    &mut self.d6,
+                    &self.program_id,
+                ),
+                ai(
+                    &self.system,
+                    false,
+                    false,
+                    &mut self.syl,
+                    &mut self.d7,
+                    &self.program_id,
+                ),
+            ]
+        }
+    }
+
+    /// Permissionless: payer ≠ config authority reaches the asset-PDA check
+    /// (host tests cannot complete Core CPI; stand proves full mint + next advance).
     #[test]
-    fn mint_passport_unsigned_wrong_admit_passed() {
-        let program_id = pid();
-        let authority = auth();
-        let (cfg_key, mut cfg_data) = cfg_bytes(&program_id, &authority);
-        let mut al = 0u64;
-        let mut pl = 0u64;
-        let mut cl = 0u64;
-        let mut l2 = 0u64;
-        let mut l3 = 0u64;
-        let mut l5 = 0u64;
-        let mut l6 = 0u64;
-        let mut l7 = 0u64;
-        let mut l8 = 0u64;
-        let mut d_auth: [u8; 0] = [];
-        let mut d_pay: [u8; 0] = [];
-        let mut d2: [u8; 0] = [];
-        let mut d3: [u8; 0] = [];
-        let mut d5: [u8; 0] = [];
-        let mut d6: [u8; 0] = [];
-        let mut d7: [u8; 0] = [];
-        let mut d8: [u8; 0] = [];
-        let k2 = Pubkey::new_from_array([10u8; 32]);
-        let k3 = Pubkey::new_from_array([11u8; 32]);
-        let k5 = Pubkey::new_from_array([12u8; 32]);
-        let k6 = Pubkey::new_from_array([13u8; 32]);
-        let k7 = Pubkey::new_from_array([14u8; 32]);
-        let k8 = Pubkey::new_from_array([15u8; 32]);
-        let uri = "ar://x".to_string();
-        {
-            let accs = [
-                ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id),
-                ai(&authority, false, false, &mut al, &mut d_auth, &program_id),
-                ai(&k2, false, true, &mut l2, &mut d2, &program_id),
-                ai(&k3, false, true, &mut l3, &mut d3, &program_id),
-                ai(&authority, true, true, &mut pl, &mut d_pay, &program_id),
-                ai(&k5, false, false, &mut l5, &mut d5, &program_id),
-                ai(&k6, false, true, &mut l6, &mut d6, &program_id),
-                ai(&k7, false, false, &mut l7, &mut d7, &program_id),
-                ai(&k8, false, false, &mut l8, &mut d8, &program_id),
-            ];
-            assert_eq!(
-                mint_passport(&program_id, &accs, uri.clone()).unwrap_err(),
-                ProgramError::MissingRequiredSignature,
-            );
-        }
-        {
-            let w = wrong();
-            let accs = [
-                ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id),
-                ai(&w, true, false, &mut al, &mut d_auth, &program_id),
-                ai(&k2, false, true, &mut l2, &mut d2, &program_id),
-                ai(&k3, false, true, &mut l3, &mut d3, &program_id),
-                ai(&authority, true, true, &mut pl, &mut d_pay, &program_id),
-                ai(&k5, false, false, &mut l5, &mut d5, &program_id),
-                ai(&k6, false, true, &mut l6, &mut d6, &program_id),
-                ai(&k7, false, false, &mut l7, &mut d7, &program_id),
-                ai(&k8, false, false, &mut l8, &mut d8, &program_id),
-            ];
-            assert_eq!(
-                mint_passport(&program_id, &accs, uri.clone()).unwrap_err(),
-                not_owner(),
-            );
-        }
-        {
-            let accs = [
-                ai(&cfg_key, false, true, &mut cl, &mut cfg_data, &program_id),
-                ai(&authority, true, false, &mut al, &mut d_auth, &program_id),
-                ai(&k2, false, true, &mut l2, &mut d2, &program_id),
-                ai(&k3, false, true, &mut l3, &mut d3, &program_id),
-                ai(&authority, true, true, &mut pl, &mut d_pay, &program_id),
-                ai(&k5, false, false, &mut l5, &mut d5, &program_id),
-                ai(&k6, false, true, &mut l6, &mut d6, &program_id),
-                ai(&k7, false, false, &mut l7, &mut d7, &program_id),
-                ai(&k8, false, false, &mut l8, &mut d8, &program_id),
-            ];
-            assert_eq!(
-                mint_passport(&program_id, &accs, uri).unwrap_err(),
-                ProgramError::InvalidSeeds,
-            );
-        }
+    fn mint_passport_permissionless_reaches_asset_check() {
+        let mut h = MintHarness::bound(crate::state::token_id_from_parts(1, 0));
+        assert_ne!(h.payer, auth());
+        let program_id = h.program_id;
+        let accs = h.accounts(true);
+        assert_eq!(
+            mint_passport(&program_id, &accs, "ar://x".into()).unwrap_err(),
+            ProgramError::InvalidSeeds,
+        );
+    }
+
+    #[test]
+    fn mint_passport_payer_unsigned() {
+        let mut h = MintHarness::bound(crate::state::token_id_from_parts(1, 0));
+        let program_id = h.program_id;
+        let accs = h.accounts(false);
+        assert_eq!(
+            mint_passport(&program_id, &accs, "ar://x".into()).unwrap_err(),
+            ProgramError::MissingRequiredSignature,
+        );
+    }
+
+    #[test]
+    fn mint_passport_unbound_gateway() {
+        let mut h = MintHarness::unbound(crate::state::token_id_from_parts(1, 0));
+        let program_id = h.program_id;
+        let accs = h.accounts(true);
+        assert_eq!(
+            mint_passport(&program_id, &accs, "ar://x".into()).unwrap_err(),
+            custom(KargainError::BridgeGatewayUnbound),
+        );
+    }
+
+    #[test]
+    fn mint_passport_foreign_freeze() {
+        let mut h = MintHarness::bound(crate::state::token_id_from_parts(1, 0));
+        h.freeze_account = Pubkey::new_from_array([99u8; 32]);
+        let program_id = h.program_id;
+        let accs = h.accounts(true);
+        assert_eq!(
+            mint_passport(&program_id, &accs, "ar://x".into()).unwrap_err(),
+            ProgramError::InvalidSeeds,
+        );
+    }
+
+    #[test]
+    fn mint_passport_wrong_gateway_account() {
+        let mut h = MintHarness::bound(crate::state::token_id_from_parts(1, 0));
+        h.gateway_account = Pubkey::new_from_array([77u8; 32]);
+        let program_id = h.program_id;
+        let accs = h.accounts(true);
+        assert_eq!(
+            mint_passport(&program_id, &accs, "ar://x".into()).unwrap_err(),
+            custom(KargainError::NotBridgeGateway),
+        );
+    }
+
+    #[test]
+    fn mint_passport_gateway_owner_not_deriving_config() {
+        let mut h = MintHarness::bound(crate::state::token_id_from_parts(1, 0));
+        h.gateway_owner = Pubkey::new_from_array([21u8; 32]);
+        let program_id = h.program_id;
+        let accs = h.accounts(true);
+        assert_eq!(
+            mint_passport(&program_id, &accs, "ar://x".into()).unwrap_err(),
+            ProgramError::InvalidSeeds,
+        );
+    }
+
+    #[test]
+    fn mint_passport_zero_owner() {
+        let mut h = MintHarness::bound(crate::state::token_id_from_parts(1, 0));
+        h.owner = Pubkey::default();
+        let program_id = h.program_id;
+        let accs = h.accounts(true);
+        assert_eq!(
+            mint_passport(&program_id, &accs, "ar://x".into()).unwrap_err(),
+            custom(KargainError::ZeroAddress),
+        );
+    }
+
+    #[test]
+    fn mint_passport_owner_is_bound_gateway() {
+        let mut h = MintHarness::bound(crate::state::token_id_from_parts(1, 0));
+        h.owner = h.gw_cfg_key;
+        let program_id = h.program_id;
+        let accs = h.accounts(true);
+        assert_eq!(
+            mint_passport(&program_id, &accs, "ar://x".into()).unwrap_err(),
+            custom(KargainError::InvalidReceiver),
+        );
+    }
+
+    #[test]
+    fn mint_passport_token_id_space_exhausted() {
+        let exhausted = crate::state::token_id_from_parts(1, u128::MAX);
+        let mut h = MintHarness::bound(exhausted);
+        let before = h.cfg_data.clone();
+        let program_id = h.program_id;
+        let accs = h.accounts(true);
+        assert_eq!(
+            mint_passport(&program_id, &accs, "ar://x".into()).unwrap_err(),
+            custom(KargainError::TokenIdSpaceExhausted),
+        );
+        assert_eq!(h.cfg_data, before, "next_token_id must be unchanged");
+    }
+
+    #[test]
+    fn bridge_mint_foreign_freeze_refused() {
+        let mut h = MintHarness::bound(crate::state::token_id_from_parts(1, 0));
+        h.freeze_account = Pubkey::new_from_array([99u8; 32]);
+        let tid = crate::state::token_id_from_parts(84532, 1);
+        let program_id = h.program_id;
+        let owner_bytes = h.owner.to_bytes();
+        // bridge_mint layout: config, gateway, asset, state, payer, owner, freeze, core, system
+        let accs = [
+            ai(
+                &h.cfg_key,
+                false,
+                true,
+                &mut h.cl,
+                &mut h.cfg_data,
+                &h.program_id,
+            ),
+            ai(
+                &h.gw_cfg_key,
+                true,
+                false,
+                &mut h.gl,
+                &mut h.d5,
+                &h.gateway_program,
+            ),
+            ai(
+                &h.asset,
+                false,
+                true,
+                &mut h.al,
+                &mut h.d0,
+                &h.program_id,
+            ),
+            ai(
+                &h.state,
+                false,
+                true,
+                &mut h.sl,
+                &mut h.d1,
+                &h.program_id,
+            ),
+            ai(
+                &h.payer,
+                true,
+                true,
+                &mut h.pl,
+                &mut h.d2,
+                &h.program_id,
+            ),
+            ai(
+                &h.owner,
+                false,
+                false,
+                &mut h.ol,
+                &mut h.d3,
+                &h.program_id,
+            ),
+            ai(
+                &h.freeze_account,
+                false,
+                false,
+                &mut h.fl,
+                &mut h.d4,
+                &h.program_id,
+            ),
+            ai(
+                &h.core,
+                false,
+                false,
+                &mut h.col,
+                &mut h.d6,
+                &h.program_id,
+            ),
+            ai(
+                &h.system,
+                false,
+                false,
+                &mut h.syl,
+                &mut h.d7,
+                &h.program_id,
+            ),
+        ];
+        assert_eq!(
+            bridge_mint(&program_id, &accs, owner_bytes, tid, "ar://x".into()).unwrap_err(),
+            ProgramError::InvalidSeeds,
+        );
     }
 }

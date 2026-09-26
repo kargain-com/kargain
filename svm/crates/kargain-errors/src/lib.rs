@@ -337,6 +337,12 @@ pub enum KargainError {
     /// SVM — encumbrance answer close: passed funder ≠ recorded rent funder.
     #[error("WrongAnswerFunder")]
     WrongAnswerFunder = 142,
+    /// SVM — mint / freeze derive requires a bound bridge gateway.
+    #[error("BridgeGatewayUnbound")]
+    BridgeGatewayUnbound = 143,
+    /// SVM — MintPassport owner is the bound gateway config PDA (EVM: gateway is not an ERC-721 receiver).
+    #[error("InvalidReceiver")]
+    InvalidReceiver = 144,
 }
 
 impl KargainError {
@@ -486,6 +492,8 @@ impl KargainError {
             Self::PassportProgramUnbound => "PassportProgramUnbound",
             Self::HarnessInstructionRetired => "HarnessInstructionRetired",
             Self::WrongAnswerFunder => "WrongAnswerFunder",
+            Self::BridgeGatewayUnbound => "BridgeGatewayUnbound",
+            Self::InvalidReceiver => "InvalidReceiver",
         }
     }
 
@@ -635,6 +643,8 @@ impl KargainError {
             PassportProgramUnbound,
             HarnessInstructionRetired,
             WrongAnswerFunder,
+            BridgeGatewayUnbound,
+            InvalidReceiver,
         ]
     }
 }

@@ -197,6 +197,7 @@ async function main() {
   // Mint to the durable --passport-owner pubkey (CannotSelfVerify: verifier is ephemeral below).
   const gatewayId = new PublicKey(requireSvmGatewayProgramId(prior));
   const [gatewayFreeze] = pda([FREEZE], gatewayId);
+  const [gatewayConfig] = pda([CONFIG], gatewayId);
 
   const cfgData = (await connection.getAccountInfo(passportConfig))!.data;
   const off = 8 + 32 + 16 + 4 + 32 + 8 + 32 + 32 + 32;
@@ -210,12 +211,12 @@ async function main() {
         programId: passportId,
         keys: [
           { pubkey: passportConfig, isSigner: false, isWritable: true },
-          { pubkey: deployer.publicKey, isSigner: true, isWritable: false },
           { pubkey: asset, isSigner: false, isWritable: true },
           { pubkey: state, isSigner: false, isWritable: true },
           { pubkey: deployer.publicKey, isSigner: true, isWritable: true },
           { pubkey: owner, isSigner: false, isWritable: false },
           { pubkey: gatewayFreeze, isSigner: false, isWritable: false },
+          { pubkey: gatewayConfig, isSigner: false, isWritable: false },
           { pubkey: CORE_ID, isSigner: false, isWritable: false },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],

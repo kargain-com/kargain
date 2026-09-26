@@ -1065,19 +1065,19 @@ export async function mintPassportAsset(
         stack.passportProgram,
         [
           { pubkey: stack.passportConfig, isSigner: false, isWritable: true },
-          { pubkey: stack.passportAuthority.publicKey, isSigner: true, isWritable: false },
           { pubkey: asset, isSigner: false, isWritable: true },
           { pubkey: state, isSigner: false, isWritable: true },
           { pubkey: payer.publicKey, isSigner: true, isWritable: true },
           { pubkey: owner, isSigner: false, isWritable: false },
           { pubkey: stack.gatewayFreeze, isSigner: false, isWritable: false },
+          { pubkey: stack.gatewayConfig, isSigner: false, isWritable: false },
           { pubkey: CORE_ID, isSigner: false, isWritable: false },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],
         Buffer.concat([Buffer.from([PASSPORT_IX.MintPassport]), encodeString(uri)]),
       ),
     ),
-    [stack.passportAuthority, payer],
+    [payer],
   );
   return { tokenId, asset, state, challenge };
 }

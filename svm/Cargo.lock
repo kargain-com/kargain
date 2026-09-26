@@ -607,6 +607,7 @@ dependencies = [
  "kargain-encumbrance",
  "kargain-errors",
  "kargain-events",
+ "kargain-freeze-pda",
  "kargain-onft-codec",
  "mock-endpoint",
  "mpl-core",
@@ -626,6 +627,7 @@ dependencies = [
  "kargain-encumbrance",
  "kargain-errors",
  "kargain-events",
+ "kargain-freeze-pda",
  "kargain-passport-asset",
  "mpl-core",
  "solana-program",
@@ -745,6 +747,13 @@ name = "kargain-events"
 version = "0.1.0"
 dependencies = [
  "borsh 1.8.1",
+ "solana-program",
+]
+
+[[package]]
+name = "kargain-freeze-pda"
+version = "0.1.0"
+dependencies = [
  "solana-program",
 ]
 

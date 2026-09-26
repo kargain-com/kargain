@@ -243,7 +243,7 @@ FixedPriceConsignment `VERSION` **`2.4.0-rc.1`**. AscendingConsignment **`2.5.0-
 | `setDisputeDeposit` | owner | Update exact bond for next `open` (**≠ 0**); emits `DisputeDepositUpdated` |
 | `rescueExcessEth` | owner | Withdraw ETH not in `totalLockedBonds` or pending claims |
 | `mintPassport` | anyone | Mint UNVERIFIED passport; increment chain-local id |
-| *(SVM counterpart)* | **config authority only** | `MintPassport` requires `authority` signer ≡ `PassportConfig.authority` — **not** permissionless like EVM. Unsigned authority → `MissingRequiredSignature`; signed-wrong → `NotOwner` (Ownable parity; ordinal 1). Payer-must-sign is rent, not admission. Product Create UI cannot mirror EVM “anyone mints” without a program change. Ops door: `scripts/svm-devnet-mint-passport.ts`. Same admission names on SVM `setBridgeGateway` / `setStakingProgram` / `setDisputeDeposit`. |
+| *(SVM counterpart)* | **anyone (permissionless)** | `MintPassport { uri }` — payer signs and pays rent; program assigns `token_id` from `next_token_id` (same namespace packing as EVM). Owner must not be the default pubkey (`ZeroAddress`) nor the bound bridge-gateway config PDA (`InvalidReceiver` — EVM `_safeMint` refuses the gateway because it is not an ERC-721 receiver; SVM names that refusal). Exhaustion refuses `TokenIdSpaceExhausted` before create. Unbound gateway refuses `BridgeGatewayUnbound`. Every passport's Core `PermanentFreezeDelegate` authority is `freeze_pda` of the gateway **program** that owns the bound gateway config account — derived and checked on mint (wrong freeze account → `InvalidSeeds`). Minting to another non-signing account (e.g. a mode custody PDA) is the minter's loss on both VMs (SVM has no `onERC721Received`). Admin ix admission unchanged: `setBridgeGateway` / `setStakingProgram` / `setDisputeDeposit` remain config-authority. |
 | `setPassportURI` | token owner | Metadata URI update; resets verification when status is VERIFIED (see Part III § anchor vs cosmetic) |
 | `verifyPassport` | active verifier | UNVERIFIED → VERIFIED |
 | `open` | anyone + exact ETH | VERIFIED → DISPUTED; BondedChallenge open |
@@ -263,7 +263,7 @@ FixedPriceConsignment `VERSION` **`2.4.0-rc.1`**. AscendingConsignment **`2.5.0-
 | Error | When |
 |-------|------|
 | `NonexistentToken` | Invalid tokenId |
-| `NotOwner` | Caller is not token owner. **SVM also:** config-authority signed-wrong on admin ix (`MintPassport`, `setBridgeGateway`, `setStakingProgram`, `setDisputeDeposit`, gateway `recoverLockedHome` / `RegisterOApp` / `SetPeer` / `InitLzReceiveTypes`, staking `setMinStakeNative`) — same name, ordinal 1 (D-43). |
+| `NotOwner` | Caller is not token owner. **SVM also:** config-authority signed-wrong on admin ix (`setBridgeGateway`, `setStakingProgram`, `setDisputeDeposit`, gateway `recoverLockedHome` / `RegisterOApp` / `SetPeer` / `InitLzReceiveTypes`, staking `setMinStakeNative`) — same name, ordinal 1 (D-43). |
 | `NotActiveVerifier` | Verifier gate failed |
 | `CannotSelfVerify` | Verifier owns passport |
 | `InvalidStatus` | Wrong status for operation |
@@ -949,6 +949,8 @@ Extends §12.1 routing; amends §7.6 allowlist wording.
 Restates §12.3, §12.4, §12.5 as binding with **no** exception on any commercial VM.
 
 On a chain whose NFT substrate offers a freeze primitive: custody-lock is **program state checked by every mutating instruction**; freeze is a **second layer** against transfers outside the program — **never a substitute**, because freezing does not block metadata update. Where the substrate uses a permanent freeze plugin, the plugin MAY remain attached with `frozen=false` at rest; freeze authority that must act in-program is a **program PDA** (a bare program id cannot ed25519-sign).
+
+**SVM PermanentFreezeDelegate law (sole):** every passport's freeze-plugin authority is the freeze PDA of the **bound bridge gateway program** — seeds `[b"freeze"]` under that program id (`kargain-freeze-pda`). The gateway program is recovered as the Solana `owner` of the bound gateway config account (`PassportConfig.bridge_gateway` stores that config PDA). `MintPassport` and `BridgeMint` derive the expected freeze PDA and refuse any other account (`InvalidSeeds`). Unbound gateway refuses mint by name (`BridgeGatewayUnbound`). The leaf crate owns the seed; `kar-gateway` re-exports it for CPI signing.
 
 #### 13.7 Encumbrance without read-only cross-program calls
 

@@ -24,5 +24,6 @@ kargain-claimable-payouts = { workspace = true }
 kargain-encumbrance = { workspace = true }
 kargain-config-authority = { workspace = true }
 kargain-config-pda = { workspace = true }
+kargain-freeze-pda = { workspace = true }
 kargain-passport-asset = { workspace = true }
 kar-pro-staking = { path = "../kar-pro-staking", features = ["no-entrypoint"] }

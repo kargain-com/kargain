@@ -12,6 +12,7 @@ members = [
   "crates/kargain-encumbrance",
   "crates/kargain-config-authority",
   "crates/kargain-config-pda",
+  "crates/kargain-freeze-pda",
   "crates/kargain-core-liveness",
   "crates/kargain-passport-asset",
   "crates/kargain-ix-wire",
@@ -54,5 +55,6 @@ kargain-events = { path = "crates/kargain-events" }
 kargain-encumbrance = { path = "crates/kargain-encumbrance" }
 kargain-config-authority = { path = "crates/kargain-config-authority" }
 kargain-config-pda = { path = "crates/kargain-config-pda" }
+kargain-freeze-pda = { path = "crates/kargain-freeze-pda" }
 kargain-core-liveness = { path = "crates/kargain-core-liveness" }
 kargain-passport-asset = { path = "crates/kargain-passport-asset" }

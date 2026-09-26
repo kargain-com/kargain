@@ -76,6 +76,34 @@ describe("svm-s8e-7a-owner-policy", () => {
     assert.ok(owner.includes("pub fn config_pda"));
   });
 
+  it("kar-gateway freeze seeds re-export kargain-freeze-pda", () => {
+    const seeds = fs.readFileSync(
+      path.join(SVM, "programs/kar-gateway/src/seeds.rs"),
+      "utf8",
+    );
+    assert.ok(
+      seeds.includes("pub use kargain_freeze_pda::{freeze_pda, FREEZE_SEED}"),
+      "gateway must re-export freeze leaf",
+    );
+    assert.ok(
+      !seeds.includes('pub const FREEZE_SEED: &[u8] = b"freeze"'),
+      "gateway must not keep a second FREEZE_SEED body",
+    );
+    const leaf = fs.readFileSync(
+      path.join(SVM, "crates/kargain-freeze-pda/src/lib.rs"),
+      "utf8",
+    );
+    assert.ok(leaf.includes('pub const FREEZE_SEED: &[u8] = b"freeze"'));
+    assert.ok(leaf.includes("pub fn freeze_pda"));
+  });
+
+  it("plant: gateway local FREEZE_SEED body is red then green", () => {
+    const dirty = `pub const FREEZE_SEED: &[u8] = b"freeze";\npub fn freeze_pda(program_id: &Pubkey) -> (Pubkey, u8) {\n    Pubkey::find_program_address(&[FREEZE_SEED], program_id)\n}\n`;
+    const clean = `pub use kargain_freeze_pda::{freeze_pda, FREEZE_SEED};\n`;
+    assert.ok(/pub const FREEZE_SEED/.test(dirty), "planted local body red");
+    assert.ok(!/pub const FREEZE_SEED/.test(clean), "re-export green");
+  });
+
   it("plant: extra [b\"config\"] find_program_address is red then green", () => {
     const dirty = `let (k, _) = Pubkey::find_program_address(&[b"config"], program_id);`;
     const clean = `let (k, _) = kargain_config_pda::config_pda(program_id);`;

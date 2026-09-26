@@ -114,6 +114,10 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
     "This harness instruction is retired; use Core passport custody instead.",
   WrongAnswerFunder:
     "Encumbrance answer rent can only be reclaimed by the recorded funder.",
+  BridgeGatewayUnbound:
+    "This passport has no bridge gateway bound yet.",
+  InvalidReceiver:
+    "Cannot mint a passport to the bridge gateway address.",
   PaymentTokenNotSupported: "This payment token is not supported.",
   PaymentTokenFeedRequired:
     "Fiat-priced sales in this token need a payment-token price feed.",

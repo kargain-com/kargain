@@ -709,6 +709,7 @@ describe("error-name-truth-policy", () => {
       [
         "ArithmeticOverflow",
         "AssetFrozen",
+        "BridgeGatewayUnbound",
         "ComposeRequired",
         "ComposeUndecodable",
         "ConfidenceTooWide",
@@ -717,6 +718,7 @@ describe("error-name-truth-policy", () => {
         "HarnessInstructionRetired",
         "InvalidEncumbranceIntent",
         "InvalidEncumbranceSeed",
+        "InvalidReceiver",
         "MissingAgentRecipient",
         "MissingPlatformRecipient",
         "MissingSellerRecipient",

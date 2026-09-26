@@ -1,8 +1,10 @@
 /**
- * U9.0 — minimal Devnet MintPassport ops door.
+ * U9.0 — minimal Devnet MintPassport ops door (permissionless).
  *
  * Sends exactly one instruction: PassportIx::MintPassport (ix.manifest index 2).
- * No config write, no evidence write, no stake, no verify.
+ * No config write, no evidence write, no stake, no verify. Any funded payer may mint;
+ * owner need not sign. Freeze authority is derived from the bound gateway program via
+ * the gateway config account (see passport `require_bound_gateway_freeze`).
  *
  * Instruction data + PDAs come from product owners (encodeSvmInstruction /
  * deriveSvmPda). Config `next_token_id` is an ops hand-read at offset 196 —
@@ -13,7 +15,7 @@
  *
  *   pnpm svm:mint-passport -- \
  *     --rpc <url> \
- *     --authority-keypair <path> \
+ *     --payer-keypair <path> \
  *     --owner <base58> \
  *     --uri <ar://...> \
  *     [--dry-run]
@@ -63,7 +65,6 @@ export type MintPassportRefusalCause =
   | "config_not_found"
   | "config_discriminator_mismatch"
   | "config_too_short"
-  | "authority_mismatch"
   | "token_exists";
 
 export const MINT_PASSPORT_REFUSAL_CAUSES: readonly MintPassportRefusalCause[] = [
@@ -71,7 +72,6 @@ export const MINT_PASSPORT_REFUSAL_CAUSES: readonly MintPassportRefusalCause[] =
   "config_not_found",
   "config_discriminator_mismatch",
   "config_too_short",
-  "authority_mismatch",
   "token_exists",
 ] as const;
 
@@ -133,9 +133,21 @@ function isLiveCoreAsset(info: {
   return info.owner.equals(core) && info.data.length > 1;
 }
 
+function argOptional(name: string): string | undefined {
+  const i = process.argv.indexOf(name);
+  if (i < 0 || !process.argv[i + 1]) return undefined;
+  return process.argv[i + 1];
+}
+
 async function main(): Promise<void> {
   const rpc = arg("--rpc");
-  const authority = loadKp(arg("--authority-keypair"));
+  // Permissionless: fee payer only. `--authority-keypair` retained as alias.
+  const payerPath =
+    argOptional("--payer-keypair") ?? argOptional("--authority-keypair");
+  if (payerPath == null) {
+    throw new Error("missing --payer-keypair (or --authority-keypair alias)");
+  }
+  const payer = loadKp(payerPath);
   const owner = parseOwnerPubkey(arg("--owner"));
   const uri = arg("--uri");
   const dryRun = hasFlag("--dry-run");
@@ -153,7 +165,7 @@ async function main(): Promise<void> {
     throw new Error(`encode_failed: ${encoded.cause}:${encoded.detail}`);
   }
 
-  const [configPda, freezePda] = await Promise.all([
+  const [configPda, freezePda, gatewayConfigPda] = await Promise.all([
     deriveSvmPda({
       recipe: "kar-passport/config",
       programId: passportProgramId,
@@ -162,12 +174,21 @@ async function main(): Promise<void> {
       recipe: "kar-gateway/freeze",
       programId: gatewayProgramId,
     }),
+    deriveSvmPda({
+      recipe: "kar-gateway/config",
+      programId: gatewayProgramId,
+    }),
   ]);
   if (!configPda.ok) {
     throw new Error(`pda_failed:config:${configPda.cause}:${configPda.detail}`);
   }
   if (!freezePda.ok) {
     throw new Error(`pda_failed:freeze:${freezePda.cause}:${freezePda.detail}`);
+  }
+  if (!gatewayConfigPda.ok) {
+    throw new Error(
+      `pda_failed:gateway_config:${gatewayConfigPda.cause}:${gatewayConfigPda.detail}`,
+    );
   }
 
   const connection = new Connection(rpc, "confirmed");
@@ -193,15 +214,6 @@ async function main(): Promise<void> {
     throw new MintPassportRefusal(
       "config_too_short",
       `len ${cfgData.length} < ${MIN_CONFIG_LEN_FOR_NEXT_TOKEN_ID}`,
-    );
-  }
-
-  const authorityOnChain = cfgData.subarray(8, 40);
-  const authorityLocal = authority.publicKey.toBytes();
-  if (!bytesEqual(authorityOnChain, authorityLocal)) {
-    throw new MintPassportRefusal(
-      "authority_mismatch",
-      `config authority does not match --authority-keypair pubkey`,
     );
   }
 
@@ -243,16 +255,17 @@ async function main(): Promise<void> {
   const systemId = new PublicKey(systemProgramId());
 
   // Exactly one instruction — mint_passport account order (entrypoint).
+  // config · asset · state · payer · owner · freeze · gateway_config · core · system
   const instruction = new TransactionInstruction({
     programId: new PublicKey(passportProgramId),
     keys: [
       { pubkey: configKey, isSigner: false, isWritable: true },
-      { pubkey: authority.publicKey, isSigner: true, isWritable: false },
       { pubkey: assetKey, isSigner: false, isWritable: true },
       { pubkey: new PublicKey(statePda.address), isSigner: false, isWritable: true },
-      { pubkey: authority.publicKey, isSigner: true, isWritable: true },
+      { pubkey: payer.publicKey, isSigner: true, isWritable: true },
       { pubkey: owner, isSigner: false, isWritable: false },
       { pubkey: new PublicKey(freezePda.address), isSigner: false, isWritable: false },
+      { pubkey: new PublicKey(gatewayConfigPda.address), isSigner: false, isWritable: false },
       { pubkey: coreId, isSigner: false, isWritable: false },
       { pubkey: systemId, isSigner: false, isWritable: false },
     ],
@@ -266,7 +279,9 @@ async function main(): Promise<void> {
   console.log(`asset ${assetPda.address}`);
   console.log(`state ${statePda.address}`);
   console.log(`freeze_authority ${freezePda.address}`);
+  console.log(`gateway_config ${gatewayConfigPda.address}`);
   console.log(`owner ${owner.toBase58()}`);
+  console.log(`payer ${payer.publicKey.toBase58()}`);
   console.log(`instruction_data_hex ${toHex(encoded.data)}`);
 
   if (dryRun) {
@@ -278,7 +293,7 @@ async function main(): Promise<void> {
   const signature = await sendAndConfirmTransaction(
     connection,
     tx,
-    [authority],
+    [payer],
     { commitment: "confirmed" },
   );
   console.log(`token_id ${tokenIdDecimal}`);

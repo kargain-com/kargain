@@ -626,6 +626,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["svm-s8e-7a-owner-policy.test.ts"],
   },
   {
+    id: "svm-freeze-pda",
+    owner: "svm/crates/kargain-freeze-pda::freeze_pda",
+    rule: "Sole [b\"freeze\"] PermanentFreezeDelegate PDA recipe parameterized only by program id; kar-gateway seeds.rs pub use; kar-passport mint/bridge_mint require_bound_gateway_freeze derives via this owner; kar-pro-pass keeps its own freeze under the pass program id",
+    guardTests: ["svm-s8e-7a-owner-policy.test.ts"],
+  },
+  {
     id: "svm-core-liveness",
     owner: "svm/crates/kargain-core-liveness::is_live_core_asset",
     rule: "Sole Core live-asset predicate (D-17: mpl-core owner + data_len > 1); kargain-passport-asset and kar-pro-pass consume via pub use; address law (ASSET_SEED / PASS_SEED) stays in those owners",
