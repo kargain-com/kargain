@@ -198,7 +198,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "profile-subject",
     owner:
       "lib/profile/resolve-profile-subject.ts · lib/profile/profile-section-support.ts",
-    rule: "Profile handle → resolveProfileSubject (mintProtocolOwner across commercial namespaces); notFound only when absent; unserved sections refuse product_owner_owed via surfaceSupportCauseCopy; guest EVM chain from subject namespaces only (never invent hub); no getAddress parse in the profile route; session My profile / Profile tab href → profileHrefForAccount (never requireEvmSession / evm.ok gate)",
+    rule: "Profile handle → resolveProfileSubject (mintProtocolOwner across commercial namespaces); notFound only when absent; unserved sections refuse product_owner_owed via surfaceSupportCauseCopy; guest EVM chain from subject namespaces only (never invent hub); no getAddress parse in the profile route; session My profile / Profile tab href → profileHrefForAccount (never requireEvmSession / evm.ok gate); SPEC II.4.1 — deployer/upgradeAuthority EOAs are subjects; stack-identity denylist = programs/modes/tokens/feeds/endpoints only; EVM TimelockController via isProtocolAddress",
     guardTests: ["profile-subject-policy.test.ts"],
   },
   {

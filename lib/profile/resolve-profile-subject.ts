@@ -29,7 +29,12 @@ export type ProfileSubjectResolution =
     }
   | { readonly status: "absent" };
 
-/** Address-shaped fields on a commercial stack that are never a user profile. */
+/**
+ * Protocol / mode / feed / endpoint addresses on a commercial stack — never a
+ * user profile. SPEC II.4.1: deployer and upgradeAuthority EOAs are subjects;
+ * TimelockController on EVM is owned by {@link isProtocolAddress}, not here.
+ * Sinks (platform / forfeit recipients) are person wallets, not protocol ids.
+ */
 function stackIdentityAddressFields(stack: CommercialActiveStack): string[] {
   const out: string[] = [];
   const push = (v: string | undefined) => {
@@ -41,17 +46,10 @@ function stackIdentityAddressFields(stack: CommercialActiveStack): string[] {
   push(stack.usdc);
   push(stack.nativeFeed);
   push(stack.eurFeed);
-  push(stack.timelock);
-  push(stack.forfeitRecipient);
   push(stack.bridgeGateway);
   push(stack.fixedPriceConsignment);
   push(stack.ascendingConsignment);
   push(stack.layerZeroEndpoint);
-  push(stack.platformRecipient);
-  push(stack.deployer);
-  if ("upgradeAuthority" in stack) {
-    push(stack.upgradeAuthority);
-  }
   return out;
 }
 

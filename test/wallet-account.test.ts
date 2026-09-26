@@ -119,11 +119,19 @@ describe("kargainTimelockAddress", () => {
     );
   });
 
-  it("timelock is never in the static protocol denylist", () => {
+  it("TimelockController is in the protocol denylist; deployer EOA is not (SPEC II.4.1)", () => {
     const timelock = kargainTimelockAddress(84532);
-    if (!timelock) return;
+    assert.ok(timelock);
     const denylist = allProtocolAddresses(84532).map((addr) => addr.toLowerCase());
-    assert.equal(denylist.includes(timelock.toLowerCase()), false);
+    assert.equal(denylist.includes(timelock.toLowerCase()), true);
+    assert.equal(isProtocolAddress(timelock, 84532), true);
+    assert.equal(isMessageablePeer(timelock, 84532), false);
+
+    assert.equal(isProtocolAddress(SEPOLIA_DEPLOYER, 84532), false);
+    assert.equal(
+      denylist.includes(SEPOLIA_DEPLOYER.toLowerCase()),
+      false,
+    );
   });
 });
 

@@ -6,6 +6,7 @@ import {
   karProPassAddress,
   karProStakingAddress,
   kargainContractDenylist,
+  kargainTimelockAddress,
   bridgeGatewayAddress,
   usdcAddress,
 } from "@/lib/web3/deployment-addresses";
@@ -32,7 +33,10 @@ export function classifyBytecode(code: string | undefined | null): WalletAccount
   return "contract";
 }
 
-/** On-chain protocol contracts — not timelock (env-only when TimelockController exists). */
+/**
+ * On-chain protocol contracts for messaging / profile denylist.
+ * Includes TimelockController when configured. Never deployer EOA (SPEC II.4.1).
+ */
 export function allProtocolAddresses(chainId: number): `0x${string}`[] {
   const candidates = [
     karPassportAddress(chainId),
@@ -42,6 +46,7 @@ export function allProtocolAddresses(chainId: number): `0x${string}`[] {
     chainlinkNativeUsdFeed(chainId),
     chainlinkEurUsdFeed(chainId),
     bridgeGatewayAddress(chainId),
+    kargainTimelockAddress(chainId),
   ];
 
   candidates.push(...kargainContractDenylist(chainId));

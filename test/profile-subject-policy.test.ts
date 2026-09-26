@@ -110,13 +110,73 @@ describe("profile subject resolution", () => {
     assert.equal(profileGuestEvmChainId(found.namespaces), 84532);
   });
 
-  it("protocol / stack identity address → absent (not a person)", () => {
+  it("protocol / program identity → absent; deployer EOA is a subject (SPEC II.4.1)", () => {
     const passport = COMMERCIAL_ACTIVE[84532]!.karPassport;
-    const subject = resolveProfileSubject(passport);
-    assert.equal(subject.status, "absent");
+    assert.equal(resolveProfileSubject(passport).status, "absent");
 
     const svmPassport = COMMERCIAL_ACTIVE[SOLANA_NS]!.karPassport;
     assert.equal(resolveProfileSubject(svmPassport).status, "absent");
+
+    const svmMode = COMMERCIAL_ACTIVE[SOLANA_NS]!.fixedPriceConsignment;
+    assert.ok(svmMode);
+    assert.equal(resolveProfileSubject(svmMode).status, "absent");
+
+    const svmUsdc = COMMERCIAL_ACTIVE[SOLANA_NS]!.usdc;
+    assert.ok(svmUsdc);
+    assert.equal(resolveProfileSubject(svmUsdc).status, "absent");
+
+    const svmDeployer = COMMERCIAL_ACTIVE[SOLANA_NS]!.deployer;
+    const svmSubject = resolveProfileSubject(svmDeployer);
+    assert.equal(svmSubject.status, "found");
+    if (svmSubject.status === "found") {
+      assert.equal(svmSubject.owner, svmDeployer);
+    }
+    assert.equal(
+      profileHrefForAccount({
+        status: "connected",
+        vm: "svm",
+        address: svmDeployer,
+      }),
+      `/profile/${encodeURIComponent(svmDeployer)}`,
+    );
+
+    const evmDeployer = COMMERCIAL_ACTIVE[84532]!.deployer;
+    assert.equal(resolveProfileSubject(evmDeployer).status, "found");
+
+    const evmTimelock = COMMERCIAL_ACTIVE[84532]!.timelock;
+    assert.equal(
+      resolveProfileSubject(evmTimelock).status,
+      "absent",
+      "EVM TimelockController is a protocol contract, not a person",
+    );
+  });
+
+  it("constructed: governance roles coinciding must not denylist a person", () => {
+    // Plant of the pre-fix defect: treating deployer/UA/timelock as stack identity.
+    const roleFields = [
+      "deployer",
+      "upgradeAuthority",
+      "timelock",
+      "forfeitRecipient",
+      "platformRecipient",
+    ] as const;
+    const ownerSrc = fs.readFileSync(
+      path.join(ROOT, "lib/profile/resolve-profile-subject.ts"),
+      "utf8",
+    );
+    const fieldsFn = ownerSrc.slice(
+      ownerSrc.indexOf("function stackIdentityAddressFields"),
+      ownerSrc.indexOf("export function isCommercialProtocolOwner"),
+    );
+    for (const field of roleFields) {
+      assert.doesNotMatch(
+        fieldsFn,
+        new RegExp(`push\\(stack\\.${field}\\)`),
+        `stackIdentityAddressFields must not push stack.${field} (SPEC II.4.1)`,
+      );
+    }
+    assert.match(fieldsFn, /push\(stack\.karPassport\)/);
+    assert.match(fieldsFn, /push\(stack\.fixedPriceConsignment\)/);
   });
 });
 
