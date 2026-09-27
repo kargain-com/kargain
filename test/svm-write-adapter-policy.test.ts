@@ -196,7 +196,7 @@ describe("svm-write-adapter wiring proof", () => {
       createConfirmPort: () => ({
         confirmSignature: async (signature) => {
           confirmed = signature;
-          return { signature, slot: 42n };
+          return { kind: "landed_ok", signature, slot: 42n };
         },
       }),
       fetchStructuredPayloads: async () => [],

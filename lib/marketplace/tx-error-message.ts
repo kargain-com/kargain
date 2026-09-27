@@ -11,7 +11,11 @@ import {
   decodeCustomError,
   type DecodedCustomError,
 } from "@/lib/web3/decode-custom-error";
+import { parseSvmLandedInstructionError } from "@/lib/web3/svm-landed-error";
 import { svmProgramErrorName } from "@/lib/web3/svm-program-errors";
+import {
+  isSvmConfirmRefusal,
+} from "@/lib/web3/svm-tx-confirm";
 import {
   isWalletRejection,
   walletRejectionCopy,
@@ -384,6 +388,22 @@ export function decodeSvmProgramError(
 export function txErrorMessage(err: unknown): string {
   if (isWalletRejection(err)) {
     return walletRejectionCopy();
+  }
+
+  // Landed SVM confirm: structured InstructionError before any message path.
+  if (isSvmConfirmRefusal(err)) {
+    if (err.outcome.kind === "confirm_timeout") {
+      return "Transaction confirmation timed out. Try again.";
+    }
+    const landed = parseSvmLandedInstructionError(err.outcome.error);
+    if (landed?.kind === "custom") {
+      const staticCopy = REVERT_COPY[landed.name];
+      if (staticCopy != null) return staticCopy;
+    }
+    if (landed?.kind === "native") {
+      return "Transaction failed.";
+    }
+    return "Transaction failed.";
   }
 
   const decoded =

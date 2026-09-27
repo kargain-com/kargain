@@ -218,14 +218,19 @@ describe("svm-stand live Core CPI round trip", () => {
       );
       assert.ok(productMint.happy.signature.length > 0);
       assert.equal(productMint.concurrency.cause, "mint_sequence_advanced");
-      assert.equal(
+      // Real A/B race: concurrency planned is after happy landed (not the override seam).
+      assert.notEqual(
         productMint.concurrency.plannedTokenId,
         productMint.happy.landedTokenId,
+      );
+      assert.notEqual(
+        productMint.concurrency.nextTokenIdAfter,
+        productMint.concurrency.plannedTokenId,
       );
       console.warn(
         `\n[svm-stand] product-mint PASS sig=${productMint.happy.signature.slice(0, 12)}… ` +
           `id=${productMint.happy.landedTokenId} concurrency=${productMint.concurrency.cause} ` +
-          `next=${productMint.concurrency.nextTokenIdAfter}\n`,
+          `stale=${productMint.concurrency.plannedTokenId} next=${productMint.concurrency.nextTokenIdAfter}\n`,
       );
 
       const verifier = await runLiveVerifierFlow({ reuseInited: true });

@@ -1,5 +1,5 @@
 /**
- * Dual-VM Create mint owner: EVM pin, SVM nine metas, concurrency seam.
+ * Dual-VM Create mint owner: EVM pin, SVM nine metas, plan/send + landed classifier.
  */
 
 import assert from "node:assert/strict";
@@ -13,8 +13,8 @@ import { AccountRole } from "@solana/kit";
 import {
   assembleMintPassportAccounts,
   buildEvmMintPassportCall,
+  classifyMintLandedError,
   executeMintPassport,
-  isSvmInvalidSeedsError,
   mintPassportCauseCopy,
   planMintPassport,
 } from "@/lib/passport/mint-passport";
@@ -33,6 +33,7 @@ import {
 import { encodePassportConfigAccount } from "@/lib/svm/decode-account-state";
 import { deriveSvmPda } from "@/lib/svm/derive-pda";
 import { tokenIdToBytes32 } from "@/lib/svm/event-payload-decode";
+import { REVERT_COPY } from "@/lib/marketplace/tx-error-message";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OWNER_REL = "lib/passport/mint-passport.ts";
@@ -191,14 +192,47 @@ describe("mintPassport SVM metas order", () => {
   });
 });
 
-describe("mint_sequence_advanced classification", () => {
-  it("isSvmInvalidSeedsError detects InstructionError shapes", () => {
-    assert.equal(isSvmInvalidSeedsError("InvalidSeeds"), true);
+describe("classifyMintLandedError", () => {
+  const planned = tokenIdToBytes32("10");
+  const advanced = tokenIdToBytes32("11");
+
+  it("InvalidSeeds + advanced next → mint_sequence_advanced", () => {
     assert.equal(
-      isSvmInvalidSeedsError({ InstructionError: [0, "InvalidSeeds"] }),
-      true,
+      classifyMintLandedError(
+        { kind: "native", name: "InvalidSeeds", index: 0 },
+        planned,
+        advanced,
+      ),
+      "mint_sequence_advanced",
     );
-    assert.equal(isSvmInvalidSeedsError({ Custom: 1 }), false);
+  });
+
+  it("InvalidSeeds without advanced next → unmapped", () => {
+    assert.equal(
+      classifyMintLandedError(
+        { kind: "native", name: "InvalidSeeds", index: 0 },
+        planned,
+        planned,
+      ),
+      "unmapped_program_error",
+    );
+  });
+
+  it("mapped Custom → REVERT_COPY sentence; unnamed Custom path is null→unmapped", () => {
+    const mapped = classifyMintLandedError(
+      { kind: "custom", name: "InvalidReceiver", ordinal: 144, index: 0 },
+      planned,
+      advanced,
+    );
+    assert.deepEqual(mapped, {
+      kind: "mapped",
+      name: "InvalidReceiver",
+      copy: REVERT_COPY.InvalidReceiver,
+    });
+    assert.equal(
+      classifyMintLandedError(null, planned, advanced),
+      "unmapped_program_error",
+    );
   });
 
   it("mintPassportCauseCopy names concurrency without inventing retry", () => {
@@ -206,23 +240,62 @@ describe("mint_sequence_advanced classification", () => {
     assert.match(copy, /Another mint landed first/i);
     assert.ok(!/automatic|retrying/i.test(copy));
   });
+
+  it("wallet_rejected has a cause sentence (not send_failed)", () => {
+    const copy = mintPassportCauseCopy("wallet_rejected");
+    assert.match(copy, /cancelled/i);
+    assert.notEqual(copy, mintPassportCauseCopy("send_failed"));
+  });
 });
 
-describe("wizard + hook consume owner", () => {
-  it("wizard has no VM fork and uses useMintPassport", () => {
-    const wizard = readFileSync(path.join(ROOT, WIZARD_REL), "utf8");
-    assert.ok(/useMintPassport/.test(wizard));
-    assert.ok(!/\bif\s*\(\s*vm\s*\)/.test(wizard));
-    assert.ok(!/\bavail\.vm\s*===\s*"evm"/.test(wizard));
-    assert.ok(!/useEvmWriteContract/.test(wizard));
-    const hook = readFileSync(path.join(ROOT, HOOK_REL), "utf8");
-    assert.ok(/executeMintPassport/.test(hook));
-  });
-
-  it("owner source pins MintPassport encode variant", () => {
+describe("owner is plan+send only; no confirm / override / text InvalidSeeds", () => {
+  it("owner source pins encode + classifier; bans confirm loop / override / isSvmInvalidSeeds", () => {
     const src = ownerSource();
     assert.match(src, /variant:\s*"MintPassport"/);
     assert.match(src, /functionName:\s*"mintPassport"/);
     assert.match(src, /mint_sequence_advanced/);
+    assert.match(src, /classifyMintLandedError/);
+    assert.match(src, /wallet_rejected/);
+    assert.doesNotMatch(src, /plannedNextTokenIdOverride/);
+    assert.doesNotMatch(src, /waitSignatureOutcome/);
+    assert.doesNotMatch(src, /isSvmInvalidSeedsError/);
+    assert.doesNotMatch(src, /getSignatureStatuses/);
+    assert.doesNotMatch(src, /createSvmTxConfirmPort/);
+  });
+
+  it("hook wires plan+send; does not inject signature statuses", () => {
+    const hook = readFileSync(path.join(ROOT, HOOK_REL), "utf8");
+    assert.ok(/planMintPassport/.test(hook));
+    assert.ok(/sendMintPassport|executeMintPassport/.test(hook));
+    assert.doesNotMatch(hook, /fetchProductSvmSignatureStatuses/);
+    assert.doesNotMatch(hook, /getSignatureStatuses/);
+  });
+});
+
+describe("wizard consumes causes only", () => {
+  it("wizard has no VM fork; branches on causes; no sentence-equality wallet reject", () => {
+    const wizard = readFileSync(path.join(ROOT, WIZARD_REL), "utf8");
+    assert.ok(/useMintPassport/.test(wizard));
+    assert.ok(/isTxSyncSvmConfirmRefusal/.test(wizard));
+    assert.ok(/captureSvmConfirm:\s*true/.test(wizard));
+    assert.ok(/resolveMintLandedConfirmRefusal/.test(wizard));
+    assert.ok(/mint_sequence_advanced/.test(wizard));
+    assert.ok(!/\bif\s*\(\s*vm\s*\)/.test(wizard));
+    assert.ok(!/\bavail\.vm\s*===\s*"evm"/.test(wizard));
+    assert.ok(!/useEvmWriteContract/.test(wizard));
+    assert.doesNotMatch(wizard, /fetchProductSvmAccountData/);
+    assert.doesNotMatch(wizard, /decodePassportConfig/);
+    assert.doesNotMatch(
+      wizard,
+      /detail\s*===\s*walletRejectionCopy\s*\(\s*\)/,
+    );
+    assert.doesNotMatch(
+      wizard,
+      /txError\s*===\s*walletRejectionCopy\s*\(\s*\)/,
+    );
+    // Planted sentence branch would be red:
+    const planted =
+      'if (detail === walletRejectionCopy()) { setFormError(detail); }';
+    assert.match(planted, /detail\s*===\s*walletRejectionCopy/);
   });
 });

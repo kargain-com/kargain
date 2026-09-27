@@ -1,26 +1,25 @@
 /**
- * Sole stand InstructionError refusal owner.
+ * Stand expected-refusal facade over typed {@link StandConfirmOutcome}.
  *
- * Expected-refusal sends skip preflight and read a typed
- * {@link StandConfirmOutcome}. Success (`landed_ok`) is checked outside any
- * program-error catch. Native/custom refusals come only from structured
- * InstructionError on `landed_with_error` — never message JSON, ordinal text,
- * or ProgramError Display phrases (those invented `index: 0`).
+ * InstructionError identity lives in {@link parseSvmLandedInstructionError}
+ * (lib). Success (`landed_ok`) is checked outside any program-error catch.
  */
 
 import assert from "node:assert/strict";
 
 import {
-  svmProgramErrorName,
-  type SvmProgramErrorName,
-} from "../../lib/web3/svm-program-errors.ts";
+  parseSvmLandedInstructionError,
+  SVM_NATIVE_IX_ERRORS,
+  type SvmLandedInstructionError,
+  type SvmNativeIxError,
+} from "../../lib/web3/svm-landed-error.ts";
+import type { SvmProgramErrorName } from "../../lib/web3/svm-program-errors.ts";
 import {
   STAND_BLOCKHASH_EXPIRED,
   STAND_CONFIRM_TIMEOUT,
   STAND_TX_FAILED,
   sendAndConfirmStandTransactionForRefusal,
   type StandConfirmOutcome,
-  type StandTransactionError,
 } from "./stand-tx-confirm.ts";
 import type {
   StandConnection,
@@ -28,62 +27,19 @@ import type {
   StandTransaction,
 } from "./solana-web3-types.ts";
 
-export const STAND_NATIVE_IX_ERRORS = [
-  "InvalidSeeds",
-  "AccountAlreadyInitialized",
-  "MissingRequiredSignature",
-] as const;
+/** @deprecated Prefer {@link SVM_NATIVE_IX_ERRORS} from lib. */
+export const STAND_NATIVE_IX_ERRORS = SVM_NATIVE_IX_ERRORS;
 
-export type StandNativeIxError = (typeof STAND_NATIVE_IX_ERRORS)[number];
+export type StandNativeIxError = SvmNativeIxError;
 
 export type StandTxRefusalExpected =
   | { kind: "native"; name: StandNativeIxError }
   | { kind: "custom"; name: SvmProgramErrorName };
 
-export type StandTxRefusalObserved =
-  | { kind: "native"; name: StandNativeIxError; index: number }
-  | {
-      kind: "custom";
-      name: SvmProgramErrorName;
-      ordinal: number;
-      index: number;
-    };
+export type StandTxRefusalObserved = SvmLandedInstructionError;
 
-function isStandNativeIxError(value: unknown): value is StandNativeIxError {
-  return (
-    typeof value === "string" &&
-    (STAND_NATIVE_IX_ERRORS as readonly string[]).includes(value)
-  );
-}
-
-/**
- * Pure: InstructionError [index, variant] | [index, { Custom: n }] only.
- * No message regex, no Display phrases, no invented index.
- */
-export function parseStandInstructionError(
-  err: StandTransactionError | unknown,
-): StandTxRefusalObserved | null {
-  if (err == null || typeof err !== "object") return null;
-  const ie = (err as StandTransactionError).InstructionError;
-  if (!Array.isArray(ie) || ie.length < 2) return null;
-  const index = ie[0];
-  const variant = ie[1];
-  if (typeof index !== "number" || !Number.isInteger(index) || index < 0) {
-    return null;
-  }
-  if (isStandNativeIxError(variant)) {
-    return { kind: "native", name: variant, index };
-  }
-  if (variant && typeof variant === "object") {
-    const custom = (variant as Record<string, unknown>).Custom;
-    if (typeof custom === "number" && Number.isInteger(custom) && custom >= 0) {
-      const name = svmProgramErrorName(custom);
-      if (name == null) return null;
-      return { kind: "custom", name, ordinal: custom, index };
-    }
-  }
-  return null;
-}
+/** Re-export lib reader under the historical stand name. */
+export const parseStandInstructionError = parseSvmLandedInstructionError;
 
 function formatExpected(expected: StandTxRefusalExpected): string {
   return expected.kind === "native"
@@ -161,7 +117,7 @@ export async function expectStandTransactionRefusal(
     );
   }
 
-  const observed = parseStandInstructionError(outcome.err);
+  const observed = parseSvmLandedInstructionError(outcome.err);
   if (observed == null) {
     assert.fail(
       `expected ${formatExpected(expected)}, but could not parse InstructionError from: ${JSON.stringify(outcome.err)}`,

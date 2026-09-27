@@ -202,18 +202,76 @@ describe("svm program error ordinals", () => {
 });
 
 describe("svm tx confirm owner", () => {
-  it("uses confirmed commitment and returns slot from the port", async () => {
+  it("uses confirmed commitment and returns landed_ok with observed slot", async () => {
     assert.equal(SVM_TX_CONFIRM_COMMITMENT, "confirmed");
     const status = await confirmSvmTransaction(
       {
         confirmSignature: async (sig) => ({
+          kind: "landed_ok",
           signature: sig,
           slot: 42n,
         }),
       },
       "5".repeat(64),
     );
-    assert.equal(status.slot, 42n);
+    assert.equal(status.kind, "landed_ok");
+    if (status.kind === "landed_ok") {
+      assert.equal(status.slot, 42n);
+    }
+  });
+
+  it("createSvmTxConfirmPort: Custom InstructionError → landed_with_error carrying ordinal", async () => {
+    const { createSvmTxConfirmPort } = await import(
+      "../lib/web3/svm-tx-confirm.ts"
+    );
+    const port = createSvmTxConfirmPort({
+      getSignatureStatuses: async () => [
+        {
+          confirmationStatus: "confirmed",
+          err: { InstructionError: [0, { Custom: 144 }] },
+          slot: 9,
+        },
+      ],
+      timeoutMs: 2_000,
+    });
+    const outcome = await port.confirmSignature("a".repeat(64));
+    assert.equal(outcome.kind, "landed_with_error");
+    if (outcome.kind !== "landed_with_error") throw new Error("unreachable");
+    assert.deepEqual(outcome.error, {
+      InstructionError: [0, { Custom: 144 }],
+    });
+    // Preserved object — a424887 threw Error(`…${String(err)}`) → "[object Object]"
+    assert.equal(typeof outcome.error, "object");
+    assert.ok(outcome.error != null);
+  });
+
+  it("createSvmTxConfirmPort: confirmed without slot keeps polling → timeout (never 0n)", async () => {
+    const { createSvmTxConfirmPort } = await import(
+      "../lib/web3/svm-tx-confirm.ts"
+    );
+    let polls = 0;
+    const port = createSvmTxConfirmPort({
+      getSignatureStatuses: async () => {
+        polls += 1;
+        return [
+          {
+            confirmationStatus: "confirmed",
+            err: null,
+            slot: null,
+          },
+        ];
+      },
+      pollIntervalMs: 10,
+      timeoutMs: 80,
+    });
+    const outcome = await port.confirmSignature("b".repeat(64));
+    assert.equal(outcome.kind, "confirm_timeout");
+    assert.ok(polls >= 2, "must poll more than once when slot absent");
+    // Never invent landed_ok with slot 0n when confirmationStatus lacks slot.
+    assert.notEqual(
+      (outcome as { kind: string; slot?: bigint }).kind,
+      "landed_ok",
+    );
   });
 
   it("fixture namespace is tests-only (not a product invent)", () => {

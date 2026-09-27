@@ -1042,7 +1042,7 @@ describe("runWriteLifecycle dispatcher", () => {
         createConfirmPortCalls += 1;
         assert.equal(stack.namespace, FIXTURE_SVM_STACK.namespace);
         return {
-          confirmSignature: async (signature) => ({ signature, slot: 123n }),
+          confirmSignature: async (signature) => ({ kind: "landed_ok", signature, slot: 123n }),
         };
       },
       fetchStructuredPayloads: async () => [
@@ -1100,7 +1100,7 @@ describe("runWriteLifecycle dispatcher", () => {
       fetchIndexerStatus: async () => ({ ok: true, blockNumber: 1 }),
       wait: async () => undefined,
       createConfirmPort: () => ({
-        confirmSignature: async (signature) => ({ signature, slot: 1n }),
+        confirmSignature: async (signature) => ({ kind: "landed_ok", signature, slot: 1n }),
       }),
       fetchStructuredPayloads: async () => [],
     });
@@ -1136,7 +1136,7 @@ describe("runWriteLifecycle dispatcher", () => {
       wait: async () => undefined,
       registry: svmRegistry,
       createConfirmPort: () => ({
-        confirmSignature: async (signature) => ({ signature, slot: 1n }),
+        confirmSignature: async (signature) => ({ kind: "landed_ok", signature, slot: 1n }),
       }),
       fetchStructuredPayloads: async () => [],
     });
@@ -1160,7 +1160,7 @@ describe("runWriteLifecycle dispatcher", () => {
       wait: async () => undefined,
       registry: svmRegistry,
       createConfirmPort: () => ({
-        confirmSignature: async (signature) => ({ signature, slot: 1n }),
+        confirmSignature: async (signature) => ({ kind: "landed_ok", signature, slot: 1n }),
       }),
       fetchStructuredPayloads: async () => [],
     });

@@ -9,6 +9,10 @@ import { revalidateIndexerCache } from "@/app/actions/revalidate-indexer-cache";
 import { useActiveAccount } from "@/hooks/use-active-account";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import {
+  isSvmConfirmRefusal,
+  type SvmConfirmOutcome,
+} from "@/lib/web3/svm-tx-confirm";
+import {
   awaitWriteReceipt,
   runWriteLifecycle,
   useWriteLifecycleConfig,
@@ -21,7 +25,31 @@ export type TxSyncPhase = "idle" | "wallet" | "confirming" | "indexing";
 
 export type TxSyncSuccess = WriteOutcome;
 
+export type TxSyncSvmConfirmRefusal = {
+  ok: false;
+  svmConfirm: Exclude<SvmConfirmOutcome, { kind: "landed_ok" }>;
+};
+
+/** Default runTx result — EVM and most panels. */
 export type TxSyncResult = TxSyncSuccess | false;
+
+/** Create mint (and similar) when {@link TxSyncOptions.captureSvmConfirm} is set. */
+export type TxSyncResultWithSvmConfirm =
+  | TxSyncSuccess
+  | false
+  | TxSyncSvmConfirmRefusal;
+
+export function isTxSyncSvmConfirmRefusal(
+  result: TxSyncResultWithSvmConfirm,
+): result is TxSyncSvmConfirmRefusal {
+  return (
+    typeof result === "object" &&
+    result !== null &&
+    "ok" in result &&
+    result.ok === false &&
+    "svmConfirm" in result
+  );
+}
 
 export type SyncReadsResult = { ok: boolean };
 
@@ -29,6 +57,25 @@ export { TX_SYNC_LAG_ADVISORY };
 
 type TxSyncOptions = {
   mapError?: (err: unknown) => string;
+  /**
+   * When true, landed SVM confirm refusals return `{ ok:false; svmConfirm }`
+   * instead of `false` so callers can classify the raw Outcome (Create mint).
+   * Default false — `{ ok:false }` is truthy and must not break `if (result)`.
+   */
+  captureSvmConfirm?: boolean;
+};
+
+export type RunTx = {
+  (
+    writeFn: () => Promise<string>,
+    options: TxSyncOptions & { captureSvmConfirm: true },
+  ): Promise<TxSyncResultWithSvmConfirm>;
+  (
+    writeFn: () => Promise<string>,
+    options?: Omit<TxSyncOptions, "captureSvmConfirm"> & {
+      captureSvmConfirm?: false;
+    },
+  ): Promise<TxSyncResult>;
 };
 
 function wait(ms: number): Promise<void> {
@@ -111,10 +158,10 @@ export function useTxSync(chainId: number) {
   }, [queryClient, router]);
 
   const runTx = useCallback(
-    async (
+    (async (
       writeFn: () => Promise<string>,
       options?: TxSyncOptions,
-    ): Promise<TxSyncResult> => {
+    ): Promise<TxSyncResultWithSvmConfirm> => {
       setError(null);
       setSyncLagged(false);
       activeRunDepthRef.current += 1;
@@ -137,13 +184,24 @@ export function useTxSync(chainId: number) {
         );
         return lifecycle;
       } catch (err) {
+        if (isSvmConfirmRefusal(err)) {
+          if (options?.mapError) {
+            setError(options.mapError(err));
+          } else {
+            setError(txErrorMessage(err));
+          }
+          if (options?.captureSvmConfirm) {
+            return { ok: false, svmConfirm: err.outcome };
+          }
+          return false;
+        }
         setError((options?.mapError ?? txErrorMessage)(err));
         return false;
       } finally {
         activeRunDepthRef.current -= 1;
         setPhase("idle");
       }
-    },
+    }) as RunTx,
     [account, chainId, config, syncReads, switchChain],
   );
 

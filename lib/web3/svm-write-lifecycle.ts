@@ -19,6 +19,7 @@ import {
 } from "@/lib/web3/svm-rpc";
 import {
   confirmSvmTransaction,
+  SvmConfirmRefusal,
   type SvmTxConfirmPort,
 } from "@/lib/web3/svm-tx-confirm";
 import {
@@ -149,6 +150,9 @@ export async function runSvmWriteLifecycle({
     createConfirmPort(stack),
     signature,
   );
+  if (confirmation.kind !== "landed_ok") {
+    throw new SvmConfirmRefusal(confirmation);
+  }
 
   onPhase?.("indexing");
   const payloads = await fetchStructuredPayloads({

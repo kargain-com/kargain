@@ -14,7 +14,11 @@ import { PassportUploadProgressPanel } from "@/components/passport/passport-uplo
 import { PhotoUploadZone } from "@/components/passport/photo-upload-zone";
 import { Button } from "@/components/ui/button";
 import { SurfaceAdmissionRefusalView } from "@/components/shell/surface-admission-refusal";
-import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
+import {
+  isTxSyncSvmConfirmRefusal,
+  TX_SYNC_LAG_ADVISORY,
+  useTxSync,
+} from "@/hooks/use-tx-sync";
 import { useMintPassport } from "@/hooks/use-mint-passport";
 import { useWalletAccountKind } from "@/hooks/use-wallet-account-kind";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
@@ -27,7 +31,7 @@ import {
 } from "@/lib/passport/create-passport-surface";
 import {
   mintPassportCauseCopy,
-  type MintPassportCause,
+  resolveMintLandedConfirmRefusal,
 } from "@/lib/passport/mint-passport";
 import { MAX_PHOTOS } from "@/lib/passport/metadata-constants";
 import {
@@ -51,10 +55,7 @@ import {
   isSurfaceAdmissionAvailable,
 } from "@/lib/web3/surface-admission";
 import { shortChainName } from "@/lib/web3/supported-chains";
-import {
-  isWalletRejection,
-  walletRejectionCopy,
-} from "@/lib/web3/wallet-rejection";
+import { walletRejectionCopy } from "@/lib/web3/wallet-rejection";
 
 const MAX_PHOTOS_LIMIT = MAX_PHOTOS;
 
@@ -67,16 +68,6 @@ type FieldErrors = PassportCreateFormErrors;
 
 function missingMintedPassportCopy(): string {
   return "Mint succeeded but token ID could not be read. Check your wallet for the NFT.";
-}
-
-function mintFailureCopy(
-  cause: MintPassportCause,
-  detail: string,
-): string {
-  if (cause === "send_failed" && detail.trim().length > 0) {
-    return detail;
-  }
-  return mintPassportCauseCopy(cause);
 }
 
 function CreatePassportShell({
@@ -183,8 +174,12 @@ function CreatePassportWizardBody({
 }: BodyProps) {
   const router = useRouter();
   const { signMessageAsync } = useSignMessage();
-  const { mintPassport, isPending: isWritePending, reset: resetWrite } =
-    useMintPassport();
+  const {
+    planMint,
+    sendMint,
+    isPending: isWritePending,
+    reset: resetWrite,
+  } = useMintPassport();
   const sessionAddress =
     account.status === "connected" ? account.address : undefined;
   const { kind: accountKind, isLoading: isLoadingAccountKind } =
@@ -249,51 +244,69 @@ function CreatePassportWizardBody({
       resetWrite();
       setMintRef(undefined);
 
-      const executed = await mintPassport({ chainId, uri });
-      if (!executed.ok) {
-        if (executed.cause === "mint_sequence_advanced") {
-          setPhase("idle");
-          setFormError(mintPassportCauseCopy("mint_sequence_advanced"));
-          resetWrite();
-          return;
-        }
-        if (executed.detail === walletRejectionCopy()) {
+      const planned = await planMint({ chainId, uri });
+      if (!planned.ok) {
+        setPhase("error");
+        setFormError(mintPassportCauseCopy(planned.cause));
+        resetWrite();
+        return;
+      }
+
+      const sent = await sendMint({ chainId, plan: planned });
+      if (!sent.ok) {
+        if (sent.cause === "wallet_rejected") {
           setPhase("idle");
           setFormError(walletRejectionCopy());
           resetWrite();
           return;
         }
         setPhase("error");
-        setFormError(mintFailureCopy(executed.cause, executed.detail));
+        setFormError(mintPassportCauseCopy(sent.cause));
         resetWrite();
         return;
       }
 
-      let mappedError: string | null = null;
-      const result = await runTx(
-        async () => {
-          setMintRef(executed.signature);
-          return executed.signature;
-        },
-        {
-          mapError: (err) => {
-            mappedError = isWalletRejection(err)
-              ? walletRejectionCopy()
-              : err instanceof Error
-                ? err.message
-                : mintPassportCauseCopy("send_failed");
-            return mappedError;
-          },
-        },
-      );
+      setMintRef(sent.signature);
+      // Exactly one confirmation — product SVM confirm via lifecycle.
+      const result = await runTx(async () => sent.signature, {
+        captureSvmConfirm: true,
+      });
+
+      if (isTxSyncSvmConfirmRefusal(result)) {
+        // SVM plan carries `plan`; EVM carries `call` — no vm string branch.
+        if (
+          result.svmConfirm.kind === "landed_with_error" &&
+          "plan" in planned
+        ) {
+          const mapped = await resolveMintLandedConfirmRefusal({
+            error: result.svmConfirm.error,
+            plannedNextTokenId: planned.plan.plannedNextTokenId,
+            configAddress: planned.plan.configAddress,
+          });
+          if (mapped.cause === "mint_sequence_advanced") {
+            setPhase("idle");
+            setFormError(mapped.copy);
+            resetWrite();
+            return;
+          }
+          setPhase("error");
+          setFormError(mapped.copy);
+          resetWrite();
+          return;
+        }
+        setPhase("error");
+        setFormError(
+          result.svmConfirm.kind === "confirm_timeout"
+            ? mintPassportCauseCopy("send_failed")
+            : mintPassportCauseCopy("unmapped_program_error"),
+        );
+        resetWrite();
+        return;
+      }
 
       if (!result) {
-        if (mappedError === walletRejectionCopy()) {
-          setPhase("idle");
-        } else {
-          setPhase("error");
-        }
-        setFormError(mappedError ?? mintPassportCauseCopy("send_failed"));
+        setPhase("error");
+        setFormError(mintPassportCauseCopy("send_failed"));
         resetWrite();
         return;
       }
@@ -317,7 +330,7 @@ function CreatePassportWizardBody({
         `/marketplace/${tokenId}/created?chain=${chainId}&tx=${txRef}`,
       );
     },
-    [chainId, mintPassport, resetWrite, router, runTx],
+    [chainId, planMint, resetWrite, router, runTx, sendMint],
   );
 
   const onCreatePassport = async () => {

@@ -334,8 +334,7 @@ export function createProductSvmKeyedAccountSource(): SvmKeyedAccountSource {
 }
 
 /**
- * Product getSignatureStatuses — shared by confirm port and mint concurrency
- * classification (landed InvalidSeeds → mint_sequence_advanced).
+ * Product getSignatureStatuses — transport for {@link createProductSvmTxConfirmPort}.
  */
 export async function fetchProductSvmSignatureStatuses(
   signatures: string[],

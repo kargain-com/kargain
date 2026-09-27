@@ -1,20 +1,41 @@
 /**
- * React port wiring for {@link executeMintPassport}.
- * No VM fork — the lib owner decides. Wallet Standard → sign-and-send port
- * and product signature-status fetch are bound here.
+ * React port wiring for {@link planMintPassport} / {@link sendMintPassport}.
+ * No VM fork — the lib owner decides. Confirm is `runTx` (product confirm).
  */
 
 "use client";
 
 import { useActiveAccount } from "@/hooks/use-active-account";
-import { executeMintPassport } from "@/lib/passport/mint-passport";
+import {
+  executeMintPassport,
+  planMintPassport,
+  sendMintPassport,
+  type ExecuteMintPassportResult,
+  type PlanMintPassportResult,
+  type SendMintPassportResult,
+} from "@/lib/passport/mint-passport";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 import { createSvmSignAndSendPort } from "@/lib/web3/svm-sign-and-send-port";
-import { fetchProductSvmSignatureStatuses } from "@/lib/web3/svm-rpc";
 import type { SvmSignAndSendPort } from "@/lib/web3/svm-write-adapter";
-import type { ExecuteMintPassportResult } from "@/lib/passport/mint-passport";
+
+function bindSvmPort(
+  svmWallet: ReturnType<typeof useActiveAccount>["svmWallet"],
+): SvmSignAndSendPort | undefined {
+  if (svmWallet == null) return undefined;
+  const bound = createSvmSignAndSendPort(svmWallet);
+  return bound.ok ? bound.port : undefined;
+}
 
 export function useMintPassport(): {
+  planMint: (args: {
+    chainId: number;
+    uri: string;
+  }) => Promise<PlanMintPassportResult>;
+  sendMint: (args: {
+    chainId: number;
+    plan: PlanMintPassportResult & { ok: true };
+  }) => Promise<SendMintPassportResult>;
+  /** Plan + send convenience (no confirm). */
   mintPassport: (args: {
     chainId: number;
     uri: string;
@@ -26,21 +47,28 @@ export function useMintPassport(): {
   const { writeContractAsync, isPending, reset } = useEvmWriteContract();
 
   return {
-    mintPassport: ({ chainId, uri }) => {
-      let svmPort: SvmSignAndSendPort | undefined;
-      if (svmWallet != null) {
-        const bound = createSvmSignAndSendPort(svmWallet);
-        if (bound.ok) svmPort = bound.port;
-      }
-      return executeMintPassport({
+    planMint: ({ chainId, uri }) =>
+      planMintPassport({
+        account,
+        chainId,
+        uri,
+      }),
+    sendMint: ({ chainId, plan }) =>
+      sendMintPassport({
+        plan,
+        account,
+        chainId,
+        writeEvmContract: (call) => writeContractAsync(call),
+        svmPort: bindSvmPort(svmWallet),
+      }),
+    mintPassport: ({ chainId, uri }) =>
+      executeMintPassport({
         account,
         chainId,
         uri,
         writeEvmContract: (call) => writeContractAsync(call),
-        svmPort,
-        getSignatureStatuses: fetchProductSvmSignatureStatuses,
-      });
-    },
+        svmPort: bindSvmPort(svmWallet),
+      }),
     isPending,
     reset,
   };

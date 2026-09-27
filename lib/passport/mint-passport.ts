@@ -1,14 +1,9 @@
 /**
  * Sole dual-VM owner for product Create mint.
  *
- * Wizard calls through {@link executeMintPassport} (via `useMintPassport`) and
- * passes a successful write reference through `runTx` for PassportMinted.
- * VM fork lives here only (not in app/components/hooks).
- *
- * SVM: fresh PassportConfig decode → asset/state for next_token_id; freeze +
- * gateway_config under registry bridgeGateway; registry config PDA must equal
- * chain bridge_gateway. Concurrent mint that advances next_token_id → landed
- * InvalidSeeds → {@link MintPassportCause} `mint_sequence_advanced`.
+ * Plan + send only. Confirmation is the product SVM confirm port via `runTx`
+ * (lifecycle). Concurrent mint races are classified by
+ * {@link classifyMintLandedError} after a landed Outcome.
  */
 
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
@@ -35,14 +30,12 @@ import {
   type SvmCommercialActiveStack,
 } from "@/lib/web3/commercial-active";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import { REVERT_COPY } from "@/lib/marketplace/tx-error-message";
 import {
-  decodeSvmProgramError,
-  REVERT_COPY,
-} from "@/lib/marketplace/tx-error-message";
-import {
-  isWalletRejection,
-  walletRejectionCopy,
-} from "@/lib/web3/wallet-rejection";
+  parseSvmLandedInstructionError,
+  type SvmLandedInstructionError,
+} from "@/lib/web3/svm-landed-error";
+import { isWalletRejection } from "@/lib/web3/wallet-rejection";
 import {
   fetchProductSvmAccountData,
   type FetchSvmAccountDataResult,
@@ -79,6 +72,8 @@ export type MintPassportSvmPlan = {
   plannedNextTokenId: Uint8Array;
   /** Decimal string of plannedNextTokenId (reporting / sequence compare). */
   plannedTokenId: string;
+  /** Config PDA address — for post-confirm fresh reads. */
+  configAddress: string;
 };
 
 export type MintPassportCause =
@@ -96,6 +91,7 @@ export type MintPassportCause =
   | "pda_failed"
   | "wallet_cannot_sign_and_send"
   | "no_connected_account"
+  | "wallet_rejected"
   | "send_failed"
   | "mint_sequence_advanced"
   | "unmapped_program_error"
@@ -111,7 +107,7 @@ export type PlanMintPassportResult =
       wanted?: WalletFamilyWanted;
     };
 
-export type ExecuteMintPassportResult =
+export type SendMintPassportResult =
   | { ok: true; signature: string; plannedTokenId?: string }
   | {
       ok: false;
@@ -119,6 +115,9 @@ export type ExecuteMintPassportResult =
       detail: string;
       wanted?: WalletFamilyWanted;
     };
+
+/** @deprecated Alias — execute is plan+send only (no confirm). */
+export type ExecuteMintPassportResult = SendMintPassportResult;
 
 export type WriteEvmContractFn = (
   args: MintPassportEvmCall,
@@ -128,16 +127,6 @@ export type WriteEvmContractFn = (
 export type FetchSvmAccountDataFn = (
   account: string,
 ) => Promise<FetchSvmAccountDataResult>;
-
-export type SignatureStatusRow = {
-  confirmationStatus?: string | null;
-  err?: unknown;
-  slot?: number | bigint | null;
-} | null;
-
-export type GetSignatureStatusesFn = (
-  signatures: string[],
-) => Promise<ReadonlyArray<SignatureStatusRow>>;
 
 /**
  * Build the EVM write args. Sole construction site for the behavioural pin.
@@ -203,6 +192,8 @@ const MINT_PASSPORT_CAUSE_COPY: Record<MintPassportCause, string> = {
   pda_failed: "Could not derive mint accounts.",
   wallet_cannot_sign_and_send: "This wallet cannot sign and send on Solana.",
   no_connected_account: "Connect a Solana wallet to mint a passport.",
+  wallet_rejected:
+    "You cancelled the wallet request. Nothing was submitted.",
   send_failed: "Mint failed. Please try again.",
   mint_sequence_advanced:
     "Another mint landed first. Your metadata is kept — submit again.",
@@ -217,36 +208,6 @@ const MINT_PASSPORT_CAUSE_COPY: Record<MintPassportCause, string> = {
 
 export function mintPassportCauseCopy(cause: MintPassportCause): string {
   return MINT_PASSPORT_CAUSE_COPY[cause];
-}
-
-/** True when `err` is a Solana native InvalidSeeds InstructionError. */
-export function isSvmInvalidSeedsError(err: unknown): boolean {
-  if (err == null) return false;
-  if (err === "InvalidSeeds") return true;
-  if (typeof err === "string") {
-    return (
-      err === "InvalidSeeds" ||
-      /\bInvalidSeeds\b/.test(err) ||
-      err.includes('"InvalidSeeds"')
-    );
-  }
-  if (typeof err !== "object") return false;
-  const instructionError = (err as { InstructionError?: unknown })
-    .InstructionError;
-  if (Array.isArray(instructionError) && instructionError.length >= 2) {
-    if (instructionError[1] === "InvalidSeeds") return true;
-  }
-  if (err instanceof Error) {
-    return (
-      /\bInvalidSeeds\b/.test(err.message) ||
-      err.message.includes('"InvalidSeeds"')
-    );
-  }
-  try {
-    return JSON.stringify(err).includes("InvalidSeeds");
-  } catch {
-    return false;
-  }
 }
 
 function bytesGt(a: Uint8Array, b: Uint8Array): boolean {
@@ -272,6 +233,104 @@ export type MintPassportDerivePda = (input: {
   seeds?: Record<string, PdaSeedValue>;
 }) => Promise<DeriveSvmPdaResult>;
 
+export type ClassifyMintLandedCause =
+  | "mint_sequence_advanced"
+  | "unmapped_program_error"
+  | { kind: "mapped"; name: string; copy: string };
+
+/**
+ * Pure classifier for a landed mint TransactionError + fresh next_token_id.
+ * Caller performs the keyed config read; this never polls or invents.
+ */
+export function classifyMintLandedError(
+  landed: SvmLandedInstructionError | null,
+  plannedNextTokenId: Uint8Array,
+  freshNextTokenId: Uint8Array,
+): ClassifyMintLandedCause {
+  if (
+    landed?.kind === "native" &&
+    landed.name === "InvalidSeeds" &&
+    bytesGt(freshNextTokenId, plannedNextTokenId)
+  ) {
+    return "mint_sequence_advanced";
+  }
+  if (landed?.kind === "custom") {
+    const copy = REVERT_COPY[landed.name];
+    if (copy != null) {
+      return { kind: "mapped", name: landed.name, copy };
+    }
+  }
+  return "unmapped_program_error";
+}
+
+/** Map classifier result to a mint cause + owner sentence (never raw detail). */
+export function mintCauseFromLandedClassification(
+  classified: ClassifyMintLandedCause,
+): { cause: MintPassportCause; copy: string } {
+  if (classified === "mint_sequence_advanced") {
+    return {
+      cause: "mint_sequence_advanced",
+      copy: mintPassportCauseCopy("mint_sequence_advanced"),
+    };
+  }
+  if (classified === "unmapped_program_error") {
+    return {
+      cause: "unmapped_program_error",
+      copy: mintPassportCauseCopy("unmapped_program_error"),
+    };
+  }
+  return { cause: "send_failed", copy: classified.copy };
+}
+
+/**
+ * Parse a raw confirm error blob then classify against fresh next_token_id.
+ */
+export function classifyMintLandedErrorFromRaw(
+  err: unknown,
+  plannedNextTokenId: Uint8Array,
+  freshNextTokenId: Uint8Array,
+): ClassifyMintLandedCause {
+  return classifyMintLandedError(
+    parseSvmLandedInstructionError(err),
+    plannedNextTokenId,
+    freshNextTokenId,
+  );
+}
+
+/**
+ * After a landed confirm refusal: fresh config read + classify.
+ * Panels must not call SVM RPC — this is the sole Create path.
+ */
+export async function resolveMintLandedConfirmRefusal(input: {
+  error: unknown;
+  plannedNextTokenId: Uint8Array;
+  configAddress: string;
+  fetchAccountData?: FetchSvmAccountDataFn;
+}): Promise<{ cause: MintPassportCause; copy: string }> {
+  const fetch = input.fetchAccountData ?? fetchProductSvmAccountData;
+  const fetched = await fetch(input.configAddress);
+  if (!fetched.ok) {
+    return {
+      cause: "config_unavailable",
+      copy: mintPassportCauseCopy("config_unavailable"),
+    };
+  }
+  const decoded = decodePassportConfig(fetched.value);
+  if (!decoded.ok) {
+    return {
+      cause: "config_decode_failed",
+      copy: mintPassportCauseCopy("config_decode_failed"),
+    };
+  }
+  return mintCauseFromLandedClassification(
+    classifyMintLandedErrorFromRaw(
+      input.error,
+      input.plannedNextTokenId,
+      decoded.value.nextTokenId,
+    ),
+  );
+}
+
 function refusePlan(
   cause: MintPassportCause,
   detail: string,
@@ -288,11 +347,6 @@ export async function planMintPassport(input: {
   uri: string;
   registry?: CommercialRegistry;
   fetchAccountData?: FetchSvmAccountDataFn;
-  /**
-   * Stand / policy seam: force a stale next_token_id for concurrency proof.
-   * Product path never passes this.
-   */
-  plannedNextTokenIdOverride?: Uint8Array;
   /**
    * Stand inject — local program ids are not in COMMERCIAL_ACTIVE.
    * Product path keeps the commercial registry gate ({@link deriveSvmPda}).
@@ -358,7 +412,6 @@ export async function planMintPassport(input: {
     account: input.account,
     uri: input.uri,
     fetchAccountData: input.fetchAccountData ?? fetchProductSvmAccountData,
-    plannedNextTokenIdOverride: input.plannedNextTokenIdOverride,
     derivePda: input.derivePda ?? deriveSvmPda,
   });
 }
@@ -368,7 +421,6 @@ async function planSvmMintPassport(args: {
   account: ActiveAccount;
   uri: string;
   fetchAccountData: FetchSvmAccountDataFn;
-  plannedNextTokenIdOverride?: Uint8Array;
   derivePda: MintPassportDerivePda;
 }): Promise<PlanMintPassportResult> {
   if (args.account.status !== "connected" || args.account.vm !== "svm") {
@@ -407,9 +459,7 @@ async function planSvmMintPassport(args: {
     );
   }
 
-  const plannedNextTokenId =
-    args.plannedNextTokenIdOverride ??
-    Uint8Array.from(decoded.value.nextTokenId);
+  const plannedNextTokenId = Uint8Array.from(decoded.value.nextTokenId);
   let plannedTokenId: string;
   try {
     plannedTokenId = tokenIdFromBytes32(plannedNextTokenId);
@@ -497,138 +547,21 @@ async function planSvmMintPassport(args: {
       feePayer: payer,
       plannedNextTokenId,
       plannedTokenId,
+      configAddress: configPda.address,
     },
   };
 }
 
-async function waitSignatureOutcome(args: {
-  signature: string;
-  getSignatureStatuses: GetSignatureStatusesFn;
-  pollIntervalMs?: number;
-  timeoutMs?: number;
-}): Promise<
-  | { ok: true; slot: bigint }
-  | { ok: false; err: unknown }
-  | { ok: false; cause: "confirm_timeout"; detail: string }
-> {
-  const pollIntervalMs = args.pollIntervalMs ?? 400;
-  const timeoutMs = args.timeoutMs ?? 60_000;
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const [row] = await args.getSignatureStatuses([args.signature]);
-    if (row?.err != null) {
-      return { ok: false, err: row.err };
-    }
-    const status = row?.confirmationStatus;
-    if (status === "confirmed" || status === "finalized") {
-      const slotRaw = row?.slot;
-      const slot =
-        typeof slotRaw === "bigint"
-          ? slotRaw
-          : typeof slotRaw === "number"
-            ? BigInt(slotRaw)
-            : 0n;
-      return { ok: true, slot };
-    }
-    await new Promise((r) => setTimeout(r, pollIntervalMs));
-  }
-  return {
-    ok: false,
-    cause: "confirm_timeout",
-    detail: `timed out after ${timeoutMs}ms`,
-  };
-}
-
-async function classifyLandedMintFailure(args: {
-  err: unknown;
-  stack: SvmCommercialActiveStack;
-  plannedNextTokenId: Uint8Array;
-  fetchAccountData: FetchSvmAccountDataFn;
-  derivePda: MintPassportDerivePda;
-}): Promise<ExecuteMintPassportResult> {
-  if (isSvmInvalidSeedsError(args.err)) {
-    const configPda = await args.derivePda({
-      recipe: "kar-passport/config",
-      programId: args.stack.karPassport,
-    });
-    if (configPda.ok) {
-      const fetched = await args.fetchAccountData(configPda.address);
-      if (fetched.ok) {
-        const decoded = decodePassportConfig(fetched.value);
-        if (
-          decoded.ok &&
-          bytesGt(decoded.value.nextTokenId, args.plannedNextTokenId)
-        ) {
-          return {
-            ok: false,
-            cause: "mint_sequence_advanced",
-            detail: `planned ${tokenIdFromBytes32(args.plannedNextTokenId)} advanced to ${tokenIdFromBytes32(decoded.value.nextTokenId)}`,
-          };
-        }
-      }
-    }
-  }
-
-  const decoded = decodeSvmProgramError(args.err);
-  if (decoded != null) {
-    const staticCopy = REVERT_COPY[decoded.name];
-    if (staticCopy != null) {
-      return {
-        ok: false,
-        cause: "send_failed",
-        detail: staticCopy,
-      };
-    }
-    return {
-      ok: false,
-      cause: "unmapped_program_error",
-      detail: decoded.name,
-    };
-  }
-
-  return {
-    ok: false,
-    cause: "send_failed",
-    detail:
-      args.err instanceof Error
-        ? args.err.message
-        : typeof args.err === "string"
-          ? args.err
-          : JSON.stringify(args.err),
-  };
-}
-
-export async function executeMintPassport(input: {
+export async function sendMintPassport(input: {
+  plan: PlanMintPassportResult & { ok: true };
   account: ActiveAccount;
   chainId: number;
-  uri: string;
   writeEvmContract: WriteEvmContractFn;
   registry?: CommercialRegistry;
   svmPort?: SvmSignAndSendPort;
   fetchBlockhash?: Parameters<typeof sendSvmInstruction>[0]["fetchBlockhash"];
-  fetchAccountData?: FetchSvmAccountDataFn;
-  getSignatureStatuses?: GetSignatureStatusesFn;
-  plannedNextTokenIdOverride?: Uint8Array;
-  derivePda?: MintPassportDerivePda;
-}): Promise<ExecuteMintPassportResult> {
-  const derivePda = input.derivePda ?? deriveSvmPda;
-  const planned = await planMintPassport({
-    account: input.account,
-    chainId: input.chainId,
-    uri: input.uri,
-    registry: input.registry,
-    fetchAccountData: input.fetchAccountData,
-    plannedNextTokenIdOverride: input.plannedNextTokenIdOverride,
-    derivePda,
-  });
-  if (!planned.ok) {
-    return {
-      ok: false,
-      cause: planned.cause,
-      detail: planned.detail,
-      ...(planned.wanted != null ? { wanted: planned.wanted } : {}),
-    };
-  }
+}): Promise<SendMintPassportResult> {
+  const planned = input.plan;
 
   if (planned.vm === "evm") {
     try {
@@ -638,14 +571,14 @@ export async function executeMintPassport(input: {
       if (isWalletRejection(err)) {
         return {
           ok: false,
-          cause: "send_failed",
-          detail: walletRejectionCopy(),
+          cause: "wallet_rejected",
+          detail: "wallet_rejected",
         };
       }
       return {
         ok: false,
         cause: "send_failed",
-        detail: err instanceof Error ? err.message : String(err),
+        detail: "send_failed",
       };
     }
   }
@@ -663,7 +596,7 @@ export async function executeMintPassport(input: {
     return {
       ok: false,
       cause: "unresolved_namespace",
-      detail: "SVM stack missing at execute",
+      detail: "SVM stack missing at send",
     };
   }
 
@@ -682,17 +615,15 @@ export async function executeMintPassport(input: {
     if (isWalletRejection(err)) {
       return {
         ok: false,
-        cause: "send_failed",
-        detail: walletRejectionCopy(),
+        cause: "wallet_rejected",
+        detail: "wallet_rejected",
       };
     }
-    return classifyLandedMintFailure({
-      err,
-      stack,
-      plannedNextTokenId: planned.plan.plannedNextTokenId,
-      fetchAccountData: input.fetchAccountData ?? fetchProductSvmAccountData,
-      derivePda,
-    });
+    return {
+      ok: false,
+      cause: "send_failed",
+      detail: "send_failed",
+    };
   }
 
   if (!sent.ok) {
@@ -703,42 +634,50 @@ export async function executeMintPassport(input: {
     };
   }
 
-  const getStatuses = input.getSignatureStatuses;
-  if (getStatuses == null) {
-    // Product path: classification deferred to confirm inside runTx when no
-    // status injector — still return signature for lifecycle. Concurrency
-    // classification requires getSignatureStatuses (stand / tests inject it;
-    // product wizard injects via createProduct statuses in the hook).
-    return {
-      ok: true,
-      signature: sent.signature,
-      plannedTokenId: planned.plan.plannedTokenId,
-    };
-  }
-
-  const outcome = await waitSignatureOutcome({
+  return {
+    ok: true,
     signature: sent.signature,
-    getSignatureStatuses: getStatuses,
+    plannedTokenId: planned.plan.plannedTokenId,
+  };
+}
+
+/**
+ * Plan + send only (no confirm). Confirm is {@link runTx} / SVM lifecycle.
+ */
+export async function executeMintPassport(input: {
+  account: ActiveAccount;
+  chainId: number;
+  uri: string;
+  writeEvmContract: WriteEvmContractFn;
+  registry?: CommercialRegistry;
+  svmPort?: SvmSignAndSendPort;
+  fetchBlockhash?: Parameters<typeof sendSvmInstruction>[0]["fetchBlockhash"];
+  fetchAccountData?: FetchSvmAccountDataFn;
+  derivePda?: MintPassportDerivePda;
+}): Promise<ExecuteMintPassportResult> {
+  const planned = await planMintPassport({
+    account: input.account,
+    chainId: input.chainId,
+    uri: input.uri,
+    registry: input.registry,
+    fetchAccountData: input.fetchAccountData,
+    derivePda: input.derivePda,
   });
-  if (outcome.ok) {
-    return {
-      ok: true,
-      signature: sent.signature,
-      plannedTokenId: planned.plan.plannedTokenId,
-    };
-  }
-  if ("cause" in outcome) {
+  if (!planned.ok) {
     return {
       ok: false,
-      cause: "send_failed",
-      detail: outcome.detail,
+      cause: planned.cause,
+      detail: planned.detail,
+      ...(planned.wanted != null ? { wanted: planned.wanted } : {}),
     };
   }
-  return classifyLandedMintFailure({
-    err: outcome.err,
-    stack,
-    plannedNextTokenId: planned.plan.plannedNextTokenId,
-    fetchAccountData: input.fetchAccountData ?? fetchProductSvmAccountData,
-    derivePda,
+  return sendMintPassport({
+    plan: planned,
+    account: input.account,
+    chainId: input.chainId,
+    writeEvmContract: input.writeEvmContract,
+    registry: input.registry,
+    svmPort: input.svmPort,
+    fetchBlockhash: input.fetchBlockhash,
   });
 }
