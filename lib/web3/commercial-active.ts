@@ -162,23 +162,33 @@ export type SvmCommercialActiveStack = SvmKargainProgramIds & {
 };
 
 /**
+ * Exhaustive key table for {@link SvmKargainProgramIds}.
+ * A new program field on the shape must appear here or typecheck fails.
+ */
+export const SVM_KARGAIN_PROGRAM_FIELDS = {
+  karPassport: true,
+  karProPass: true,
+  karProStaking: true,
+  bridgeGateway: true,
+  fixedPriceConsignment: true,
+  ascendingConsignment: true,
+} as const satisfies Record<keyof SvmKargainProgramIds, true>;
+
+/**
  * Exhaustive Kargain program ids on a commercial SVM stack (present optionals only).
  * Sole owner for Custom attribution membership.
  */
 export function svmKargainProgramIds(
   stack: SvmKargainProgramIds,
 ): readonly string[] {
-  const ids: string[] = [
-    stack.karPassport,
-    stack.karProPass,
-    stack.karProStaking,
-    stack.bridgeGateway,
-  ];
-  if (stack.fixedPriceConsignment != null) {
-    ids.push(stack.fixedPriceConsignment);
-  }
-  if (stack.ascendingConsignment != null) {
-    ids.push(stack.ascendingConsignment);
+  const ids: string[] = [];
+  for (const key of Object.keys(
+    SVM_KARGAIN_PROGRAM_FIELDS,
+  ) as (keyof typeof SVM_KARGAIN_PROGRAM_FIELDS)[]) {
+    const value = stack[key];
+    if (value != null) {
+      ids.push(value);
+    }
   }
   return ids;
 }

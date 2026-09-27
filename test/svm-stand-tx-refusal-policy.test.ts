@@ -161,6 +161,46 @@ describe("svm-stand-tx-refusal-policy", () => {
     }
   });
 
+  it("custom_unattributed expectation mismatches failingProgram (red→green)", async () => {
+    const coreId = "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d";
+    await assert.rejects(
+      () =>
+        expectStandTransactionRefusal({
+          outcome: async () => ({
+            kind: "landed_with_error",
+            signature: "sig",
+            err: { InstructionError: [0, { Custom: 9 }] },
+          }),
+          expected: {
+            kind: "custom_unattributed",
+            ordinal: 9,
+            failingProgram: "WrongProgram1111111111111111111111111111111",
+          },
+          attributableProgramIds: ["KarPass1111111111111111111111111111111111"],
+          logMessages: [`Program ${coreId} failed: custom program error: 0x9`],
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.match(err.message, /custom_unattributed\(9\)/);
+        assert.match(err.message, /WrongProgram/);
+        assert.match(err.message, /CoREEN/);
+        return true;
+      },
+    );
+  });
+
+  it("custom_unattributed expectation requires failingProgram (omit plant)", () => {
+    const incomplete = {
+      kind: "custom_unattributed" as const,
+      ordinal: 9,
+    };
+    assert.equal(
+      "failingProgram" in incomplete,
+      false,
+      "plant: expectation without failingProgram must be incomplete",
+    );
+  });
+
   it("wrong Custom name when InvalidReceiver expected fails with both names (red→green)", async () => {
     // AssetFrozen = 137 — attributed so observed is named custom
     const programId = "KarPass1111111111111111111111111111111111";
@@ -326,5 +366,16 @@ describe("svm-stand-tx-refusal-policy", () => {
     assert.match(confirm, /StandConnection/);
     assert.match(confirm, /StandTransaction/);
     assert.doesNotMatch(confirm, /StandWeb3Connection/);
+  });
+
+  it("STAND_NATIVE_IX_ERRORS deleted — pin absence (plant red→green)", () => {
+    const refusal = readFileSync(join(STAND_DIR, "stand-tx-refusal.ts"), "utf8");
+    assert.doesNotMatch(
+      refusal,
+      /\bSTAND_NATIVE_IX_ERRORS\b/,
+      "STAND_NATIVE_IX_ERRORS must stay deleted",
+    );
+    const planted = "export const STAND_NATIVE_IX_ERRORS = [] as const;\n";
+    assert.match(planted, /\bSTAND_NATIVE_IX_ERRORS\b/);
   });
 });

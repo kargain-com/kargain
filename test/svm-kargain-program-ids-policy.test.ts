@@ -1,7 +1,6 @@
 /**
- * SvmKargainProgramIds is the sole commercial Kargain program-id shape.
- * Exhaustiveness by construction: a stack assignable without a required
- * program field fails typecheck (tsc probe under mkdtemp).
+ * SvmKargainProgramIds + SVM_KARGAIN_PROGRAM_FIELDS — exhaustive key table.
+ * A new program field on the shape must appear in the table or typecheck fails.
  */
 
 import assert from "node:assert/strict";
@@ -13,15 +12,18 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  SVM_KARGAIN_PROGRAM_FIELDS,
   svmKargainProgramIds,
-  type SvmCommercialActiveStack,
-  type SvmKargainProgramIds,
 } from "@/lib/web3/commercial-active";
 import { FIXTURE_SVM_STACK } from "./fixtures/commercial-svm-stack.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const FIXTURE = path.join(
+  ROOT,
+  "test/fixtures/svm-kargain-program-fields-exhaustiveness.ts",
+);
 
-function runAssignabilityProbe(source: string): {
+function runTscOnFixture(source: string): {
   status: number | null;
   out: string;
 } {
@@ -73,52 +75,63 @@ function runAssignabilityProbe(source: string): {
 }
 
 describe("svm-kargain-program-ids-policy", () => {
-  it("svmKargainProgramIds returns live fixture passport/gateway/modes", () => {
+  it("svmKargainProgramIds returns exactly the fixture's present program ids", () => {
     const ids = svmKargainProgramIds(FIXTURE_SVM_STACK);
-    assert.ok(ids.includes(FIXTURE_SVM_STACK.karPassport));
-    assert.ok(ids.includes(FIXTURE_SVM_STACK.bridgeGateway));
-    assert.ok(ids.includes(FIXTURE_SVM_STACK.karProStaking));
-    assert.ok(ids.includes(FIXTURE_SVM_STACK.karProPass));
+    const expected = [
+      FIXTURE_SVM_STACK.karPassport,
+      FIXTURE_SVM_STACK.karProPass,
+      FIXTURE_SVM_STACK.karProStaking,
+      FIXTURE_SVM_STACK.bridgeGateway,
+      FIXTURE_SVM_STACK.fixedPriceConsignment,
+      FIXTURE_SVM_STACK.ascendingConsignment,
+    ].filter((v) => v != null);
+    assert.deepEqual([...ids].sort(), [...expected].sort());
   });
 
-  it("stack missing required karPassport fails assignability (type exhaustiveness)", () => {
-    const red = runAssignabilityProbe(`
-import type { SvmKargainProgramIds } from "@/lib/web3/commercial-active";
+  it("SVM_KARGAIN_PROGRAM_FIELDS lists every SvmKargainProgramIds key", () => {
+    assert.deepEqual(
+      Object.keys(SVM_KARGAIN_PROGRAM_FIELDS).sort(),
+      [
+        "ascendingConsignment",
+        "bridgeGateway",
+        "fixedPriceConsignment",
+        "karPassport",
+        "karProPass",
+        "karProStaking",
+      ],
+    );
+  });
 
-const bad: SvmKargainProgramIds = {
-  karProPass: "a",
-  karProStaking: "b",
-  bridgeGateway: "c",
-};
-void bad;
-`);
+  it("incomplete fields table fails typecheck; @ts-expect-error keeps it green (red→green)", () => {
+    const live = fs.readFileSync(FIXTURE, "utf8");
+    assert.match(live, /\/\/\s*@ts-expect-error/);
+    assert.match(live, /fixedPriceConsignment omitted/);
+
+    const withoutDirective = live.replace(
+      /^\s*\/\/\s*@ts-expect-error[^\n]*\n/m,
+      "",
+    );
+    assert.doesNotMatch(withoutDirective, /\/\/\s*@ts-expect-error/);
+
+    const red = runTscOnFixture(withoutDirective);
     assert.notEqual(red.status, 0, `expected tsc red, got:\n${red.out}`);
-    assert.match(red.out, /karPassport/);
+    assert.match(red.out, /fixedPriceConsignment|SvmKargainProgramIds/);
 
-    const green = runAssignabilityProbe(`
-import type { SvmCommercialActiveStack, SvmKargainProgramIds } from "@/lib/web3/commercial-active";
-import { FIXTURE_SVM_STACK } from "${path.join(ROOT, "test/fixtures/commercial-svm-stack.ts").replace(/\\/g, "/")}";
-
-const programs: SvmKargainProgramIds = {
-  karPassport: FIXTURE_SVM_STACK.karPassport,
-  karProPass: FIXTURE_SVM_STACK.karProPass,
-  karProStaking: FIXTURE_SVM_STACK.karProStaking,
-  bridgeGateway: FIXTURE_SVM_STACK.bridgeGateway,
-  fixedPriceConsignment: FIXTURE_SVM_STACK.fixedPriceConsignment,
-  ascendingConsignment: FIXTURE_SVM_STACK.ascendingConsignment,
-};
-const ok: SvmCommercialActiveStack = { ...FIXTURE_SVM_STACK, ...programs };
-void ok;
-`);
+    const green = runTscOnFixture(live);
     assert.equal(green.status, 0, `expected tsc green, got:\n${green.out}`);
   });
 
-  it("landed-error owner has no KARGAIN_PROGRAM_FIELDS hand-list", () => {
+  it("landed-error owner has no hand-list; consumes svmKargainProgramIds", () => {
     const src = fs.readFileSync(
       path.join(ROOT, "lib/web3/svm-landed-error.ts"),
       "utf8",
     );
     assert.doesNotMatch(src, /KARGAIN_PROGRAM_FIELDS/);
     assert.match(src, /svmKargainProgramIds/);
+    const commercial = fs.readFileSync(
+      path.join(ROOT, "lib/web3/commercial-active.ts"),
+      "utf8",
+    );
+    assert.match(commercial, /SVM_KARGAIN_PROGRAM_FIELDS/);
   });
 });

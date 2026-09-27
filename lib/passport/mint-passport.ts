@@ -99,6 +99,7 @@ export type MintPassportCause =
   | "no_connected_account"
   | "wallet_rejected"
   | "send_failed"
+  | "write_guard_refused"
   | "mint_sequence_advanced"
   | "expired"
   | "status_unknown"
@@ -200,6 +201,7 @@ const MINT_PASSPORT_CAUSE_COPY: Record<MintPassportCause, string> = {
   wallet_rejected:
     "You cancelled the wallet request. Nothing was submitted.",
   send_failed: "Mint failed. Please try again.",
+  write_guard_refused: "Mint could not start. Check your wallet and network.",
   mint_sequence_advanced:
     "Another mint landed first. Your metadata is kept — submit again.",
   expired: svmConfirmExpiredCopy(),
@@ -343,7 +345,7 @@ export async function resolveMintRefusal(input: {
   }
   if (refusal.kind === "guard_refused") {
     return {
-      cause: "send_failed",
+      cause: "write_guard_refused",
       copy: txWriteGuardRefusalCopy(refusal.refusal),
     };
   }

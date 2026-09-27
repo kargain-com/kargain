@@ -60,13 +60,6 @@ export type LiveProductMintProof = {
     plannedTokenId: string;
     landedTokenId: string;
   };
-  /** @deprecated alias — skip-preflight concurrency arm */
-  concurrency: {
-    cause: "mint_sequence_advanced";
-    plannedTokenId: string;
-    nextTokenIdAfter: string;
-    landedErrorIndex: number;
-  };
   concurrencySkipPreflight: {
     cause: "mint_sequence_advanced";
     plannedTokenId: string;
@@ -543,7 +536,6 @@ export async function runLiveProductMint(): Promise<LiveProductMintProof> {
       plannedTokenId,
       landedTokenId: plannedTokenId,
     },
-    concurrency: concurrencySkipPreflight,
     concurrencySkipPreflight,
     concurrencyPreflight: {
       cause: "mint_sequence_advanced",

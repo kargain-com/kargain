@@ -391,6 +391,37 @@ describe("mint confirm cause copy consumes svm-confirm-copy owner", () => {
     assert.doesNotMatch(mapped.copy, /ContractFunctionExecutionError/);
   });
 
+  it("guard_refused maps to write_guard_refused (not send_failed)", async () => {
+    const { txWriteGuardRefusalCopy } = await import(
+      "@/lib/web3/tx-write-availability"
+    );
+    const plan = {
+      ok: true as const,
+      vm: "evm" as const,
+      call: {
+        address: "0x0000000000000000000000000000000000000001" as `0x${string}`,
+        abi: [] as never,
+        functionName: "mintPassport" as const,
+        args: [
+          "0x0000000000000000000000000000000000000002" as `0x${string}`,
+          "ar://x",
+        ] as [`0x${string}`, string],
+        chainId: 84532,
+      },
+    };
+    const payload = {
+      guard: "write_availability" as const,
+      refusal: { available: false as const, cause: "disconnected" as const },
+    };
+    const mapped = await resolveMintRefusal({
+      plan,
+      refusal: { kind: "guard_refused", refusal: payload },
+    });
+    assert.equal(mapped.cause, "write_guard_refused");
+    assert.notEqual(mapped.cause, "send_failed");
+    assert.equal(mapped.copy, txWriteGuardRefusalCopy(payload));
+  });
+
   it("EVM landed_with_error is invariant → unmapped; no invented token ids", async () => {
     const plan = {
       ok: true as const,

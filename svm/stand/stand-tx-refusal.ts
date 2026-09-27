@@ -13,7 +13,6 @@ import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../../lib/svm/rpc-max-sup
 import {
   failingProgramFromLogMessages,
   parseAttributedSvmLandedInstructionError,
-  SVM_NATIVE_IX_ERRORS,
   type SvmLandedInstructionError,
   type SvmNativeIxError,
 } from "../../lib/web3/svm-landed-error.ts";
@@ -31,9 +30,6 @@ import type {
   StandTransaction,
 } from "./solana-web3-types.ts";
 
-/** @deprecated Prefer {@link SVM_NATIVE_IX_ERRORS} from lib. */
-export const STAND_NATIVE_IX_ERRORS = SVM_NATIVE_IX_ERRORS;
-
 export type StandNativeIxError = SvmNativeIxError;
 
 export type StandTxRefusalExpected =
@@ -43,7 +39,7 @@ export type StandTxRefusalExpected =
   | {
       kind: "custom_unattributed";
       ordinal: number;
-      failingProgram?: string;
+      failingProgram: string;
     };
 
 export type StandTxRefusalObserved = SvmLandedInstructionError;
@@ -51,12 +47,7 @@ export type StandTxRefusalObserved = SvmLandedInstructionError;
 function formatExpected(expected: StandTxRefusalExpected): string {
   if (expected.kind === "native") return `native ${expected.name}`;
   if (expected.kind === "custom") return `custom ${expected.name}`;
-  return (
-    `custom_unattributed(${expected.ordinal})` +
-    (expected.failingProgram != null
-      ? ` program=${expected.failingProgram}`
-      : "")
-  );
+  return `custom_unattributed(${expected.ordinal}) program=${expected.failingProgram}`;
 }
 
 function formatObserved(observed: StandTxRefusalObserved): string {
@@ -80,15 +71,11 @@ function matchesExpected(
     // Custom expected requires attributed Custom — never ordinal fallback.
     return observed.kind === "custom" && observed.name === expected.name;
   }
-  if (observed.kind !== "custom_unattributed") return false;
-  if (observed.ordinal !== expected.ordinal) return false;
-  if (
-    expected.failingProgram != null &&
-    observed.failingProgram !== expected.failingProgram
-  ) {
-    return false;
-  }
-  return true;
+  return (
+    observed.kind === "custom_unattributed" &&
+    observed.ordinal === expected.ordinal &&
+    observed.failingProgram === expected.failingProgram
+  );
 }
 
 function formatConfirmRefusal(outcome: StandConfirmOutcome): string {

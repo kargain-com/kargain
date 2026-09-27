@@ -36,7 +36,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     owner:
       "Post-truth write sync: React hook orchestrates; lifecycle modules hold barrier truth",
     ownerFiles: ["hooks/use-tx-sync.ts"],
-    rule: "Post-truth invalidate + router.refresh only via syncReads / runTx; RunTxResult { ok, outcome | refusal } with typed guard_refused/write_refused (no message fields); boolean context on the binding is banned (use result.ok); write-lifecycle guard throws TxWriteGuardRefusal never new Error(sentence); neutral write dispatch + barrier truth live in lib/web3 while the hook remains React orchestration only",
+    rule: "Post-truth invalidate + router.refresh only via syncReads / runTx; RunTxResult { ok, outcome | refusal } with typed guard_refused/write_refused (no message fields); TxWriteGuardPayload tagged write_availability|switch_chain (never shape probes); boolean context on the binding is banned (use result.ok); write-lifecycle guard throws TxWriteGuardRefusal never new Error(sentence); neutral write dispatch + barrier truth live in lib/web3 while the hook remains React orchestration only",
     guardTests: [
       "tx-sync-write-policy.test.ts",
       "evm-write-adapter-policy.test.ts",
@@ -97,7 +97,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "passport-mint",
     owner:
       "lib/passport/mint-passport.ts · hooks/use-mint-passport.ts · components/passport/create-passport-wizard.tsx",
-    rule: "Dual-VM Create mint: plan+send only (EVM mintPassport / SVM nine metas from PassportConfig.next_token_id + registry gateway freeze/config); send inside runTx; resolveMintRefusal classifies TxRefusal via typed guards only (no message text / isMintPassportCause); EVM landed_with_error → unmapped without inventing token ids; classifyMintLandedError maps InvalidSeeds+advanced next → mint_sequence_advanced; no executeMintPassport / captureSvmConfirm / plannedNextTokenIdOverride / text InvalidSeeds",
+    rule: "Dual-VM Create mint: plan+send only (EVM mintPassport / SVM nine metas from PassportConfig.next_token_id + registry gateway freeze/config); send inside runTx; resolveMintRefusal classifies TxRefusal via typed guards only (guard_refused → write_guard_refused + txWriteGuardRefusalCopy; never send_failed / message text / isMintPassportCause); EVM landed_with_error → unmapped without inventing token ids; classifyMintLandedError maps InvalidSeeds+advanced next → mint_sequence_advanced; no executeMintPassport / captureSvmConfirm / plannedNextTokenIdOverride / text InvalidSeeds",
     guardTests: ["mint-passport-policy.test.ts"],
   },
   {
@@ -419,7 +419,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "commercial-stack-registry",
     owner: "lib/web3/commercial-active.ts · lib/web3/kargain-namespace.ts",
-    rule: "Sole commercial-network set; isCommercialEip155Id ≠ isCommercialNamespace; injectable vm-filtered enumerators; eip155Of; unresolved-namespace chrome sentence sole in unresolvedNamespaceCopy (no re-inline in product); SvmKargainProgramIds sub-shape + svmKargainProgramIds(stack) sole Kargain program-id owner (no hand-list in landed-error)",
+    rule: "Sole commercial-network set; isCommercialEip155Id ≠ isCommercialNamespace; injectable vm-filtered enumerators; eip155Of; unresolved-namespace chrome sentence sole in unresolvedNamespaceCopy (no re-inline in product); SvmKargainProgramIds + SVM_KARGAIN_PROGRAM_FIELDS (satisfies Record<keyof, true>) + svmKargainProgramIds(stack) sole Kargain program-id owner (no hand-list in landed-error)",
     guardTests: [
       "network-class-policy.test.ts",
       "commercial-enumerators-policy.test.ts",
@@ -720,7 +720,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "svm-stand-tx-refusal",
     owner:
       "svm/stand/stand-tx-refusal.ts · lib/web3/svm-landed-error.ts",
-    rule: "Stand expected-refusal facade over StandConfirmOutcome; InstructionError identity via parseAttributedSvmLandedInstructionError (lib) with logMessages + attributable program ids; expected Custom matches only kind:custom (custom_unattributed fails naming failingProgram); foreign Custom (mpl-core) expected as custom_unattributed+ordinal+failingProgram — never Kargain ordinal name; landed_with_error only at ≥confirmed so getTransaction logs exist; success = landed_ok outside catch; never Display phrase / JSON-in-message / invent index 0 / ordinal→name fallback",
+    rule: "Stand expected-refusal facade over StandConfirmOutcome; InstructionError identity via parseAttributedSvmLandedInstructionError (lib) with logMessages + attributable program ids; expected Custom matches only kind:custom (custom_unattributed fails naming failingProgram); foreign Custom (mpl-core) expected as custom_unattributed+ordinal+required failingProgram — never Kargain ordinal name; landed_with_error only at ≥confirmed so getTransaction logs exist; success = landed_ok outside catch; never Display phrase / JSON-in-message / invent index 0 / ordinal→name fallback",
     guardTests: ["svm-stand-tx-refusal-policy.test.ts"],
   },
   {

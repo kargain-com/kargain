@@ -94,11 +94,36 @@ export function bad(avail: { available: false; cause: "disconnected" }) {
       `
 import { TxWriteGuardRefusal } from "./tx-write-availability";
 export function good(avail: { available: false; cause: "disconnected" }) {
-  throw new TxWriteGuardRefusal(avail);
+  throw new TxWriteGuardRefusal({
+    guard: "write_availability",
+    refusal: avail,
+  });
 }
 `,
     );
     const green = scanLifecycleRoots(dir);
     assert.deepEqual(green.violations, []);
+  });
+
+  it("switch-chain disconnected uses switch-chain sentence (not write-availability)", async () => {
+    const { evmSessionRefusalCopy } = await import(
+      "@/lib/web3/active-account"
+    );
+    const {
+      txWriteGuardRefusalCopy,
+      txWriteRefusalMessage,
+    } = await import("@/lib/web3/tx-write-availability");
+
+    const switchDisconnected = txWriteGuardRefusalCopy({
+      guard: "switch_chain",
+      refusal: { available: false, cause: "disconnected" },
+    });
+    const writeDisconnected = txWriteRefusalMessage({
+      available: false,
+      cause: "disconnected",
+    });
+    assert.equal(switchDisconnected, evmSessionRefusalCopy("disconnected"));
+    assert.notEqual(switchDisconnected, writeDisconnected);
+    assert.equal(writeDisconnected, "Connect a wallet to send this transaction.");
   });
 });

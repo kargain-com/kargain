@@ -64,9 +64,8 @@ type RunWriteLifecycleOptions = {
 
 function svmAwaitReceiptRefusal(): TxWriteGuardRefusal {
   return new TxWriteGuardRefusal({
-    available: false,
-    cause: "wrong_vm",
-    wanted: "evm",
+    guard: "write_availability",
+    refusal: { available: false, cause: "wrong_vm", wanted: "evm" },
   });
 }
 
@@ -81,7 +80,10 @@ export async function awaitWriteReceipt({
 }: AwaitWriteReceiptOptions) {
   const avail = txWriteAvailability(account, chainId, registry);
   if (!avail.available) {
-    throw new TxWriteGuardRefusal(avail);
+    throw new TxWriteGuardRefusal({
+      guard: "write_availability",
+      refusal: avail,
+    });
   }
   if (avail.vm !== "evm") {
     throw svmAwaitReceiptRefusal();
@@ -113,7 +115,10 @@ export async function runWriteLifecycle({
 }: RunWriteLifecycleOptions): Promise<WriteOutcome> {
   const avail = txWriteAvailability(account, chainId, registry);
   if (!avail.available) {
-    throw new TxWriteGuardRefusal(avail);
+    throw new TxWriteGuardRefusal({
+      guard: "write_availability",
+      refusal: avail,
+    });
   }
   if (avail.vm === "evm") {
     return runEvmWriteLifecycle({

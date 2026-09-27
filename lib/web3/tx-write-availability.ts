@@ -42,13 +42,17 @@ export type TxWriteSwitchChainUnavailable = Extract<
   { available: false }
 >;
 
+/**
+ * Tagged lifecycle guard payload — write-availability vs switch-chain.
+ * Never discriminate by shape (`"wanted" in` / identical-cause guess).
+ */
 export type TxWriteGuardPayload =
-  | TxWriteUnavailable
-  | TxWriteSwitchChainUnavailable;
+  | { guard: "write_availability"; refusal: TxWriteUnavailable }
+  | { guard: "switch_chain"; refusal: TxWriteSwitchChainUnavailable };
 
 /**
  * Typed lifecycle guard refusal — never `new Error(sentence)`.
- * Carries {@link TxWriteUnavailable} or switch-chain unavailability.
+ * Carries a tagged {@link TxWriteGuardPayload}.
  */
 export class TxWriteGuardRefusal extends Error {
   readonly refusal: TxWriteGuardPayload;
@@ -68,30 +72,18 @@ export function isTxWriteGuardRefusal(
 
 /** Sole display sentence for a typed guard payload. */
 export function txWriteGuardRefusalCopy(
-  refusal: TxWriteGuardPayload,
+  payload: TxWriteGuardPayload,
 ): string {
-  if (isTxWriteUnavailableGuard(refusal)) {
-    return txWriteRefusalMessage(refusal);
+  switch (payload.guard) {
+    case "write_availability":
+      return txWriteRefusalMessage(payload.refusal);
+    case "switch_chain":
+      return evmSessionRefusalCopy(payload.refusal.cause);
+    default: {
+      const _exhaustive: never = payload;
+      return _exhaustive;
+    }
   }
-  return evmSessionRefusalCopy(refusal.cause);
-}
-
-function isTxWriteUnavailableGuard(
-  refusal: TxWriteGuardPayload,
-): refusal is TxWriteUnavailable {
-  if (
-    refusal.cause === "unresolved_namespace" ||
-    refusal.cause === "not_in_program" ||
-    refusal.cause === "product_owner_owed" ||
-    refusal.cause === "authority_only"
-  ) {
-    return true;
-  }
-  if (refusal.cause === "wrong_vm") {
-    return "wanted" in refusal;
-  }
-  // disconnected — identical shape; prefer write-availability sentence
-  return true;
 }
 
 export type TxWriteAvailability =

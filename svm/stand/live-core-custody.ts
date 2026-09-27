@@ -369,10 +369,10 @@ export async function runLiveCoreCustody(): Promise<LiveCoreCustodyResult> {
     },
   });
   assert.equal(coreInvalidObs.kind, "custom_unattributed");
-  const coreInvalidCode =
-    coreInvalidObs.kind === "custom_unattributed"
-      ? coreInvalidObs.ordinal
-      : -1;
+  if (coreInvalidObs.kind !== "custom_unattributed") {
+    throw new Error("unreachable: expectStandTransactionRefusal narrowed kind");
+  }
+  const coreInvalidCode = coreInvalidObs.ordinal;
 
   // ---- 5. Negatives ----
   // Wrong token: asset for tokenW, instruction encodes tokenX
