@@ -19,7 +19,9 @@ import {
 import type { EncumbrancePermissionGate } from "@/lib/passport/encumbrance-permission";
 import {
   decideMaySimulate,
+  retainMaySimulateJob,
   simulatePassportMayPermissions,
+  type MaySimulateReady,
 } from "@/lib/passport/simulate-passport-may";
 import type { CommercialRegistry } from "@/lib/web3/commercial-active";
 import {
@@ -146,12 +148,16 @@ export function usePassportCommerceFacts(input: {
     ],
   );
 
-  const simulateArgs =
-    mayDecision.kind === "simulate" ? mayDecision : null;
+  // Retain by identity key so rebuilt sources/stack arrays do not re-simulate.
+  const [simulateJob, setSimulateJob] = useState<MaySimulateReady | null>(null);
+  const retainedJob = retainMaySimulateJob(simulateJob, mayDecision);
+  if (retainedJob !== simulateJob) {
+    setSimulateJob(retainedJob);
+  }
 
   useEffect(() => {
-    if (simulateArgs == null) return;
-    const { key, stack, tokenId: tid, feePayer, sources } = simulateArgs;
+    if (simulateJob == null) return;
+    const { key, stack, tokenId: tid, feePayer, sources } = simulateJob;
     let cancelled = false;
     void simulatePassportMayPermissions({
       stack,
@@ -165,15 +171,7 @@ export function usePassportCommerceFacts(input: {
     return () => {
       cancelled = true;
     };
-    // Depend on mayKey fields, not object identity of simulateArgs (rebuilt each memo).
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- key/feePayer/tokenId/sources/stack
-  }, [
-    simulateArgs?.key,
-    simulateArgs?.feePayer,
-    simulateArgs?.tokenId,
-    simulateArgs?.sources,
-    simulateArgs?.stack,
-  ]);
+  }, [simulateJob]);
 
   const injectedMay: MayPermissions | undefined =
     mayDecision.kind === "omit"

@@ -781,8 +781,17 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "passport-may-simulate",
     owner: "lib/passport/simulate-passport-may.ts",
-    rule: "PassportIx::May outcome for SVM permissions only via simulatePassportMay (encode+kit wire+JSON-RPC sim); fee payer = connected SVM session; Custom(20)→not_carried_by_vm; never re-implement may.rs; sole product caller of the Solana transaction-simulation RPC method",
-    guardTests: ["simulate-passport-may-policy.test.ts"],
+    rule: "PassportIx::May outcome for SVM permissions only via simulatePassportMay (encode+kit wire+JSON-RPC sim); fee payer = connected SVM session; Custom(20)→not_carried_by_vm; never re-implement may.rs; sole product caller of the Solana transaction-simulation RPC method; maySimulateIdentityKey encodes sources+stack (not depsKey:feePayer alone); retainMaySimulateJob keeps prior job on equal key so the commerce-facts hook effect depends on one stable job (no eslint-disable)",
+    guardTests: [
+      "simulate-passport-may-policy.test.ts",
+      "product-eslint-disable-policy.test.ts",
+    ],
+  },
+  {
+    id: "product-eslint-disable",
+    owner: "app/ · components/ · hooks/ · lib/",
+    rule: "No eslint-disable in product roots (app/components/hooks/lib); fix the dependency or type, never suppress",
+    guardTests: ["product-eslint-disable-policy.test.ts"],
   },
   {
     id: "passport-commerce-facts",
@@ -795,6 +804,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "commerce-fact-matrix.test.ts",
       "passport-commerce-facts-svm-resolve.test.ts",
       "simulate-passport-may-policy.test.ts",
+      "product-eslint-disable-policy.test.ts",
     ],
   },
   {

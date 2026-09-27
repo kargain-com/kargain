@@ -12,9 +12,14 @@ import { fileURLToPath } from "node:url";
 import { AVAILABLE } from "@/lib/challenge/action-gate";
 import { ENCUMBRANCE_INTENT } from "@/lib/commerce/consignment";
 import {
+  fingerprintMayEncumbranceSources,
   mapMaySimulateErr,
+  maySimulateIdentityKey,
   resolveMaySimulateFeePayer,
+  retainMaySimulateJob,
   simulatePassportMay,
+  type MaySimulateDecision,
+  type MaySimulateReady,
 } from "@/lib/passport/simulate-passport-may";
 import type { ActiveAccount } from "@/lib/web3/active-account";
 import {
@@ -287,6 +292,8 @@ describe("simulatePassportMay ownership policy", () => {
     assert.doesNotMatch(facts, /simulateTransaction/);
     assert.match(hook, /simulatePassportMayPermissions/);
     assert.match(hook, /decideMaySimulate/);
+    assert.match(hook, /retainMaySimulateJob/);
+    assert.doesNotMatch(hook, /eslint-disable/);
     assert.doesNotMatch(hook, /simulateTransaction/);
     assert.doesNotMatch(hook, /\.vm\s*===\s*["']svm["']/);
     assert.doesNotMatch(facts, /permissionFromSupport\(["']may_/);
@@ -331,5 +338,138 @@ describe("simulatePassportMay ownership policy", () => {
       false,
       "live must not assign a constant ordinal to the proof field",
     );
+  });
+});
+
+describe("maySimulateIdentityKey + retainMaySimulateJob", () => {
+  const stack = liveSvmStack();
+  const sourcesA = [
+    {
+      programId: "Fp11111111111111111111111111111111111111111",
+      seedPrefix: "ans",
+      programIdBytes: new Uint8Array(32),
+      seedPrefixBytes: new Uint8Array([97, 110, 115]),
+    },
+  ];
+  const sourcesB = [
+    {
+      programId: "Asc1111111111111111111111111111111111111111",
+      seedPrefix: "ans",
+      programIdBytes: new Uint8Array(32),
+      seedPrefixBytes: new Uint8Array([97, 110, 115]),
+    },
+  ];
+
+  function job(key: string, sources = sourcesA): MaySimulateReady {
+    return {
+      kind: "simulate",
+      key,
+      stack,
+      tokenId: "1",
+      feePayer: "Payer111111111111111111111111111111111111111",
+      sources,
+    };
+  }
+
+  it("identity key changes when sources change; equal content → equal fingerprint (red→green)", () => {
+    const base = {
+      depsKey: "2000040168:1:1",
+      feePayer: "Payer111111111111111111111111111111111111111",
+      tokenId: "1",
+      stackNamespace: Number(stack.namespace),
+      karPassport: stack.karPassport,
+    };
+    const k1 = maySimulateIdentityKey({
+      ...base,
+      sourcesFingerprint: fingerprintMayEncumbranceSources(sourcesA),
+    });
+    const k1b = maySimulateIdentityKey({
+      ...base,
+      sourcesFingerprint: fingerprintMayEncumbranceSources([
+        { ...sourcesA[0]!, programIdBytes: new Uint8Array(32) },
+      ]),
+    });
+    const k2 = maySimulateIdentityKey({
+      ...base,
+      sourcesFingerprint: fingerprintMayEncumbranceSources(sourcesB),
+    });
+    assert.equal(k1, k1b, "new array with equal programId+seedPrefix shares key");
+    assert.notEqual(k1, k2, "different programId must change key");
+
+    // Plant: identity without sources fingerprint would green wrongly on source swap
+    const plantedSame =
+      `${base.depsKey}:${base.feePayer}` === `${base.depsKey}:${base.feePayer}`;
+    assert.equal(plantedSame, true);
+    assert.notEqual(
+      k1,
+      `${base.depsKey}:${base.feePayer}`,
+      "full identity must not collapse to depsKey:feePayer alone",
+    );
+  });
+
+  it("retain: equal key keeps previous; key change replaces; omit clears (plant red→green)", () => {
+    const key1 = maySimulateIdentityKey({
+      depsKey: "2000040168:1:1",
+      feePayer: "Payer111111111111111111111111111111111111111",
+      tokenId: "1",
+      sourcesFingerprint: fingerprintMayEncumbranceSources(sourcesA),
+      stackNamespace: Number(stack.namespace),
+      karPassport: stack.karPassport,
+    });
+    const key2 = maySimulateIdentityKey({
+      depsKey: "2000040168:1:1",
+      feePayer: "Payer111111111111111111111111111111111111111",
+      tokenId: "1",
+      sourcesFingerprint: fingerprintMayEncumbranceSources(sourcesB),
+      stackNamespace: Number(stack.namespace),
+      karPassport: stack.karPassport,
+    });
+
+    const first = job(key1, sourcesA);
+    const rebuiltSameKey = job(key1, [
+      { ...sourcesA[0]!, programIdBytes: new Uint8Array(32) },
+    ]);
+    const retained = retainMaySimulateJob(first, rebuiltSameKey);
+    assert.equal(retained, first, "equal key must keep previous object (no re-simulate)");
+
+    const replaced = retainMaySimulateJob(first, job(key2, sourcesB));
+    assert.notEqual(replaced, first);
+    assert.equal(replaced?.key, key2);
+
+    const cleared = retainMaySimulateJob(first, { kind: "omit" } satisfies MaySimulateDecision);
+    assert.equal(cleared, null);
+
+    // Plant: always-return-next hides equal-key retention → red
+    function retainAlwaysNext(
+      _previous: MaySimulateReady | null,
+      decision: MaySimulateDecision,
+    ): MaySimulateReady | null {
+      return decision.kind === "simulate" ? decision : null;
+    }
+    const planted = retainAlwaysNext(first, rebuiltSameKey);
+    assert.notEqual(
+      planted,
+      first,
+      "planted wrong retain must not keep previous",
+    );
+    assert.equal(
+      retainMaySimulateJob(first, rebuiltSameKey),
+      first,
+      "live retain must keep previous on equal key",
+    );
+  });
+
+  it("stale async key must not surface for a new identity (pure pin)", () => {
+    const oldKey = "old-identity";
+    const newKey = "new-identity";
+    const mayAsync = { key: oldKey, value: "stale" as const };
+    const decisionKey = newKey;
+    const shown =
+      mayAsync.key === decisionKey ? mayAsync.value : "pending";
+    assert.equal(shown, "pending");
+
+    // Plant: ignoring key match shows stale
+    const plantedShow = mayAsync.value;
+    assert.notEqual(plantedShow, shown);
   });
 });

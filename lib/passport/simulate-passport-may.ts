@@ -425,6 +425,51 @@ export type MaySimulateDecision =
   | MaySimulateReady;
 
 /**
+ * Content fingerprint of encumbrance sources (not object identity).
+ * New array instances with the same programId+seedPrefix share a fingerprint.
+ */
+export function fingerprintMayEncumbranceSources(
+  sources: readonly EncumbranceSourceDecoded[],
+): string {
+  return sources.map((s) => `${s.programId}\0${s.seedPrefix}`).join("\n");
+}
+
+/**
+ * Full simulation identity — changes exactly when a re-simulate is required.
+ * Includes sources + stack passport id (not only depsKey:feePayer).
+ */
+export function maySimulateIdentityKey(parts: {
+  depsKey: string;
+  feePayer: string;
+  tokenId: string;
+  sourcesFingerprint: string;
+  stackNamespace: number;
+  karPassport: string;
+}): string {
+  return [
+    parts.depsKey,
+    parts.feePayer,
+    parts.tokenId,
+    parts.sourcesFingerprint,
+    String(parts.stackNamespace),
+    parts.karPassport,
+  ].join(":");
+}
+
+/**
+ * Keep the previous simulate job when the identity key is unchanged so React
+ * effect deps see a stable object (sources/stack arrays are rebuilt each memo).
+ */
+export function retainMaySimulateJob(
+  previous: MaySimulateReady | null,
+  decision: MaySimulateDecision,
+): MaySimulateReady | null {
+  if (decision.kind !== "simulate") return null;
+  if (previous !== null && previous.key === decision.key) return previous;
+  return decision;
+}
+
+/**
  * Sync decision for SVM May simulate: omit on non-SVM plan, ready gate when
  * fee payer / config / stack refuse, or simulate when all inputs are present.
  * Hook stays blind to `vm` literals.
@@ -445,19 +490,19 @@ export function decideMaySimulate(args: {
     args.account.status === "connected" && args.account.vm === "svm"
       ? args.account.address
       : "none";
-  const mayKey = `${args.depsKey}:${feePayerKey}`;
+  const sessionKey = `${args.depsKey}:${feePayerKey}`;
 
   if (!args.enabled || args.planVm !== "svm") {
     return { kind: "omit" };
   }
   if (args.planning || args.batchPending) {
-    return { kind: "ready", key: mayKey, value: PENDING_MAY_PAIR };
+    return { kind: "ready", key: sessionKey, value: PENDING_MAY_PAIR };
   }
   const fee = resolveMaySimulateFeePayer(args.account);
   if (!fee.ok) {
     return {
       kind: "ready",
-      key: mayKey,
+      key: sessionKey,
       value: {
         openConsignmentPermission: fee.gate,
         leaveChainPermission: fee.gate,
@@ -466,18 +511,26 @@ export function decideMaySimulate(args: {
   }
   const sources = encumbranceSourcesFromConfigEntry(args.configEntry);
   if (sources == null) {
-    return { kind: "ready", key: mayKey, value: PENDING_MAY_PAIR };
+    return { kind: "ready", key: sessionKey, value: PENDING_MAY_PAIR };
   }
   if (args.planNamespace == null || args.planTokenId == null) {
-    return { kind: "ready", key: mayKey, value: UNAVAILABLE_MAY_PAIR };
+    return { kind: "ready", key: sessionKey, value: UNAVAILABLE_MAY_PAIR };
   }
   const stack = commercialActive(args.planNamespace, args.registry);
   if (stack?.vm !== "svm") {
-    return { kind: "ready", key: mayKey, value: UNAVAILABLE_MAY_PAIR };
+    return { kind: "ready", key: sessionKey, value: UNAVAILABLE_MAY_PAIR };
   }
+  const key = maySimulateIdentityKey({
+    depsKey: args.depsKey,
+    feePayer: fee.feePayer,
+    tokenId: args.planTokenId,
+    sourcesFingerprint: fingerprintMayEncumbranceSources(sources),
+    stackNamespace: Number(stack.namespace),
+    karPassport: stack.karPassport,
+  });
   return {
     kind: "simulate",
-    key: mayKey,
+    key,
     stack,
     tokenId: args.planTokenId,
     feePayer: fee.feePayer,
