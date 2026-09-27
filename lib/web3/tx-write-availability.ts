@@ -13,7 +13,9 @@ import {
   type CommercialRegistry,
 } from "@/lib/web3/commercial-active";
 import {
+  evmSessionRefusalCopy,
   type ActiveAccount,
+  type EvmSwitchChainAvailability,
   type WalletFamilyWanted,
   wrongVmActionCopy,
 } from "@/lib/web3/active-account";
@@ -33,6 +35,64 @@ export type TxWriteUnavailable =
       available: false;
       cause: "not_in_program" | "product_owner_owed" | "authority_only";
     };
+
+/** Switch-chain arm of lifecycle guard refusal (unavailable only). */
+export type TxWriteSwitchChainUnavailable = Extract<
+  EvmSwitchChainAvailability,
+  { available: false }
+>;
+
+export type TxWriteGuardPayload =
+  | TxWriteUnavailable
+  | TxWriteSwitchChainUnavailable;
+
+/**
+ * Typed lifecycle guard refusal — never `new Error(sentence)`.
+ * Carries {@link TxWriteUnavailable} or switch-chain unavailability.
+ */
+export class TxWriteGuardRefusal extends Error {
+  readonly refusal: TxWriteGuardPayload;
+
+  constructor(refusal: TxWriteGuardPayload) {
+    super("tx_write_guard_refused");
+    this.name = "TxWriteGuardRefusal";
+    this.refusal = refusal;
+  }
+}
+
+export function isTxWriteGuardRefusal(
+  err: unknown,
+): err is TxWriteGuardRefusal {
+  return err instanceof TxWriteGuardRefusal;
+}
+
+/** Sole display sentence for a typed guard payload. */
+export function txWriteGuardRefusalCopy(
+  refusal: TxWriteGuardPayload,
+): string {
+  if (isTxWriteUnavailableGuard(refusal)) {
+    return txWriteRefusalMessage(refusal);
+  }
+  return evmSessionRefusalCopy(refusal.cause);
+}
+
+function isTxWriteUnavailableGuard(
+  refusal: TxWriteGuardPayload,
+): refusal is TxWriteUnavailable {
+  if (
+    refusal.cause === "unresolved_namespace" ||
+    refusal.cause === "not_in_program" ||
+    refusal.cause === "product_owner_owed" ||
+    refusal.cause === "authority_only"
+  ) {
+    return true;
+  }
+  if (refusal.cause === "wrong_vm") {
+    return "wanted" in refusal;
+  }
+  // disconnected — identical shape; prefer write-availability sentence
+  return true;
+}
 
 export type TxWriteAvailability =
   | { available: true; vm: "evm"; walletChainId: number }

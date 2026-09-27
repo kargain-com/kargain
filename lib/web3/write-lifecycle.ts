@@ -2,10 +2,7 @@ import { useConfig } from "wagmi";
 import type { Config } from "wagmi";
 import type { TransactionReceipt } from "viem";
 
-import {
-  type ActiveAccount,
-  wrongVmActionCopy,
-} from "@/lib/web3/active-account";
+import type { ActiveAccount } from "@/lib/web3/active-account";
 import type {
   CommercialRegistry,
   SvmCommercialActiveStack,
@@ -22,7 +19,7 @@ import {
 import { type IndexerBlockNumberResult } from "@/lib/web3/tx-sync";
 import {
   txWriteAvailability,
-  txWriteRefusalMessage,
+  TxWriteGuardRefusal,
 } from "@/lib/web3/tx-write-availability";
 import type { WriteOutcome, WriteSubmission } from "@/lib/web3/write-outcome";
 import type { SvmTxConfirmPort } from "@/lib/web3/svm-tx-confirm";
@@ -65,8 +62,12 @@ type RunWriteLifecycleOptions = {
   fetchStructuredPayloads?: FetchSvmStructuredPayloads;
 };
 
-function svmAwaitReceiptRefusal(): Error {
-  return new Error(wrongVmActionCopy("evm"));
+function svmAwaitReceiptRefusal(): TxWriteGuardRefusal {
+  return new TxWriteGuardRefusal({
+    available: false,
+    cause: "wrong_vm",
+    wanted: "evm",
+  });
 }
 
 export async function awaitWriteReceipt({
@@ -80,7 +81,7 @@ export async function awaitWriteReceipt({
 }: AwaitWriteReceiptOptions) {
   const avail = txWriteAvailability(account, chainId, registry);
   if (!avail.available) {
-    throw new Error(txWriteRefusalMessage(avail));
+    throw new TxWriteGuardRefusal(avail);
   }
   if (avail.vm !== "evm") {
     throw svmAwaitReceiptRefusal();
@@ -112,7 +113,7 @@ export async function runWriteLifecycle({
 }: RunWriteLifecycleOptions): Promise<WriteOutcome> {
   const avail = txWriteAvailability(account, chainId, registry);
   if (!avail.available) {
-    throw new Error(txWriteRefusalMessage(avail));
+    throw new TxWriteGuardRefusal(avail);
   }
   if (avail.vm === "evm") {
     return runEvmWriteLifecycle({

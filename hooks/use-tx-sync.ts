@@ -20,6 +20,10 @@ import {
 import { invalidateIndexerQueries } from "@/lib/web3/indexer-query-keys";
 import { TX_SYNC_LAG_ADVISORY } from "@/lib/web3/tx-sync";
 import { type RunTxResult, type TxRefusal } from "@/lib/web3/tx-refusal";
+import {
+  isTxWriteGuardRefusal,
+  txWriteGuardRefusalCopy,
+} from "@/lib/web3/tx-write-availability";
 import { type WriteOutcome, type WriteSubmission } from "@/lib/web3/write-outcome";
 import { isWalletRejection, walletRejectionCopy } from "@/lib/web3/wallet-rejection";
 
@@ -173,18 +177,21 @@ export function useTxSync(chainId: number) {
           setError((options?.mapError ?? txErrorMessage)(err));
           return { ok: false, refusal };
         }
+        if (isTxWriteGuardRefusal(err)) {
+          setError(txWriteGuardRefusalCopy(err.refusal));
+          return {
+            ok: false,
+            refusal: { kind: "guard_refused", refusal: err.refusal },
+          };
+        }
         if (isWalletRejection(err)) {
           setError(walletRejectionCopy());
           return { ok: false, refusal: { kind: "wallet_rejected" } };
         }
-        // Display sentence via mapError; refusal.message stays the raw Error
-        // message (cause token for typed owner throws such as mint send).
-        const raw =
-          err instanceof Error && err.message.trim()
-            ? err.message
-            : "write_failed";
+        // Preserve the thrown value; display via mapError only — never
+        // encode cause tokens into TxRefusal.message.
         setError((options?.mapError ?? txErrorMessage)(err));
-        return { ok: false, refusal: { kind: "write_failed", message: raw } };
+        return { ok: false, refusal: { kind: "write_refused", error: err } };
       } finally {
         activeRunDepthRef.current -= 1;
         setPhase("idle");

@@ -16,8 +16,12 @@ import {
   svmConfirmExpiredCopy,
   svmConfirmStatusUnknownCopy,
 } from "@/lib/web3/svm-confirm-copy";
+import type { SvmLandedInstructionError } from "@/lib/web3/svm-landed-error";
 import { isSvmConfirmRefusal } from "@/lib/web3/svm-tx-confirm";
-import { type TxRefusal } from "@/lib/web3/tx-refusal";
+import {
+  isTxWriteGuardRefusal,
+  txWriteGuardRefusalCopy,
+} from "@/lib/web3/tx-write-availability";
 import {
   isWalletRejection,
   walletRejectionCopy,
@@ -388,31 +392,13 @@ export function decodeSvmProgramError(
 }
 
 function landedWithErrorCopy(
-  landed: NonNullable<
-    Extract<TxRefusal, { kind: "landed_with_error" }>["landed"]
-  > | null,
+  landed: SvmLandedInstructionError | null,
 ): string {
   if (landed?.kind === "custom") {
     const staticCopy = REVERT_COPY[landed.name];
     if (staticCopy != null) return staticCopy;
   }
   return "Transaction failed.";
-}
-
-export function txRefusalMessage(refusal: TxRefusal): string {
-  switch (refusal.kind) {
-    case "wallet_rejected":
-      return walletRejectionCopy();
-    case "pre_send":
-    case "write_failed":
-      return refusal.message;
-    case "expired":
-      return svmConfirmExpiredCopy();
-    case "status_unknown":
-      return svmConfirmStatusUnknownCopy();
-    case "landed_with_error":
-      return landedWithErrorCopy(refusal.landed);
-  }
 }
 
 export function txErrorMessage(err: unknown): string {
@@ -429,6 +415,10 @@ export function txErrorMessage(err: unknown): string {
       return svmConfirmStatusUnknownCopy();
     }
     return landedWithErrorCopy(err.outcome.landed);
+  }
+
+  if (isTxWriteGuardRefusal(err)) {
+    return txWriteGuardRefusalCopy(err.refusal);
   }
 
   const decoded =

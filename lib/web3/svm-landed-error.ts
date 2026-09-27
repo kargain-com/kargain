@@ -2,12 +2,15 @@
  * Sole product + stand reader for landed Solana TransactionError → InstructionError.
  *
  * Discriminant only: `[index, nativeName]` or `[index, { Custom: n }]`.
- * Custom(n) is named through the Kargain table only when `failingProgram` is a
- * commercial Kargain program id for the namespace — otherwise unattributed.
+ * Custom(n) is named through the Kargain table only when `failingProgram` is in
+ * the attributable program-id set — otherwise unattributed.
  * Never message regex, Display phrases, JSON.stringify, or invented index.
  */
 
-import type { SvmCommercialActiveStack } from "@/lib/web3/commercial-active";
+import {
+  svmKargainProgramIds,
+  type SvmCommercialActiveStack,
+} from "@/lib/web3/commercial-active";
 import {
   svmProgramErrorName,
   type SvmProgramErrorName,
@@ -65,25 +68,23 @@ export function failingProgramFromLogMessages(
   return null;
 }
 
-const KARGAIN_PROGRAM_FIELDS = [
-  "karPassport",
-  "karProPass",
-  "karProStaking",
-  "bridgeGateway",
-  "fixedPriceConsignment",
-  "ascendingConsignment",
-] as const satisfies readonly (keyof SvmCommercialActiveStack)[];
+export function isAttributableProgramId(
+  attributableProgramIds: readonly string[] | null | undefined,
+  programId: string | null,
+): boolean {
+  if (programId == null || programId.length === 0) return false;
+  if (attributableProgramIds == null || attributableProgramIds.length === 0) {
+    return false;
+  }
+  return attributableProgramIds.includes(programId);
+}
 
+/** Membership via commercial stack's sole Kargain program-id owner. */
 export function isKargainProgramOnStack(
   stack: SvmCommercialActiveStack,
   programId: string | null,
 ): boolean {
-  if (programId == null || programId.length === 0) return false;
-  for (const field of KARGAIN_PROGRAM_FIELDS) {
-    const value = stack[field];
-    if (typeof value === "string" && value === programId) return true;
-  }
-  return false;
+  return isAttributableProgramId(svmKargainProgramIds(stack), programId);
 }
 
 function isSvmNativeIxError(value: unknown): value is SvmNativeIxError {
@@ -94,23 +95,13 @@ function isSvmNativeIxError(value: unknown): value is SvmNativeIxError {
 }
 
 /**
- * Pure structural parse. Custom(n) without attribution context → unattributed
- * when ordinal is known; prefer {@link parseAttributedSvmLandedInstructionError}.
- */
-export function parseSvmLandedInstructionError(
-  err: unknown,
-): SvmLandedInstructionError | null {
-  return parseAttributedSvmLandedInstructionError(err, null, null);
-}
-
-/**
  * Parse InstructionError; name Custom via Kargain table only when
- * `failingProgram` is on the commercial stack.
+ * `failingProgram` is in `attributableProgramIds`.
  */
 export function parseAttributedSvmLandedInstructionError(
   err: unknown,
   failingProgram: string | null,
-  stack: SvmCommercialActiveStack | null,
+  attributableProgramIds: readonly string[] | null,
 ): SvmLandedInstructionError | null {
   if (err == null || typeof err !== "object") return null;
   const ie = (err as { InstructionError?: unknown }).InstructionError;
@@ -126,8 +117,10 @@ export function parseAttributedSvmLandedInstructionError(
   if (variant && typeof variant === "object") {
     const custom = (variant as Record<string, unknown>).Custom;
     if (typeof custom === "number" && Number.isInteger(custom) && custom >= 0) {
-      const attributable =
-        stack != null && isKargainProgramOnStack(stack, failingProgram);
+      const attributable = isAttributableProgramId(
+        attributableProgramIds,
+        failingProgram,
+      );
       if (attributable) {
         const name = svmProgramErrorName(custom);
         if (name == null) {
@@ -149,4 +142,17 @@ export function parseAttributedSvmLandedInstructionError(
     }
   }
   return null;
+}
+
+/** Product confirm: stack → sole Kargain program-id list. */
+export function parseAttributedSvmLandedInstructionErrorOnStack(
+  err: unknown,
+  failingProgram: string | null,
+  stack: SvmCommercialActiveStack,
+): SvmLandedInstructionError | null {
+  return parseAttributedSvmLandedInstructionError(
+    err,
+    failingProgram,
+    svmKargainProgramIds(stack),
+  );
 }

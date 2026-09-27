@@ -1,10 +1,16 @@
 import type { SvmLandedInstructionError } from "@/lib/web3/svm-landed-error";
+import type { TxWriteGuardPayload } from "@/lib/web3/tx-write-availability";
 import type { WriteOutcome } from "@/lib/web3/write-outcome";
 
+/**
+ * Typed write refusal across every `runTx`.
+ * No arm carries a display `message` — owners classify thrown values;
+ * chrome sentences come from owner copy functions only.
+ */
 export type TxRefusal =
   | { kind: "wallet_rejected" }
-  | { kind: "pre_send"; message: string }
-  | { kind: "write_failed"; message: string }
+  | { kind: "guard_refused"; refusal: TxWriteGuardPayload }
+  | { kind: "write_refused"; error: unknown }
   | {
       kind: "expired";
       signature: string;

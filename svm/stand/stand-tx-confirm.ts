@@ -99,7 +99,8 @@ function asStandTransactionError(err: unknown): StandTransactionError {
 /**
  * Poll signature status until confirmed (or stronger).
  * Tip past lastValidBlockHeight → stand_blockhash_expired.
- * Signature err → landed_with_error (raw err; no stringify/reparse).
+ * Signature err → landed_with_error only at ≥ confirmed (so getTransaction
+ * logMessages are available for attributed Custom parse).
  */
 export async function confirmStandSignature(
   args: ConfirmStandSignatureArgs,
@@ -132,15 +133,15 @@ export async function confirmStandSignature(
     }
 
     const [row] = await ports.getSignatureStatuses([signature]);
-    if (row?.err) {
-      return {
-        kind: "landed_with_error",
-        signature,
-        err: asStandTransactionError(row.err),
-      };
-    }
     const status = row?.confirmationStatus;
     if (status === commitment || status === "finalized") {
+      if (row?.err) {
+        return {
+          kind: "landed_with_error",
+          signature,
+          err: asStandTransactionError(row.err),
+        };
+      }
       return {
         kind: "landed_ok",
         signature,

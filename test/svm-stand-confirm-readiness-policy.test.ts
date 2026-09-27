@@ -56,13 +56,13 @@ describe("svm-stand-confirm-readiness-policy", () => {
       true,
     );
 
-    // Non-expiry failure: signature err — landed_with_error, not expiry
+    // Non-expiry failure: signature err at ≥confirmed → landed_with_error, not expiry
     const failPorts = {
       getBlockHeight: async () => 50,
       getSignatureStatuses: async () => [
         {
           err: { InstructionError: [0, { Custom: 1 }] },
-          confirmationStatus: null,
+          confirmationStatus: "confirmed",
         },
       ],
       sleepMs: async () => {},
@@ -145,13 +145,16 @@ describe("svm-stand-confirm-readiness-policy", () => {
     assert.equal(noRetry.kind, "stand_blockhash_expired");
     assert.equal(sendCount, 1);
 
-    // Non-expiry must not retry — returns landed_with_error immediately
+    // Non-expiry must not retry — returns landed_with_error at confirmed
     sendCount = 0;
     const nonExpiry = await sendAndConfirmStandWithExpiryRetry({
       ports: {
         getBlockHeight: async () => 1,
         getSignatureStatuses: async () => [
-          { err: { InstructionError: [0, { Custom: 1 }] }, confirmationStatus: null },
+          {
+            err: { InstructionError: [0, { Custom: 1 }] },
+            confirmationStatus: "confirmed",
+          },
         ],
         sleepMs: async () => {},
         pollIntervalMs: 1,

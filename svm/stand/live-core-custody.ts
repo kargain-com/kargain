@@ -350,18 +350,29 @@ export async function runLiveCoreCustody(): Promise<LiveCoreCustodyResult> {
     ERR.AssetFrozen,
   );
 
-  const coreInvalidCode = await expectCustom(
+  // Skip freeze gate → mpl-core InvalidAuthority(9). Must NOT use expectCustom:
+  // Kargain ordinal 9 is NothingToRescue; Core Custom is custom_unattributed.
+  const coreInvalidObs = await expectStandTransactionRefusal({
     conn,
-    new Transaction().add(
+    transaction: new Transaction().add(
       ix(
         programId,
         ownerTransferKeys(assetFrozen, seller.publicKey, custodyPda, payer.publicKey, true),
         Buffer.concat([Buffer.from([IX.CoreTransferOwnerSkipFreeze]), tokenFrozen]),
       ),
     ),
-    [payer, seller],
-    CORE_INVALID_AUTHORITY,
-  );
+    signers: [payer, seller],
+    expected: {
+      kind: "custom_unattributed",
+      ordinal: CORE_INVALID_AUTHORITY,
+      failingProgram: CORE_ID.toBase58(),
+    },
+  });
+  assert.equal(coreInvalidObs.kind, "custom_unattributed");
+  const coreInvalidCode =
+    coreInvalidObs.kind === "custom_unattributed"
+      ? coreInvalidObs.ordinal
+      : -1;
 
   // ---- 5. Negatives ----
   // Wrong token: asset for tokenW, instruction encodes tokenX

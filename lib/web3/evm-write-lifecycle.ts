@@ -22,7 +22,7 @@ import {
 } from "@/lib/web3/tx-sync";
 import {
   txWriteAvailability,
-  txWriteRefusalMessage,
+  TxWriteGuardRefusal,
 } from "@/lib/web3/tx-write-availability";
 import {
   buildWriteOutcome,
@@ -117,7 +117,7 @@ export async function awaitEvmWriteReceipt({
 }: EvmReceiptAwaitOptions): Promise<TransactionReceipt> {
   const avail = txWriteAvailability(account, chainId);
   if (!avail.available) {
-    throw new Error(txWriteRefusalMessage(avail));
+    throw new TxWriteGuardRefusal(avail);
   }
   onPhase?.("confirming");
   return confirmTransaction(config, hash);
@@ -137,25 +137,23 @@ export async function runEvmWriteLifecycle({
 }: RunEvmWriteLifecycleOptions): Promise<WriteOutcome> {
   const avail = txWriteAvailability(account, chainId);
   if (!avail.available) {
-    throw new Error(txWriteRefusalMessage(avail));
+    throw new TxWriteGuardRefusal(avail);
   }
 
   onPhase?.("wallet");
   const targetChainId = resolveTargetChainId(chainId);
   if (avail.vm !== "evm") {
     // EVM lifecycle always targets an EVM stack — name the family explicitly.
-    throw new Error(
-      txWriteRefusalMessage({
-        available: false,
-        cause: "wrong_vm",
-        wanted: "evm",
-      }),
-    );
+    throw new TxWriteGuardRefusal({
+      available: false,
+      cause: "wrong_vm",
+      wanted: "evm",
+    });
   }
   if (avail.walletChainId !== targetChainId) {
     const switchAvail = evmSwitchChainAvailability(account);
     if (!switchAvail.available) {
-      throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
+      throw new TxWriteGuardRefusal(switchAvail);
     }
     await switchChain(chainId);
   }

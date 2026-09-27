@@ -14,10 +14,8 @@ import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import {
-  expectStandTransactionRefusal,
-  parseStandInstructionError,
-} from "../svm/stand/stand-tx-refusal.ts";
+import { parseAttributedSvmLandedInstructionError } from "../lib/web3/svm-landed-error.ts";
+import { expectStandTransactionRefusal } from "../svm/stand/stand-tx-refusal.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const STAND_DIR = join(ROOT, "svm/stand");
@@ -99,7 +97,30 @@ describe("svm-stand-tx-refusal-policy", () => {
     );
   });
 
-  it("custom_unattributed ordinal still matches InvalidReceiver expected (red→green)", async () => {
+  it("custom_unattributed fails when InvalidReceiver expected (names failingProgram)", async () => {
+    await assert.rejects(
+      () =>
+        expectStandTransactionRefusal({
+          outcome: async () => ({
+            kind: "landed_with_error",
+            signature: "sig",
+            err: { InstructionError: [0, { Custom: 144 }] },
+          }),
+          expected: { kind: "custom", name: "InvalidReceiver" },
+          // No attributable ids / logs → unattributed
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.match(err.message, /InvalidReceiver/);
+        assert.match(err.message, /custom_unattributed/);
+        assert.match(err.message, /program=/);
+        return true;
+      },
+    );
+  });
+
+  it("attributed Custom matches InvalidReceiver expected (red→green)", async () => {
+    const programId = "KarPass1111111111111111111111111111111111";
     const observed = await expectStandTransactionRefusal({
       outcome: async () => ({
         kind: "landed_with_error",
@@ -107,15 +128,42 @@ describe("svm-stand-tx-refusal-policy", () => {
         err: { InstructionError: [0, { Custom: 144 }] },
       }),
       expected: { kind: "custom", name: "InvalidReceiver" },
+      attributableProgramIds: [programId],
+      logMessages: [`Program ${programId} failed: custom program error: 0x90`],
     });
-    assert.equal(observed.kind, "custom_unattributed");
-    if (observed.kind === "custom_unattributed") {
+    assert.equal(observed.kind, "custom");
+    if (observed.kind === "custom") {
+      assert.equal(observed.name, "InvalidReceiver");
       assert.equal(observed.ordinal, 144);
     }
   });
 
+  it("custom_unattributed expected matches Core InvalidAuthority ordinal (red→green)", async () => {
+    const coreId = "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d";
+    const observed = await expectStandTransactionRefusal({
+      outcome: async () => ({
+        kind: "landed_with_error",
+        signature: "sig",
+        err: { InstructionError: [0, { Custom: 9 }] },
+      }),
+      expected: {
+        kind: "custom_unattributed",
+        ordinal: 9,
+        failingProgram: coreId,
+      },
+      attributableProgramIds: ["KarPass1111111111111111111111111111111111"],
+      logMessages: [`Program ${coreId} failed: custom program error: 0x9`],
+    });
+    assert.equal(observed.kind, "custom_unattributed");
+    if (observed.kind === "custom_unattributed") {
+      assert.equal(observed.ordinal, 9);
+      assert.equal(observed.failingProgram, coreId);
+    }
+  });
+
   it("wrong Custom name when InvalidReceiver expected fails with both names (red→green)", async () => {
-    // AssetFrozen = 137
+    // AssetFrozen = 137 — attributed so observed is named custom
+    const programId = "KarPass1111111111111111111111111111111111";
     await assert.rejects(
       () =>
         expectStandTransactionRefusal({
@@ -125,11 +173,15 @@ describe("svm-stand-tx-refusal-policy", () => {
             err: { InstructionError: [0, { Custom: 137 }] },
           }),
           expected: { kind: "custom", name: "InvalidReceiver" },
+          attributableProgramIds: [programId],
+          logMessages: [
+            `Program ${programId} failed: custom program error: 0x89`,
+          ],
         }),
       (err: unknown) => {
         assert.ok(err instanceof Error);
         assert.match(err.message, /InvalidReceiver/);
-        assert.match(err.message, /custom_unattributed\(137\)/);
+        assert.match(err.message, /AssetFrozen/);
         return true;
       },
     );
@@ -156,17 +208,21 @@ describe("svm-stand-tx-refusal-policy", () => {
     );
   });
 
-  it("parseStandInstructionError: structured InstructionError only; Display/JSON/nested invent null", () => {
+  it("parseAttributedSvmLandedInstructionError: structured InstructionError only; Display/JSON/nested invent null", () => {
     assert.deepEqual(
-      parseStandInstructionError({
-        InstructionError: [2, "InvalidSeeds"],
-      }),
+      parseAttributedSvmLandedInstructionError(
+        { InstructionError: [2, "InvalidSeeds"] },
+        null,
+        null,
+      ),
       { kind: "native", name: "InvalidSeeds", index: 2 },
     );
     assert.deepEqual(
-      parseStandInstructionError({
-        InstructionError: [0, { Custom: 144 }],
-      }),
+      parseAttributedSvmLandedInstructionError(
+        { InstructionError: [0, { Custom: 144 }] },
+        null,
+        null,
+      ),
       {
         kind: "custom_unattributed",
         ordinal: 144,
@@ -177,40 +233,52 @@ describe("svm-stand-tx-refusal-policy", () => {
 
     // Nested err wrapper (pre-structured invent) → null
     assert.equal(
-      parseStandInstructionError({
-        err: { InstructionError: [0, { Custom: 144 }] },
-      }),
+      parseAttributedSvmLandedInstructionError(
+        { err: { InstructionError: [0, { Custom: 144 }] } },
+        null,
+        null,
+      ),
       null,
     );
     // JSON-in-message invent → null
     assert.equal(
-      parseStandInstructionError(
+      parseAttributedSvmLandedInstructionError(
         new Error(
           'stand_tx_failed: signature=x err={"InstructionError":[1,"AccountAlreadyInitialized"]}',
         ),
+        null,
+        null,
       ),
       null,
     );
     // Free-text native name → null
     assert.equal(
-      parseStandInstructionError(new Error("expected InvalidSeeds")),
+      parseAttributedSvmLandedInstructionError(
+        new Error("expected InvalidSeeds"),
+        null,
+        null,
+      ),
       null,
     );
     // Solana ProgramError Display (preflight prose) must NOT invent index 0
     assert.equal(
-      parseStandInstructionError(
+      parseAttributedSvmLandedInstructionError(
         new Error(
           "Transaction simulation failed: Error processing Instruction 0: Provided seeds do not result in a valid address",
         ),
+        null,
+        null,
       ),
       null,
     );
     // AccountAlreadyInitialized Display phrase → null
     assert.equal(
-      parseStandInstructionError(
+      parseAttributedSvmLandedInstructionError(
         new Error(
           "Transaction simulation failed: Error processing Instruction 0: instruction requires an uninitialized account",
         ),
+        null,
+        null,
       ),
       null,
     );

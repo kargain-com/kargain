@@ -219,14 +219,9 @@ export async function runLivePermissionlessMint(): Promise<LivePermissionlessMin
     signers: [payer],
     expected: { kind: "custom", name: "InvalidReceiver" },
   });
-  assert.ok(
-    ownerIsGatewayObs.kind === "custom" ||
-      ownerIsGatewayObs.kind === "custom_unattributed",
-  );
+  assert.equal(ownerIsGatewayObs.kind, "custom");
   if (ownerIsGatewayObs.kind === "custom") {
     assert.equal(ownerIsGatewayObs.name, "InvalidReceiver");
-  } else {
-    assert.equal(ownerIsGatewayObs.ordinal, 144);
   }
   assert.equal(typeof ownerIsGatewayObs.index, "number");
   const ownerIsGateway = "InvalidReceiver" as const;

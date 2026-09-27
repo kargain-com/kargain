@@ -460,8 +460,12 @@ export async function expectCustom(
     expected: { kind: "custom", name },
   });
   assert.ok(
-    observed.kind === "custom" || observed.kind === "custom_unattributed",
-    `expected custom ordinal ${code}, got ${observed.kind}`,
+    observed.kind === "custom",
+    `expected attributed custom ordinal ${code}, got ${observed.kind}${
+      observed.kind === "custom_unattributed"
+        ? ` program=${observed.failingProgram ?? "null"}`
+        : ""
+    }`,
   );
   assert.equal(observed.ordinal, code);
   return observed.ordinal;

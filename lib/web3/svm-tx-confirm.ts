@@ -3,14 +3,15 @@
  * Finality: commitment `confirmed` — not caller-supplied.
  *
  * Outcomes: landed_ok / landed_with_error (only at ≥ confirmed with slot),
- * expired (block height past submission lifetime), status_unknown (transport ceiling).
- * Never invents slot `0n`; never treats `processed` err as landed.
+ * expired (no status at all and confirmed height past submission lifetime),
+ * status_unknown (transport ceiling). Never invents slot `0n`; never treats
+ * `processed` as expired or landed.
  */
 
 import type { SvmCommercialActiveStack } from "@/lib/web3/commercial-active";
 import {
   failingProgramFromLogMessages,
-  parseAttributedSvmLandedInstructionError,
+  parseAttributedSvmLandedInstructionErrorOnStack,
   type SvmLandedInstructionError,
 } from "@/lib/web3/svm-landed-error";
 import type { SvmWriteSubmission } from "@/lib/web3/write-outcome";
@@ -115,6 +116,10 @@ export type SvmConfirmTransport = {
 
 /**
  * Polling confirm port. Transport stays outside.
+ *
+ * Per poll: read confirmed block height first, then signature status.
+ * `expired` only when the node returns no status at all and that earlier
+ * height is past the submission lifetime. `processed` keeps polling.
  */
 export function createSvmTxConfirmPort(
   opts: SvmConfirmTransport & { stack: SvmCommercialActiveStack },
@@ -126,8 +131,10 @@ export function createSvmTxConfirmPort(
       const { signature, lastValidBlockHeight } = submission;
       const deadline = Date.now() + timeoutMs;
       while (Date.now() < deadline) {
+        const height = await opts.getBlockHeight();
         const [row] = await opts.getSignatureStatuses([signature]);
-        const status = row?.confirmationStatus;
+        const status = row?.confirmationStatus ?? null;
+
         if (isConfirmedOrStronger(status)) {
           const slot = observedSlot(row?.slot);
           if (slot == null) {
@@ -137,7 +144,7 @@ export function createSvmTxConfirmPort(
           if (row?.err != null) {
             const logs = await opts.getTransactionLogMessages(signature);
             const failingProgram = failingProgramFromLogMessages(logs);
-            const landed = parseAttributedSvmLandedInstructionError(
+            const landed = parseAttributedSvmLandedInstructionErrorOnStack(
               row.err,
               failingProgram,
               opts.stack,
@@ -153,8 +160,14 @@ export function createSvmTxConfirmPort(
           }
           return { kind: "landed_ok", signature, slot };
         }
-        // Not yet confirmed — check expiry via confirmed block height.
-        const height = await opts.getBlockHeight();
+
+        // Any present sub-confirmed status (incl. processed) → keep polling.
+        if (status != null) {
+          await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+          continue;
+        }
+
+        // No status at all — expire only when height (read first) is past lifetime.
         if (height > lastValidBlockHeight) {
           return {
             kind: "expired",

@@ -107,12 +107,26 @@ export type EvmCommercialActiveStack = EvmCommercialActiveStackShared & {
 };
 
 /**
+ * Commercial Kargain program ids on an SVM stack (attribution set for Custom).
+ * Compose {@link SvmCommercialActiveStack} from this sub-shape so a new program
+ * field is a type change here — not a silent hand-list drift.
+ */
+export type SvmKargainProgramIds = {
+  karPassport: string;
+  karProPass: string;
+  karProStaking: string;
+  bridgeGateway: string;
+  fixedPriceConsignment?: string;
+  ascendingConsignment?: string;
+};
+
+/**
  * SVM commercial stack shape (SPEC §13.1 reserved-band namespace).
  * Addresses are canonical base58 program / account ids (normalize via
  * `protocol-address`). No EIP-155 `chainId` — registry key is `namespace` alone.
  * Live commercial row carries program ids plus per-program start slots in `blocks`.
  */
-export type SvmCommercialActiveStack = {
+export type SvmCommercialActiveStack = SvmKargainProgramIds & {
   vm: "svm";
   namespace: KargainNamespace;
   nativeUnit: CommercialNativeUnit;
@@ -124,9 +138,6 @@ export type SvmCommercialActiveStack = {
    * {@link walletStandardChainOf} — never invent a cluster default.
    */
   walletStandardChain: WalletStandardChain;
-  karPassport: string;
-  karProPass: string;
-  karProStaking: string;
   /**
    * Admitted SPL USDC mint (Circle Devnet: `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`).
    * Not a native sentinel — R11.
@@ -139,10 +150,8 @@ export type SvmCommercialActiveStack = {
   timelock: string;
   /** Challenge forfeit sink (base58). */
   forfeitRecipient: string;
-  bridgeGateway: string;
-  fixedPriceConsignment?: string;
+  /** Proxy/impl slots — not instruction programs for Custom attribution. */
   fixedPriceConsignmentImpl?: string;
-  ascendingConsignment?: string;
   ascendingConsignmentImpl?: string;
   /** LayerZero EndpointV2 program id (base58). */
   layerZeroEndpoint: string;
@@ -151,6 +160,28 @@ export type SvmCommercialActiveStack = {
   upgradeAuthority: string;
   blocks: CommercialActiveBlocks;
 };
+
+/**
+ * Exhaustive Kargain program ids on a commercial SVM stack (present optionals only).
+ * Sole owner for Custom attribution membership.
+ */
+export function svmKargainProgramIds(
+  stack: SvmKargainProgramIds,
+): readonly string[] {
+  const ids: string[] = [
+    stack.karPassport,
+    stack.karProPass,
+    stack.karProStaking,
+    stack.bridgeGateway,
+  ];
+  if (stack.fixedPriceConsignment != null) {
+    ids.push(stack.fixedPriceConsignment);
+  }
+  if (stack.ascendingConsignment != null) {
+    ids.push(stack.ascendingConsignment);
+  }
+  return ids;
+}
 
 /** Discriminated commercial stack — EVM and SVM rows share one registry. */
 export type CommercialActiveStack = EvmCommercialActiveStack | SvmCommercialActiveStack;

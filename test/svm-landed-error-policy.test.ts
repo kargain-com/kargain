@@ -12,9 +12,9 @@ import { fileURLToPath } from "node:url";
 import {
   failingProgramFromLogMessages,
   parseAttributedSvmLandedInstructionError,
-  parseSvmLandedInstructionError,
   SVM_NATIVE_IX_ERRORS,
 } from "@/lib/web3/svm-landed-error";
+import { svmKargainProgramIds } from "@/lib/web3/commercial-active";
 import { FIXTURE_SVM_STACK } from "./fixtures/commercial-svm-stack.ts";
 import {
   countProductScanTargets,
@@ -40,24 +40,30 @@ function findBannedIdentity(src: string): string[] {
   return hits;
 }
 
-describe("parseSvmLandedInstructionError", () => {
+describe("parseAttributedSvmLandedInstructionError", () => {
   it("native InvalidSeeds / AccountAlreadyInitialized / MRS with index", () => {
     assert.deepEqual(
-      parseSvmLandedInstructionError({
-        InstructionError: [1, "InvalidSeeds"],
-      }),
+      parseAttributedSvmLandedInstructionError(
+        { InstructionError: [1, "InvalidSeeds"] },
+        null,
+        null,
+      ),
       { kind: "native", name: "InvalidSeeds", index: 1 },
     );
     assert.deepEqual(
-      parseSvmLandedInstructionError({
-        InstructionError: [0, "AccountAlreadyInitialized"],
-      }),
+      parseAttributedSvmLandedInstructionError(
+        { InstructionError: [0, "AccountAlreadyInitialized"] },
+        null,
+        null,
+      ),
       { kind: "native", name: "AccountAlreadyInitialized", index: 0 },
     );
     assert.deepEqual(
-      parseSvmLandedInstructionError({
-        InstructionError: [3, "MissingRequiredSignature"],
-      }),
+      parseAttributedSvmLandedInstructionError(
+        { InstructionError: [3, "MissingRequiredSignature"] },
+        null,
+        null,
+      ),
       { kind: "native", name: "MissingRequiredSignature", index: 3 },
     );
     assert.deepEqual(SVM_NATIVE_IX_ERRORS, [
@@ -67,11 +73,13 @@ describe("parseSvmLandedInstructionError", () => {
     ]);
   });
 
-  it("bare Custom ordinal → custom_unattributed (not named without stack)", () => {
+  it("Custom without attributable ids → custom_unattributed (not named)", () => {
     assert.deepEqual(
-      parseSvmLandedInstructionError({
-        InstructionError: [0, { Custom: 144 }],
-      }),
+      parseAttributedSvmLandedInstructionError(
+        { InstructionError: [0, { Custom: 144 }] },
+        null,
+        null,
+      ),
       {
         kind: "custom_unattributed",
         ordinal: 144,
@@ -80,9 +88,11 @@ describe("parseSvmLandedInstructionError", () => {
       },
     );
     assert.deepEqual(
-      parseSvmLandedInstructionError({
-        InstructionError: [0, { Custom: 999_999 }],
-      }),
+      parseAttributedSvmLandedInstructionError(
+        { InstructionError: [0, { Custom: 999_999 }] },
+        null,
+        [],
+      ),
       {
         kind: "custom_unattributed",
         ordinal: 999_999,
@@ -92,13 +102,14 @@ describe("parseSvmLandedInstructionError", () => {
     );
   });
 
-  it("parseAttributedSvmLandedInstructionError: Kargain program → named; System → unattributed", () => {
+  it("Kargain program id set → named; System → unattributed", () => {
     const err = { InstructionError: [0, { Custom: 144 }] };
+    const ids = svmKargainProgramIds(FIXTURE_SVM_STACK);
     assert.deepEqual(
       parseAttributedSvmLandedInstructionError(
         err,
         FIXTURE_SVM_STACK.karPassport,
-        FIXTURE_SVM_STACK,
+        ids,
       ),
       { kind: "custom", name: "InvalidReceiver", ordinal: 144, index: 0 },
     );
@@ -106,7 +117,7 @@ describe("parseSvmLandedInstructionError", () => {
       parseAttributedSvmLandedInstructionError(
         { InstructionError: [0, { Custom: 1 }] },
         "11111111111111111111111111111111",
-        FIXTURE_SVM_STACK,
+        ids,
       ),
       {
         kind: "custom_unattributed",
@@ -138,14 +149,27 @@ describe("parseSvmLandedInstructionError", () => {
   });
 
   it("non-instruction TransactionError → null (never invent index)", () => {
-    assert.equal(parseSvmLandedInstructionError({ InsufficientFundsForFee: null }), null);
     assert.equal(
-      parseSvmLandedInstructionError(new Error("InvalidSeeds")),
+      parseAttributedSvmLandedInstructionError(
+        { InsufficientFundsForFee: null },
+        null,
+        null,
+      ),
       null,
     );
     assert.equal(
-      parseSvmLandedInstructionError(
+      parseAttributedSvmLandedInstructionError(
+        new Error("InvalidSeeds"),
+        null,
+        null,
+      ),
+      null,
+    );
+    assert.equal(
+      parseAttributedSvmLandedInstructionError(
         JSON.stringify({ InstructionError: [0, "InvalidSeeds"] }),
+        null,
+        null,
       ),
       null,
     );
@@ -153,10 +177,11 @@ describe("parseSvmLandedInstructionError", () => {
 });
 
 describe("stand + product consume lib reader", () => {
-  it("stand-tx-refusal imports parseSvmLandedInstructionError; no local InstructionError body", () => {
+  it("stand-tx-refusal imports parseAttributedSvmLandedInstructionError; no local InstructionError body", () => {
     const src = readFileSync(path.join(ROOT, STAND_REFUSAL), "utf8");
-    assert.match(src, /parseSvmLandedInstructionError/);
+    assert.match(src, /parseAttributedSvmLandedInstructionError/);
     assert.match(src, /svm-landed-error/);
+    assert.doesNotMatch(src, /parseSvmLandedInstructionError/);
     assert.doesNotMatch(
       src,
       /function\s+parseStandInstructionError\s*\(/,

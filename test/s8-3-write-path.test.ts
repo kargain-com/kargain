@@ -256,6 +256,96 @@ describe("svm tx confirm owner", () => {
     assert.ok(outcome.error != null);
   });
 
+  it("createSvmTxConfirmPort: processed + height past lifetime → not expired (keep polling)", async () => {
+    const { createSvmTxConfirmPort } = await import(
+      "../lib/web3/svm-tx-confirm.ts"
+    );
+    let polls = 0;
+    const port = createSvmTxConfirmPort({
+      stack: FIXTURE_SVM_STACK,
+      getSignatureStatuses: async () => {
+        polls += 1;
+        return [
+          {
+            confirmationStatus: "processed",
+            err: { InstructionError: [0, { Custom: 144 }] },
+            slot: 7,
+          },
+        ];
+      },
+      getBlockHeight: async () => 200n,
+      getTransactionLogMessages: async () => null,
+      pollIntervalMs: 5,
+      timeoutMs: 40,
+    });
+    const outcome = await port.confirmSubmission({
+      vm: "svm",
+      signature: "c".repeat(64),
+      lastValidBlockHeight: 100n,
+    });
+    assert.notEqual(outcome.kind, "expired");
+    assert.equal(outcome.kind, "status_unknown");
+    assert.ok(polls >= 2, "processed must keep polling even when height is past");
+  });
+
+  it("createSvmTxConfirmPort: no status with height ≤ lifetime then confirmed → landed_ok", async () => {
+    const { createSvmTxConfirmPort } = await import(
+      "../lib/web3/svm-tx-confirm.ts"
+    );
+    let polls = 0;
+    const port = createSvmTxConfirmPort({
+      stack: FIXTURE_SVM_STACK,
+      getSignatureStatuses: async () => {
+        polls += 1;
+        if (polls === 1) return [null];
+        return [
+          {
+            confirmationStatus: "confirmed",
+            err: null,
+            slot: 55,
+          },
+        ];
+      },
+      getBlockHeight: async () => 50n,
+      getTransactionLogMessages: async () => null,
+      pollIntervalMs: 5,
+      timeoutMs: 500,
+    });
+    const outcome = await port.confirmSubmission({
+      vm: "svm",
+      signature: "e".repeat(64),
+      lastValidBlockHeight: 100n,
+    });
+    assert.equal(outcome.kind, "landed_ok");
+    if (outcome.kind === "landed_ok") {
+      assert.equal(outcome.slot, 55n);
+    }
+  });
+
+  it("createSvmTxConfirmPort: no status with height past lastValid → expired", async () => {
+    const { createSvmTxConfirmPort } = await import(
+      "../lib/web3/svm-tx-confirm.ts"
+    );
+    const port = createSvmTxConfirmPort({
+      stack: FIXTURE_SVM_STACK,
+      getSignatureStatuses: async () => [null],
+      getBlockHeight: async () => 101n,
+      getTransactionLogMessages: async () => null,
+      pollIntervalMs: 5,
+      timeoutMs: 500,
+    });
+    const outcome = await port.confirmSubmission({
+      vm: "svm",
+      signature: "d".repeat(64),
+      lastValidBlockHeight: 100n,
+    });
+    assert.equal(outcome.kind, "expired");
+    if (outcome.kind === "expired") {
+      assert.equal(outcome.lastValidBlockHeight, 100n);
+      assert.equal(outcome.observedBlockHeight, 101n);
+    }
+  });
+
   it("createSvmTxConfirmPort: processed err does not land (only ≥ confirmed)", async () => {
     const { createSvmTxConfirmPort } = await import(
       "../lib/web3/svm-tx-confirm.ts"
@@ -280,35 +370,11 @@ describe("svm tx confirm owner", () => {
     });
     const outcome = await port.confirmSubmission({
       vm: "svm",
-      signature: "c".repeat(64),
+      signature: "c2".repeat(32),
       lastValidBlockHeight: 100n,
     });
     assert.equal(outcome.kind, "status_unknown");
     assert.ok(polls >= 2, "processed-only err must keep polling, not land");
-  });
-
-  it("createSvmTxConfirmPort: block height past lastValid → expired", async () => {
-    const { createSvmTxConfirmPort } = await import(
-      "../lib/web3/svm-tx-confirm.ts"
-    );
-    const port = createSvmTxConfirmPort({
-      stack: FIXTURE_SVM_STACK,
-      getSignatureStatuses: async () => [null],
-      getBlockHeight: async () => 101n,
-      getTransactionLogMessages: async () => null,
-      pollIntervalMs: 5,
-      timeoutMs: 500,
-    });
-    const outcome = await port.confirmSubmission({
-      vm: "svm",
-      signature: "d".repeat(64),
-      lastValidBlockHeight: 100n,
-    });
-    assert.equal(outcome.kind, "expired");
-    if (outcome.kind === "expired") {
-      assert.equal(outcome.lastValidBlockHeight, 100n);
-      assert.equal(outcome.observedBlockHeight, 101n);
-    }
   });
 
   it("createSvmTxConfirmPort: confirmed without slot keeps polling → status_unknown (never 0n)", async () => {

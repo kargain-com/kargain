@@ -36,7 +36,6 @@ import {
   svmConfirmStatusUnknownCopy,
 } from "@/lib/web3/svm-confirm-copy";
 import {
-  parseSvmLandedInstructionError,
   type SvmLandedInstructionError,
 } from "@/lib/web3/svm-landed-error";
 import type { TxRefusal } from "@/lib/web3/tx-refusal";
@@ -56,6 +55,7 @@ import { wagmiChainId } from "@/lib/web3/supported-chains";
 import type { WriteSubmission } from "@/lib/web3/write-outcome";
 import {
   txWriteAvailabilityForCapability,
+  txWriteGuardRefusalCopy,
   txWriteRefusalMessage,
 } from "@/lib/web3/tx-write-availability";
 import { surfaceSupportCauseCopy } from "@/lib/web3/surface-support";
@@ -289,21 +289,6 @@ export function mintCauseFromLandedClassification(
   return { cause: "send_failed", copy: classified.copy };
 }
 
-/**
- * Parse a raw confirm error blob then classify against fresh next_token_id.
- */
-export function classifyMintLandedErrorFromRaw(
-  err: unknown,
-  plannedNextTokenId: Uint8Array,
-  freshNextTokenId: Uint8Array,
-): ClassifyMintLandedCause {
-  return classifyMintLandedError(
-    parseSvmLandedInstructionError(err),
-    plannedNextTokenId,
-    freshNextTokenId,
-  );
-}
-
 async function readFreshNextTokenId(input: {
   configAddress: string;
   fetchAccountData?: FetchSvmAccountDataFn;
@@ -324,11 +309,12 @@ async function readFreshNextTokenId(input: {
 }
 
 /**
- * Map a {@link TxRefusal} (or typed send throw) to mint cause + owner sentence.
+ * Map a {@link TxRefusal} to mint cause + owner sentence.
  * Wizard branches on causes only — no RPC, no `"plan" in` probes.
  *
  * Landed path: InvalidSeeds + advanced next → mint_sequence_advanced.
  * Preflight/send refuse: advanced next alone → mint_sequence_advanced.
+ * Classify `write_refused.error` only via typed guards — never err.message.
  */
 export async function resolveMintRefusal(input: {
   plan: PlanMintPassportResult & { ok: true };
@@ -355,19 +341,38 @@ export async function resolveMintRefusal(input: {
       copy: mintPassportCauseCopy("status_unknown"),
     };
   }
+  if (refusal.kind === "guard_refused") {
+    return {
+      cause: "send_failed",
+      copy: txWriteGuardRefusalCopy(refusal.refusal),
+    };
+  }
 
   if (input.plan.vm !== "svm") {
+    // EVM cannot produce an SVM landed confirm Outcome.
     if (refusal.kind === "landed_with_error") {
-      return mintCauseFromLandedClassification(
-        classifyMintLandedError(refusal.landed, new Uint8Array(32), new Uint8Array(32)),
-      );
+      return {
+        cause: "unmapped_program_error",
+        copy: mintPassportCauseCopy("unmapped_program_error"),
+      };
+    }
+    if (refusal.kind === "write_refused") {
+      if (isWalletRejection(refusal.error)) {
+        return {
+          cause: "wallet_rejected",
+          copy: mintPassportCauseCopy("wallet_rejected"),
+        };
+      }
+      if (isMintPassportSendRefusal(refusal.error)) {
+        return {
+          cause: refusal.error.mintCause,
+          copy: mintPassportCauseCopy(refusal.error.mintCause),
+        };
+      }
     }
     return {
       cause: "send_failed",
-      copy:
-        refusal.kind === "write_failed" || refusal.kind === "pre_send"
-          ? refusal.message
-          : mintPassportCauseCopy("send_failed"),
+      copy: mintPassportCauseCopy("send_failed"),
     };
   }
 
@@ -390,13 +395,22 @@ export async function resolveMintRefusal(input: {
     );
   }
 
-  // write_failed / pre_send — send or preflight refused.
-  if (refusal.kind === "write_failed" && isMintPassportCause(refusal.message)) {
-    return {
-      cause: refusal.message,
-      copy: mintPassportCauseCopy(refusal.message),
-    };
+  // write_refused — send or preflight threw a typed value.
+  if (refusal.kind === "write_refused") {
+    if (isWalletRejection(refusal.error)) {
+      return {
+        cause: "wallet_rejected",
+        copy: mintPassportCauseCopy("wallet_rejected"),
+      };
+    }
+    if (isMintPassportSendRefusal(refusal.error)) {
+      return {
+        cause: refusal.error.mintCause,
+        copy: mintPassportCauseCopy(refusal.error.mintCause),
+      };
+    }
   }
+
   const fresh = await readFreshNextTokenId({
     configAddress,
     fetchAccountData: input.fetchAccountData,
@@ -411,39 +425,6 @@ export async function resolveMintRefusal(input: {
     cause: "send_failed",
     copy: mintPassportCauseCopy("send_failed"),
   };
-}
-
-function isMintPassportCause(value: string): value is MintPassportCause {
-  return Object.prototype.hasOwnProperty.call(MINT_PASSPORT_CAUSE_COPY, value);
-}
-
-/**
- * @deprecated Prefer {@link resolveMintRefusal}.
- * After a landed confirm refusal: fresh config read + classify.
- */
-export async function resolveMintLandedConfirmRefusal(input: {
-  error: unknown;
-  plannedNextTokenId: Uint8Array;
-  configAddress: string;
-  fetchAccountData?: FetchSvmAccountDataFn;
-}): Promise<{ cause: MintPassportCause; copy: string }> {
-  const fresh = await readFreshNextTokenId({
-    configAddress: input.configAddress,
-    fetchAccountData: input.fetchAccountData,
-  });
-  if (!fresh.ok) {
-    return {
-      cause: fresh.cause,
-      copy: mintPassportCauseCopy(fresh.cause),
-    };
-  }
-  return mintCauseFromLandedClassification(
-    classifyMintLandedErrorFromRaw(
-      input.error,
-      input.plannedNextTokenId,
-      fresh.nextTokenId,
-    ),
-  );
 }
 
 function refusePlan(
@@ -758,8 +739,8 @@ export async function sendMintPassport(input: {
 
 /**
  * Typed throw for send refusals inside `runTx` writeFn.
- * `message` is the {@link MintPassportCause} token (not the sentence) so
- * {@link resolveMintRefusal} can recover the cause from write_failed.
+ * Carries {@link MintPassportCause}; {@link resolveMintRefusal} reads
+ * {@link MintPassportSendRefusal.mintCause} from `write_refused.error`.
  */
 export class MintPassportSendRefusal extends Error {
   readonly mintCause: MintPassportCause;

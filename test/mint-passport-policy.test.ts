@@ -360,4 +360,78 @@ describe("mint confirm cause copy consumes svm-confirm-copy owner", () => {
     assert.equal(unknown.cause, "status_unknown");
     assert.equal(unknown.copy, svmConfirmStatusUnknownCopy());
   });
+
+  it("EVM write_refused never returns raw Error.message as copy (raw-text leak plant)", async () => {
+    const long =
+      "ContractFunctionExecutionError: execution reverted: SomeLongViemRevertDetailThatMustNotReachFormCopy";
+    const plan = {
+      ok: true as const,
+      vm: "evm" as const,
+      call: {
+        address: "0x0000000000000000000000000000000000000001" as `0x${string}`,
+        abi: [] as never,
+        functionName: "mintPassport" as const,
+        args: [
+          "0x0000000000000000000000000000000000000002" as `0x${string}`,
+          "ar://x",
+        ] as [`0x${string}`, string],
+        chainId: 84532,
+      },
+    };
+    const mapped = await resolveMintRefusal({
+      plan,
+      refusal: {
+        kind: "write_refused",
+        error: new Error(long),
+      },
+    });
+    assert.equal(mapped.cause, "send_failed");
+    assert.equal(mapped.copy, mintPassportCauseCopy("send_failed"));
+    assert.notEqual(mapped.copy, long);
+    assert.doesNotMatch(mapped.copy, /ContractFunctionExecutionError/);
+  });
+
+  it("EVM landed_with_error is invariant → unmapped; no invented token ids", async () => {
+    const plan = {
+      ok: true as const,
+      vm: "evm" as const,
+      call: {
+        address: "0x0000000000000000000000000000000000000001" as `0x${string}`,
+        abi: [] as never,
+        functionName: "mintPassport" as const,
+        args: [
+          "0x0000000000000000000000000000000000000002" as `0x${string}`,
+          "ar://x",
+        ] as [`0x${string}`, string],
+        chainId: 84532,
+      },
+    };
+    const mapped = await resolveMintRefusal({
+      plan,
+      refusal: {
+        kind: "landed_with_error",
+        signature: "sig",
+        slot: 1n,
+        error: { InstructionError: [0, "InvalidSeeds"] },
+        failingProgram: null,
+        landed: { kind: "native", name: "InvalidSeeds", index: 0 },
+      },
+    });
+    assert.equal(mapped.cause, "unmapped_program_error");
+    assert.equal(mapped.copy, mintPassportCauseCopy("unmapped_program_error"));
+  });
+
+  it("dead exports resolveMintLandedConfirmRefusal / classifyMintLandedErrorFromRaw are absent", () => {
+    const owner = readFileSync(
+      path.join(ROOT, "lib/passport/mint-passport.ts"),
+      "utf8",
+    );
+    assert.doesNotMatch(owner, /resolveMintLandedConfirmRefusal/);
+    assert.doesNotMatch(owner, /classifyMintLandedErrorFromRaw/);
+    assert.doesNotMatch(owner, /isMintPassportCause/);
+    assert.doesNotMatch(
+      owner,
+      /classifyMintLandedError\s*\(\s*[^,]+,\s*new Uint8Array\s*\(\s*32\s*\)/,
+    );
+  });
 });
