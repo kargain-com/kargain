@@ -392,6 +392,10 @@ export async function runLiveCoreCustody(): Promise<LiveCoreCustodyResult> {
   });
   assert.equal(wrongTokenObs.kind, "native");
   assert.equal(wrongTokenObs.name, "InvalidSeeds");
+  assert.equal(typeof wrongTokenObs.index, "number");
+  console.warn(
+    `[svm-stand] core-custody refusal InvalidSeeds@${wrongTokenObs.index}`,
+  );
   const wrongToken = "InvalidSeeds" as const;
 
   // Foreign TransferDelegate authority
@@ -455,6 +459,10 @@ export async function runLiveCoreCustody(): Promise<LiveCoreCustodyResult> {
   });
   assert.equal(unsignedOwnerObs.kind, "native");
   assert.equal(unsignedOwnerObs.name, "MissingRequiredSignature");
+  assert.equal(typeof unsignedOwnerObs.index, "number");
+  console.warn(
+    `[svm-stand] core-custody refusal MissingRequiredSignature@${unsignedOwnerObs.index}`,
+  );
   const unsignedOwner = "MissingRequiredSignature" as const;
 
   return withStandArtifactBindings({

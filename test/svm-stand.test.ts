@@ -190,13 +190,16 @@ describe("svm-stand live Core CPI round trip", () => {
       assert.equal(perm.freezeAuthority, perm.gatewayFreeze);
       assert.equal(perm.refusals.foreignFreeze, "InvalidSeeds");
       assert.equal(perm.refusals.ownerIsGateway, "InvalidReceiver");
+      assert.equal(typeof perm.refusals.foreignFreezeIndex, "number");
+      assert.equal(typeof perm.refusals.ownerIsGatewayIndex, "number");
       assert.equal(
         typeof perm.artifacts.programs.kar_gateway.overridden,
         "boolean",
       );
       console.warn(
         `\n[svm-stand] permissionless-mint PASS payer≠authority freeze=${perm.freezeAuthority.slice(0, 8)}… ` +
-          `refusals InvalidSeeds+InvalidReceiver gateway.overridden=${perm.artifacts.programs.kar_gateway.overridden}\n`,
+          `refusals InvalidSeeds@${perm.refusals.foreignFreezeIndex}+InvalidReceiver@${perm.refusals.ownerIsGatewayIndex} ` +
+          `gateway.overridden=${perm.artifacts.programs.kar_gateway.overridden}\n`,
       );
 
       const verifier = await runLiveVerifierFlow({ reuseInited: true });

@@ -683,13 +683,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "svm-stand-confirm-readiness",
     owner:
       "svm/stand/stand-tx-confirm.ts · svm/stand/stand-validator-ready.ts · svm/stand/run-stand.sh",
-    rule: "Stand confirms by signature status against lastValidBlockHeight; stand_blockhash_expired retries bounded only; RPC+websocket readiness named refuse (no sleep-as-ready); isolation refuses ports in use / Hardhat :8545 unless STAND_EVM",
+    rule: "StandConfirmOutcome from signature status vs lastValidBlockHeight (landed_ok | landed_with_error raw err | stand_blockhash_expired | timeout | tx_failed); expiry retries bounded only; refusal facade skipPreflight; typed StandConnection/Transaction (no any / eslint-disable in svm/stand); RPC+websocket readiness named refuse; isolation refuses ports in use / Hardhat :8545 unless STAND_EVM",
     guardTests: ["svm-stand-confirm-readiness-policy.test.ts"],
   },
   {
     id: "svm-stand-tx-refusal",
     owner: "svm/stand/stand-tx-refusal.ts",
-    rule: "Sole stand InstructionError refusal owner: success checked outside catch; native = InstructionError discriminant or exact Solana ProgramError Display phrase (never /InvalidSeeds/ free-text); Custom via product ordinal extract + svmProgramErrorName",
+    rule: "Sole stand InstructionError refusal owner: expectStandTransactionRefusal branches on StandConfirmOutcome; success = landed_ok outside catch; native/custom from structured InstructionError only (observed index; never Display phrase / JSON-in-message / invent index 0); confirm refusals named never mapped to program errors",
     guardTests: ["svm-stand-tx-refusal-policy.test.ts"],
   },
   {

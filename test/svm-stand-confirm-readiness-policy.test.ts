@@ -1,7 +1,8 @@
 /**
  * S8-E 7c — stand confirm + readiness controls (in-memory; no live validator).
  *
- * Red→green: blockhash expiry named + bounded retry; websocket-not-ready named.
+ * Red→green: blockhash expiry named + bounded retry; signature err →
+ * landed_with_error (Outcome API); websocket-not-ready named.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -12,9 +13,9 @@ import { fileURLToPath } from "node:url";
 import {
   STAND_BLOCKHASH_EXPIRED,
   STAND_BLOCKHASH_EXPIRY_MAX_RETRIES,
-  STAND_TX_FAILED,
   confirmStandSignature,
   isStandBlockhashExpired,
+  isStandBlockhashExpiredOutcome,
   sendAndConfirmStandWithExpiryRetry,
 } from "../svm/stand/stand-tx-confirm.ts";
 import {
@@ -25,7 +26,7 @@ import {
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("svm-stand-confirm-readiness-policy", () => {
-  it("expired blockhash refuses by name; non-expiry never retries (red→green)", async () => {
+  it("expired blockhash returns named outcome; signature err → landed_with_error (red→green)", async () => {
     let height = 100;
     const ports = {
       getBlockHeight: async () => height,
@@ -42,47 +43,43 @@ describe("svm-stand-confirm-readiness-policy", () => {
       timeoutMs: 50,
     };
 
-    await assert.rejects(
-      () =>
-        confirmStandSignature({
-          signature: "sigExpired",
-          blockhash: "bh1",
-          lastValidBlockHeight: 90,
-          ports,
-        }),
-      (err: unknown) => {
-        assert.ok(err instanceof Error);
-        assert.match(err.message, new RegExp(STAND_BLOCKHASH_EXPIRED));
-        assert.ok(isStandBlockhashExpired(err));
-        return true;
-      },
+    const expired = await confirmStandSignature({
+      signature: "sigExpired",
+      blockhash: "bh1",
+      lastValidBlockHeight: 90,
+      ports,
+    });
+    assert.equal(expired.kind, "stand_blockhash_expired");
+    assert.ok(isStandBlockhashExpiredOutcome(expired));
+    assert.equal(
+      isStandBlockhashExpired(new Error(STAND_BLOCKHASH_EXPIRED)),
+      true,
     );
 
-    // Non-expiry failure: signature err — must not be classified as expiry
+    // Non-expiry failure: signature err — landed_with_error, not expiry
     const failPorts = {
       getBlockHeight: async () => 50,
       getSignatureStatuses: async () => [
-        { err: { InstructionError: [0, "Custom"] }, confirmationStatus: null },
+        {
+          err: { InstructionError: [0, { Custom: 1 }] },
+          confirmationStatus: null,
+        },
       ],
       sleepMs: async () => {},
       pollIntervalMs: 1,
       timeoutMs: 1000,
     };
-    await assert.rejects(
-      () =>
-        confirmStandSignature({
-          signature: "sigFail",
-          blockhash: "bh2",
-          lastValidBlockHeight: 999,
-          ports: failPorts,
-        }),
-      (err: unknown) => {
-        assert.ok(err instanceof Error);
-        assert.match(err.message, new RegExp(STAND_TX_FAILED));
-        assert.equal(isStandBlockhashExpired(err), false);
-        return true;
-      },
-    );
+    const failed = await confirmStandSignature({
+      signature: "sigFail",
+      blockhash: "bh2",
+      lastValidBlockHeight: 999,
+      ports: failPorts,
+    });
+    assert.equal(failed.kind, "landed_with_error");
+    assert.equal(isStandBlockhashExpiredOutcome(failed), false);
+    if (failed.kind === "landed_with_error") {
+      assert.deepEqual(failed.err.InstructionError, [0, { Custom: 1 }]);
+    }
   });
 
   it("blockhash expiry retries bounded then succeeds; other failures do not retry", async () => {
@@ -123,57 +120,54 @@ describe("svm-stand-confirm-readiness-policy", () => {
         };
       },
     });
-    assert.equal(ok.signature, "sig-final");
+    assert.equal(ok.kind, "landed_ok");
+    if (ok.kind === "landed_ok") {
+      assert.equal(ok.signature, "sig-final");
+    }
     assert.equal(ok.attempts, 2);
     assert.equal(sendCount, 2);
 
     // Plant: wrong retry bound — more than max would be a defect
     sendCount = 0;
     tip = 200;
-    await assert.rejects(
-      () =>
-        sendAndConfirmStandWithExpiryRetry({
-          ports,
-          maxExpiryRetries: 0, // no retry
-          sendOnce: async () => {
-            sendCount += 1;
-            return {
-              signature: "sig-stale",
-              blockhash: "old",
-              lastValidBlockHeight: 100,
-            };
-          },
-        }),
-      new RegExp(STAND_BLOCKHASH_EXPIRED),
-    );
+    const noRetry = await sendAndConfirmStandWithExpiryRetry({
+      ports,
+      maxExpiryRetries: 0, // no retry
+      sendOnce: async () => {
+        sendCount += 1;
+        return {
+          signature: "sig-stale",
+          blockhash: "old",
+          lastValidBlockHeight: 100,
+        };
+      },
+    });
+    assert.equal(noRetry.kind, "stand_blockhash_expired");
     assert.equal(sendCount, 1);
 
-    // Non-expiry must not retry
+    // Non-expiry must not retry — returns landed_with_error immediately
     sendCount = 0;
-    await assert.rejects(
-      () =>
-        sendAndConfirmStandWithExpiryRetry({
-          ports: {
-            getBlockHeight: async () => 1,
-            getSignatureStatuses: async () => [
-              { err: "Custom(1)", confirmationStatus: null },
-            ],
-            sleepMs: async () => {},
-            pollIntervalMs: 1,
-            timeoutMs: 500,
-          },
-          maxExpiryRetries: 5,
-          sendOnce: async () => {
-            sendCount += 1;
-            return {
-              signature: "sig-fail",
-              blockhash: "b",
-              lastValidBlockHeight: 999,
-            };
-          },
-        }),
-      new RegExp(STAND_TX_FAILED),
-    );
+    const nonExpiry = await sendAndConfirmStandWithExpiryRetry({
+      ports: {
+        getBlockHeight: async () => 1,
+        getSignatureStatuses: async () => [
+          { err: { InstructionError: [0, { Custom: 1 }] }, confirmationStatus: null },
+        ],
+        sleepMs: async () => {},
+        pollIntervalMs: 1,
+        timeoutMs: 500,
+      },
+      maxExpiryRetries: 5,
+      sendOnce: async () => {
+        sendCount += 1;
+        return {
+          signature: "sig-fail",
+          blockhash: "b",
+          lastValidBlockHeight: 999,
+        };
+      },
+    });
+    assert.equal(nonExpiry.kind, "landed_with_error");
     assert.equal(sendCount, 1);
   });
 
@@ -221,6 +215,9 @@ describe("svm-stand-confirm-readiness-policy", () => {
     );
     assert.match(confirm, /STAND_BLOCKHASH_EXPIRED/);
     assert.match(confirm, /STAND_BLOCKHASH_EXPIRY_MAX_RETRIES/);
+    assert.match(confirm, /StandConfirmOutcome/);
+    assert.match(confirm, /landed_with_error/);
+    assert.match(confirm, /skipPreflight:\s*true/);
 
     const ready = readFileSync(
       join(ROOT, "svm/stand/stand-validator-ready.ts"),

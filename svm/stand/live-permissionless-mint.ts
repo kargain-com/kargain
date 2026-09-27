@@ -51,7 +51,9 @@ export type LivePermissionlessMintProof = {
   nextTokenIdAdvanced: true;
   refusals: {
     foreignFreeze: "InvalidSeeds";
+    foreignFreezeIndex: number;
     ownerIsGateway: "InvalidReceiver";
+    ownerIsGatewayIndex: number;
   };
   note: "BridgeGatewayUnbound is admit/cargo-only; stand binds gateway at init";
 };
@@ -183,7 +185,9 @@ export async function runLivePermissionlessMint(): Promise<LivePermissionlessMin
   });
   assert.equal(foreignFreezeObs.kind, "native");
   assert.equal(foreignFreezeObs.name, "InvalidSeeds");
+  assert.equal(typeof foreignFreezeObs.index, "number");
   const foreignFreeze = "InvalidSeeds" as const;
+  const foreignFreezeIndex = foreignFreezeObs.index;
 
   // --- Validator refusal: owner = gateway config PDA → InvalidReceiver ---
   const cfgRecv = (await conn.getAccountInfo(stack.passportConfig))!.data as Buffer;
@@ -217,7 +221,9 @@ export async function runLivePermissionlessMint(): Promise<LivePermissionlessMin
   });
   assert.equal(ownerIsGatewayObs.kind, "custom");
   assert.equal(ownerIsGatewayObs.name, "InvalidReceiver");
+  assert.equal(typeof ownerIsGatewayObs.index, "number");
   const ownerIsGateway = "InvalidReceiver" as const;
+  const ownerIsGatewayIndex = ownerIsGatewayObs.index;
 
   return withStandArtifactBindings({
     payerEqualsAuthority: false as const,
@@ -229,7 +235,9 @@ export async function runLivePermissionlessMint(): Promise<LivePermissionlessMin
     nextTokenIdAdvanced: true as const,
     refusals: {
       foreignFreeze,
+      foreignFreezeIndex,
       ownerIsGateway,
+      ownerIsGatewayIndex,
     },
     note: "BridgeGatewayUnbound is admit/cargo-only; stand binds gateway at init" as const,
   });

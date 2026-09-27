@@ -1,23 +1,32 @@
 /**
  * Sole stand InstructionError refusal owner.
  *
- * Success is checked outside catch — a successful send when a refusal is
- * expected fails by name. Native variants match the InstructionError
- * discriminant string only (never free-text /InvalidSeeds/ regex).
- * Custom maps via product ordinal extract + svmProgramErrorName.
+ * Expected-refusal sends skip preflight and read a typed
+ * {@link StandConfirmOutcome}. Success (`landed_ok`) is checked outside any
+ * program-error catch. Native/custom refusals come only from structured
+ * InstructionError on `landed_with_error` — never message JSON, ordinal text,
+ * or ProgramError Display phrases (those invented `index: 0`).
  */
 
 import assert from "node:assert/strict";
 
-import { extractSvmProgramErrorOrdinal } from "../../lib/marketplace/tx-error-message.ts";
 import {
   svmProgramErrorName,
   type SvmProgramErrorName,
 } from "../../lib/web3/svm-program-errors.ts";
 import {
-  sendAndConfirmStandTransaction,
-  type StandWeb3Connection,
+  STAND_BLOCKHASH_EXPIRED,
+  STAND_CONFIRM_TIMEOUT,
+  STAND_TX_FAILED,
+  sendAndConfirmStandTransactionForRefusal,
+  type StandConfirmOutcome,
+  type StandTransactionError,
 } from "./stand-tx-confirm.ts";
+import type {
+  StandConnection,
+  StandKeypair,
+  StandTransaction,
+} from "./solana-web3-types.ts";
 
 export const STAND_NATIVE_IX_ERRORS = [
   "InvalidSeeds",
@@ -37,7 +46,7 @@ export type StandTxRefusalObserved =
       kind: "custom";
       name: SvmProgramErrorName;
       ordinal: number;
-      index: number | null;
+      index: number;
     };
 
 function isStandNativeIxError(value: unknown): value is StandNativeIxError {
@@ -47,10 +56,18 @@ function isStandNativeIxError(value: unknown): value is StandNativeIxError {
   );
 }
 
-function observedFromInstructionError(
-  index: unknown,
-  variant: unknown,
+/**
+ * Pure: InstructionError [index, variant] | [index, { Custom: n }] only.
+ * No message regex, no Display phrases, no invented index.
+ */
+export function parseStandInstructionError(
+  err: StandTransactionError | unknown,
 ): StandTxRefusalObserved | null {
+  if (err == null || typeof err !== "object") return null;
+  const ie = (err as StandTransactionError).InstructionError;
+  if (!Array.isArray(ie) || ie.length < 2) return null;
+  const index = ie[0];
+  const variant = ie[1];
   if (typeof index !== "number" || !Number.isInteger(index) || index < 0) {
     return null;
   }
@@ -68,145 +85,6 @@ function observedFromInstructionError(
   return null;
 }
 
-function parseInstructionErrorValue(
-  value: unknown,
-): StandTxRefusalObserved | null {
-  if (value == null || typeof value !== "object") return null;
-  const rec = value as Record<string, unknown>;
-  const ie = rec.InstructionError;
-  if (Array.isArray(ie) && ie.length >= 2) {
-    return observedFromInstructionError(ie[0], ie[1]);
-  }
-  return null;
-}
-
-function walkStructured(error: unknown, depth = 0): StandTxRefusalObserved | null {
-  if (error == null || depth > 6) return null;
-  const direct = parseInstructionErrorValue(error);
-  if (direct) return direct;
-  if (typeof error !== "object") return null;
-  const rec = error as Record<string, unknown>;
-  for (const key of ["err", "cause", "error"] as const) {
-    const nested = walkStructured(rec[key], depth + 1);
-    if (nested) return nested;
-  }
-  return null;
-}
-
-function tryParseJsonBlob(text: string): StandTxRefusalObserved | null {
-  const trimmed = text.trim();
-  if (!trimmed.includes("InstructionError")) return null;
-  // Whole-message JSON TransactionError
-  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-    try {
-      return parseInstructionErrorValue(JSON.parse(trimmed));
-    } catch {
-      // fall through to embedded blob
-    }
-  }
-  // Embedded `{"InstructionError":[…]}` (confirm / simulation wrappers)
-  const start = trimmed.indexOf('{"InstructionError"');
-  if (start < 0) return null;
-  let depth = 0;
-  for (let i = start; i < trimmed.length; i++) {
-    const ch = trimmed[i]!;
-    if (ch === "{") depth += 1;
-    else if (ch === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        try {
-          return parseInstructionErrorValue(
-            JSON.parse(trimmed.slice(start, i + 1)),
-          );
-        } catch {
-          return null;
-        }
-      }
-    }
-  }
-  return null;
-}
-
-/**
- * Solana `ProgramError` Display phrases for the three natives we admit.
- * Preflight `SendTransactionError` often carries only this prose — not a
- * structured `InstructionError` discriminant. Exact phrase only (never
- * `/InvalidSeeds/` free-text).
- */
-export const STAND_NATIVE_PROGRAM_ERROR_DISPLAY: Readonly<
-  Record<StandNativeIxError, string>
-> = {
-  InvalidSeeds: "Provided seeds do not result in a valid address",
-  AccountAlreadyInitialized: "instruction requires an uninitialized account",
-  MissingRequiredSignature: "missing required signature for instruction",
-};
-
-function nativeFromProgramErrorDisplay(
-  text: string,
-): StandTxRefusalObserved | null {
-  for (const name of STAND_NATIVE_IX_ERRORS) {
-    const phrase = STAND_NATIVE_PROGRAM_ERROR_DISPLAY[name];
-    if (text.includes(phrase)) {
-      return { kind: "native", name, index: 0 };
-    }
-  }
-  return null;
-}
-
-function collectErrorText(error: unknown): string {
-  const parts: string[] = [];
-  if (typeof error === "string") parts.push(error);
-  if (error instanceof Error) parts.push(error.message);
-  if (error && typeof error === "object") {
-    const rec = error as Record<string, unknown>;
-    if (typeof rec.transactionMessage === "string") {
-      parts.push(rec.transactionMessage);
-    }
-    const logs = rec.transactionLogs ?? rec.logs;
-    if (Array.isArray(logs)) {
-      for (const line of logs) {
-        if (typeof line === "string") parts.push(line);
-      }
-    }
-  }
-  return parts.join("\n");
-}
-
-/**
- * Pure: InstructionError [index, variant] | [index, { Custom: n }].
- * No `/InvalidSeeds/` free-text. Custom-only ordinal extract; native Display
- * phrases only via {@link STAND_NATIVE_PROGRAM_ERROR_DISPLAY}.
- */
-export function parseStandInstructionError(
-  error: unknown,
-): StandTxRefusalObserved | null {
-  const structured = walkStructured(error);
-  if (structured) return structured;
-
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === "string"
-        ? error
-        : "";
-  if (message) {
-    const fromJson = tryParseJsonBlob(message);
-    if (fromJson) return fromJson;
-  }
-
-  // Custom only — ordinal extract (not native-name regex)
-  const ordinal = extractSvmProgramErrorOrdinal(error);
-  if (ordinal != null) {
-    const name = svmProgramErrorName(ordinal);
-    if (name != null) {
-      return { kind: "custom", name, ordinal, index: null };
-    }
-  }
-
-  // Preflight prose → native discriminant (exact Solana Display phrases)
-  return nativeFromProgramErrorDisplay(collectErrorText(error));
-}
-
 function formatExpected(expected: StandTxRefusalExpected): string {
   return expected.kind === "native"
     ? `native ${expected.name}`
@@ -215,8 +93,8 @@ function formatExpected(expected: StandTxRefusalExpected): string {
 
 function formatObserved(observed: StandTxRefusalObserved): string {
   return observed.kind === "native"
-    ? `native ${observed.name}`
-    : `custom ${observed.name}(${observed.ordinal})`;
+    ? `native ${observed.name} @${observed.index}`
+    : `custom ${observed.name}(${observed.ordinal}) @${observed.index}`;
 }
 
 function matchesExpected(
@@ -229,60 +107,64 @@ function matchesExpected(
   return observed.kind === "custom" && observed.name === expected.name;
 }
 
+function formatConfirmRefusal(outcome: StandConfirmOutcome): string {
+  switch (outcome.kind) {
+    case "stand_blockhash_expired":
+      return STAND_BLOCKHASH_EXPIRED;
+    case "stand_confirm_timeout":
+      return STAND_CONFIRM_TIMEOUT;
+    case "stand_tx_failed":
+      return `${STAND_TX_FAILED}: ${outcome.detail}`;
+    case "landed_ok":
+      return "landed_ok";
+    case "landed_with_error":
+      return "landed_with_error";
+  }
+}
+
 /**
- * Success check OUTSIDE catch. Injectable `send` for in-memory controls;
- * conn/tx/signers convenience wires `sendAndConfirmStandTransaction`.
+ * Branch on a typed confirm outcome. Injectable `outcome` for in-memory
+ * controls; conn/tx/signers convenience uses skip-preflight refusal facade.
  */
 export async function expectStandTransactionRefusal(
   args:
     | {
-        send: () => Promise<unknown>;
+        outcome: () => Promise<StandConfirmOutcome>;
         expected: StandTxRefusalExpected;
       }
     | {
-        conn: StandWeb3Connection;
-        // web3.js Transaction / Keypair — structural any at createRequire boundary
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        transaction: any;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        signers: any[];
+        conn: StandConnection;
+        transaction: StandTransaction;
+        signers: StandKeypair[];
         expected: StandTxRefusalExpected;
       },
 ): Promise<StandTxRefusalObserved> {
-  const send =
-    "send" in args
-      ? args.send
-      : () =>
-          sendAndConfirmStandTransaction(args.conn, args.transaction, args.signers, {
-            commitment: "confirmed",
-          });
   const { expected } = args;
+  const outcome =
+    "outcome" in args
+      ? await args.outcome()
+      : await sendAndConfirmStandTransactionForRefusal(
+          args.conn,
+          args.transaction,
+          args.signers,
+        );
 
-  let thrown: unknown;
-  let succeeded = false;
-  try {
-    await send();
-    succeeded = true;
-  } catch (e) {
-    thrown = e;
-  }
-
-  if (succeeded) {
+  if (outcome.kind === "landed_ok") {
     assert.fail(
       `expected ${formatExpected(expected)}, but transaction succeeded`,
     );
   }
 
-  const observed = parseStandInstructionError(thrown);
-  if (observed == null) {
-    const detail =
-      thrown instanceof Error
-        ? thrown.message
-        : typeof thrown === "string"
-          ? thrown
-          : String(thrown);
+  if (outcome.kind !== "landed_with_error") {
     assert.fail(
-      `expected ${formatExpected(expected)}, but could not parse InstructionError from: ${detail}`,
+      `expected ${formatExpected(expected)}, got confirm refusal ${formatConfirmRefusal(outcome)}`,
+    );
+  }
+
+  const observed = parseStandInstructionError(outcome.err);
+  if (observed == null) {
+    assert.fail(
+      `expected ${formatExpected(expected)}, but could not parse InstructionError from: ${JSON.stringify(outcome.err)}`,
     );
   }
   if (!matchesExpected(observed, expected)) {
