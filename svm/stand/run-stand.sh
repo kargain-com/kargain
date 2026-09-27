@@ -70,17 +70,30 @@ stand_so_override_has() {
 
 build_arch() {
   local arch="$1"
-  echo "==> build SBF programs (--arch $arch)"
+  local purpose
+  if [[ "$arch" == "v3" ]]; then
+    purpose=upgradeable_ship
+  else
+    purpose=stand_preload
+  fi
+  echo "==> build SBF programs (purpose=$purpose / --arch $arch via svm-deploy-artifact)"
   local prog so_stem
+  local -a dirs=()
   for prog in mock-endpoint kar-passport kar-gateway mock-staking kar-pro-staking kar-pro-pass money-harness consignment-harness kar-fixed-price kar-ascending; do
     so_stem="${prog//-/_}"
     if stand_so_override_has "$so_stem"; then
       echo "    skip $prog (KARGAIN_SVM_STAND_SO_OVERRIDE=$so_stem)"
       continue
     fi
-    echo "    cargo-build-sbf --arch $arch ($prog)"
-    (cd "svm/programs/$prog" && cargo-build-sbf --arch "$arch")
+    dirs+=("$prog")
   done
+  if [[ ${#dirs[@]} -eq 0 ]]; then
+    echo "    (all stems overridden — nothing to build)"
+    return 0
+  fi
+  local joined
+  joined="$(IFS=,; echo "${dirs[*]}")"
+  pnpm svm:build-artifacts --purpose "$purpose" --programs "$joined"
 }
 
 assert_isolation() {
@@ -116,9 +129,15 @@ run_live() {
   assert_isolation
   build_arch "$arch"
 
-  echo "==> start stand validator (load=$load)"
+  local deploy_dir="$ROOT/svm/target/deploy"
+  if [[ "$load" == "upgradeable" ]]; then
+    deploy_dir="$ROOT/svm/target/deploy-v3"
+  fi
+  export KARGAIN_SVM_STAND_DEPLOY_DIR="$deploy_dir"
+
+  echo "==> start stand validator (load=$load deployDir=$deploy_dir)"
   VAL_LOG="$(mktemp -t kargain-svm-stand.XXXXXX.log)"
-  KARGAIN_SVM_STAND_LOAD="$load" ./svm/stand/start-validator.sh >"$VAL_LOG" 2>&1 &
+  KARGAIN_SVM_STAND_LOAD="$load" KARGAIN_SVM_STAND_DEPLOY_DIR="$deploy_dir" ./svm/stand/start-validator.sh >"$VAL_LOG" 2>&1 &
   VAL_PID=$!
   cleanup() {
     kill "$VAL_PID" 2>/dev/null || true
@@ -130,11 +149,11 @@ run_live() {
 
   if [[ "$load" == "upgradeable" ]]; then
     echo "==> deploy stand programs via upgradeable loader"
-    ./svm/stand/deploy-stand-programs.sh
+    KARGAIN_SVM_STAND_DEPLOY_DIR="$deploy_dir" ./svm/stand/deploy-stand-programs.sh
   fi
 
   echo "==> pnpm test:svm-stand (LIVE=1 load=$load — Core CPI required)"
-  KARGAIN_SVM_STAND_LIVE=1 KARGAIN_SVM_STAND_LOAD="$load" pnpm test:svm-stand
+  KARGAIN_SVM_STAND_LIVE=1 KARGAIN_SVM_STAND_LOAD="$load" KARGAIN_SVM_STAND_DEPLOY_DIR="$deploy_dir" pnpm test:svm-stand
 
   cleanup
   trap - EXIT

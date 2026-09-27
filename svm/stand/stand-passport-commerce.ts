@@ -24,6 +24,7 @@ import {
 } from "./stand-tx-confirm.ts";
 import { expectStandTransactionRefusal } from "./stand-tx-refusal.ts";
 import { svmProgramErrorName } from "../../lib/web3/svm-program-errors.ts";
+import { standDeployDir } from "./stand-artifact-bindings.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.resolve(__dirname, "../lab/package.json"));
@@ -43,7 +44,7 @@ const {
 export { sendAndConfirmStandTransaction as sendAndConfirmTransaction };
 
 const ROOT = path.resolve(__dirname, "../..");
-const DEPLOY = path.join(ROOT, "svm/target/deploy");
+const DEPLOY = standDeployDir();
 
 export const CORE_ID = new PublicKey("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
 export const RPC_DEFAULT = process.env.SVM_STAND_RPC ?? "http://127.0.0.1:8899";

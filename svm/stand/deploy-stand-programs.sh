@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Deploy the four stand programs through the upgradeable loader onto a running
-# local validator. Program ids come from svm/target/deploy/*-keypair.json
-# (same ids live-roundtrip.ts reads). No Devnet writes.
+# Deploy stand programs through the upgradeable loader onto a running
+# local validator. Program ids come from *-keypair.json beside the .so
+# (KARGAIN_SVM_STAND_DEPLOY_DIR, default svm/target/deploy-v3 for shipping arch).
+# No Devnet writes.
 #
-# Prerequisites: validator up at RPC; artifacts built with --arch v3.
+# Prerequisites: validator up at RPC; artifacts built via svm:build-artifacts
+# --purpose upgradeable_ship.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DEPLOY="$ROOT/target/deploy"
+DEPLOY="${KARGAIN_SVM_STAND_DEPLOY_DIR:-$ROOT/target/deploy-v3}"
 export PATH="${HOME}/.local/share/solana/install/active_release/bin:${PATH}"
 
 RPC="${SVM_STAND_RPC:-http://127.0.0.1:8899}"
@@ -44,7 +46,7 @@ deploy_one() {
   local so="$DEPLOY/${name}.so"
   local kp="$DEPLOY/${name}-keypair.json"
   if [[ ! -f "$so" || ! -f "$kp" ]]; then
-    echo "missing $so or $kp — build with cargo-build-sbf --arch v3" >&2
+    echo "missing $so or $kp — build via pnpm svm:build-artifacts --purpose upgradeable_ship" >&2
     exit 1
   fi
   local pid

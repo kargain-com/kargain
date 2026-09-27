@@ -174,7 +174,7 @@ export type SvmDeployProgramRow = {
   name: SvmCommercialProgramName;
   dir: string;
   role: string;
-  /** Artifact path under svm/target/deploy when present. */
+  /** Artifact path under svm/target/deploy-v3 when present. */
   artifactPath: string;
   /** Byte size of .so when on disk; null if missing (dry-run still prints). */
   soBytes: number | null;
@@ -218,7 +218,8 @@ export function buildSvmDeployPlan(opts: BuildSvmDeployPlanOpts): SvmDeployPlan 
 
   const svmRoot =
     opts.svmRoot ?? path.resolve(process.cwd(), "svm");
-  const deployDir = path.join(svmRoot, "target", "deploy");
+  // Shipping artifacts live under deploy-v3 (svm-deploy-artifact owner).
+  const deployDir = path.join(svmRoot, "target", "deploy-v3");
 
   const programs: SvmDeployProgramRow[] = SVM_COMMERCIAL_PROGRAMS.map((p) => {
     const artifactPath = path.join(deployDir, `${p.name}.so`);

@@ -70,12 +70,10 @@ if [[ -z "$BAL" ]]; then
   exit 1
 fi
 
-echo "==> build kar_passport + kar_gateway + mock_staking (--arch v3)"
-(cd svm/programs/kar-passport && cargo-build-sbf --arch v3)
-(cd svm/programs/kar-gateway && cargo-build-sbf --arch v3)
-(cd svm/programs/mock-staking && cargo-build-sbf --arch v3)
+echo "==> build kar_passport + kar_gateway + mock_staking (--arch v3 → deploy-v3)"
+pnpm svm:build-artifacts --purpose upgradeable_ship --programs kar_passport,kar_gateway,mock_staking
 
-DEPLOY_DIR="$ROOT/svm/target/deploy"
+DEPLOY_DIR="$ROOT/svm/target/deploy-v3"
 EVIDENCE="$ROOT/deployments/svm-40168.json"
 mkdir -p "$ROOT/deployments" "$WORK/program-keys"
 

@@ -38,12 +38,10 @@ echo "    deployer: $DEPLOYER_PUB"
 pnpm exec tsx scripts/assert-solana-ua-matches-deployer.ts >/dev/null
 echo "    upgradeAuthority: $DEPLOYER_PUB (retained S4–S9)"
 
-echo "==> build kar_pro_staking + kar_pro_pass (+ passport for prove) (--arch v3)"
-(cd svm/programs/kar-pro-staking && cargo-build-sbf --arch v3)
-(cd svm/programs/kar-pro-pass && cargo-build-sbf --arch v3)
-(cd svm/programs/kar-passport && cargo-build-sbf --arch v3)
+echo "==> build kar_pro_staking + kar_pro_pass (+ passport for prove) (--arch v3 → deploy-v3)"
+pnpm svm:build-artifacts --purpose upgradeable_ship --programs kar_pro_staking,kar_pro_pass,kar_passport
 
-DEPLOY_DIR="$ROOT/svm/target/deploy"
+DEPLOY_DIR="$ROOT/svm/target/deploy-v3"
 EVIDENCE="$ROOT/deployments/svm-40168.json"
 mkdir -p "$ROOT/deployments"
 

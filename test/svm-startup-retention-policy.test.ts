@@ -141,13 +141,8 @@ describe("svm-startup-retention-policy", () => {
     assert.ok(dryReturnIdx > 0, "dry-run completion marker required");
     assert.ok(mergeIdx > dryReturnIdx, "evidence write must follow dry-run return");
 
-    const shell = readFileSync(
-      join(ROOT, "svm/scripts/upgrade-pre-s7a-four.sh"),
-      "utf8",
-    );
-    assert.match(shell, /--dry-run/);
-    assert.match(shell, /S9-B-2/);
-    assert.match(shell, /DRY_RUN_ARGS/);
+    // Historical upgrade-pre-s7a-four.sh deleted — dry-run lives on the TS owner only.
+    assert.match(upgradeSrc, /S9-B-2|dry-run|DRY-RUN/);
   });
 
   it("planned-change table masks ids and formats digests", () => {

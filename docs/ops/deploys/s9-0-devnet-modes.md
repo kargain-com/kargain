@@ -28,9 +28,8 @@ Exit 0 with `census: checked 4 of 6; incomplete: missing programId: kar_ascendin
 
 ```bash
 pnpm deploy:svm:dry-run   # lists all six commercial programs
-# or build only:
-(cd svm/programs/kar-fixed-price && cargo-build-sbf --arch v3)
-(cd svm/programs/kar-ascending && cargo-build-sbf --arch v3)
+# or build shipping artifacts only:
+pnpm svm:build-artifacts --purpose upgradeable_ship --programs kar_fixed_price,kar_ascending
 ```
 
 ### 3. Deploy FixedPrice then Ascending

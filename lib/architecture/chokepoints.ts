@@ -676,8 +676,8 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-stand-artifact-bindings",
     owner: "svm/stand/stand-artifact-bindings.ts",
-    rule: "LIVE stand proofs attest sha256 of every preloaded .so + git HEAD via withStandArtifactBindings; sole deploy .so hasher under svm/stand; KARGAIN_SVM_STAND_SO_OVERRIDE selects a program artifact path (stand_so_override_missing if absent — never silent fallback)",
-    guardTests: ["svm-stand-artifact-bindings-policy.test.ts"],
+    rule: "LIVE stand proofs attest sha256 of every preloaded .so + git HEAD via withStandArtifactBindings; sole deploy .so hasher under svm/stand; KARGAIN_SVM_STAND_SO_OVERRIDE selects a program artifact path (stand_so_override_missing if absent — never silent fallback); preload e_flags 0x0 / upgradeable 0x3 via svm-deploy-artifact (stand_artifact_wrong_arch)",
+    guardTests: ["svm-stand-artifact-bindings-policy.test.ts", "svm-deploy-artifact-policy.test.ts"],
   },
   {
     id: "svm-stand-confirm-readiness",
@@ -884,6 +884,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     owner: "lib/svm/startup-retention.ts",
     rule: "RPC retention of required ingest start slot is one predicate; ingest loop and upgrade dry-run consume it",
     guardTests: ["svm-startup-retention-policy.test.ts"],
+  },
+  {
+    id: "svm-deploy-artifact",
+    owner: "scripts/lib/svm-deploy-artifact.ts",
+    rule: "Sole SBF artifact owner: stand_preload → svm/target/deploy e_flags 0x0; upgradeable_ship → svm/target/deploy-v3 e_flags 0x3; cargo-build-sbf only via --arch + --sbf-out-dir; upgrade/extend resolve refuse wrong arch by name; no dual soPathForEvidenceKey",
+    guardTests: ["svm-deploy-artifact-policy.test.ts"],
   },
   {
     id: "svm-upgrade-in-place-capacity",

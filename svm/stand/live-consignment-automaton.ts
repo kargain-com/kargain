@@ -28,6 +28,7 @@ import { expectCustom } from "./stand-passport-commerce.ts";
 import {
   withStandArtifactBindings,
   type StandArtifactBindings,
+  standDeployDir
 } from "./stand-artifact-bindings.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -43,7 +44,7 @@ const {
 
 const ROOT = path.resolve(__dirname, "../..");
 const RPC = process.env.SVM_STAND_RPC ?? "http://127.0.0.1:8899";
-const DEPLOY = path.join(ROOT, "svm/target/deploy");
+const DEPLOY = standDeployDir();
 
 /** Stable custom-error codes from KargainError (append-only). */
 const ERR = {

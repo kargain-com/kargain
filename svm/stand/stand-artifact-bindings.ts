@@ -14,6 +14,9 @@
  * (comma-separated). Override wins over deploy dir; missing override path
  * refuses by name (`stand_so_override_missing`) — never silent fallback.
  *
+ * Arch gate (svm-deploy-artifact): preload requires ELF e_flags 0x0; upgradeable
+ * load requires 0x3. Wrong arch → `stand_artifact_wrong_arch`.
+ *
  * Test overrides: `KARGAIN_SVM_STAND_DEPLOY_DIR`, `KARGAIN_SVM_STAND_FIXTURES_DIR`,
  * `KARGAIN_SVM_STAND_GIT_ROOT`.
  */
@@ -22,6 +25,12 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import {
+  formatDeployArtifactRefusal,
+  resolveDeployArtifact,
+  type DeployArtifactPurpose,
+} from "../../scripts/lib/svm-deploy-artifact.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SVM_ROOT = path.resolve(__dirname, "..");
@@ -32,8 +41,15 @@ export const STAND_SO_OVERRIDE_ENV = "KARGAIN_SVM_STAND_SO_OVERRIDE";
 
 export const STAND_SO_OVERRIDE_MISSING = "stand_so_override_missing";
 
-function deployDir(): string {
+export const STAND_ARTIFACT_WRONG_ARCH = "stand_artifact_wrong_arch";
+
+/** Absolute stand `.so` / keypair dir — override via `KARGAIN_SVM_STAND_DEPLOY_DIR`. */
+export function standDeployDir(): string {
   return process.env.KARGAIN_SVM_STAND_DEPLOY_DIR ?? path.join(SVM_ROOT, "target/deploy");
+}
+
+function deployDir(): string {
+  return standDeployDir();
 }
 
 function fixturesDir(): string {
@@ -127,6 +143,10 @@ function standLoadMode(): "preload" | "upgradeable" {
   return process.env.KARGAIN_SVM_STAND_LOAD === "upgradeable" ? "upgradeable" : "preload";
 }
 
+function purposeForLoadMode(loadMode: "preload" | "upgradeable"): DeployArtifactPurpose {
+  return loadMode === "preload" ? "stand_preload" : "upgradeable_ship";
+}
+
 function isStandPreloadProgram(name: string): name is StandPreloadProgram {
   return (STAND_PRELOAD_PROGRAMS as readonly string[]).includes(name);
 }
@@ -189,6 +209,28 @@ export function resolveStandProgramSo(
   };
 }
 
+/** Refuse wrong SBF arch for the active load mode (named). */
+export function assertStandProgramSoArch(
+  soPath: string,
+  loadMode: "preload" | "upgradeable",
+): void {
+  const purpose = purposeForLoadMode(loadMode);
+  const stem = path.basename(soPath, ".so");
+  const result = resolveDeployArtifact({
+    purpose,
+    stem,
+    soDir: path.dirname(soPath),
+  });
+  if (!result.ok) {
+    if (result.cause === "artifact_wrong_arch") {
+      throw new Error(
+        `${STAND_ARTIFACT_WRONG_ARCH}: ${formatDeployArtifactRefusal(result)}`,
+      );
+    }
+    throw new Error(formatDeployArtifactRefusal(result));
+  }
+}
+
 /** Read and hash all stand BPF artifacts on disk (resolved paths + fixtures). */
 export function collectStandArtifactBindings(opts?: {
   loadMode?: "preload" | "upgradeable";
@@ -205,6 +247,7 @@ export function collectStandArtifactBindings(opts?: {
       }
       throw new Error(`missing ${so} — build stand BPF artifacts first (cargo-build-sbf)`);
     }
+    assertStandProgramSoArch(so, loadMode);
     programs[name] = { ...sha256File(so), path: so, overridden };
   }
 

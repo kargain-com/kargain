@@ -24,6 +24,7 @@ import {
   resolveStandProgramSo,
   withStandArtifactBindings,
 } from "../svm/stand/stand-artifact-bindings.ts";
+import { synthesizeElf64WithEFlags } from "../scripts/lib/svm-deploy-artifact.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const STAND_TEST = path.join(ROOT, "test/svm-stand.test.ts");
@@ -62,8 +63,13 @@ function writeStandArtifactStubs(baseDir: string, payload: Buffer): { deploy: st
   const fixtures = path.join(baseDir, "lab/fixtures");
   fs.mkdirSync(deploy, { recursive: true });
   fs.mkdirSync(fixtures, { recursive: true });
+  // Program stubs must be valid ELF64 with e_flags 0x0 (preload arch gate).
+  const programPayload =
+    payload.length >= 64 && payload[0] === 0x7f
+      ? payload
+      : Buffer.from(synthesizeElf64WithEFlags(0x0));
   for (const name of STAND_PRELOAD_PROGRAMS) {
-    fs.writeFileSync(path.join(deploy, `${name}.so`), payload);
+    fs.writeFileSync(path.join(deploy, `${name}.so`), programPayload);
   }
   fs.writeFileSync(path.join(fixtures, "mpl_core_release_0.15.1.so"), payload);
   fs.writeFileSync(path.join(fixtures, "spl_noop.so"), payload);
@@ -111,8 +117,13 @@ describe("svm-stand-artifact-bindings-policy", () => {
 
   it("collectStandArtifactBindings hashes a temp file deterministically", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kargain-artifact-"));
-    const payload = Buffer.from("stand-artifact-bindings-fixture");
-    const { deploy, fixtures } = writeStandArtifactStubs(dir, payload);
+    const fixturePayload = Buffer.from("stand-artifact-bindings-fixture");
+    const programPayload = Buffer.from(synthesizeElf64WithEFlags(0x0));
+    const { deploy, fixtures } = writeStandArtifactStubs(dir, fixturePayload);
+    // rewrite programs with known ELF (writeStandArtifactStubs already did for non-ELF payload)
+    for (const name of STAND_PRELOAD_PROGRAMS) {
+      fs.writeFileSync(path.join(deploy, `${name}.so`), programPayload);
+    }
 
     withStandEnv(
       {
@@ -120,18 +131,19 @@ describe("svm-stand-artifact-bindings-policy", () => {
         KARGAIN_SVM_STAND_FIXTURES_DIR: fixtures,
       },
       () => {
-        const expected = createHash("sha256").update(payload).digest("hex");
+        const expectedProgram = createHash("sha256").update(programPayload).digest("hex");
+        const expectedFixture = createHash("sha256").update(fixturePayload).digest("hex");
 
         const bindings = collectStandArtifactBindings({ loadMode: "preload" });
         assert.equal(bindings.loadMode, "preload");
         assert.ok(bindings.gitHead.length >= 7);
-        assert.equal(bindings.programs.kar_ascending.sha256, expected);
-        assert.equal(bindings.programs.kar_ascending.bytes, payload.length);
-        assert.equal(bindings.fixtures.spl_noop.sha256, expected);
+        assert.equal(bindings.programs.kar_ascending.sha256, expectedProgram);
+        assert.equal(bindings.programs.kar_ascending.bytes, programPayload.length);
+        assert.equal(bindings.fixtures.spl_noop.sha256, expectedFixture);
 
         const wrapped = withStandArtifactBindings({ ok: true });
         assert.equal(wrapped.ok, true);
-        assert.equal(wrapped.artifacts.programs.kar_fixed_price.sha256, expected);
+        assert.equal(wrapped.artifacts.programs.kar_fixed_price.sha256, expectedProgram);
       },
     );
 
@@ -140,8 +152,8 @@ describe("svm-stand-artifact-bindings-policy", () => {
 
   it("gitDirty is false on a clean temp repo and true after an uncommitted edit", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kargain-artifact-git-"));
-    const payload = Buffer.from("git-dirty-fixture");
-    const { deploy, fixtures } = writeStandArtifactStubs(dir, payload);
+    const fixturePayload = Buffer.from("git-dirty-fixture");
+    const { deploy, fixtures } = writeStandArtifactStubs(dir, fixturePayload);
     initTempGitRepo(dir);
 
     withStandEnv(
@@ -220,13 +232,18 @@ describe("svm-stand-artifact-bindings-policy", () => {
 
   it("SO override hashes the override path and refuses missing by name", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kargain-artifact-ov-"));
-    const payload = Buffer.from("stand-default-deploy");
-    const { deploy, fixtures } = writeStandArtifactStubs(dir, payload);
-    const overridePayload = Buffer.from("stand-gateway-override-bytes");
+    const programPayload = Buffer.from(synthesizeElf64WithEFlags(0x0));
+    const { deploy, fixtures } = writeStandArtifactStubs(dir, Buffer.from("fixture-bytes"));
+    for (const name of STAND_PRELOAD_PROGRAMS) {
+      fs.writeFileSync(path.join(deploy, `${name}.so`), programPayload);
+    }
+    // Distinct ELF body for override (flip a padding byte after header).
+    const overridePayload = Buffer.from(synthesizeElf64WithEFlags(0x0));
+    overridePayload[63] = 0xaa;
     const overrideSo = path.join(dir, "old-kar_gateway.so");
     fs.writeFileSync(overrideSo, overridePayload);
     const expectedOverride = createHash("sha256").update(overridePayload).digest("hex");
-    const expectedDefault = createHash("sha256").update(payload).digest("hex");
+    const expectedDefault = createHash("sha256").update(programPayload).digest("hex");
 
     withStandEnv(
       {

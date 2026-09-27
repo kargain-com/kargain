@@ -41,9 +41,10 @@ filter_cli() {
 echo "==> local Agave: $(solana --version)"
 echo "==> cargo-build-sbf: $(cargo-build-sbf --version)"
 
-echo "==> build ${PROGRAM_DIR_NAME} (--arch v3)"
-(cd "$ROOT/programs/$PROGRAM_DIR_NAME" && cargo-build-sbf --arch v3)
-SO="${PROGRAM_SO:-$ROOT/target/deploy/${PROGRAM_NAME}.so}"
+echo "==> build ${PROGRAM_DIR_NAME} (--arch v3 → deploy-v3)"
+REPO="$(cd "$ROOT/.." && pwd)"
+(cd "$REPO" && pnpm svm:build-artifacts --purpose upgradeable_ship --programs "$PROGRAM_DIR_NAME")
+SO="${PROGRAM_SO:-$ROOT/target/deploy-v3/${PROGRAM_NAME}.so}"
 if [[ ! -f "$SO" ]]; then
   echo "missing $SO" >&2
   exit 1

@@ -12,7 +12,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 STAND="$(cd "$(dirname "$0")" && pwd)"
 FIXTURES="$ROOT/lab/fixtures"
-DEPLOY="$ROOT/target/deploy"
+# Preload default = stand v0 dir; upgradeable run-stand exports deploy-v3.
+DEPLOY="${KARGAIN_SVM_STAND_DEPLOY_DIR:-$ROOT/target/deploy}"
 export PATH="${HOME}/.local/share/solana/install/active_release/bin:${PATH}"
 
 LOAD="${KARGAIN_SVM_STAND_LOAD:-preload}"

@@ -25,6 +25,7 @@ import { isStandValidatorReadyNow } from "./stand-validator-ready.ts";
 import {
   withStandArtifactBindings,
   type StandArtifactBindings,
+  standDeployDir
 } from "./stand-artifact-bindings.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -52,7 +53,7 @@ const {
 
 const ROOT = path.resolve(__dirname, "../..");
 const RPC = process.env.SVM_STAND_RPC ?? "http://127.0.0.1:8899";
-const DEPLOY = path.join(ROOT, "svm/target/deploy");
+const DEPLOY = standDeployDir();
 
 function borshPayLeg(amount: bigint): Buffer {
   const buf = Buffer.alloc(1 + 8);

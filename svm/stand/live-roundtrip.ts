@@ -34,7 +34,9 @@ import {
 } from "./stand-tx-confirm.ts";
 import { isStandValidatorReadyNow } from "./stand-validator-ready.ts";
 import { assertPayloadUnchanged, relayCopyPayload } from "./dumb-relay.ts";
-import { withStandArtifactBindings } from "./stand-artifact-bindings.ts";
+import { withStandArtifactBindings,
+  standDeployDir
+} from "./stand-artifact-bindings.ts";
 import type { StandArtifactBindings } from "./stand-artifact-bindings.ts";
 import { gatewaySendData, gatewaySendKeys } from "./stand-passport-commerce.ts";
 import type {
@@ -59,7 +61,7 @@ const {
 } = require("@solana/web3.js") as typeof import("@solana/web3.js");
 
 const ROOT = path.resolve(__dirname, "../..");
-const DEPLOY = path.resolve(__dirname, "../target/deploy");
+const DEPLOY = standDeployDir();
 const CORE_ID = new PublicKey("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
 const RPC = process.env.SVM_STAND_RPC ?? "http://127.0.0.1:8899";
 

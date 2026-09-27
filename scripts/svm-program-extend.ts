@@ -5,17 +5,18 @@
  * Usage:
  *   pnpm exec tsx scripts/svm-program-extend.ts \
  *     --programs kar_passport,kar_gateway,kar_pro_staking,kar_pro_pass,kar_fixed_price,kar_ascending \
- *     --so-dir svm/target/deploy \
+ *     --so-dir svm/target/deploy-v3 \
  *     --rpc <url> \
  *     --deployer-keypair <path> \
  *     [--dry-run]
+ *
+ * Artifacts must be `--arch v3` (ELF e_flags 0x3). Default `--so-dir` is the
+ * shipping deploy dir owned by svm-deploy-artifact.
  *
  * `--programs` may list any commercial census evidence key (six).
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 
 import {
   requireSvmCommercialActive,
@@ -23,6 +24,10 @@ import {
 } from "../lib/web3/commercial-active.js";
 import { SVM_COMMERCIAL_PROGRAM_CENSUS } from "../lib/svm/ingest-config.js";
 import { namespaceFromLayerZeroEid } from "../lib/web3/kargain-namespace.js";
+import {
+  deployArtifactOutDirAbs,
+  requireDeployArtifact,
+} from "./lib/svm-deploy-artifact.js";
 import { assertSolanaUpgradeAuthorityMatchesDeployer } from "./lib/svm-deploy-plan.js";
 import { artifactDigestFromSo } from "./lib/svm-devnet-evidence-write.js";
 import {
@@ -60,6 +65,12 @@ function arg(name: string): string {
   return process.argv[i + 1]!;
 }
 
+function optionalArg(name: string): string | undefined {
+  const i = process.argv.indexOf(name);
+  if (i < 0 || i + 1 >= process.argv.length) return undefined;
+  return process.argv[i + 1];
+}
+
 function hasFlag(name: string): boolean {
   return process.argv.includes(name);
 }
@@ -82,13 +93,17 @@ function registryProgramId(
 }
 
 function soPathForEvidenceKey(soDir: string, evidenceKey: string): string {
-  const p = join(soDir, `${evidenceKey}.so`);
+  const path = requireDeployArtifact({
+    purpose: "upgradeable_ship",
+    stem: evidenceKey,
+    soDir,
+  });
   assertExtendArtifactPresent({
     evidenceKey,
-    soPath: p,
-    exists: existsSync,
+    soPath: path,
+    exists: () => true,
   });
-  return p;
+  return path;
 }
 
 function runSolana(args: string[]): { status: number; stdout: string; stderr: string } {
@@ -159,7 +174,8 @@ function programShow(args: {
 async function main(): Promise<void> {
   const dryRun = hasFlag("--dry-run");
   const programsCsv = arg("--programs");
-  const soDir = arg("--so-dir");
+  const soDir =
+    optionalArg("--so-dir") ?? deployArtifactOutDirAbs("upgradeable_ship");
   const rpc = arg("--rpc");
   const deployerKp = arg("--deployer-keypair");
   const eid = 40168;

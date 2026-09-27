@@ -5,19 +5,20 @@
  * Usage:
  *   pnpm exec tsx scripts/svm-upgrade-in-place.ts \
  *     --programs kar_passport,kar_gateway,kar_pro_staking,kar_pro_pass \
- *     --so-dir svm/target/deploy \
+ *     --so-dir svm/target/deploy-v3 \
  *     --rpc <url> \
  *     --deployer-keypair <path> \
  *     --evidence deployments/svm-40168.json \
  *     [--dry-run]
+ *
+ * Artifacts must be `--arch v3` (ELF e_flags 0x3). Default `--so-dir` is the
+ * shipping deploy dir owned by svm-deploy-artifact. Stand v0 trees refuse.
  *
  * --dry-run: show + UA + capacity + digests + retention + payer cost; no deploy, no evidence write.
  * Live upgrades pass --no-auto-extend (capacity must already fit; extend is founder-approved).
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 
 import {
   requireSvmCommercialActive,
@@ -32,6 +33,10 @@ import {
   startupRetentionUnavailableMessage,
 } from "../lib/svm/startup-retention.js";
 import { namespaceFromLayerZeroEid } from "../lib/web3/kargain-namespace.js";
+import {
+  deployArtifactOutDirAbs,
+  requireDeployArtifact,
+} from "./lib/svm-deploy-artifact.js";
 import { assertSolanaUpgradeAuthorityMatchesDeployer } from "./lib/svm-deploy-plan.js";
 import { loadSvmDevnetEvidence } from "./lib/load-deployment.js";
 import {
@@ -103,11 +108,11 @@ function registryProgramId(
 }
 
 function soPathForEvidenceKey(soDir: string, evidenceKey: string): string {
-  const p = join(soDir, `${evidenceKey}.so`);
-  if (!existsSync(p)) {
-    throw new Error(`${CALLER}: missing artifact ${p}`);
-  }
-  return p;
+  return requireDeployArtifact({
+    purpose: "upgradeable_ship",
+    stem: evidenceKey,
+    soDir,
+  });
 }
 
 function runSolana(args: string[]): { status: number; stdout: string; stderr: string } {
@@ -257,7 +262,8 @@ function payerBalanceLamports(deployerKp: string, rpc: string): number {
 async function main(): Promise<void> {
   const dryRun = hasFlag("--dry-run");
   const programsCsv = arg("--programs");
-  const soDir = arg("--so-dir");
+  const soDir =
+    optionalArg("--so-dir") ?? deployArtifactOutDirAbs("upgradeable_ship");
   const rpc = arg("--rpc");
   const deployerKp = arg("--deployer-keypair");
   const evidencePath =

@@ -28,6 +28,7 @@ import {
 import {
   withStandArtifactBindings,
   type StandArtifactBindings,
+  standDeployDir
 } from "./stand-artifact-bindings.ts";
 import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../../lib/svm/rpc-max-supported-transaction-version.ts";
 import {
@@ -102,7 +103,7 @@ const {
 
 const ROOT = path.resolve(__dirname, "../..");
 const RPC = RPC_DEFAULT;
-const DEPLOY = path.join(ROOT, "svm/target/deploy");
+const DEPLOY = standDeployDir();
 
 const ERR = {
   NotActiveVerifier: 2,
