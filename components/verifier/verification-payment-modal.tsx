@@ -415,7 +415,7 @@ function VerificationPaymentModalReady({
 
   const payEth = useCallback(async () => {
     if (!hasTokenId) return;
-    const succeeded = await runTx(() =>
+    const result = await runTx(() =>
       sendTransactionAsync({
         to: verifierAddress,
         value: effectiveFeeWei,
@@ -423,7 +423,7 @@ function VerificationPaymentModalReady({
         chainId: wc,
       }),
     );
-    if (succeeded) {
+    if (result.ok) {
       setSuccessViaLightning(false);
       setPhase("success");
     }
@@ -439,7 +439,7 @@ function VerificationPaymentModalReady({
 
   const payUsdc = useCallback(async () => {
     if (!usdc || !hasTokenId || usdcAmount === 0n) return;
-    const succeeded = await runTx(() =>
+    const result = await runTx(() =>
       writeContractAsync({
         address: usdc,
         abi: ERC20_ABI,
@@ -448,7 +448,7 @@ function VerificationPaymentModalReady({
         chainId: wc,
       }),
     );
-    if (succeeded) {
+    if (result.ok) {
       setSuccessViaLightning(false);
       setPhase("success");
     }

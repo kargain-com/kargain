@@ -11,11 +11,13 @@ import {
   decodeCustomError,
   type DecodedCustomError,
 } from "@/lib/web3/decode-custom-error";
-import { parseSvmLandedInstructionError } from "@/lib/web3/svm-landed-error";
 import { svmProgramErrorName } from "@/lib/web3/svm-program-errors";
 import {
-  isSvmConfirmRefusal,
-} from "@/lib/web3/svm-tx-confirm";
+  svmConfirmExpiredCopy,
+  svmConfirmStatusUnknownCopy,
+} from "@/lib/web3/svm-confirm-copy";
+import { isSvmConfirmRefusal } from "@/lib/web3/svm-tx-confirm";
+import { type TxRefusal } from "@/lib/web3/tx-refusal";
 import {
   isWalletRejection,
   walletRejectionCopy,
@@ -385,6 +387,34 @@ export function decodeSvmProgramError(
   return { name, args: [] };
 }
 
+function landedWithErrorCopy(
+  landed: NonNullable<
+    Extract<TxRefusal, { kind: "landed_with_error" }>["landed"]
+  > | null,
+): string {
+  if (landed?.kind === "custom") {
+    const staticCopy = REVERT_COPY[landed.name];
+    if (staticCopy != null) return staticCopy;
+  }
+  return "Transaction failed.";
+}
+
+export function txRefusalMessage(refusal: TxRefusal): string {
+  switch (refusal.kind) {
+    case "wallet_rejected":
+      return walletRejectionCopy();
+    case "pre_send":
+    case "write_failed":
+      return refusal.message;
+    case "expired":
+      return svmConfirmExpiredCopy();
+    case "status_unknown":
+      return svmConfirmStatusUnknownCopy();
+    case "landed_with_error":
+      return landedWithErrorCopy(refusal.landed);
+  }
+}
+
 export function txErrorMessage(err: unknown): string {
   if (isWalletRejection(err)) {
     return walletRejectionCopy();
@@ -392,18 +422,13 @@ export function txErrorMessage(err: unknown): string {
 
   // Landed SVM confirm: structured InstructionError before any message path.
   if (isSvmConfirmRefusal(err)) {
-    if (err.outcome.kind === "confirm_timeout") {
-      return "Transaction confirmation timed out. Try again.";
+    if (err.outcome.kind === "expired") {
+      return svmConfirmExpiredCopy();
     }
-    const landed = parseSvmLandedInstructionError(err.outcome.error);
-    if (landed?.kind === "custom") {
-      const staticCopy = REVERT_COPY[landed.name];
-      if (staticCopy != null) return staticCopy;
+    if (err.outcome.kind === "status_unknown") {
+      return svmConfirmStatusUnknownCopy();
     }
-    if (landed?.kind === "native") {
-      return "Transaction failed.";
-    }
-    return "Transaction failed.";
+    return landedWithErrorCopy(err.outcome.landed);
   }
 
   const decoded =

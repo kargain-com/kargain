@@ -10,9 +10,12 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  failingProgramFromLogMessages,
+  parseAttributedSvmLandedInstructionError,
   parseSvmLandedInstructionError,
   SVM_NATIVE_IX_ERRORS,
 } from "@/lib/web3/svm-landed-error";
+import { FIXTURE_SVM_STACK } from "./fixtures/commercial-svm-stack.ts";
 import {
   countProductScanTargets,
   walkProductTsFiles,
@@ -64,19 +67,74 @@ describe("parseSvmLandedInstructionError", () => {
     ]);
   });
 
-  it("Custom ordinal → named program error; unnamed → null", () => {
+  it("bare Custom ordinal → custom_unattributed (not named without stack)", () => {
     assert.deepEqual(
       parseSvmLandedInstructionError({
         InstructionError: [0, { Custom: 144 }],
       }),
-      { kind: "custom", name: "InvalidReceiver", ordinal: 144, index: 0 },
+      {
+        kind: "custom_unattributed",
+        ordinal: 144,
+        index: 0,
+        failingProgram: null,
+      },
     );
-    assert.equal(
+    assert.deepEqual(
       parseSvmLandedInstructionError({
         InstructionError: [0, { Custom: 999_999 }],
       }),
-      null,
+      {
+        kind: "custom_unattributed",
+        ordinal: 999_999,
+        index: 0,
+        failingProgram: null,
+      },
     );
+  });
+
+  it("parseAttributedSvmLandedInstructionError: Kargain program → named; System → unattributed", () => {
+    const err = { InstructionError: [0, { Custom: 144 }] };
+    assert.deepEqual(
+      parseAttributedSvmLandedInstructionError(
+        err,
+        FIXTURE_SVM_STACK.karPassport,
+        FIXTURE_SVM_STACK,
+      ),
+      { kind: "custom", name: "InvalidReceiver", ordinal: 144, index: 0 },
+    );
+    assert.deepEqual(
+      parseAttributedSvmLandedInstructionError(
+        { InstructionError: [0, { Custom: 1 }] },
+        "11111111111111111111111111111111",
+        FIXTURE_SVM_STACK,
+      ),
+      {
+        kind: "custom_unattributed",
+        ordinal: 1,
+        index: 0,
+        failingProgram: "11111111111111111111111111111111",
+      },
+    );
+  });
+
+  it("failingProgramFromLogMessages: first Program failed line; ignore Program log; truncated → null", () => {
+    assert.equal(
+      failingProgramFromLogMessages([
+        "Program log: ignored",
+        "Program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA failed: custom program error: 0x1",
+      ]),
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    );
+    assert.equal(
+      failingProgramFromLogMessages([
+        "Program log: Instruction: Mint",
+        "Program MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr failed: foo",
+      ]),
+      "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+    );
+    assert.equal(failingProgramFromLogMessages(["Log truncated"]), null);
+    assert.equal(failingProgramFromLogMessages(null), null);
+    assert.equal(failingProgramFromLogMessages([]), null);
   });
 
   it("non-instruction TransactionError → null (never invent index)", () => {

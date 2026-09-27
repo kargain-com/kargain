@@ -236,7 +236,7 @@ export function AgentCreateAuctionPanel({
       return;
     }
 
-    const succeeded = await runTx(() =>
+    const result = await runTx(() =>
       writeContractAsync({
         address: mode,
         abi: AscendingConsignmentAbi,
@@ -245,7 +245,7 @@ export function AgentCreateAuctionPanel({
         chainId: eip155WagmiChainId(chainId),
       }),
     );
-    if (succeeded) onSuccess?.();
+    if (result.ok) onSuccess?.();
   }
 
   return (

@@ -43,6 +43,7 @@ import {
   readEntrypointFnBody,
   saveStateTargets,
 } from "./svm-entrypoint-account-bindings.ts";
+import { writeSubmissionReference, isSvmWriteSubmission } from "../lib/web3/write-outcome.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OWNER_REL = "lib/passport/open-challenge.ts";
@@ -427,7 +428,7 @@ describe("openChallenge SVM metas order", () => {
           },
         }) as const,
     });
-    assert.ok(typeof sig === "string" && sig.length > 0);
+    assert.ok(isSvmWriteSubmission(sig) && writeSubmissionReference(sig).length > 0);
     assert.equal(wireSeen, true);
   });
 });

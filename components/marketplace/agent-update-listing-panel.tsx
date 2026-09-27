@@ -162,7 +162,7 @@ export function AgentUpdateListingPanel({
       }
     setTxError(null);
     try {
-      const pricedOk = await runTx(() =>
+      const result = await runTx(() =>
         writeContractAsync({
           address: market,
           abi: FixedPriceConsignmentAbi,
@@ -170,7 +170,7 @@ export function AgentUpdateListingPanel({
           args: [tid, price1e8],
         }),
       );
-      if (!pricedOk) return;
+      if (!result.ok) return;
       onSuccess();
     } catch (err) {
       setTxError(txErrorMessage(err));

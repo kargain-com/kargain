@@ -14,11 +14,7 @@ import { PassportUploadProgressPanel } from "@/components/passport/passport-uplo
 import { PhotoUploadZone } from "@/components/passport/photo-upload-zone";
 import { Button } from "@/components/ui/button";
 import { SurfaceAdmissionRefusalView } from "@/components/shell/surface-admission-refusal";
-import {
-  isTxSyncSvmConfirmRefusal,
-  TX_SYNC_LAG_ADVISORY,
-  useTxSync,
-} from "@/hooks/use-tx-sync";
+import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useMintPassport } from "@/hooks/use-mint-passport";
 import { useWalletAccountKind } from "@/hooks/use-wallet-account-kind";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
@@ -30,9 +26,12 @@ import {
   resolveCreatePassportNamespace,
 } from "@/lib/passport/create-passport-surface";
 import {
+  isMintPassportSendRefusal,
   mintPassportCauseCopy,
-  resolveMintLandedConfirmRefusal,
+  MintPassportSendRefusal,
+  resolveMintRefusal,
 } from "@/lib/passport/mint-passport";
+import { writeSubmissionReference } from "@/lib/web3/write-outcome";
 import { MAX_PHOTOS } from "@/lib/passport/metadata-constants";
 import {
   emptyPassportFormInput,
@@ -55,8 +54,6 @@ import {
   isSurfaceAdmissionAvailable,
 } from "@/lib/web3/surface-admission";
 import { shortChainName } from "@/lib/web3/supported-chains";
-import { walletRejectionCopy } from "@/lib/web3/wallet-rejection";
-
 const MAX_PHOTOS_LIMIT = MAX_PHOTOS;
 
 type Step = 1 | 2;
@@ -252,66 +249,54 @@ function CreatePassportWizardBody({
         return;
       }
 
-      const sent = await sendMint({ chainId, plan: planned });
-      if (!sent.ok) {
-        if (sent.cause === "wallet_rejected") {
+      // Exactly one runTx: send inside lifecycle guard, then product confirm.
+      const result = await runTx(
+        async () => {
+          const sent = await sendMint({ chainId, plan: planned });
+          if (!sent.ok) {
+            throw new MintPassportSendRefusal(sent.cause);
+          }
+          setMintRef(writeSubmissionReference(sent.submission));
+          return sent.submission;
+        },
+        {
+          mapError: (err) =>
+            isMintPassportSendRefusal(err)
+              ? mintPassportCauseCopy(err.mintCause)
+              : mintPassportCauseCopy("send_failed"),
+        },
+      );
+
+      if (!result.ok) {
+        const mapped = await resolveMintRefusal({
+          plan: planned,
+          refusal: result.refusal,
+        });
+        if (
+          mapped.cause === "wallet_rejected" ||
+          mapped.cause === "mint_sequence_advanced" ||
+          mapped.cause === "expired"
+        ) {
+          // Resubmittable — retain metadata URI (phase idle keeps uri state).
           setPhase("idle");
-          setFormError(walletRejectionCopy());
+          setFormError(mapped.copy);
           resetWrite();
           return;
         }
-        setPhase("error");
-        setFormError(mintPassportCauseCopy(sent.cause));
-        resetWrite();
-        return;
-      }
-
-      setMintRef(sent.signature);
-      // Exactly one confirmation — product SVM confirm via lifecycle.
-      const result = await runTx(async () => sent.signature, {
-        captureSvmConfirm: true,
-      });
-
-      if (isTxSyncSvmConfirmRefusal(result)) {
-        // SVM plan carries `plan`; EVM carries `call` — no vm string branch.
-        if (
-          result.svmConfirm.kind === "landed_with_error" &&
-          "plan" in planned
-        ) {
-          const mapped = await resolveMintLandedConfirmRefusal({
-            error: result.svmConfirm.error,
-            plannedNextTokenId: planned.plan.plannedNextTokenId,
-            configAddress: planned.plan.configAddress,
-          });
-          if (mapped.cause === "mint_sequence_advanced") {
-            setPhase("idle");
-            setFormError(mapped.copy);
-            resetWrite();
-            return;
-          }
+        if (mapped.cause === "status_unknown") {
+          // May still land — retain URI; no "try again" framing beyond owner copy.
           setPhase("error");
           setFormError(mapped.copy);
           resetWrite();
           return;
         }
         setPhase("error");
-        setFormError(
-          result.svmConfirm.kind === "confirm_timeout"
-            ? mintPassportCauseCopy("send_failed")
-            : mintPassportCauseCopy("unmapped_program_error"),
-        );
+        setFormError(mapped.copy);
         resetWrite();
         return;
       }
 
-      if (!result) {
-        setPhase("error");
-        setFormError(mintPassportCauseCopy("send_failed"));
-        resetWrite();
-        return;
-      }
-
-      const minted = result.mintedPassportTokenId;
+      const minted = result.outcome.mintedPassportTokenId;
       if (!minted.ok) {
         if (minted.cause === "missing_minted_passport") {
           setPhase("error");
@@ -323,7 +308,7 @@ function CreatePassportWizardBody({
       }
 
       const tokenId = minted.tokenId;
-      const txRef = result.writeReference;
+      const txRef = result.outcome.writeReference;
       setPhase("success");
       resetWrite();
       router.push(

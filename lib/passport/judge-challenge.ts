@@ -42,6 +42,7 @@ import {
   type SvmWriteAccountMeta,
 } from "@/lib/web3/svm-write-adapter";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
+import type { WriteSubmission } from "@/lib/web3/write-outcome";
 import {
   txWriteAvailabilityForCapability,
   txWriteRefusalMessage,
@@ -458,7 +459,7 @@ export async function executeJudgeChallenge(input: {
   svmPort?: SvmSignAndSendPort;
   fetchBlockhash?: Parameters<typeof sendSvmInstruction>[0]["fetchBlockhash"];
   fetchAccountData?: FetchSvmAccountDataFn;
-}): Promise<string> {
+}): Promise<WriteSubmission> {
   const planned = await planJudgeChallenge({
     account: input.account,
     chainId: input.chainId,
@@ -500,5 +501,5 @@ export async function executeJudgeChallenge(input: {
   if (!sent.ok) {
     throw new Error(`judgeChallenge refused: ${sent.cause}:${sent.detail}`);
   }
-  return sent.signature;
+  return sent.submission;
 }

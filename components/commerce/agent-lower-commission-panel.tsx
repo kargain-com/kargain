@@ -98,7 +98,7 @@ export function AgentLowerCommissionPanel({
       }
     setTxError(null);
     try {
-      const succeeded = await runTx(() =>
+      const result = await runTx(() =>
         writeContractAsync({
           address: market,
           abi,
@@ -106,7 +106,7 @@ export function AgentLowerCommissionPanel({
           args: [tid, nextBps],
         }),
       );
-      if (!succeeded) return;
+      if (!result.ok) return;
       setInput("");
       onChanged?.();
     } catch (err) {

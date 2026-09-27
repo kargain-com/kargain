@@ -37,6 +37,10 @@ import {
   type SvmSignAndSendPort,
 } from "../lib/web3/svm-write-adapter.ts";
 import type { WalletStandardChain } from "../lib/web3/wallet-standard-chain.ts";
+import {
+  isSvmWriteSubmission,
+  writeSubmissionReference,
+} from "../lib/web3/write-outcome.ts";
 import { getBase58Encoder } from "@solana/kit";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -330,7 +334,7 @@ async function main(): Promise<void> {
     expectedChain: chainResult.chain,
   });
 
-  const signature = await executeSetPassportUri({
+  const submission = await executeSetPassportUri({
     account,
     chainId,
     tokenId,
@@ -353,6 +357,10 @@ async function main(): Promise<void> {
   assertWireContainsPlan(wire, planned.plan);
   console.log("wire_matches_plan ok");
 
+  if (!isSvmWriteSubmission(submission)) {
+    throw new Error("product-send expected SVM WriteSubmission");
+  }
+  const signature = writeSubmissionReference(submission);
   const slot = await confirmSignatureSlot(rpc, signature);
   console.log(`signature ${signature}`);
   console.log(`confirmed_slot ${slot.toString()}`);

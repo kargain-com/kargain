@@ -14,10 +14,15 @@ import {
   assembleMintPassportAccounts,
   buildEvmMintPassportCall,
   classifyMintLandedError,
-  executeMintPassport,
   mintPassportCauseCopy,
   planMintPassport,
+  resolveMintRefusal,
+  sendMintPassport,
 } from "@/lib/passport/mint-passport";
+import {
+  svmConfirmExpiredCopy,
+  svmConfirmStatusUnknownCopy,
+} from "@/lib/web3/svm-confirm-copy";
 import {
   commercialSvmNamespaceIds,
   requireSvmCommercialActive,
@@ -102,18 +107,23 @@ describe("mintPassport EVM behavioural pin", () => {
     });
   });
 
-  it("executeMintPassport EVM passes the pinned call through writeEvmContract", async () => {
+  it("planMintPassport + sendMintPassport EVM passes pinned call through writeEvmContract", async () => {
     let captured: unknown;
-    const result = await executeMintPassport({
-      account: {
-        status: "connected",
-        vm: "evm",
-        address: to,
-        namespace: mintKargainNamespace(84532),
-        chainId: 84532,
-      },
+    const account = {
+      status: "connected" as const,
+      vm: "evm" as const,
+      address: to,
+      namespace: mintKargainNamespace(84532),
       chainId: 84532,
-      uri,
+    };
+    const planned = await planMintPassport({ account, chainId: 84532, uri });
+    assert.equal(planned.ok, true);
+    if (!planned.ok || planned.vm !== "evm") throw new Error("expected evm plan");
+
+    const result = await sendMintPassport({
+      plan: planned,
+      account,
+      chainId: 84532,
       writeEvmContract: async (call) => {
         captured = call;
         return "0xabc" as `0x${string}`;
@@ -121,7 +131,8 @@ describe("mintPassport EVM behavioural pin", () => {
     });
     assert.equal(result.ok, true);
     if (!result.ok) return;
-    assert.equal(result.signature, "0xabc");
+    assert.equal(result.submission, "0xabc");
+    assert.match(result.submission, /^0x/);
     assertEvmCallPin(
       captured as { functionName: string; args: readonly unknown[] },
       to,
@@ -263,26 +274,32 @@ describe("owner is plan+send only; no confirm / override / text InvalidSeeds", (
     assert.doesNotMatch(src, /createSvmTxConfirmPort/);
   });
 
-  it("hook wires plan+send; does not inject signature statuses", () => {
+  it("hook wires planMintPassport + sendMintPassport only; no executeMintPassport", () => {
     const hook = readFileSync(path.join(ROOT, HOOK_REL), "utf8");
-    assert.ok(/planMintPassport/.test(hook));
-    assert.ok(/sendMintPassport|executeMintPassport/.test(hook));
+    assert.match(hook, /planMintPassport/);
+    assert.match(hook, /sendMintPassport/);
+    assert.doesNotMatch(hook, /executeMintPassport/);
     assert.doesNotMatch(hook, /fetchProductSvmSignatureStatuses/);
     assert.doesNotMatch(hook, /getSignatureStatuses/);
   });
 });
 
 describe("wizard consumes causes only", () => {
-  it("wizard has no VM fork; branches on causes; no sentence-equality wallet reject", () => {
+  it("wizard has no VM fork; send inside runTx; resolveMintRefusal on refusal", () => {
     const wizard = readFileSync(path.join(ROOT, WIZARD_REL), "utf8");
-    assert.ok(/useMintPassport/.test(wizard));
-    assert.ok(/isTxSyncSvmConfirmRefusal/.test(wizard));
-    assert.ok(/captureSvmConfirm:\s*true/.test(wizard));
-    assert.ok(/resolveMintLandedConfirmRefusal/.test(wizard));
-    assert.ok(/mint_sequence_advanced/.test(wizard));
-    assert.ok(!/\bif\s*\(\s*vm\s*\)/.test(wizard));
-    assert.ok(!/\bavail\.vm\s*===\s*"evm"/.test(wizard));
-    assert.ok(!/useEvmWriteContract/.test(wizard));
+    assert.match(wizard, /useMintPassport/);
+    assert.match(wizard, /runTx\s*\(/);
+    assert.match(wizard, /sendMint\s*\(/);
+    assert.match(wizard, /MintPassportSendRefusal/);
+    assert.match(wizard, /resolveMintRefusal/);
+    assert.match(wizard, /mint_sequence_advanced/);
+    assert.doesNotMatch(wizard, /captureSvmConfirm/);
+    assert.doesNotMatch(wizard, /isTxSyncSvmConfirmRefusal/);
+    assert.doesNotMatch(wizard, /confirm_timeout/);
+    assert.doesNotMatch(wizard, /resolveMintLandedConfirmRefusal/);
+    assert.doesNotMatch(wizard, /\bif\s*\(\s*vm\s*\)/);
+    assert.doesNotMatch(wizard, /\bavail\.vm\s*===\s*"evm"/);
+    assert.doesNotMatch(wizard, /useEvmWriteContract/);
     assert.doesNotMatch(wizard, /fetchProductSvmAccountData/);
     assert.doesNotMatch(wizard, /decodePassportConfig/);
     assert.doesNotMatch(
@@ -297,5 +314,50 @@ describe("wizard consumes causes only", () => {
     const planted =
       'if (detail === walletRejectionCopy()) { setFormError(detail); }';
     assert.match(planted, /detail\s*===\s*walletRejectionCopy/);
+  });
+});
+
+describe("mint confirm cause copy consumes svm-confirm-copy owner", () => {
+  it("expired and status_unknown sentences delegate to svm-confirm-copy", () => {
+    assert.equal(mintPassportCauseCopy("expired"), svmConfirmExpiredCopy());
+    assert.equal(
+      mintPassportCauseCopy("status_unknown"),
+      svmConfirmStatusUnknownCopy(),
+    );
+  });
+
+  it("resolveMintRefusal maps expired / status_unknown to owner copy", async () => {
+    const plan = {
+      ok: true as const,
+      vm: "svm" as const,
+      plan: {
+        programId: "prog",
+        data: new Uint8Array(0),
+        accounts: [],
+        feePayer: "pay",
+        plannedNextTokenId: new Uint8Array(32),
+        plannedTokenId: "1",
+        configAddress: "cfg",
+      },
+    };
+
+    const expired = await resolveMintRefusal({
+      plan,
+      refusal: {
+        kind: "expired",
+        signature: "sig",
+        lastValidBlockHeight: 100n,
+        observedBlockHeight: 101n,
+      },
+    });
+    assert.equal(expired.cause, "expired");
+    assert.equal(expired.copy, svmConfirmExpiredCopy());
+
+    const unknown = await resolveMintRefusal({
+      plan,
+      refusal: { kind: "status_unknown", signature: "sig" },
+    });
+    assert.equal(unknown.cause, "status_unknown");
+    assert.equal(unknown.copy, svmConfirmStatusUnknownCopy());
   });
 });

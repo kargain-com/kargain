@@ -49,7 +49,7 @@ export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props
       }
     setTxError(null);
     try {
-      const succeeded = await runTx(() =>
+      const result = await runTx(() =>
         writeContractAsync({
           address: market,
           abi: FixedPriceConsignmentAbi,
@@ -57,7 +57,7 @@ export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props
           args: [tid],
         }),
       );
-      if (!succeeded) return;
+      if (!result.ok) return;
       onSuccess?.();
     } catch (err) {
       setTxError(txErrorMessage(err));

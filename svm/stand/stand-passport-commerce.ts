@@ -459,7 +459,10 @@ export async function expectCustom(
     signers,
     expected: { kind: "custom", name },
   });
-  assert.equal(observed.kind, "custom");
+  assert.ok(
+    observed.kind === "custom" || observed.kind === "custom_unattributed",
+    `expected custom ordinal ${code}, got ${observed.kind}`,
+  );
   assert.equal(observed.ordinal, code);
   return observed.ordinal;
 }

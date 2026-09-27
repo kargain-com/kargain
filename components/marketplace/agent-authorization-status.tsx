@@ -78,7 +78,7 @@ export function AgentAuthorizationStatus({
       }
     setTxError(null);
     try {
-      const succeeded = await runTx(() =>
+      const result = await runTx(() =>
         writeContractAsync({
           address: market,
           abi: FixedPriceConsignmentAbi,
@@ -86,7 +86,7 @@ export function AgentAuthorizationStatus({
           args: [tid],
         }),
       );
-      if (!succeeded) return;
+      if (!result.ok) return;
       onChanged();
     } catch (err) {
       setTxError(txErrorMessage(err));

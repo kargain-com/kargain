@@ -161,7 +161,7 @@ export function KarProJoinForm({
       );
 
       setLoadingPhase("idle");
-      const succeeded = await runTx(
+      const result = await runTx(
         () =>
           writeContractAsync({
             address: staking,
@@ -180,7 +180,7 @@ export function KarProJoinForm({
                 : "Something went wrong. Try again.",
         },
       );
-      if (succeeded) onSuccess();
+      if (result.ok) onSuccess();
     } catch (err) {
       setLoadingPhase("idle");
       setError(err instanceof Error ? err.message : "Something went wrong. Try again.");

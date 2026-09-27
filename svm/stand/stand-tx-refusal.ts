@@ -13,7 +13,10 @@ import {
   type SvmLandedInstructionError,
   type SvmNativeIxError,
 } from "../../lib/web3/svm-landed-error.ts";
-import type { SvmProgramErrorName } from "../../lib/web3/svm-program-errors.ts";
+import {
+  svmProgramErrorName,
+  type SvmProgramErrorName,
+} from "../../lib/web3/svm-program-errors.ts";
 import {
   STAND_BLOCKHASH_EXPIRED,
   STAND_CONFIRM_TIMEOUT,
@@ -48,9 +51,13 @@ function formatExpected(expected: StandTxRefusalExpected): string {
 }
 
 function formatObserved(observed: StandTxRefusalObserved): string {
-  return observed.kind === "native"
-    ? `native ${observed.name} @${observed.index}`
-    : `custom ${observed.name}(${observed.ordinal}) @${observed.index}`;
+  if (observed.kind === "native") {
+    return `native ${observed.name} @${observed.index}`;
+  }
+  if (observed.kind === "custom") {
+    return `custom ${observed.name}(${observed.ordinal}) @${observed.index}`;
+  }
+  return `custom_unattributed(${observed.ordinal}) @${observed.index} program=${observed.failingProgram ?? "null"}`;
 }
 
 function matchesExpected(
@@ -60,7 +67,15 @@ function matchesExpected(
   if (expected.kind === "native") {
     return observed.kind === "native" && observed.name === expected.name;
   }
-  return observed.kind === "custom" && observed.name === expected.name;
+  if (observed.kind === "custom") {
+    return observed.name === expected.name;
+  }
+  // Stand confirm does not always attach product attribution; ordinal↔name
+  // via the shared Kargain table still identifies the program error.
+  if (observed.kind === "custom_unattributed") {
+    return svmProgramErrorName(observed.ordinal) === expected.name;
+  }
+  return false;
 }
 
 function formatConfirmRefusal(outcome: StandConfirmOutcome): string {

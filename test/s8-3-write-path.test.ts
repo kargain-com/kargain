@@ -206,13 +206,17 @@ describe("svm tx confirm owner", () => {
     assert.equal(SVM_TX_CONFIRM_COMMITMENT, "confirmed");
     const status = await confirmSvmTransaction(
       {
-        confirmSignature: async (sig) => ({
+        confirmSubmission: async (submission) => ({
           kind: "landed_ok",
-          signature: sig,
+          signature: submission.signature,
           slot: 42n,
         }),
       },
-      "5".repeat(64),
+      {
+        vm: "svm",
+        signature: "5".repeat(64),
+        lastValidBlockHeight: 100n,
+      },
     );
     assert.equal(status.kind, "landed_ok");
     if (status.kind === "landed_ok") {
@@ -225,6 +229,7 @@ describe("svm tx confirm owner", () => {
       "../lib/web3/svm-tx-confirm.ts"
     );
     const port = createSvmTxConfirmPort({
+      stack: FIXTURE_SVM_STACK,
       getSignatureStatuses: async () => [
         {
           confirmationStatus: "confirmed",
@@ -232,9 +237,15 @@ describe("svm tx confirm owner", () => {
           slot: 9,
         },
       ],
+      getBlockHeight: async () => 0n,
+      getTransactionLogMessages: async () => null,
       timeoutMs: 2_000,
     });
-    const outcome = await port.confirmSignature("a".repeat(64));
+    const outcome = await port.confirmSubmission({
+      vm: "svm",
+      signature: "a".repeat(64),
+      lastValidBlockHeight: 100n,
+    });
     assert.equal(outcome.kind, "landed_with_error");
     if (outcome.kind !== "landed_with_error") throw new Error("unreachable");
     assert.deepEqual(outcome.error, {
@@ -245,12 +256,68 @@ describe("svm tx confirm owner", () => {
     assert.ok(outcome.error != null);
   });
 
-  it("createSvmTxConfirmPort: confirmed without slot keeps polling → timeout (never 0n)", async () => {
+  it("createSvmTxConfirmPort: processed err does not land (only ≥ confirmed)", async () => {
     const { createSvmTxConfirmPort } = await import(
       "../lib/web3/svm-tx-confirm.ts"
     );
     let polls = 0;
     const port = createSvmTxConfirmPort({
+      stack: FIXTURE_SVM_STACK,
+      getSignatureStatuses: async () => {
+        polls += 1;
+        return [
+          {
+            confirmationStatus: "processed",
+            err: { InstructionError: [0, { Custom: 144 }] },
+            slot: 7,
+          },
+        ];
+      },
+      getBlockHeight: async () => 50n,
+      getTransactionLogMessages: async () => null,
+      pollIntervalMs: 5,
+      timeoutMs: 40,
+    });
+    const outcome = await port.confirmSubmission({
+      vm: "svm",
+      signature: "c".repeat(64),
+      lastValidBlockHeight: 100n,
+    });
+    assert.equal(outcome.kind, "status_unknown");
+    assert.ok(polls >= 2, "processed-only err must keep polling, not land");
+  });
+
+  it("createSvmTxConfirmPort: block height past lastValid → expired", async () => {
+    const { createSvmTxConfirmPort } = await import(
+      "../lib/web3/svm-tx-confirm.ts"
+    );
+    const port = createSvmTxConfirmPort({
+      stack: FIXTURE_SVM_STACK,
+      getSignatureStatuses: async () => [null],
+      getBlockHeight: async () => 101n,
+      getTransactionLogMessages: async () => null,
+      pollIntervalMs: 5,
+      timeoutMs: 500,
+    });
+    const outcome = await port.confirmSubmission({
+      vm: "svm",
+      signature: "d".repeat(64),
+      lastValidBlockHeight: 100n,
+    });
+    assert.equal(outcome.kind, "expired");
+    if (outcome.kind === "expired") {
+      assert.equal(outcome.lastValidBlockHeight, 100n);
+      assert.equal(outcome.observedBlockHeight, 101n);
+    }
+  });
+
+  it("createSvmTxConfirmPort: confirmed without slot keeps polling → status_unknown (never 0n)", async () => {
+    const { createSvmTxConfirmPort } = await import(
+      "../lib/web3/svm-tx-confirm.ts"
+    );
+    let polls = 0;
+    const port = createSvmTxConfirmPort({
+      stack: FIXTURE_SVM_STACK,
       getSignatureStatuses: async () => {
         polls += 1;
         return [
@@ -261,11 +328,17 @@ describe("svm tx confirm owner", () => {
           },
         ];
       },
+      getBlockHeight: async () => 0n,
+      getTransactionLogMessages: async () => null,
       pollIntervalMs: 10,
       timeoutMs: 80,
     });
-    const outcome = await port.confirmSignature("b".repeat(64));
-    assert.equal(outcome.kind, "confirm_timeout");
+    const outcome = await port.confirmSubmission({
+      vm: "svm",
+      signature: "b".repeat(64),
+      lastValidBlockHeight: 100n,
+    });
+    assert.equal(outcome.kind, "status_unknown");
     assert.ok(polls >= 2, "must poll more than once when slot absent");
     // Never invent landed_ok with slot 0n when confirmationStatus lacks slot.
     assert.notEqual(

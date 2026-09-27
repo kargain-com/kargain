@@ -44,6 +44,7 @@ import {
   vmBranchViolationInSource,
   VM_BRANCH_ALLOWLIST,
 } from "./network-vm-component-policy.test.ts";
+import { writeSubmissionReference, isSvmWriteSubmission } from "../lib/web3/write-outcome.ts";
 import {
   assertCleanProductScan,
   scanProductSources,
@@ -318,8 +319,8 @@ describe("setPassportUri SVM metas order", () => {
           },
         }) as const,
     });
-    assert.equal(typeof sig, "string");
-    assert.equal(sig.length > 0, true);
+    assert.ok(isSvmWriteSubmission(sig));
+    assert.equal(writeSubmissionReference(sig).length > 0, true);
     assert.equal(wireSeen, true);
   });
 });
@@ -448,8 +449,8 @@ if (!evm.ok) {
           },
         }) as const,
     });
-    assert.equal(typeof sig, "string");
-    assert.equal(sig.length > 0, true);
+    assert.ok(isSvmWriteSubmission(sig));
+    assert.equal(writeSubmissionReference(sig).length > 0, true);
     assert.equal(wireSeen, true);
   });
 

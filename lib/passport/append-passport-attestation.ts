@@ -39,6 +39,7 @@ import {
   type SvmWriteAccountMeta,
 } from "@/lib/web3/svm-write-adapter";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
+import type { WriteSubmission } from "@/lib/web3/write-outcome";
 import {
   txWriteAvailabilityForCapability,
   txWriteRefusalMessage,
@@ -383,7 +384,7 @@ export async function executeAppendPassportAttestation(input: {
   svmPort?: SvmSignAndSendPort;
   fetchBlockhash?: Parameters<typeof sendSvmInstruction>[0]["fetchBlockhash"];
   fetchAccountData?: FetchSvmAccountDataFn;
-}): Promise<string> {
+}): Promise<WriteSubmission> {
   const planned = await planAppendPassportAttestation({
     account: input.account,
     chainId: input.chainId,
@@ -428,5 +429,5 @@ export async function executeAppendPassportAttestation(input: {
       `appendPassportAttestation refused: ${sent.cause}:${sent.detail}`,
     );
   }
-  return sent.signature;
+  return sent.submission;
 }

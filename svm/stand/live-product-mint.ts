@@ -1,7 +1,8 @@
 /**
  * LIVE proof: product plan+send mint on the local validator via an injected
  * SvmSignAndSendPort, confirmed through the product {@link createSvmTxConfirmPort}
- * Outcome. Happy path + real A/B concurrency (no plannedNextTokenIdOverride).
+ * Outcome. Four cases: skip-preflight concurrency, preflight refuse concurrency,
+ * expired blockhash, System-program Custom attribution (not NotOwner).
  */
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -11,19 +12,24 @@ import path from "node:path";
 import { getBase58Encoder } from "@solana/kit";
 
 import {
-  classifyMintLandedErrorFromRaw,
+  classifyMintLandedError,
   planMintPassport,
   sendMintPassport,
 } from "../../lib/passport/mint-passport.ts";
 import { tokenIdFromBytes32 } from "../../lib/svm/event-payload-decode.ts";
+import { systemProgramId } from "../../lib/svm/foreign-programs.ts";
+import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../../lib/svm/rpc-max-supported-transaction-version.ts";
 import { deriveSvmPdaForProgram } from "../../lib/svm/derive-pda.ts";
 import { COMMERCIAL_ACTIVE } from "../../lib/web3/commercial-active.ts";
-import type { CommercialRegistry } from "../../lib/web3/commercial-active.ts";
+import type {
+  CommercialRegistry,
+  SvmCommercialActiveStack,
+} from "../../lib/web3/commercial-active.ts";
 import { svmActiveAccountFromAddress } from "../../lib/web3/active-account.ts";
-import { parseSvmLandedInstructionError } from "../../lib/web3/svm-landed-error.ts";
 import { createSvmTxConfirmPort } from "../../lib/web3/svm-tx-confirm.ts";
 import { mintWalletStandardChain } from "../../lib/web3/wallet-standard-chain.ts";
 import type { SvmSignAndSendPort } from "../../lib/web3/svm-write-adapter.ts";
+import type { SvmWriteSubmission } from "../../lib/web3/write-outcome.ts";
 import {
   withStandArtifactBindings,
   type StandArtifactBindings,
@@ -54,11 +60,34 @@ export type LiveProductMintProof = {
     plannedTokenId: string;
     landedTokenId: string;
   };
+  /** @deprecated alias — skip-preflight concurrency arm */
   concurrency: {
     cause: "mint_sequence_advanced";
     plannedTokenId: string;
     nextTokenIdAfter: string;
     landedErrorIndex: number;
+  };
+  concurrencySkipPreflight: {
+    cause: "mint_sequence_advanced";
+    plannedTokenId: string;
+    nextTokenIdAfter: string;
+    landedErrorIndex: number;
+  };
+  concurrencyPreflight: {
+    cause: "mint_sequence_advanced";
+    plannedTokenId: string;
+  };
+  expired: {
+    kind: "expired";
+    signature: string;
+    lastValidBlockHeight: string;
+    observedBlockHeight: string;
+  };
+  attribution: {
+    kind: "landed_with_error";
+    failingProgram: string;
+    landedKind: "custom_unattributed";
+    ordinal: number;
   };
 };
 
@@ -83,6 +112,7 @@ function createStandSignAndSendPort(opts: {
   owner: Kp;
   connection: Conn;
   expectedChain: string;
+  skipPreflight: boolean;
 }): SvmSignAndSendPort {
   return {
     async signAndSendTransaction({ transaction, chain }) {
@@ -94,10 +124,34 @@ function createStandSignAndSendPort(opts: {
       const tx = VersionedTransaction.deserialize(Buffer.from(transaction));
       tx.sign([opts.owner]);
       const signature = await opts.connection.sendRawTransaction(tx.serialize(), {
-        skipPreflight: true,
+        skipPreflight: opts.skipPreflight,
         preflightCommitment: "confirmed",
       });
       return new Uint8Array(getBase58Encoder().encode(signature));
+    },
+  };
+}
+
+/** Sign and return signature without broadcasting — wire held for later send. */
+function createWithholdPort(opts: {
+  owner: Kp;
+  expectedChain: string;
+  hold: { wire: Uint8Array | null };
+}): SvmSignAndSendPort {
+  return {
+    async signAndSendTransaction({ transaction, chain }) {
+      if (chain !== opts.expectedChain) {
+        throw new Error(
+          `wrong_wallet_standard_chain: expected ${opts.expectedChain}, received ${chain}`,
+        );
+      }
+      const tx = VersionedTransaction.deserialize(Buffer.from(transaction));
+      tx.sign([opts.owner]);
+      opts.hold.wire = tx.serialize();
+      const sigBytes = tx.signatures[0];
+      assert.ok(sigBytes && sigBytes.length === 64, "signed signature missing");
+      // Port returns raw 64-byte sig; sendSvmInstruction base58-decodes to RPC string.
+      return new Uint8Array(sigBytes);
     },
   };
 }
@@ -153,6 +207,32 @@ function bytesGt(a: Uint8Array, b: Uint8Array): boolean {
   return false;
 }
 
+function productConfirmPort(conn: Conn, stack: SvmCommercialActiveStack) {
+  return createSvmTxConfirmPort({
+    stack,
+    getSignatureStatuses: (sigs) => getSignatureStatuses(conn, sigs),
+    getBlockHeight: async () => BigInt(await conn.getBlockHeight("confirmed")),
+    getTransactionLogMessages: async (signature) => {
+      const tx = await conn.getTransaction(signature, {
+        commitment: "confirmed",
+        maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
+      });
+      return tx?.meta?.logMessages ?? null;
+    },
+    timeoutMs: 30_000,
+  });
+}
+
+async function advancePastHeight(conn: Conn, lastValid: bigint): Promise<bigint> {
+  for (let i = 0; i < 200; i++) {
+    const tip = BigInt(await conn.getBlockHeight("confirmed"));
+    if (tip > lastValid) return tip;
+    await airdrop(conn, Keypair.generate(), 0.001);
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  throw new Error(`tip did not pass lastValidBlockHeight ${lastValid}`);
+}
+
 export async function probeValidator(rpc = RPC_DEFAULT): Promise<boolean> {
   try {
     const c = new Connection(rpc, "confirmed");
@@ -172,36 +252,43 @@ export async function runLiveProductMint(): Promise<LiveProductMintProof> {
   );
   const ns = 2_000_040_168;
   const chain = "solana:devnet";
+  const svmStack = registry[ns];
+  assert.ok(svmStack && svmStack.vm === "svm");
 
   const payer = Keypair.generate();
   await airdrop(conn, payer, 5);
   const account = svmActiveAccountFromAddress(payer.publicKey.toBase58());
-  const port = createStandSignAndSendPort({
+
+  const skipPort = createStandSignAndSendPort({
     owner: payer,
     connection: conn,
     expectedChain: chain,
+    skipPreflight: true,
+  });
+  const preflightPort = createStandSignAndSendPort({
+    owner: payer,
+    connection: conn,
+    expectedChain: chain,
+    skipPreflight: false,
   });
 
   const fetchAccount = (addr: string) => fetchAccountData(conn, addr);
-  const getStatuses = (sigs: string[]) => getSignatureStatuses(conn, sigs);
   const blockhash = async () => fetchBlockhash(conn);
-  const confirmPort = createSvmTxConfirmPort({
-    getSignatureStatuses: getStatuses,
-    timeoutMs: 30_000,
-  });
+  const confirmPort = productConfirmPort(conn, svmStack);
 
-  const mintPorts = {
-    writeEvmContract: async () => {
-      throw new Error("EVM write unreachable on stand product mint");
-    },
-    registry,
-    svmPort: port,
-    fetchAccountData: fetchAccount,
-    fetchBlockhash: blockhash,
-    derivePda: deriveSvmPdaForProgram,
-  } as const;
+  const mintPorts = (port: SvmSignAndSendPort) =>
+    ({
+      writeEvmContract: async () => {
+        throw new Error("EVM write unreachable on stand product mint");
+      },
+      registry,
+      svmPort: port,
+      fetchAccountData: fetchAccount,
+      fetchBlockhash: blockhash,
+      derivePda: deriveSvmPdaForProgram,
+    }) as const;
 
-  // --- Happy: plan + send + product confirm Outcome ---
+  // --- Happy ---
   const planHappy = await planMintPassport({
     account,
     chainId: ns,
@@ -217,18 +304,18 @@ export async function runLiveProductMint(): Promise<LiveProductMintProof> {
     plan: planHappy,
     account,
     chainId: ns,
-    ...mintPorts,
+    ...mintPorts(skipPort),
   });
   assert.equal(sentHappy.ok, true, "happy send refused");
   if (!sentHappy.ok) throw new Error("unreachable");
+  const happySub = sentHappy.submission as SvmWriteSubmission;
 
-  const outcomeHappy = await confirmPort.confirmSignature(sentHappy.signature);
+  const outcomeHappy = await confirmPort.confirmSubmission(happySub);
   assert.equal(
     outcomeHappy.kind,
     "landed_ok",
     `happy confirm kind=${outcomeHappy.kind}`,
   );
-  if (outcomeHappy.kind !== "landed_ok") throw new Error("unreachable");
 
   const plannedTokenId = planHappy.plan.plannedTokenId;
   const nextAfterHappy = await readNextTokenId(conn, stack.passportConfig);
@@ -237,7 +324,7 @@ export async function runLiveProductMint(): Promise<LiveProductMintProof> {
     "next_token_id must advance past happy planned id",
   );
 
-  // --- Concurrency: plan A, land B, send stale A ---
+  // --- (1) skipPreflight: plan A, land B, send stale A → landed InvalidSeeds ---
   const planA = await planMintPassport({
     account,
     chainId: ns,
@@ -259,64 +346,220 @@ export async function runLiveProductMint(): Promise<LiveProductMintProof> {
   });
   assert.equal(planB.ok, true);
   if (!planB.ok || planB.vm !== "svm") throw new Error("unreachable");
-  assert.equal(
-    planB.plan.plannedTokenId,
-    planA.plan.plannedTokenId,
-    "A and B must share the same planned next before either lands",
-  );
 
   const sentB = await sendMintPassport({
     plan: planB,
     account,
     chainId: ns,
-    ...mintPorts,
+    ...mintPorts(skipPort),
   });
   assert.equal(sentB.ok, true, "B send refused");
   if (!sentB.ok) throw new Error("unreachable");
-  const outcomeB = await confirmPort.confirmSignature(sentB.signature);
+  const outcomeB = await confirmPort.confirmSubmission(
+    sentB.submission as SvmWriteSubmission,
+  );
   assert.equal(outcomeB.kind, "landed_ok", `B confirm kind=${outcomeB.kind}`);
 
   const sentA = await sendMintPassport({
     plan: planA,
     account,
     chainId: ns,
-    ...mintPorts,
+    ...mintPorts(skipPort),
   });
   assert.equal(sentA.ok, true, "A send refused");
   if (!sentA.ok) throw new Error("unreachable");
 
-  const outcomeA = await confirmPort.confirmSignature(sentA.signature);
+  const outcomeA = await confirmPort.confirmSubmission(
+    sentA.submission as SvmWriteSubmission,
+  );
   assert.equal(
     outcomeA.kind,
     "landed_with_error",
     `A confirm kind=${outcomeA.kind}`,
   );
   if (outcomeA.kind !== "landed_with_error") throw new Error("unreachable");
-
-  const landed = parseSvmLandedInstructionError(outcomeA.error);
-  assert.ok(landed, "landed InstructionError must parse");
-  assert.equal(landed!.kind, "native");
-  assert.equal(landed!.name, "InvalidSeeds");
+  assert.ok(outcomeA.landed, "landed InstructionError must parse");
+  assert.equal(outcomeA.landed.kind, "native");
+  assert.equal(outcomeA.landed.name, "InvalidSeeds");
 
   const freshNext = await readNextTokenId(conn, stack.passportConfig);
-  const classified = classifyMintLandedErrorFromRaw(
-    outcomeA.error,
+  const classified = classifyMintLandedError(
+    outcomeA.landed,
     planA.plan.plannedNextTokenId,
     freshNext,
   );
   assert.equal(classified, "mint_sequence_advanced");
 
+  const concurrencySkipPreflight = {
+    cause: "mint_sequence_advanced" as const,
+    plannedTokenId: planA.plan.plannedTokenId,
+    nextTokenIdAfter: tokenIdFromBytes32(freshNext),
+    landedErrorIndex: outcomeA.landed.index,
+  };
+
+  // --- (2) skipPreflight false: plan C, land D, send stale C → send refuse ---
+  const planC = await planMintPassport({
+    account,
+    chainId: ns,
+    uri: "ar://product-mint-stand-stale-c",
+    registry,
+    fetchAccountData: fetchAccount,
+    derivePda: deriveSvmPdaForProgram,
+  });
+  assert.equal(planC.ok, true);
+  if (!planC.ok || planC.vm !== "svm") throw new Error("unreachable");
+
+  const planD = await planMintPassport({
+    account,
+    chainId: ns,
+    uri: "ar://product-mint-stand-race-d",
+    registry,
+    fetchAccountData: fetchAccount,
+    derivePda: deriveSvmPdaForProgram,
+  });
+  assert.equal(planD.ok, true);
+  if (!planD.ok || planD.vm !== "svm") throw new Error("unreachable");
+
+  const sentD = await sendMintPassport({
+    plan: planD,
+    account,
+    chainId: ns,
+    ...mintPorts(skipPort),
+  });
+  assert.equal(sentD.ok, true);
+  if (!sentD.ok) throw new Error("unreachable");
+  const outcomeD = await confirmPort.confirmSubmission(
+    sentD.submission as SvmWriteSubmission,
+  );
+  assert.equal(outcomeD.kind, "landed_ok");
+
+  const sentC = await sendMintPassport({
+    plan: planC,
+    account,
+    chainId: ns,
+    ...mintPorts(preflightPort),
+  });
+  assert.equal(sentC.ok, false, "stale C must refuse at preflight send");
+  const nextAfterC = await readNextTokenId(conn, stack.passportConfig);
+  assert.ok(
+    bytesGt(nextAfterC, planC.plan.plannedNextTokenId),
+    "next advanced after D; C refuse is concurrency",
+  );
+
+  // --- (3) expired: sign+withhold, tip past lastValid, then send + confirm ---
+  const planExp = await planMintPassport({
+    account,
+    chainId: ns,
+    uri: "ar://product-mint-stand-expired",
+    registry,
+    fetchAccountData: fetchAccount,
+    derivePda: deriveSvmPdaForProgram,
+  });
+  assert.equal(planExp.ok, true);
+  if (!planExp.ok || planExp.vm !== "svm") throw new Error("unreachable");
+
+  const hold: { wire: Uint8Array | null } = { wire: null };
+  const withholdPort = createWithholdPort({
+    owner: payer,
+    expectedChain: chain,
+    hold,
+  });
+  const sentExp = await sendMintPassport({
+    plan: planExp,
+    account,
+    chainId: ns,
+    ...mintPorts(withholdPort),
+  });
+  if (!sentExp.ok) {
+    assert.fail(
+      `withhold sign refused: cause=${sentExp.cause} detail=${sentExp.detail}`,
+    );
+  }
+  const expSub = sentExp.submission as SvmWriteSubmission;
+  assert.ok(hold.wire, "wire must be withheld");
+
+  const observed = await advancePastHeight(conn, expSub.lastValidBlockHeight);
+  await conn.sendRawTransaction(hold.wire!, {
+    skipPreflight: true,
+    preflightCommitment: "confirmed",
+  });
+  const outcomeExp = await confirmPort.confirmSubmission(expSub);
+  assert.equal(
+    outcomeExp.kind,
+    "expired",
+    `expired confirm kind=${outcomeExp.kind} tip=${observed}`,
+  );
+  if (outcomeExp.kind !== "expired") throw new Error("unreachable");
+
+  // --- (4) Attribution: underfunded payer → System Custom, not NotOwner ---
+  const broke = Keypair.generate();
+  await airdrop(conn, broke, 0.001);
+  const brokeAccount = svmActiveAccountFromAddress(broke.publicKey.toBase58());
+  const brokePort = createStandSignAndSendPort({
+    owner: broke,
+    connection: conn,
+    expectedChain: chain,
+    skipPreflight: true,
+  });
+  const planBroke = await planMintPassport({
+    account: brokeAccount,
+    chainId: ns,
+    uri: "ar://product-mint-stand-broke",
+    registry,
+    fetchAccountData: fetchAccount,
+    derivePda: deriveSvmPdaForProgram,
+  });
+  assert.equal(planBroke.ok, true);
+  if (!planBroke.ok || planBroke.vm !== "svm") throw new Error("unreachable");
+
+  const sentBroke = await sendMintPassport({
+    plan: planBroke,
+    account: brokeAccount,
+    chainId: ns,
+    ...mintPorts(brokePort),
+  });
+  assert.equal(sentBroke.ok, true, "broke send should submit");
+  if (!sentBroke.ok) throw new Error("unreachable");
+  const outcomeBroke = await confirmPort.confirmSubmission(
+    sentBroke.submission as SvmWriteSubmission,
+  );
+  assert.equal(outcomeBroke.kind, "landed_with_error");
+  if (outcomeBroke.kind !== "landed_with_error") throw new Error("unreachable");
+  const systemId = systemProgramId();
+  assert.equal(
+    outcomeBroke.failingProgram,
+    systemId,
+    `failingProgram must be System, got ${outcomeBroke.failingProgram}`,
+  );
+  assert.ok(outcomeBroke.landed);
+  assert.equal(outcomeBroke.landed.kind, "custom_unattributed");
+  if (outcomeBroke.landed.kind !== "custom_unattributed") {
+    throw new Error("unreachable");
+  }
+
   return withStandArtifactBindings({
     happy: {
-      signature: sentHappy.signature,
+      signature: happySub.signature,
       plannedTokenId,
       landedTokenId: plannedTokenId,
     },
-    concurrency: {
+    concurrency: concurrencySkipPreflight,
+    concurrencySkipPreflight,
+    concurrencyPreflight: {
       cause: "mint_sequence_advanced",
-      plannedTokenId: planA.plan.plannedTokenId,
-      nextTokenIdAfter: tokenIdFromBytes32(freshNext),
-      landedErrorIndex: landed!.index,
+      plannedTokenId: planC.plan.plannedTokenId,
+    },
+    expired: {
+      kind: "expired",
+      signature: outcomeExp.signature,
+      lastValidBlockHeight: String(outcomeExp.lastValidBlockHeight),
+      observedBlockHeight: String(outcomeExp.observedBlockHeight),
+    },
+    attribution: {
+      kind: "landed_with_error",
+      failingProgram: outcomeBroke.failingProgram!,
+      landedKind: "custom_unattributed",
+      ordinal: outcomeBroke.landed.ordinal,
     },
   });
 }

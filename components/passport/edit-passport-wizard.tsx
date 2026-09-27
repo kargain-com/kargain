@@ -314,10 +314,10 @@ export function EditPassportWizard({
 
       setUploadProgress(null);
       setPhase("saving");
-      const synchronized = await runTx(() =>
+      const result = await runTx(() =>
         setPassportUri({ chainId, tokenId, uri }),
       );
-      if (!synchronized) {
+      if (!result.ok) {
         resetIrysUploaderCache();
         setUploadProgress(null);
         setPhase("idle");

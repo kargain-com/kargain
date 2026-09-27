@@ -32,9 +32,14 @@ import {
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { REVERT_COPY } from "@/lib/marketplace/tx-error-message";
 import {
+  svmConfirmExpiredCopy,
+  svmConfirmStatusUnknownCopy,
+} from "@/lib/web3/svm-confirm-copy";
+import {
   parseSvmLandedInstructionError,
   type SvmLandedInstructionError,
 } from "@/lib/web3/svm-landed-error";
+import type { TxRefusal } from "@/lib/web3/tx-refusal";
 import { isWalletRejection } from "@/lib/web3/wallet-rejection";
 import {
   fetchProductSvmAccountData,
@@ -48,6 +53,7 @@ import {
   type SvmWriteAccountMeta,
 } from "@/lib/web3/svm-write-adapter";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
+import type { WriteSubmission } from "@/lib/web3/write-outcome";
 import {
   txWriteAvailabilityForCapability,
   txWriteRefusalMessage,
@@ -94,6 +100,8 @@ export type MintPassportCause =
   | "wallet_rejected"
   | "send_failed"
   | "mint_sequence_advanced"
+  | "expired"
+  | "status_unknown"
   | "unmapped_program_error"
   | SendSvmInstructionCause;
 
@@ -108,16 +116,13 @@ export type PlanMintPassportResult =
     };
 
 export type SendMintPassportResult =
-  | { ok: true; signature: string; plannedTokenId?: string }
+  | { ok: true; submission: WriteSubmission; plannedTokenId?: string }
   | {
       ok: false;
       cause: MintPassportCause;
       detail: string;
       wanted?: WalletFamilyWanted;
     };
-
-/** @deprecated Alias — execute is plan+send only (no confirm). */
-export type ExecuteMintPassportResult = SendMintPassportResult;
 
 export type WriteEvmContractFn = (
   args: MintPassportEvmCall,
@@ -197,6 +202,8 @@ const MINT_PASSPORT_CAUSE_COPY: Record<MintPassportCause, string> = {
   send_failed: "Mint failed. Please try again.",
   mint_sequence_advanced:
     "Another mint landed first. Your metadata is kept — submit again.",
+  expired: svmConfirmExpiredCopy(),
+  status_unknown: svmConfirmStatusUnknownCopy(),
   unmapped_program_error: "Mint failed. Please try again.",
   missing_wallet_standard_chain: "Solana wallet chain is not configured.",
   wallet_returned_no_signature: "Wallet returned no signature.",
@@ -297,9 +304,122 @@ export function classifyMintLandedErrorFromRaw(
   );
 }
 
+async function readFreshNextTokenId(input: {
+  configAddress: string;
+  fetchAccountData?: FetchSvmAccountDataFn;
+}): Promise<
+  | { ok: true; nextTokenId: Uint8Array }
+  | { ok: false; cause: "config_unavailable" | "config_decode_failed" }
+> {
+  const fetch = input.fetchAccountData ?? fetchProductSvmAccountData;
+  const fetched = await fetch(input.configAddress);
+  if (!fetched.ok) {
+    return { ok: false, cause: "config_unavailable" };
+  }
+  const decoded = decodePassportConfig(fetched.value);
+  if (!decoded.ok) {
+    return { ok: false, cause: "config_decode_failed" };
+  }
+  return { ok: true, nextTokenId: decoded.value.nextTokenId };
+}
+
 /**
+ * Map a {@link TxRefusal} (or typed send throw) to mint cause + owner sentence.
+ * Wizard branches on causes only — no RPC, no `"plan" in` probes.
+ *
+ * Landed path: InvalidSeeds + advanced next → mint_sequence_advanced.
+ * Preflight/send refuse: advanced next alone → mint_sequence_advanced.
+ */
+export async function resolveMintRefusal(input: {
+  plan: PlanMintPassportResult & { ok: true };
+  refusal: TxRefusal;
+  fetchAccountData?: FetchSvmAccountDataFn;
+}): Promise<{ cause: MintPassportCause; copy: string }> {
+  const { refusal } = input;
+
+  if (refusal.kind === "wallet_rejected") {
+    return {
+      cause: "wallet_rejected",
+      copy: mintPassportCauseCopy("wallet_rejected"),
+    };
+  }
+  if (refusal.kind === "expired") {
+    return {
+      cause: "expired",
+      copy: mintPassportCauseCopy("expired"),
+    };
+  }
+  if (refusal.kind === "status_unknown") {
+    return {
+      cause: "status_unknown",
+      copy: mintPassportCauseCopy("status_unknown"),
+    };
+  }
+
+  if (input.plan.vm !== "svm") {
+    if (refusal.kind === "landed_with_error") {
+      return mintCauseFromLandedClassification(
+        classifyMintLandedError(refusal.landed, new Uint8Array(32), new Uint8Array(32)),
+      );
+    }
+    return {
+      cause: "send_failed",
+      copy:
+        refusal.kind === "write_failed" || refusal.kind === "pre_send"
+          ? refusal.message
+          : mintPassportCauseCopy("send_failed"),
+    };
+  }
+
+  const plannedNext = input.plan.plan.plannedNextTokenId;
+  const configAddress = input.plan.plan.configAddress;
+
+  if (refusal.kind === "landed_with_error") {
+    const fresh = await readFreshNextTokenId({
+      configAddress,
+      fetchAccountData: input.fetchAccountData,
+    });
+    if (!fresh.ok) {
+      return {
+        cause: fresh.cause,
+        copy: mintPassportCauseCopy(fresh.cause),
+      };
+    }
+    return mintCauseFromLandedClassification(
+      classifyMintLandedError(refusal.landed, plannedNext, fresh.nextTokenId),
+    );
+  }
+
+  // write_failed / pre_send — send or preflight refused.
+  if (refusal.kind === "write_failed" && isMintPassportCause(refusal.message)) {
+    return {
+      cause: refusal.message,
+      copy: mintPassportCauseCopy(refusal.message),
+    };
+  }
+  const fresh = await readFreshNextTokenId({
+    configAddress,
+    fetchAccountData: input.fetchAccountData,
+  });
+  if (fresh.ok && bytesGt(fresh.nextTokenId, plannedNext)) {
+    return {
+      cause: "mint_sequence_advanced",
+      copy: mintPassportCauseCopy("mint_sequence_advanced"),
+    };
+  }
+  return {
+    cause: "send_failed",
+    copy: mintPassportCauseCopy("send_failed"),
+  };
+}
+
+function isMintPassportCause(value: string): value is MintPassportCause {
+  return Object.prototype.hasOwnProperty.call(MINT_PASSPORT_CAUSE_COPY, value);
+}
+
+/**
+ * @deprecated Prefer {@link resolveMintRefusal}.
  * After a landed confirm refusal: fresh config read + classify.
- * Panels must not call SVM RPC — this is the sole Create path.
  */
 export async function resolveMintLandedConfirmRefusal(input: {
   error: unknown;
@@ -307,26 +427,21 @@ export async function resolveMintLandedConfirmRefusal(input: {
   configAddress: string;
   fetchAccountData?: FetchSvmAccountDataFn;
 }): Promise<{ cause: MintPassportCause; copy: string }> {
-  const fetch = input.fetchAccountData ?? fetchProductSvmAccountData;
-  const fetched = await fetch(input.configAddress);
-  if (!fetched.ok) {
+  const fresh = await readFreshNextTokenId({
+    configAddress: input.configAddress,
+    fetchAccountData: input.fetchAccountData,
+  });
+  if (!fresh.ok) {
     return {
-      cause: "config_unavailable",
-      copy: mintPassportCauseCopy("config_unavailable"),
-    };
-  }
-  const decoded = decodePassportConfig(fetched.value);
-  if (!decoded.ok) {
-    return {
-      cause: "config_decode_failed",
-      copy: mintPassportCauseCopy("config_decode_failed"),
+      cause: fresh.cause,
+      copy: mintPassportCauseCopy(fresh.cause),
     };
   }
   return mintCauseFromLandedClassification(
     classifyMintLandedErrorFromRaw(
       input.error,
       input.plannedNextTokenId,
-      decoded.value.nextTokenId,
+      fresh.nextTokenId,
     ),
   );
 }
@@ -566,7 +681,7 @@ export async function sendMintPassport(input: {
   if (planned.vm === "evm") {
     try {
       const hash = await input.writeEvmContract(planned.call);
-      return { ok: true, signature: hash };
+      return { ok: true, submission: hash };
     } catch (err) {
       if (isWalletRejection(err)) {
         return {
@@ -636,48 +751,28 @@ export async function sendMintPassport(input: {
 
   return {
     ok: true,
-    signature: sent.signature,
+    submission: sent.submission,
     plannedTokenId: planned.plan.plannedTokenId,
   };
 }
 
 /**
- * Plan + send only (no confirm). Confirm is {@link runTx} / SVM lifecycle.
+ * Typed throw for send refusals inside `runTx` writeFn.
+ * `message` is the {@link MintPassportCause} token (not the sentence) so
+ * {@link resolveMintRefusal} can recover the cause from write_failed.
  */
-export async function executeMintPassport(input: {
-  account: ActiveAccount;
-  chainId: number;
-  uri: string;
-  writeEvmContract: WriteEvmContractFn;
-  registry?: CommercialRegistry;
-  svmPort?: SvmSignAndSendPort;
-  fetchBlockhash?: Parameters<typeof sendSvmInstruction>[0]["fetchBlockhash"];
-  fetchAccountData?: FetchSvmAccountDataFn;
-  derivePda?: MintPassportDerivePda;
-}): Promise<ExecuteMintPassportResult> {
-  const planned = await planMintPassport({
-    account: input.account,
-    chainId: input.chainId,
-    uri: input.uri,
-    registry: input.registry,
-    fetchAccountData: input.fetchAccountData,
-    derivePda: input.derivePda,
-  });
-  if (!planned.ok) {
-    return {
-      ok: false,
-      cause: planned.cause,
-      detail: planned.detail,
-      ...(planned.wanted != null ? { wanted: planned.wanted } : {}),
-    };
+export class MintPassportSendRefusal extends Error {
+  readonly mintCause: MintPassportCause;
+
+  constructor(cause: MintPassportCause) {
+    super(cause);
+    this.name = "MintPassportSendRefusal";
+    this.mintCause = cause;
   }
-  return sendMintPassport({
-    plan: planned,
-    account: input.account,
-    chainId: input.chainId,
-    writeEvmContract: input.writeEvmContract,
-    registry: input.registry,
-    svmPort: input.svmPort,
-    fetchBlockhash: input.fetchBlockhash,
-  });
+}
+
+export function isMintPassportSendRefusal(
+  err: unknown,
+): err is MintPassportSendRefusal {
+  return err instanceof MintPassportSendRefusal;
 }

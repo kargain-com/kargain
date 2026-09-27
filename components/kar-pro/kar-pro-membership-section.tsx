@@ -68,7 +68,7 @@ export function KarProMembershipSection({
   const onLeave = async () => {
     if (!staking) return;
 
-    const succeeded = await runTx(
+    const result = await runTx(
       () =>
         writeContractAsync({
           address: staking,
@@ -81,7 +81,7 @@ export function KarProMembershipSection({
           isWalletRejection(err) ? walletRejectionCopy() : txErrorMessage(err),
       },
     );
-    if (succeeded) {
+    if (result.ok) {
       setLeaveConfirm(false);
       void refetchStake();
       onLeft?.();
@@ -92,7 +92,7 @@ export function KarProMembershipSection({
     if (!staking) return;
 
     setClaimMessage(null);
-    const succeeded = await runTx(
+    const result = await runTx(
       () =>
         writeContractAsync({
           address: staking,
@@ -105,9 +105,9 @@ export function KarProMembershipSection({
           isWalletRejection(err) ? walletRejectionCopy() : txErrorMessage(err),
       },
     );
-    if (succeeded) {
+    if (result.ok) {
       void refetchStake();
-      if (writeOutcomeHasClaimRecipient(succeeded, address)) {
+      if (writeOutcomeHasClaimRecipient(result.outcome, address)) {
         setClaimMessage(
           "Your stake could not be delivered and is waiting under Claims.",
         );

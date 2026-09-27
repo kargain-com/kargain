@@ -100,7 +100,7 @@ export function OwnerRecallPanel({
         if (wc == null) throw new Error('switchChain unavailable: unresolved_namespace');
         await switchChain(wc);
       }
-        const succeeded = await runTx(() =>
+        const result = await runTx(() =>
           writeContractAsync({
             address: market,
             abi,
@@ -108,7 +108,7 @@ export function OwnerRecallPanel({
             args: [tid],
           }),
         );
-        if (succeeded) onChanged?.();
+        if (result.ok) onChanged?.();
       } catch (err) {
         setTxError(txErrorMessage(err));
       }

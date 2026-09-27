@@ -258,12 +258,12 @@ export function useBridge(
             { mapError: mapBridgeError },
           );
 
-          if (!result) {
+          if (!result.ok) {
             setPhase("error");
             return false;
           }
 
-          const sent = result.bridgeSendGuid;
+          const sent = result.outcome.bridgeSendGuid;
           if (!sent.ok) {
             throw new Error("ONFTSent guid missing from transaction logs");
           }

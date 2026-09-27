@@ -34,6 +34,8 @@ export const VM_BRANCH_ALLOWLIST = [
   // S8-D0 sole capability × namespace support reader — indexes support by stack.vm.
   "lib/web3/surface-support.ts",
   "lib/web3/write-lifecycle.ts",
+  // SVM write Outcome — WriteSubmission discriminant (vm:"svm" + height).
+  "lib/web3/write-outcome.ts",
   "lib/storage/irys-upload-plan.ts",
   // П-8 Irys session door — account.vm fork lives here, not in wizards.
   "lib/passport/upload-passport-metadata.ts",

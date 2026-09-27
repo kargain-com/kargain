@@ -216,17 +216,16 @@ export function ListingEditClient({
   const saveSettlementNote = useCallback(
     async (note: string): Promise<boolean> => {
       if (!market || !note.trim()) return false;
-      return (
-        (await runTx(() =>
-          writeContractAsync({
-            address: market,
-            abi: FixedPriceConsignmentAbi,
-            functionName: "setSettlementNote",
-            args: [tid, stringToHex(note.trim())],
-            chainId: wc ?? undefined,
-          }),
-        )) !== false
+      const result = await runTx(() =>
+        writeContractAsync({
+          address: market,
+          abi: FixedPriceConsignmentAbi,
+          functionName: "setSettlementNote",
+          args: [tid, stringToHex(note.trim())],
+          chainId: wc ?? undefined,
+        }),
       );
+      return result.ok;
     },
     [market, runTx, tid, wc, writeContractAsync],
   );
@@ -234,7 +233,7 @@ export function ListingEditClient({
   const runDelist = useCallback(async () => {
     if (!canDelist || !market) return;
     setLog("Delisting…");
-    const succeeded = await runTx(() =>
+    const result = await runTx(() =>
       writeContractAsync({
         address: market,
         abi: FixedPriceConsignmentAbi,
@@ -243,7 +242,7 @@ export function ListingEditClient({
         chainId: wc ?? undefined,
       }),
     );
-    if (succeeded) {
+    if (result.ok) {
       await refetchListing();
       setLog("Delisted.");
     }
@@ -337,7 +336,7 @@ export function ListingEditClient({
           setLog("Saving payment instructions…");
           if (!(await saveSettlementNote(settlementNote))) return;
         } else {
-          const succeeded = await runTx(() =>
+          const result = await runTx(() =>
             openFixedPriceConsignment({
               chainId,
               tokenId,
@@ -347,7 +346,7 @@ export function ListingEditClient({
               price: amount,
             }),
           );
-          if (!succeeded) return;
+          if (!result.ok) return;
         }
         await refetchListing();
         setLog("Listed.");
@@ -397,7 +396,7 @@ export function ListingEditClient({
       }
       setLog("Updating price…");
       try {
-        const succeeded = await runTx(() =>
+        const result = await runTx(() =>
           writeContractAsync({
             address: market,
             abi: FixedPriceConsignmentAbi,
@@ -405,7 +404,7 @@ export function ListingEditClient({
             args: [tid, amount],
           }),
         );
-        if (!succeeded) return;
+        if (!result.ok) return;
         if (settlementNote.trim()) {
           setLog("Saving payment instructions…");
           if (!(await saveSettlementNote(settlementNote))) return;

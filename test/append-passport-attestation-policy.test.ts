@@ -40,6 +40,7 @@ import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import type { SvmSignAndSendPort } from "@/lib/web3/svm-write-adapter";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { writeSubmissionReference, isSvmWriteSubmission } from "../lib/web3/write-outcome.ts";
 import {
   vmBranchViolationInSource,
   VM_BRANCH_ALLOWLIST,
@@ -499,8 +500,8 @@ describe("appendPassportAttestation SVM metas order", () => {
           },
         }) as const,
     });
-    assert.equal(typeof sig, "string");
-    assert.equal(sig.length > 0, true);
+    assert.ok(isSvmWriteSubmission(sig));
+    assert.equal(writeSubmissionReference(sig).length > 0, true);
     assert.equal(wireSeen, true);
   });
 });

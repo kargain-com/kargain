@@ -143,6 +143,10 @@ describe("svm-write-adapter assembly proof", () => {
       fetchBlockhash: mockBlockhashOk(),
     });
     assert.equal(result.ok, true);
+    if (!result.ok) throw new Error("expected send ok");
+    assert.equal(result.submission.vm, "svm");
+    assert.ok(result.submission.signature.length > 0);
+    assert.equal(result.submission.lastValidBlockHeight, 1_000_000n);
     assert.ok(captured);
     const message = decompileWire(captured!);
     assert.equal(message.feePayer?.address, FEE_PAYER);
@@ -191,12 +195,16 @@ describe("svm-write-adapter wiring proof", () => {
         if (!sent.ok) {
           throw new Error("sendSvmInstruction refused");
         }
-        return sent.signature;
+        return sent.submission;
       },
       createConfirmPort: () => ({
-        confirmSignature: async (signature) => {
-          confirmed = signature;
-          return { kind: "landed_ok", signature, slot: 42n };
+        confirmSubmission: async (submission) => {
+          confirmed = submission.signature;
+          return {
+            kind: "landed_ok",
+            signature: submission.signature,
+            slot: 42n,
+          };
         },
       }),
       fetchStructuredPayloads: async () => [],

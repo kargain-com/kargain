@@ -59,7 +59,7 @@ export function CommerceRevokeTokenRowCard({ row, onRevoked }: Props) {
       : null;
 
   async function onConfirmRevoke() {
-    const ok = await runTx(() =>
+    const result = await runTx(() =>
       writeContractAsync({
         address: row.modeAddress,
         abi: commerceModeAbi(row.mode),
@@ -68,7 +68,7 @@ export function CommerceRevokeTokenRowCard({ row, onRevoked }: Props) {
         chainId: row.chainId,
       }),
     );
-    if (ok) {
+    if (result.ok) {
       setConfirmOpen(false);
       onRevoked();
     }

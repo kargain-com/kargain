@@ -175,14 +175,14 @@ export function KarProFeeSection({ chainId }: KarProFeeSectionProps) {
       }
       setFeeError(null);
       setFeeSaved(false);
-      const succeeded = await runTx(() =>
+      const result = await runTx(() =>
         setVerificationFee({
           chainId,
           marginNative: marginWei,
           gasWei: gasCostWei,
         }),
       );
-      if (succeeded) setFeeSaved(true);
+      if (result.ok) setFeeSaved(true);
       return;
     }
 
@@ -193,13 +193,13 @@ export function KarProFeeSection({ chainId }: KarProFeeSectionProps) {
       }
       setFeeError(null);
       setFeeSaved(false);
-      const succeeded = await runTx(() =>
+      const result = await runTx(() =>
         setVerificationFee({
           chainId,
           marginNative: marginLamports,
         }),
       );
-      if (succeeded) setFeeSaved(true);
+      if (result.ok) setFeeSaved(true);
     }
   };
 

@@ -12,13 +12,14 @@ import { executeSetPassportUri } from "@/lib/passport/set-passport-uri";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 import { createSvmSignAndSendPort } from "@/lib/web3/svm-sign-and-send-port";
 import type { SvmSignAndSendPort } from "@/lib/web3/svm-write-adapter";
+import type { WriteSubmission } from "@/lib/web3/write-outcome";
 
 export function useSetPassportUri(): {
   setPassportUri: (args: {
     chainId: number;
     tokenId: string;
     uri: string;
-  }) => Promise<string>;
+  }) => Promise<WriteSubmission>;
   isPending: boolean;
   reset: () => void;
 } {

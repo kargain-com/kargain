@@ -287,7 +287,7 @@ export function ListingBuyPanel({
         return;
       }
 
-      const succeeded = await runTx(() =>
+      const result = await runTx(() =>
         writeContractAsync({
           address: market,
           abi: FixedPriceConsignmentAbi,
@@ -296,7 +296,7 @@ export function ListingBuyPanel({
           value: isNative ? quote : 0n,
         }),
       );
-      if (succeeded) {
+      if (result.ok) {
         router.push(`/marketplace/${tokenId}/purchased?chain=${chainId}`);
       }
     } catch (err) {

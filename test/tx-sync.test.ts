@@ -1006,7 +1006,7 @@ describe("runEvmWriteLifecycle equivalence", () => {
 
   it("create-passport wizard maps missing minted fact to the existing parse-failure message", () => {
     const source = fs.readFileSync(CREATE_PASSPORT_WIZARD, "utf8");
-    assert.match(source, /result\.mintedPassportTokenId/);
+    assert.match(source, /result\.outcome\.mintedPassportTokenId/);
     assert.match(source, /missing_minted_passport/);
     assert.match(
       source,
@@ -1033,7 +1033,11 @@ describe("runWriteLifecycle dispatcher", () => {
       switchChain: async () => {
         throw new Error("switchChain should not run for SVM");
       },
-      writeFn: async () => "svm-signature-1",
+      writeFn: async () => ({
+        vm: "svm" as const,
+        signature: "svm-signature-1",
+        lastValidBlockHeight: 100n,
+      }),
       fetchIndexerStatus: async () => ({ ok: true, blockNumber: 1 }),
       wait: async () => undefined,
       onPhase: (phase) => phases.push(phase),
@@ -1042,7 +1046,11 @@ describe("runWriteLifecycle dispatcher", () => {
         createConfirmPortCalls += 1;
         assert.equal(stack.namespace, FIXTURE_SVM_STACK.namespace);
         return {
-          confirmSignature: async (signature) => ({ kind: "landed_ok", signature, slot: 123n }),
+          confirmSubmission: async (submission) => ({
+            kind: "landed_ok",
+            signature: submission.signature,
+            slot: 123n,
+          }),
         };
       },
       fetchStructuredPayloads: async () => [
@@ -1096,11 +1104,19 @@ describe("runWriteLifecycle dispatcher", () => {
       chainId: FIXTURE_SVM_NAMESPACE,
       config: { wagmiConfig: undefined as never },
       switchChain: async () => undefined,
-      writeFn: async () => "svm-signature-1",
+      writeFn: async () => ({
+        vm: "svm" as const,
+        signature: "svm-signature-1",
+        lastValidBlockHeight: 100n,
+      }),
       fetchIndexerStatus: async () => ({ ok: true, blockNumber: 1 }),
       wait: async () => undefined,
       createConfirmPort: () => ({
-        confirmSignature: async (signature) => ({ kind: "landed_ok", signature, slot: 1n }),
+        confirmSubmission: async (submission) => ({
+          kind: "landed_ok",
+          signature: submission.signature,
+          slot: 1n,
+        }),
       }),
       fetchStructuredPayloads: async () => [],
     });
@@ -1131,12 +1147,20 @@ describe("runWriteLifecycle dispatcher", () => {
       chainId: FIXTURE_SVM_NAMESPACE,
       config: { wagmiConfig: undefined as never },
       switchChain: async () => undefined,
-      writeFn: async () => "svm-signature-1",
+      writeFn: async () => ({
+        vm: "svm" as const,
+        signature: "svm-signature-1",
+        lastValidBlockHeight: 100n,
+      }),
       fetchIndexerStatus: async () => ({ ok: true, blockNumber: 1 }),
       wait: async () => undefined,
       registry: svmRegistry,
       createConfirmPort: () => ({
-        confirmSignature: async (signature) => ({ kind: "landed_ok", signature, slot: 1n }),
+        confirmSubmission: async (submission) => ({
+          kind: "landed_ok",
+          signature: submission.signature,
+          slot: 1n,
+        }),
       }),
       fetchStructuredPayloads: async () => [],
     });
@@ -1155,12 +1179,20 @@ describe("runWriteLifecycle dispatcher", () => {
       chainId: FIXTURE_SVM_NAMESPACE,
       config: { wagmiConfig: undefined as never },
       switchChain: async () => undefined,
-      writeFn: async () => "svm-signature-1",
+      writeFn: async () => ({
+        vm: "svm" as const,
+        signature: "svm-signature-1",
+        lastValidBlockHeight: 100n,
+      }),
       fetchIndexerStatus: async () => ({ ok: true, blockNumber: 1 }),
       wait: async () => undefined,
       registry: svmRegistry,
       createConfirmPort: () => ({
-        confirmSignature: async (signature) => ({ kind: "landed_ok", signature, slot: 1n }),
+        confirmSubmission: async (submission) => ({
+          kind: "landed_ok",
+          signature: submission.signature,
+          slot: 1n,
+        }),
       }),
       fetchStructuredPayloads: async () => [],
     });

@@ -115,7 +115,7 @@ export function AgentListOnBehalfPanel({
       }
     setTxError(null);
     try {
-      const succeeded = await runTx(() =>
+      const result = await runTx(() =>
         writeContractAsync({
           address: market,
           abi: FixedPriceConsignmentAbi,
@@ -130,7 +130,7 @@ export function AgentListOnBehalfPanel({
           ],
         }),
       );
-      if (!succeeded) return;
+      if (!result.ok) return;
       const note = settlementNote.trim();
       if (note) {
         await runTx(() =>

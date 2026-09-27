@@ -24,7 +24,7 @@ import {
   txWriteAvailability,
   txWriteRefusalMessage,
 } from "@/lib/web3/tx-write-availability";
-import type { WriteOutcome } from "@/lib/web3/write-outcome";
+import type { WriteOutcome, WriteSubmission } from "@/lib/web3/write-outcome";
 import type { SvmTxConfirmPort } from "@/lib/web3/svm-tx-confirm";
 
 export type WriteLifecyclePhase = "wallet" | "confirming" | "indexing";
@@ -51,7 +51,7 @@ type RunWriteLifecycleOptions = {
   chainId: number;
   config: WriteLifecycleConfig;
   switchChain: (chainId: number) => Promise<void>;
-  writeFn: () => Promise<string>;
+  writeFn: () => Promise<WriteSubmission>;
   fetchIndexerStatus: () => Promise<IndexerBlockNumberResult>;
   wait: (ms: number) => Promise<void>;
   onPhase?: (phase: WriteLifecyclePhase) => void;

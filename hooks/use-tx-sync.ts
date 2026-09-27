@@ -19,37 +19,15 @@ import {
 } from "@/lib/web3/write-lifecycle";
 import { invalidateIndexerQueries } from "@/lib/web3/indexer-query-keys";
 import { TX_SYNC_LAG_ADVISORY } from "@/lib/web3/tx-sync";
-import { type WriteOutcome } from "@/lib/web3/write-outcome";
+import { type RunTxResult, type TxRefusal } from "@/lib/web3/tx-refusal";
+import { type WriteOutcome, type WriteSubmission } from "@/lib/web3/write-outcome";
+import { isWalletRejection, walletRejectionCopy } from "@/lib/web3/wallet-rejection";
+
+export type { RunTxResult, TxRefusal };
 
 export type TxSyncPhase = "idle" | "wallet" | "confirming" | "indexing";
 
 export type TxSyncSuccess = WriteOutcome;
-
-export type TxSyncSvmConfirmRefusal = {
-  ok: false;
-  svmConfirm: Exclude<SvmConfirmOutcome, { kind: "landed_ok" }>;
-};
-
-/** Default runTx result — EVM and most panels. */
-export type TxSyncResult = TxSyncSuccess | false;
-
-/** Create mint (and similar) when {@link TxSyncOptions.captureSvmConfirm} is set. */
-export type TxSyncResultWithSvmConfirm =
-  | TxSyncSuccess
-  | false
-  | TxSyncSvmConfirmRefusal;
-
-export function isTxSyncSvmConfirmRefusal(
-  result: TxSyncResultWithSvmConfirm,
-): result is TxSyncSvmConfirmRefusal {
-  return (
-    typeof result === "object" &&
-    result !== null &&
-    "ok" in result &&
-    result.ok === false &&
-    "svmConfirm" in result
-  );
-}
 
 export type SyncReadsResult = { ok: boolean };
 
@@ -57,26 +35,32 @@ export { TX_SYNC_LAG_ADVISORY };
 
 type TxSyncOptions = {
   mapError?: (err: unknown) => string;
-  /**
-   * When true, landed SVM confirm refusals return `{ ok:false; svmConfirm }`
-   * instead of `false` so callers can classify the raw Outcome (Create mint).
-   * Default false — `{ ok:false }` is truthy and must not break `if (result)`.
-   */
-  captureSvmConfirm?: boolean;
 };
 
-export type RunTx = {
-  (
-    writeFn: () => Promise<string>,
-    options: TxSyncOptions & { captureSvmConfirm: true },
-  ): Promise<TxSyncResultWithSvmConfirm>;
-  (
-    writeFn: () => Promise<string>,
-    options?: Omit<TxSyncOptions, "captureSvmConfirm"> & {
-      captureSvmConfirm?: false;
-    },
-  ): Promise<TxSyncResult>;
-};
+function txRefusalFromSvmConfirm(
+  outcome: Exclude<SvmConfirmOutcome, { kind: "landed_ok" }>,
+): TxRefusal {
+  switch (outcome.kind) {
+    case "expired":
+      return {
+        kind: "expired",
+        signature: outcome.signature,
+        lastValidBlockHeight: outcome.lastValidBlockHeight,
+        observedBlockHeight: outcome.observedBlockHeight,
+      };
+    case "status_unknown":
+      return { kind: "status_unknown", signature: outcome.signature };
+    case "landed_with_error":
+      return {
+        kind: "landed_with_error",
+        signature: outcome.signature,
+        slot: outcome.slot,
+        error: outcome.error,
+        failingProgram: outcome.failingProgram,
+        landed: outcome.landed,
+      };
+  }
+}
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -158,10 +142,10 @@ export function useTxSync(chainId: number) {
   }, [queryClient, router]);
 
   const runTx = useCallback(
-    (async (
-      writeFn: () => Promise<string>,
+    async (
+      writeFn: () => Promise<WriteSubmission>,
       options?: TxSyncOptions,
-    ): Promise<TxSyncResultWithSvmConfirm> => {
+    ): Promise<RunTxResult> => {
       setError(null);
       setSyncLagged(false);
       activeRunDepthRef.current += 1;
@@ -182,26 +166,30 @@ export function useTxSync(chainId: number) {
         setSyncLagged(
           lifecycle.indexerBarrier.status === "lagging" || !revalidate.ok,
         );
-        return lifecycle;
+        return { ok: true, outcome: lifecycle };
       } catch (err) {
         if (isSvmConfirmRefusal(err)) {
-          if (options?.mapError) {
-            setError(options.mapError(err));
-          } else {
-            setError(txErrorMessage(err));
-          }
-          if (options?.captureSvmConfirm) {
-            return { ok: false, svmConfirm: err.outcome };
-          }
-          return false;
+          const refusal = txRefusalFromSvmConfirm(err.outcome);
+          setError((options?.mapError ?? txErrorMessage)(err));
+          return { ok: false, refusal };
         }
+        if (isWalletRejection(err)) {
+          setError(walletRejectionCopy());
+          return { ok: false, refusal: { kind: "wallet_rejected" } };
+        }
+        // Display sentence via mapError; refusal.message stays the raw Error
+        // message (cause token for typed owner throws such as mint send).
+        const raw =
+          err instanceof Error && err.message.trim()
+            ? err.message
+            : "write_failed";
         setError((options?.mapError ?? txErrorMessage)(err));
-        return false;
+        return { ok: false, refusal: { kind: "write_failed", message: raw } };
       } finally {
         activeRunDepthRef.current -= 1;
         setPhase("idle");
       }
-    }) as RunTx,
+    },
     [account, chainId, config, syncReads, switchChain],
   );
 

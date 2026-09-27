@@ -137,7 +137,7 @@ export function OwnerLowerFloorPanel({
     setTxError(null);
     try {
       const newFloor = parseUnits(input, floorDecimals);
-      const succeeded = await runTx(() =>
+      const result = await runTx(() =>
         writeContractAsync({
           address: market,
           abi,
@@ -145,7 +145,7 @@ export function OwnerLowerFloorPanel({
           args: [tid, newFloor],
         }),
       );
-      if (!succeeded) return;
+      if (!result.ok) return;
       onChanged?.();
       handleOpenChange(false);
     } catch (err) {

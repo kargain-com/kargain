@@ -351,13 +351,45 @@ export async function fetchProductSvmSignatureStatuses(
   return result.value;
 }
 
+async function fetchProductSvmBlockHeight(rpcUrl: string): Promise<bigint> {
+  const height = await postSolanaJsonRpc<number | string>(rpcUrl, "getBlockHeight", [
+    { commitment: "confirmed" },
+  ]);
+  return BigInt(height);
+}
+
+async function fetchProductSvmTransactionLogMessages(
+  rpcUrl: string,
+  signature: string,
+): Promise<readonly string[] | null> {
+  const tx = await postSolanaJsonRpc<GetTransactionResult>(rpcUrl, "getTransaction", [
+    signature,
+    {
+      commitment: "confirmed",
+      encoding: "json",
+      maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
+    },
+  ]);
+  return tx?.meta?.logMessages ?? null;
+}
+
 /**
  * JSON-RPC confirm port at owner commitment.
  * Uses plain fetch to stay outside wallet-adapter and Solana SDK graph rules.
  */
-export function createProductSvmTxConfirmPort(): SvmTxConfirmPort {
+export function createProductSvmTxConfirmPort(
+  stack: SvmCommercialActiveStack,
+): SvmTxConfirmPort {
+  const rpcUrl = productSvmRpcUrl();
+  if (!rpcUrl) {
+    throw new Error(productSvmRpcUrlRefusalCopy());
+  }
   return createSvmTxConfirmPort({
+    stack,
     getSignatureStatuses: fetchProductSvmSignatureStatuses,
+    getBlockHeight: () => fetchProductSvmBlockHeight(rpcUrl),
+    getTransactionLogMessages: (signature) =>
+      fetchProductSvmTransactionLogMessages(rpcUrl, signature),
   });
 }
 

@@ -99,6 +99,21 @@ describe("svm-stand-tx-refusal-policy", () => {
     );
   });
 
+  it("custom_unattributed ordinal still matches InvalidReceiver expected (red→green)", async () => {
+    const observed = await expectStandTransactionRefusal({
+      outcome: async () => ({
+        kind: "landed_with_error",
+        signature: "sig",
+        err: { InstructionError: [0, { Custom: 144 }] },
+      }),
+      expected: { kind: "custom", name: "InvalidReceiver" },
+    });
+    assert.equal(observed.kind, "custom_unattributed");
+    if (observed.kind === "custom_unattributed") {
+      assert.equal(observed.ordinal, 144);
+    }
+  });
+
   it("wrong Custom name when InvalidReceiver expected fails with both names (red→green)", async () => {
     // AssetFrozen = 137
     await assert.rejects(
@@ -114,7 +129,7 @@ describe("svm-stand-tx-refusal-policy", () => {
       (err: unknown) => {
         assert.ok(err instanceof Error);
         assert.match(err.message, /InvalidReceiver/);
-        assert.match(err.message, /AssetFrozen/);
+        assert.match(err.message, /custom_unattributed\(137\)/);
         return true;
       },
     );
@@ -152,7 +167,12 @@ describe("svm-stand-tx-refusal-policy", () => {
       parseStandInstructionError({
         InstructionError: [0, { Custom: 144 }],
       }),
-      { kind: "custom", name: "InvalidReceiver", ordinal: 144, index: 0 },
+      {
+        kind: "custom_unattributed",
+        ordinal: 144,
+        index: 0,
+        failingProgram: null,
+      },
     );
 
     // Nested err wrapper (pre-structured invent) → null

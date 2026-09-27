@@ -38,6 +38,7 @@ import {
   vmBranchViolationInSource,
   VM_BRANCH_ALLOWLIST,
 } from "./network-vm-component-policy.test.ts";
+import { writeSubmissionReference, isSvmWriteSubmission } from "../lib/web3/write-outcome.ts";
 import {
   assertCleanProductScan,
   scanProductSources,
@@ -326,7 +327,7 @@ describe("U6.2 pin 4 — SetVerificationFee metas order (entrypoint.rs:397)", ()
           },
         }) as const,
     });
-    assert.equal(typeof sig, "string");
+    assert.ok(isSvmWriteSubmission(sig));
     assert.equal(wireSeen, true);
   });
 });

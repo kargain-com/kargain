@@ -34,6 +34,7 @@ import {
   type SvmWriteAccountMeta,
 } from "@/lib/web3/svm-write-adapter";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
+import type { WriteSubmission } from "@/lib/web3/write-outcome";
 import {
   txWriteAvailabilityForCapability,
   txWriteRefusalMessage,
@@ -299,7 +300,7 @@ export async function executeSetVerificationFee(input: {
   registry?: CommercialRegistry;
   svmPort?: SvmSignAndSendPort;
   fetchBlockhash?: Parameters<typeof sendSvmInstruction>[0]["fetchBlockhash"];
-}): Promise<string> {
+}): Promise<WriteSubmission> {
   const planned = await planSetVerificationFee({
     account: input.account,
     chainId: input.chainId,
@@ -342,7 +343,7 @@ export async function executeSetVerificationFee(input: {
       `setVerificationFee refused: ${sent.cause}:${sent.detail}`,
     );
   }
-  return sent.signature;
+  return sent.submission;
 }
 
 /** Named absence — current on-chain fee cannot be read on SVM until U7. */

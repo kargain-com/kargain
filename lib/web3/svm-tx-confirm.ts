@@ -1,11 +1,19 @@
 /**
- * SVM transaction confirmation owner (S8-3).
- * Finality is decided here: commitment level `confirmed` — not caller-supplied.
+ * SVM transaction confirmation owner.
+ * Finality: commitment `confirmed` — not caller-supplied.
  *
- * Returns a closed {@link SvmConfirmOutcome}: landed ok with an *observed* slot,
- * landed with the structured TransactionError blob, or timeout.
- * Never stringifies the error object; never invents slot `0n`.
+ * Outcomes: landed_ok / landed_with_error (only at ≥ confirmed with slot),
+ * expired (block height past submission lifetime), status_unknown (transport ceiling).
+ * Never invents slot `0n`; never treats `processed` err as landed.
  */
+
+import type { SvmCommercialActiveStack } from "@/lib/web3/commercial-active";
+import {
+  failingProgramFromLogMessages,
+  parseAttributedSvmLandedInstructionError,
+  type SvmLandedInstructionError,
+} from "@/lib/web3/svm-landed-error";
+import type { SvmWriteSubmission } from "@/lib/web3/write-outcome";
 
 export type SvmConfirmCommitment = "confirmed";
 
@@ -14,21 +22,26 @@ export const SVM_TX_CONFIRM_COMMITMENT: SvmConfirmCommitment = "confirmed";
 
 export type SvmConfirmOutcome =
   | { kind: "landed_ok"; signature: string; slot: bigint }
-  | { kind: "landed_with_error"; signature: string; error: unknown }
-  | { kind: "confirm_timeout"; signature: string; timeoutMs: number };
-
-/** @deprecated Use {@link SvmConfirmOutcome} `landed_ok` — kept as alias for slot shape. */
-export type SvmTxConfirmStatus = {
-  signature: string;
-  slot: bigint;
-};
+  | {
+      kind: "landed_with_error";
+      signature: string;
+      slot: bigint;
+      error: unknown;
+      failingProgram: string | null;
+      landed: SvmLandedInstructionError | null;
+    }
+  | {
+      kind: "expired";
+      signature: string;
+      lastValidBlockHeight: bigint;
+      observedBlockHeight: bigint;
+    }
+  | { kind: "status_unknown"; signature: string };
 
 export type SvmTxConfirmPort = {
-  /**
-   * Wait until `signature` reaches {@link SVM_TX_CONFIRM_COMMITMENT} (or
-   * lands with an error / times out).
-   */
-  confirmSignature: (signature: string) => Promise<SvmConfirmOutcome>;
+  confirmSubmission: (
+    submission: SvmWriteSubmission,
+  ) => Promise<SvmConfirmOutcome>;
 };
 
 /**
@@ -40,9 +53,11 @@ export class SvmConfirmRefusal extends Error {
 
   constructor(outcome: Exclude<SvmConfirmOutcome, { kind: "landed_ok" }>) {
     super(
-      outcome.kind === "confirm_timeout"
-        ? `svm confirm: timed out after ${outcome.timeoutMs}ms`
-        : "svm confirm: signature landed with error",
+      outcome.kind === "expired"
+        ? "svm confirm: blockhash expired"
+        : outcome.kind === "status_unknown"
+          ? "svm confirm: status unknown"
+          : "svm confirm: signature landed with error",
     );
     this.name = "SvmConfirmRefusal";
     this.outcome = outcome;
@@ -53,18 +68,17 @@ export function isSvmConfirmRefusal(err: unknown): err is SvmConfirmRefusal {
   return err instanceof SvmConfirmRefusal;
 }
 
-/**
- * Confirm an SVM signature at the owner commitment.
- * Product code must only reach this via use-tx-sync / SVM lifecycle.
- */
 export async function confirmSvmTransaction(
   port: SvmTxConfirmPort,
-  signature: string,
+  submission: SvmWriteSubmission,
 ): Promise<SvmConfirmOutcome> {
-  if (typeof signature !== "string" || signature.length === 0) {
+  if (
+    typeof submission.signature !== "string" ||
+    submission.signature.length === 0
+  ) {
     throw new Error("svm confirm: empty signature");
   }
-  return port.confirmSignature(signature);
+  return port.confirmSubmission(submission);
 }
 
 function observedSlot(
@@ -77,11 +91,11 @@ function observedSlot(
   return null;
 }
 
-/**
- * Polling confirm port: waits for `confirmed` (or stronger `finalized`) with
- * an observed slot, or returns landed error / timeout. Transport stays outside.
- */
-export function createSvmTxConfirmPort(opts: {
+function isConfirmedOrStronger(status: string | null | undefined): boolean {
+  return status === SVM_TX_CONFIRM_COMMITMENT || status === "finalized";
+}
+
+export type SvmConfirmTransport = {
   getSignatureStatuses: (
     signatures: string[],
   ) => Promise<
@@ -91,36 +105,67 @@ export function createSvmTxConfirmPort(opts: {
       slot?: number | bigint | null;
     } | null>
   >;
+  getBlockHeight: () => Promise<bigint>;
+  getTransactionLogMessages: (
+    signature: string,
+  ) => Promise<readonly string[] | null>;
   pollIntervalMs?: number;
   timeoutMs?: number;
-}): SvmTxConfirmPort {
+};
+
+/**
+ * Polling confirm port. Transport stays outside.
+ */
+export function createSvmTxConfirmPort(
+  opts: SvmConfirmTransport & { stack: SvmCommercialActiveStack },
+): SvmTxConfirmPort {
   const pollIntervalMs = opts.pollIntervalMs ?? 400;
   const timeoutMs = opts.timeoutMs ?? 60_000;
   return {
-    async confirmSignature(signature: string): Promise<SvmConfirmOutcome> {
+    async confirmSubmission(submission): Promise<SvmConfirmOutcome> {
+      const { signature, lastValidBlockHeight } = submission;
       const deadline = Date.now() + timeoutMs;
       while (Date.now() < deadline) {
         const [row] = await opts.getSignatureStatuses([signature]);
-        if (row?.err != null) {
-          return {
-            kind: "landed_with_error",
-            signature,
-            error: row.err,
-          };
-        }
         const status = row?.confirmationStatus;
-        if (status === SVM_TX_CONFIRM_COMMITMENT || status === "finalized") {
+        if (isConfirmedOrStronger(status)) {
           const slot = observedSlot(row?.slot);
           if (slot == null) {
-            // Confirmed without an observed slot is not landed_ok — keep polling.
             await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
             continue;
           }
+          if (row?.err != null) {
+            const logs = await opts.getTransactionLogMessages(signature);
+            const failingProgram = failingProgramFromLogMessages(logs);
+            const landed = parseAttributedSvmLandedInstructionError(
+              row.err,
+              failingProgram,
+              opts.stack,
+            );
+            return {
+              kind: "landed_with_error",
+              signature,
+              slot,
+              error: row.err,
+              failingProgram,
+              landed,
+            };
+          }
           return { kind: "landed_ok", signature, slot };
+        }
+        // Not yet confirmed — check expiry via confirmed block height.
+        const height = await opts.getBlockHeight();
+        if (height > lastValidBlockHeight) {
+          return {
+            kind: "expired",
+            signature,
+            lastValidBlockHeight,
+            observedBlockHeight: height,
+          };
         }
         await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
       }
-      return { kind: "confirm_timeout", signature, timeoutMs };
+      return { kind: "status_unknown", signature };
     },
   };
 }

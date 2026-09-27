@@ -24,9 +24,11 @@ import {
 } from "@/lib/web3/svm-tx-confirm";
 import {
   buildWriteOutcome,
+  isSvmWriteSubmission,
   type BridgeSendGuidWriteFact,
   type PassportMintedWriteFact,
   type WriteOutcome,
+  type WriteSubmission,
 } from "@/lib/web3/write-outcome";
 
 type SvmWriteLifecyclePhase = "wallet" | "confirming" | "indexing";
@@ -45,7 +47,7 @@ export type FetchSvmStructuredPayloads = (args: {
 
 type RunSvmWriteLifecycleOptions = {
   chainId: number;
-  writeFn: () => Promise<string>;
+  writeFn: () => Promise<WriteSubmission>;
   onPhase?: (phase: SvmWriteLifecyclePhase) => void;
   registry?: CommercialRegistry;
   createConfirmPort?: (stack: SvmCommercialActiveStack) => SvmTxConfirmPort;
@@ -143,12 +145,15 @@ export async function runSvmWriteLifecycle({
   const stack = asSvmStack(chainId, registry);
 
   onPhase?.("wallet");
-  const signature = await writeFn();
+  const submission = await writeFn();
+  if (!isSvmWriteSubmission(submission)) {
+    throw new Error("SVM write lifecycle received an EVM transaction hash.");
+  }
 
   onPhase?.("confirming");
   const confirmation = await confirmSvmTransaction(
     createConfirmPort(stack),
-    signature,
+    submission,
   );
   if (confirmation.kind !== "landed_ok") {
     throw new SvmConfirmRefusal(confirmation);
@@ -157,13 +162,13 @@ export async function runSvmWriteLifecycle({
   onPhase?.("indexing");
   const payloads = await fetchStructuredPayloads({
     stack,
-    signature,
+    signature: submission.signature,
     slotHint: confirmation.slot,
   });
   const facts = deriveSvmWriteFacts(payloads);
 
   return buildWriteOutcome({
-    writeReference: signature,
+    writeReference: submission.signature,
     indexerBarrier: {
       status: "unavailable",
       cause: "svm_ingest_unavailable",

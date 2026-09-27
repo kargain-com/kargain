@@ -250,7 +250,7 @@ export function AuctionBidPanel({
           }
         }
 
-        const succeeded = await runTx(
+        const result = await runTx(
           () =>
             writeContractAsync({
               address: mode,
@@ -262,7 +262,7 @@ export function AuctionBidPanel({
             }),
           { mapError: mapBidError },
         );
-        if (succeeded) {
+        if (result.ok) {
           setAmountStr("");
         }
       } catch (err) {

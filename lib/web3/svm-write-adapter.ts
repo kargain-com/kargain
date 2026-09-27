@@ -30,6 +30,7 @@ import {
   type FetchSvmLatestBlockhashResult,
 } from "@/lib/web3/svm-rpc";
 import type { WalletStandardChain } from "@/lib/web3/wallet-standard-chain";
+import type { SvmWriteSubmission } from "@/lib/web3/write-outcome";
 
 export { AccountRole };
 
@@ -51,7 +52,7 @@ export type SendSvmInstructionCause =
   | "missing_wallet_standard_chain";
 
 export type SendSvmInstructionResult =
-  | { ok: true; signature: string }
+  | { ok: true; submission: SvmWriteSubmission }
   | {
       ok: false;
       cause: SendSvmInstructionCause;
@@ -222,5 +223,10 @@ export async function sendSvmInstruction(args: {
     return refuse("wallet_returned_no_signature", "base58 signature is empty");
   }
 
-  return { ok: true, signature };
+  const submission: SvmWriteSubmission = {
+    vm: "svm",
+    signature,
+    lastValidBlockHeight: blockhashResult.value.lastValidBlockHeight,
+  };
+  return { ok: true, submission };
 }

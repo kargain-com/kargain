@@ -218,6 +218,17 @@ describe("svm-stand live Core CPI round trip", () => {
       );
       assert.ok(productMint.happy.signature.length > 0);
       assert.equal(productMint.concurrency.cause, "mint_sequence_advanced");
+      assert.equal(
+        productMint.concurrencySkipPreflight.cause,
+        "mint_sequence_advanced",
+      );
+      assert.equal(
+        productMint.concurrencyPreflight.cause,
+        "mint_sequence_advanced",
+      );
+      assert.equal(productMint.expired.kind, "expired");
+      assert.equal(productMint.attribution.landedKind, "custom_unattributed");
+      assert.ok(productMint.attribution.failingProgram.length > 0);
       // Real A/B race: concurrency planned is after happy landed (not the override seam).
       assert.notEqual(
         productMint.concurrency.plannedTokenId,
@@ -230,7 +241,8 @@ describe("svm-stand live Core CPI round trip", () => {
       console.warn(
         `\n[svm-stand] product-mint PASS sig=${productMint.happy.signature.slice(0, 12)}… ` +
           `id=${productMint.happy.landedTokenId} concurrency=${productMint.concurrency.cause} ` +
-          `stale=${productMint.concurrency.plannedTokenId} next=${productMint.concurrency.nextTokenIdAfter}\n`,
+          `stale=${productMint.concurrency.plannedTokenId} next=${productMint.concurrency.nextTokenIdAfter} ` +
+          `expired=${productMint.expired.kind} attrProgram=${productMint.attribution.failingProgram.slice(0, 8)}…\n`,
       );
 
       const verifier = await runLiveVerifierFlow({ reuseInited: true });

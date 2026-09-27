@@ -47,7 +47,7 @@ export function CommercePauseOpsRowCard({ row, onPaused }: Props) {
     row.paused === true ? "Paused" : row.paused === false ? "Running" : "Unknown";
 
   async function onConfirmPause() {
-    const ok = await runTx(() =>
+    const result = await runTx(() =>
       writeContractAsync({
         address: row.address,
         abi: commerceModeAbi(row.mode),
@@ -55,7 +55,7 @@ export function CommercePauseOpsRowCard({ row, onPaused }: Props) {
         chainId: row.chainId,
       }),
     );
-    if (ok) {
+    if (result.ok) {
       setConfirmOpen(false);
       onPaused();
     }

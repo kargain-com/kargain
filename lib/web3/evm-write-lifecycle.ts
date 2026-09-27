@@ -26,9 +26,11 @@ import {
 } from "@/lib/web3/tx-write-availability";
 import {
   buildWriteOutcome,
+  isSvmWriteSubmission,
   type BridgeSendGuidWriteFact,
   type PassportMintedWriteFact,
   type WriteOutcome,
+  type WriteSubmission,
 } from "@/lib/web3/write-outcome";
 
 export type EvmWriteLifecyclePhase = "wallet" | "confirming" | "indexing";
@@ -50,7 +52,7 @@ type RunEvmWriteLifecycleOptions = {
   chainId: number;
   config: Config;
   switchChain: (chainId: number) => Promise<void>;
-  writeFn: () => Promise<string>;
+  writeFn: () => Promise<WriteSubmission>;
   fetchIndexerStatus: () => Promise<IndexerBlockNumberResult>;
   wait: (ms: number) => Promise<void>;
   onPhase?: (phase: EvmWriteLifecyclePhase) => void;
@@ -61,11 +63,14 @@ type RunEvmWriteLifecycleOptions = {
   resolveTargetChainId?: (chainId: number) => number;
 };
 
-function assertEvmTxHash(value: string): `0x${string}` {
-  if (!/^0x[0-9a-fA-F]{64}$/.test(value)) {
+function assertEvmWriteSubmission(submission: WriteSubmission): `0x${string}` {
+  if (isSvmWriteSubmission(submission)) {
+    throw new Error("EVM write lifecycle received an SVM submission.");
+  }
+  if (!/^0x[0-9a-fA-F]{64}$/.test(submission)) {
     throw new Error("Transaction hash is not a valid EVM hash.");
   }
-  return value as `0x${string}`;
+  return submission;
 }
 
 function passportMintedFromReceipt(
@@ -155,7 +160,7 @@ export async function runEvmWriteLifecycle({
     await switchChain(chainId);
   }
 
-  const txHash = assertEvmTxHash(await writeFn());
+  const txHash = assertEvmWriteSubmission(await writeFn());
 
   onPhase?.("confirming");
   const receipt = await confirmTransaction(config, txHash);

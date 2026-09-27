@@ -349,7 +349,7 @@ export function AuthorizeAgentDialog({
         "form" in compensationBuilt
           ? compensationBuilt
           : { form: COMPENSATION_FORM.Margin, commissionBps: 0 };
-      const succeeded = await runTx(() =>
+      const result = await runTx(() =>
         writeContractAsync({
           address: market,
           abi: FixedPriceConsignmentAbi,
@@ -371,7 +371,7 @@ export function AuthorizeAgentDialog({
           ],
         }),
       );
-      if (!succeeded) return;
+      if (!result.ok) return;
       onAuthorized();
       handleOpenChange(false);
     } catch (err) {

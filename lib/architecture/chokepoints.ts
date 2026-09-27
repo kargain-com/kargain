@@ -37,11 +37,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "Post-truth write sync: React hook orchestrates; lifecycle modules hold barrier truth",
     ownerFiles: ["hooks/use-tx-sync.ts"],
     rule:
-      "Post-truth invalidate + router.refresh only via syncReads / runTx; neutral write dispatch + barrier truth live in lib/web3 while the hook remains React orchestration only",
+      "Post-truth invalidate + router.refresh only via syncReads / runTx; RunTxResult { ok, outcome | refusal } — boolean context on the binding is banned (use result.ok); neutral write dispatch + barrier truth live in lib/web3 while the hook remains React orchestration only",
     guardTests: [
       "tx-sync-write-policy.test.ts",
       "evm-write-adapter-policy.test.ts",
       "s8-3-write-path.test.ts",
+      "run-tx-boolean-context-policy.test.ts",
     ],
   },
   {
@@ -96,19 +97,19 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "passport-mint",
     owner:
       "lib/passport/mint-passport.ts · hooks/use-mint-passport.ts · components/passport/create-passport-wizard.tsx",
-    rule: "Dual-VM Create mint: plan+send only (EVM mintPassport / SVM nine metas from PassportConfig.next_token_id + registry gateway freeze/config); confirm is product svm-tx-confirm via runTx; classifyMintLandedError maps InvalidSeeds+advanced next → mint_sequence_advanced; wizard branches on causes only (wallet_rejected / mint_sequence_advanced); no plannedNextTokenIdOverride / text InvalidSeeds",
+    rule: "Dual-VM Create mint: plan+send only (EVM mintPassport / SVM nine metas from PassportConfig.next_token_id + registry gateway freeze/config); send inside runTx; resolveMintRefusal on refusal; confirm is product svm-tx-confirm via runTx; classifyMintLandedError maps InvalidSeeds+advanced next → mint_sequence_advanced; no executeMintPassport / captureSvmConfirm / plannedNextTokenIdOverride / text InvalidSeeds",
     guardTests: ["mint-passport-policy.test.ts"],
   },
   {
     id: "svm-tx-confirm",
     owner: "lib/web3/svm-tx-confirm.ts · lib/web3/svm-write-lifecycle.ts · hooks/use-tx-sync.ts",
-    rule: "Product SVM confirm returns SvmConfirmOutcome (landed_ok with observed slot | landed_with_error raw blob | confirm_timeout); never String(err) / invent slot 0n; lifecycle throws SvmConfirmRefusal; runTx returns { ok:false; svmConfirm } only when captureSvmConfirm (Create); default false so if(result) stays sound",
+    rule: "Product SVM confirm returns SvmConfirmOutcome (landed_ok at ≥ confirmed with observed slot | landed_with_error raw blob + failingProgram attribution | expired when block height past lastValid | status_unknown on transport ceiling); never String(err) / invent slot 0n / treat processed err as landed; lifecycle throws SvmConfirmRefusal; runTx returns RunTxResult { ok:false; refusal }",
     guardTests: ["s8-3-write-path.test.ts"],
   },
   {
     id: "svm-landed-error",
     owner: "lib/web3/svm-landed-error.ts · svm/stand/stand-tx-refusal.ts",
-    rule: "Sole InstructionError reader (native InvalidSeeds/AAI/MRS + Custom via svmProgramErrorName); stand + product consume it; ban InvalidSeeds regex / .includes / JSON.stringify identity under product + stand",
+    rule: "Sole InstructionError reader (native InvalidSeeds/AAI/MRS + Custom named only via parseAttributedSvmLandedInstructionError when failingProgram is on commercial stack; bare Custom → custom_unattributed); failingProgramFromLogMessages from first Program failed line; stand + product consume it; ban InvalidSeeds regex / .includes / JSON.stringify identity under product + stand",
     guardTests: ["svm-landed-error-policy.test.ts"],
   },
   {

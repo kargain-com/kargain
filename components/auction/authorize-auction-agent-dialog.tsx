@@ -302,7 +302,7 @@ export function AuthorizeAuctionAgentDialog({
   const runRevoke = useCallback(async () => {
     if (!mode || hasActiveAuction) return;
     setTxError(null);
-    const succeeded = await runTx(() =>
+    const result = await runTx(() =>
       writeContractAsync({
         address: mode,
         abi: AscendingConsignmentAbi,
@@ -310,7 +310,7 @@ export function AuthorizeAuctionAgentDialog({
         args: [tid],
       }),
     );
-    if (succeeded) {
+    if (result.ok) {
       refetchAuth();
       onAuthorized?.();
       handleOpenChange(false);
@@ -407,7 +407,7 @@ export function AuthorizeAuctionAgentDialog({
       "form" in compensationBuilt
         ? compensationBuilt
         : { form: COMPENSATION_FORM.Margin, commissionBps: 0 };
-    const succeeded = await runTx(() =>
+    const result = await runTx(() =>
       writeContractAsync({
         address: mode,
         abi: AscendingConsignmentAbi,
@@ -426,7 +426,7 @@ export function AuthorizeAuctionAgentDialog({
         ],
       }),
     );
-    if (succeeded) {
+    if (result.ok) {
       onAuthorized?.();
       handleOpenChange(false);
     }

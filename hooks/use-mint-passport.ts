@@ -7,10 +7,8 @@
 
 import { useActiveAccount } from "@/hooks/use-active-account";
 import {
-  executeMintPassport,
   planMintPassport,
   sendMintPassport,
-  type ExecuteMintPassportResult,
   type PlanMintPassportResult,
   type SendMintPassportResult,
 } from "@/lib/passport/mint-passport";
@@ -35,11 +33,6 @@ export function useMintPassport(): {
     chainId: number;
     plan: PlanMintPassportResult & { ok: true };
   }) => Promise<SendMintPassportResult>;
-  /** Plan + send convenience (no confirm). */
-  mintPassport: (args: {
-    chainId: number;
-    uri: string;
-  }) => Promise<ExecuteMintPassportResult>;
   isPending: boolean;
   reset: () => void;
 } {
@@ -58,14 +51,6 @@ export function useMintPassport(): {
         plan,
         account,
         chainId,
-        writeEvmContract: (call) => writeContractAsync(call),
-        svmPort: bindSvmPort(svmWallet),
-      }),
-    mintPassport: ({ chainId, uri }) =>
-      executeMintPassport({
-        account,
-        chainId,
-        uri,
         writeEvmContract: (call) => writeContractAsync(call),
         svmPort: bindSvmPort(svmWallet),
       }),

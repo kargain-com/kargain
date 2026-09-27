@@ -33,6 +33,7 @@ import {
   type SvmSignAndSendPort,
   type SvmWriteAccountMeta,
 } from "@/lib/web3/svm-write-adapter";
+import type { WriteSubmission } from "@/lib/web3/write-outcome";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
   txWriteAvailabilityForCapability,
@@ -306,7 +307,7 @@ export async function executeSetPassportUri(input: {
   /** Bound Wallet Standard port — hook builds via createSvmSignAndSendPort. */
   svmPort?: SvmSignAndSendPort;
   fetchBlockhash?: Parameters<typeof sendSvmInstruction>[0]["fetchBlockhash"];
-}): Promise<string> {
+}): Promise<WriteSubmission> {
   const planned = await planSetPassportUri({
     account: input.account,
     chainId: input.chainId,
@@ -347,5 +348,5 @@ export async function executeSetPassportUri(input: {
   if (!sent.ok) {
     throw new Error(`setPassportUri refused: ${sent.cause}:${sent.detail}`);
   }
-  return sent.signature;
+  return sent.submission;
 }

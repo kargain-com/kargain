@@ -332,7 +332,7 @@ export function PassportActionsPanel({
         evidenceCid,
       });
     });
-    if (result) {
+    if (result.ok) {
       setRecordFormOpen(false);
       setRecordType("service");
       setRecordDescription("");
@@ -382,7 +382,7 @@ export function PassportActionsPanel({
         evidenceCid,
       });
     });
-    if (result) {
+    if (result.ok) {
       setDiscrepancyText("");
       setDiscrepancyEvidencePaste("");
       setDiscrepancyEvidenceFile(null);
@@ -429,7 +429,7 @@ export function PassportActionsPanel({
         evidenceCid,
       });
     });
-    if (result) {
+    if (result.ok) {
       setClarificationText("");
       setClarificationEvidencePaste("");
       setClarificationEvidenceFile(null);
@@ -475,7 +475,7 @@ export function PassportActionsPanel({
         evidenceCid,
       });
     });
-    if (result) {
+    if (result.ok) {
       setAttestationText("");
       setAttestationEvidencePaste("");
       setAttestationEvidenceFile(null);
@@ -500,7 +500,7 @@ export function PassportActionsPanel({
     const result = await runTx(() =>
       verifyPassport({ chainId, tokenId }),
     );
-    if (result) {
+    if (result.ok) {
       setMessage("Passport verified.");
     }
   }, [chainId, runTx, tokenId, verifyPassport, writeTargetConfigured]);
@@ -510,7 +510,7 @@ export function PassportActionsPanel({
     const result = await runTx(() =>
       openChallenge({ chainId, tokenId, disputeDeposit }),
     );
-    if (result) {
+    if (result.ok) {
       setMessage("Dispute opened.");
     }
   }, [
@@ -527,12 +527,12 @@ export function PassportActionsPanel({
     const result = await runTx(() =>
       withdrawChallenge({ chainId, tokenId }),
     );
-    if (!result) return;
+    if (!result.ok) return;
     const undeliverable = bondDisclosure.undeliverableBondOutcome;
     if (
       undeliverable.claimPossible &&
       sessionAddress &&
-      writeOutcomeHasClaimRecipient(result, sessionAddress)
+      writeOutcomeHasClaimRecipient(result.outcome, sessionAddress)
     ) {
       setMessage(undeliverable.claimSuccessCopy);
     } else {
@@ -554,7 +554,7 @@ export function PassportActionsPanel({
       const result = await runTx(() =>
         judgeChallenge({ chainId, tokenId, outcome }),
       );
-      if (result) {
+      if (result.ok) {
         setMessage(successMessage);
       }
     },
@@ -573,7 +573,7 @@ export function PassportActionsPanel({
     const result = await runTx(() =>
       concludeChallenge({ chainId, tokenId }),
     );
-    if (result) {
+    if (result.ok) {
       setMessage(
         "Challenge concluded. Verification lapsed — a fresh inspection restores it.",
       );

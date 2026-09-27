@@ -133,7 +133,7 @@ export function KarProProfileSection({
       );
 
       setLoading(false);
-      const succeeded = await runTx(
+      const result = await runTx(
         () =>
           writeContractAsync({
             address: proPass,
@@ -151,7 +151,7 @@ export function KarProProfileSection({
                 : "Update failed. Try again.",
         },
       );
-      if (succeeded) {
+      if (result.ok) {
         setEditing(false);
         onUpdated?.();
       }

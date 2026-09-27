@@ -165,7 +165,7 @@ export function ListingOffersPanel({
       }
       setTxError(null);
       try {
-        const succeeded = await runTx(() =>
+        const result = await runTx(() =>
           writeContractAsync({
             address: market,
             abi: FixedPriceConsignmentAbi,
@@ -173,7 +173,7 @@ export function ListingOffersPanel({
             args: [tid, buyer],
           }),
         );
-        if (!succeeded) return;
+        if (!result.ok) return;
         // runTx → syncReads owns client refresh; no parent dual-path.
         setConfirmedBuyer(buyer);
         setConfirmingBuyer(null);

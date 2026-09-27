@@ -10,6 +10,7 @@ import { executeReportPassportDiscrepancy } from "@/lib/passport/report-passport
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 import { createSvmSignAndSendPort } from "@/lib/web3/svm-sign-and-send-port";
 import type { SvmSignAndSendPort } from "@/lib/web3/svm-write-adapter";
+import type { WriteSubmission } from "@/lib/web3/write-outcome";
 
 export function useReportPassportDiscrepancy(): {
   reportPassportDiscrepancy: (args: {
@@ -17,7 +18,7 @@ export function useReportPassportDiscrepancy(): {
     tokenId: string;
     description: string;
     evidenceCid: string;
-  }) => Promise<string>;
+  }) => Promise<WriteSubmission>;
   isPending: boolean;
   reset: () => void;
 } {
