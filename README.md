@@ -16,7 +16,7 @@ Kargain combines on-chain vehicle passports, professional verification, and mode
 
 | Layer | Role |
 |-------|------|
-| **KarPassport** | NFT passport; metadata on Arweave; UNVERIFIED → VERIFIED → DISPUTED. **EVM:** anyone may `mintPassport`. **SVM:** mint is **config-authority only** (not anyone) — Create UI today is EVM; see [SPEC](docs/contracts/SPEC.md) |
+| **KarPassport** | NFT passport; metadata on Arweave; UNVERIFIED → VERIFIED → DISPUTED. Anyone may mint on EVM and Solana (permissionless `MintPassport`); see [SPEC](docs/contracts/SPEC.md) |
 | **KarPro** | Soulbound verifier credential + refundable stake (`KarProStaking`); verification fees (ETH / USDC / Lightning) |
 | **FixedPriceConsignment** | Fixed-price listings, agent mandates, native/ERC-20 checkout, external payment confirmation |
 | **AscendingConsignment** | English ascending auctions with settlement hold (browse at `/auctions`) |
@@ -138,7 +138,7 @@ After compile: `node scripts/export-abis.mjs`
 ## Known limitations
 
 - **Irys uploads** use the connected wallet for Arweave storage deposits. Photos are re-encoded to WebP (up to 100 KB each) in the browser before upload. Smart contract wallets may still fail when multiple photos require a separate Irys ETH deposit; the app shows a preflight warning on the photo step.
-- **Create passport** (`/passport/new`) is **EVM-only** today. Solana mint is config-authority ops (`MintPassport`), not a product “anyone mints” path — see [SPEC](docs/contracts/SPEC.md).
+- **Create passport** (`/passport/new`) mints on the selected commercial network (EVM or Solana). On Solana, a concurrent mint may require a one-time resubmit — see [SPEC](docs/contracts/SPEC.md).
 - **Passport bridge** is testnet-scope until the LayerZero Phase 2 checkpoint in [SPEC §7.6](docs/contracts/SPEC.md#76-layerzero-security-configuration-normative) clears — no mainnet pathway yet.
 - **Disputed passports** can still be listed; status is shown in the UI before purchase.
 

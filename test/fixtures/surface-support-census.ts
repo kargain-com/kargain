@@ -936,24 +936,6 @@ export const SURFACE_CENSUS_PAIRS: SurfaceCensusPair[] = [
     "capability": "fixed_price_confirm_external_payment"
   },
   {
-    "file": "components/passport/create-passport-wizard.tsx",
-    "primitive": "runTx(",
-    "functionName": null,
-    "capability": "create_passport"
-  },
-  {
-    "file": "components/passport/create-passport-wizard.tsx",
-    "primitive": "useSignMessage",
-    "functionName": null,
-    "capability": "create_passport"
-  },
-  {
-    "file": "components/passport/create-passport-wizard.tsx",
-    "primitive": "writeContractAsync",
-    "functionName": "mintPassport",
-    "capability": "create_passport"
-  },
-  {
     "file": "components/passport/passport-bridge-panel.tsx",
     "primitive": "useReadContract",
     "functionName": "ownerOf",
@@ -1584,6 +1566,12 @@ export const SURFACE_CENSUS_PAIRS: SurfaceCensusPair[] = [
     "capability": "report_passport_discrepancy"
   },
   {
+    "file": "lib/passport/mint-passport.ts",
+    "primitive": "txWriteAvailability",
+    "functionName": null,
+    "capability": "create_passport"
+  },
+  {
     "file": "lib/passport/set-passport-uri.ts",
     "primitive": "txWriteAvailability",
     "functionName": null,
@@ -1727,7 +1715,7 @@ export const SURFACE_CENSUS_CAPABILITY_META: SurfaceCensusCapabilityMeta[] = [
     "kind": "write_action",
     "evmSource": "see consuming files",
     "evidence": null,
-    "svmReader": "owed",
+    "svmReader": "present",
     "observedSvmBehaviour": "known"
   },
   {

@@ -334,23 +334,31 @@ export function createProductSvmKeyedAccountSource(): SvmKeyedAccountSource {
 }
 
 /**
- * JSON-RPC confirm port at owner commitment.
- * Uses plain fetch to stay outside wallet-adapter and Solana SDK graph rules.
+ * Product getSignatureStatuses — shared by confirm port and mint concurrency
+ * classification (landed InvalidSeeds → mint_sequence_advanced).
  */
-export function createProductSvmTxConfirmPort(): SvmTxConfirmPort {
+export async function fetchProductSvmSignatureStatuses(
+  signatures: string[],
+): Promise<ReadonlyArray<SignatureStatusRow>> {
   const rpcUrl = productSvmRpcUrl();
   if (!rpcUrl) {
     throw new Error(productSvmRpcUrlRefusalCopy());
   }
+  const result = await postSolanaJsonRpc<{ value: SignatureStatusRow[] }>(
+    rpcUrl,
+    "getSignatureStatuses",
+    [signatures],
+  );
+  return result.value;
+}
+
+/**
+ * JSON-RPC confirm port at owner commitment.
+ * Uses plain fetch to stay outside wallet-adapter and Solana SDK graph rules.
+ */
+export function createProductSvmTxConfirmPort(): SvmTxConfirmPort {
   return createSvmTxConfirmPort({
-    getSignatureStatuses: async (signatures: string[]) => {
-      const result = await postSolanaJsonRpc<{ value: SignatureStatusRow[] }>(
-        rpcUrl,
-        "getSignatureStatuses",
-        [signatures],
-      );
-      return result.value;
-    },
+    getSignatureStatuses: fetchProductSvmSignatureStatuses,
   });
 }
 

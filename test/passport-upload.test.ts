@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { UserRejectedRequestError } from "viem";
 
 import { formatPassportUploadError } from "../lib/passport/upload-passport-metadata.ts";
+import { walletRejectionCopy } from "../lib/web3/wallet-rejection.ts";
 
 describe("formatPassportUploadError", () => {
   it("maps bundler deposit failure to smart-wallet hint", () => {
@@ -13,7 +15,9 @@ describe("formatPassportUploadError", () => {
   });
 
   it("maps user rejection to cancelled message", () => {
-    const message = formatPassportUploadError(new Error("User rejected the request"));
-    assert.equal(message, "Wallet signature cancelled.");
+    const message = formatPassportUploadError(
+      new UserRejectedRequestError(new Error("denied")),
+    );
+    assert.equal(message, walletRejectionCopy());
   });
 });

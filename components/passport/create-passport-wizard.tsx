@@ -4,7 +4,6 @@ import { useActiveAccount } from "@/hooks/use-active-account";
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
-import { UserRejectedRequestError, type Hash } from "viem";
 import { useSignMessage } from "wagmi";
 import type { Connector } from "wagmi";
 
@@ -16,17 +15,20 @@ import { PhotoUploadZone } from "@/components/passport/photo-upload-zone";
 import { Button } from "@/components/ui/button";
 import { SurfaceAdmissionRefusalView } from "@/components/shell/surface-admission-refusal";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
+import { useMintPassport } from "@/hooks/use-mint-passport";
 import { useWalletAccountKind } from "@/hooks/use-wallet-account-kind";
 import { ensureSiweSession } from "@/lib/auth/ensure-siwe-session";
-import { KarPassportAbi } from "@/lib/contracts/abis.generated";
-import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { buildMetadataWire } from "@/lib/passport/build-metadata-json";
 import {
   admitCreatePassport,
-  createPassportAdmissionDetail,
+  createPassportIntroCopy,
   createPassportShowsMintIntro,
   resolveCreatePassportNamespace,
 } from "@/lib/passport/create-passport-surface";
+import {
+  mintPassportCauseCopy,
+  type MintPassportCause,
+} from "@/lib/passport/mint-passport";
 import { MAX_PHOTOS } from "@/lib/passport/metadata-constants";
 import {
   emptyPassportFormInput,
@@ -44,13 +46,15 @@ import {
 import { reorderArrayItem } from "@/lib/reorder-array";
 import { resetIrysUploaderCache } from "@/lib/storage/irys-client";
 import type { ActiveAccount } from "@/lib/web3/active-account";
-import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import { unresolvedNamespaceCopy } from "@/lib/web3/commercial-active";
 import {
-  admitSurfaceEvmPacked,
   isSurfaceAdmissionAvailable,
 } from "@/lib/web3/surface-admission";
-import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
-import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
+import { shortChainName } from "@/lib/web3/supported-chains";
+import {
+  isWalletRejection,
+  walletRejectionCopy,
+} from "@/lib/web3/wallet-rejection";
 
 const MAX_PHOTOS_LIMIT = MAX_PHOTOS;
 
@@ -61,13 +65,19 @@ type FormState = PassportCreateFormInput;
 
 type FieldErrors = PassportCreateFormErrors;
 
-function isWalletRejection(err: unknown): boolean {
-  if (err instanceof UserRejectedRequestError) return true;
-  return err instanceof Error && err.message.includes("User rejected");
+function missingMintedPassportCopy(): string {
+  return "Mint succeeded but token ID could not be read. Check your wallet for the NFT.";
 }
 
-const MINT_PARSE_ERROR_MESSAGE =
-  "Mint succeeded but token ID could not be read. Check your wallet for the NFT.";
+function mintFailureCopy(
+  cause: MintPassportCause,
+  detail: string,
+): string {
+  if (cause === "send_failed" && detail.trim().length > 0) {
+    return detail;
+  }
+  return mintPassportCauseCopy(cause);
+}
 
 function CreatePassportShell({
   children,
@@ -92,7 +102,7 @@ function CreatePassportShell({
 
 /**
  * Gate: census support for create_passport, then session. Write/sync body
- * mounts only when the namespace admits creation and the session matches.
+ * mounts when the namespace admits creation and the session family matches.
  */
 export function CreatePassportWizard() {
   const { account, signingBinding, svmWallet } = useActiveAccount();
@@ -113,12 +123,11 @@ export function CreatePassportWizard() {
       <CreatePassportShell centered={nsResult.cause === "disconnected"}>
         {nsResult.cause === "disconnected" ? (
           <p className="text-sm text-text-secondary">
-            Mint a KarPassport NFT with basic vehicle details and photos stored on
-            Arweave.
+            {createPassportIntroCopy()}
           </p>
         ) : null}
         {nsResult.cause === "unresolved_namespace" ? (
-          <KarProNetworkPrompt title="Switch to a Kargain network to mint a passport." />
+          <KarProNetworkPrompt title={unresolvedNamespaceCopy()} />
         ) : (
           <SurfaceAdmissionRefusalView refusal={refusal} />
         )}
@@ -133,44 +142,23 @@ export function CreatePassportWizard() {
       <CreatePassportShell centered>
         {createPassportShowsMintIntro(admission) ? (
           <p className="text-sm text-text-secondary">
-            Mint a KarPassport NFT with basic vehicle details and photos stored on
-            Arweave.
+            {createPassportIntroCopy()}
           </p>
         ) : null}
-        <SurfaceAdmissionRefusalView
-          refusal={admission}
-          description={createPassportAdmissionDetail(admission)}
-        />
-      </CreatePassportShell>
-    );
-  }
-
-  const packed = admitSurfaceEvmPacked(admission);
-  if (packed == null) {
-    return (
-      <CreatePassportShell>
-        <KarProNetworkPrompt title="Switch to a Kargain network to mint a passport." />
-      </CreatePassportShell>
-    );
-  }
-
-  const chainId = resolveKarProTargetChainId(packed.chainId);
-  if (chainId == null) {
-    return (
-      <CreatePassportShell>
-        <KarProNetworkPrompt title="Switch to a Kargain network to mint a passport." />
+        <SurfaceAdmissionRefusalView refusal={admission} />
       </CreatePassportShell>
     );
   }
 
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
+  const evmAddress = signingBinding.ok ? signingBinding.address : undefined;
 
   return (
     <CreatePassportWizardBody
-      chainId={chainId}
-      address={packed.address}
+      chainId={nsResult.namespace}
       account={account}
       connector={connector}
+      evmAddress={evmAddress}
       svmWallet={svmWallet}
     />
   );
@@ -178,29 +166,29 @@ export function CreatePassportWizard() {
 
 type BodyProps = {
   chainId: number;
-  address: `0x${string}`;
   account: ActiveAccount;
   connector: Connector | undefined;
+  /** EVM session address when signingBinding is ok — never invent from SVM. */
+  evmAddress: `0x${string}` | undefined;
   /** Opaque wallet handle from useActiveAccount — typed at the Irys upload door. */
   svmWallet: Parameters<typeof uploadPassportToIrys>[0]["svmWallet"];
 };
 
 function CreatePassportWizardBody({
   chainId,
-  address,
   account,
   connector,
+  evmAddress,
   svmWallet,
 }: BodyProps) {
   const router = useRouter();
   const { signMessageAsync } = useSignMessage();
-  const { writeContractAsync, isPending: isWritePending, reset: resetWrite } =
-    useEvmWriteContract();
-  const wc = wagmiChainId(chainId);
-  const { kind: accountKind, isLoading: isLoadingAccountKind } = useWalletAccountKind(
-    address,
-    connector,
-  );
+  const { mintPassport, isPending: isWritePending, reset: resetWrite } =
+    useMintPassport();
+  const sessionAddress =
+    account.status === "connected" ? account.address : undefined;
+  const { kind: accountKind, isLoading: isLoadingAccountKind } =
+    useWalletAccountKind(evmAddress, connector);
   const {
     runTx,
     phase: txPhase,
@@ -212,13 +200,15 @@ function CreatePassportWizardBody({
   const [phase, setPhase] = useState<Phase>("idle");
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [mintHash, setMintHash] = useState<Hash | undefined>();
+  const [mintRef, setMintRef] = useState<string | undefined>();
 
   const [form, setForm] = useState<FormState>(() => emptyPassportFormInput());
 
   const [photos, setPhotos] = useState<File[]>([]);
   const [metadataUri, setMetadataUri] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(
+    null,
+  );
 
   const updateField = useCallback((key: PassportFormFieldKey, value: string) => {
     setForm((prev) => ({
@@ -254,50 +244,56 @@ function CreatePassportWizardBody({
 
   const startMint = useCallback(
     async (uri: string) => {
-      const contractAddress = karPassportAddress(chainId);
-      if (!contractAddress) {
-        setFormError("Passport contract not available on this network");
-        setPhase("error");
-        return;
-      }
-
       setPhase("minting");
       setFormError(null);
       resetWrite();
-      setMintHash(undefined);
+      setMintRef(undefined);
+
+      const executed = await mintPassport({ chainId, uri });
+      if (!executed.ok) {
+        if (executed.cause === "mint_sequence_advanced") {
+          setPhase("idle");
+          setFormError(mintPassportCauseCopy("mint_sequence_advanced"));
+          resetWrite();
+          return;
+        }
+        if (executed.detail === walletRejectionCopy()) {
+          setPhase("idle");
+          setFormError(walletRejectionCopy());
+          resetWrite();
+          return;
+        }
+        setPhase("error");
+        setFormError(mintFailureCopy(executed.cause, executed.detail));
+        resetWrite();
+        return;
+      }
 
       let mappedError: string | null = null;
       const result = await runTx(
         async () => {
-          const hash = await writeContractAsync({
-            address: contractAddress,
-            abi: KarPassportAbi,
-            functionName: "mintPassport",
-            args: [address, uri],
-            chainId: wc,
-          });
-          setMintHash(hash);
-          return hash;
+          setMintRef(executed.signature);
+          return executed.signature;
         },
         {
           mapError: (err) => {
             mappedError = isWalletRejection(err)
-              ? "Transaction cancelled. Try again when ready."
+              ? walletRejectionCopy()
               : err instanceof Error
                 ? err.message
-                : "Mint failed. Please try again.";
+                : mintPassportCauseCopy("send_failed");
             return mappedError;
           },
         },
       );
 
       if (!result) {
-        if (mappedError === "Transaction cancelled. Try again when ready.") {
+        if (mappedError === walletRejectionCopy()) {
           setPhase("idle");
         } else {
           setPhase("error");
         }
-        setFormError(mappedError ?? "Mint failed. Please try again.");
+        setFormError(mappedError ?? mintPassportCauseCopy("send_failed"));
         resetWrite();
         return;
       }
@@ -306,7 +302,7 @@ function CreatePassportWizardBody({
       if (!minted.ok) {
         if (minted.cause === "missing_minted_passport") {
           setPhase("error");
-          setFormError(MINT_PARSE_ERROR_MESSAGE);
+          setFormError(missingMintedPassportCopy());
           resetWrite();
           return;
         }
@@ -321,7 +317,7 @@ function CreatePassportWizardBody({
         `/marketplace/${tokenId}/created?chain=${chainId}&tx=${txRef}`,
       );
     },
-    [address, chainId, resetWrite, router, runTx, wc, writeContractAsync],
+    [chainId, mintPassport, resetWrite, router, runTx],
   );
 
   const onCreatePassport = async () => {
@@ -348,17 +344,19 @@ function CreatePassportWizardBody({
     setPhase("uploading");
     setUploadProgress(null);
 
-    try {
-      await ensureSiweSession({
-        address,
-        chainId,
-        signMessageAsync,
-      });
-    } catch (err) {
-      setUploadProgress(null);
-      setFormError(formatPassportUploadError(err));
-      setPhase("error");
-      return;
+    if (evmAddress != null) {
+      try {
+        await ensureSiweSession({
+          address: evmAddress,
+          chainId,
+          signMessageAsync,
+        });
+      } catch (err) {
+        setUploadProgress(null);
+        setFormError(formatPassportUploadError(err));
+        setPhase("error");
+        return;
+      }
     }
 
     try {
@@ -466,12 +464,12 @@ function CreatePassportWizardBody({
               <p className="font-sans text-sm text-text-secondary">
                 Creating passport on-chain…
               </p>
-              {(txPhase === "wallet" || isWritePending || !mintHash) && (
+              {(txPhase === "wallet" || isWritePending || !mintRef) && (
                 <p className="font-sans text-xs text-text-tertiary">
                   Confirm the transaction in your wallet
                 </p>
               )}
-              {mintHash && txPhase === "confirming" && (
+              {mintRef && txPhase === "confirming" && (
                 <p className="font-sans text-xs text-text-tertiary">
                   Waiting for confirmation…
                 </p>
@@ -499,7 +497,7 @@ function CreatePassportWizardBody({
             <Button
               type="button"
               variant="primary"
-              disabled={isBusy || photos.length < 1}
+              disabled={isBusy || photos.length < 1 || sessionAddress == null}
               onClick={() => void onCreatePassport()}
             >
               {displayPhase === "uploading"

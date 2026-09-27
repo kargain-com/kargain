@@ -36,7 +36,7 @@ export const SURFACE_SUPPORT_FLOORS = {
   wagmiReadHookFiles: 28,
   derivedConsumerPairs: 1,
   capabilities: 1,
-  migratedTxWriteOwners: 13,
+  migratedTxWriteOwners: 14,
 } as const;
 
 /** Primitives that take a config object with abi / functionName. */

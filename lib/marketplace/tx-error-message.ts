@@ -1,5 +1,4 @@
 import {
-  UserRejectedRequestError,
   isAddress,
   type Abi,
 } from "viem";
@@ -13,6 +12,10 @@ import {
   type DecodedCustomError,
 } from "@/lib/web3/decode-custom-error";
 import { svmProgramErrorName } from "@/lib/web3/svm-program-errors";
+import {
+  isWalletRejection,
+  walletRejectionCopy,
+} from "@/lib/web3/wallet-rejection";
 
 /**
  * Exact error-name → user copy. Every production custom error must appear here with a
@@ -379,12 +382,8 @@ export function decodeSvmProgramError(
 }
 
 export function txErrorMessage(err: unknown): string {
-  if (
-    err instanceof UserRejectedRequestError ||
-    (err instanceof Error &&
-      (err.message.includes("User rejected") || err.message.includes("User denied")))
-  ) {
-    return "Wallet signature cancelled.";
+  if (isWalletRejection(err)) {
+    return walletRejectionCopy();
   }
 
   const decoded =

@@ -1,9 +1,9 @@
 /**
- * Create passport surface — support before session.
+ * Create passport surface — support before session (dual-VM).
  *
- * Pins: Solana shows authority_only (not Ethereum wrong_vm); EVM disconnected
- * sentence unchanged; admitting ns + SVM → wrong_family; wizard consumes owners;
- * no inlined sentences; plant of requireEvmSession-first is red.
+ * Pins: Solana admits create_passport for a matching SVM session; EVM
+ * disconnected sentence unchanged; admitting EVM ns + SVM → wrong_family;
+ * wizard consumes owners; no inlined sentences; plant of requireEvmSession-first is red.
  */
 
 import assert from "node:assert/strict";
@@ -20,16 +20,14 @@ import {
   wrongVmActionCopy,
   type ActiveAccount,
 } from "@/lib/web3/active-account";
-import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
 import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import {
   admitCreatePassport,
-  createPassportAdmissionDetail,
-  createPassportSupportRefusalCopy,
-  createPassportWhereAvailableCopy,
+  createPassportIntroCopy,
   resolveCreatePassportNamespace,
 } from "@/lib/passport/create-passport-surface";
 import {
+  isSurfaceAdmissionAvailable,
   surfaceAdmissionRefusalCopy,
 } from "@/lib/web3/surface-admission";
 import {
@@ -64,32 +62,29 @@ function read(rel: string): string {
 
 describe("admitCreatePassport — support before session", () => {
   it("2000040168: authority_only for any session; never Ethereum wrong_vm", () => {
-    const authority = surfaceSupportCauseCopy("authority_only");
+    // Inverted: Solana create_passport is dual-VM supported.
     const ethereum = wrongVmActionCopy("evm");
-    for (const account of [
-      DISCONNECTED_ACCOUNT,
-      EVM_ACCOUNT,
-      SVM_ACCOUNT,
-    ] as const) {
-      const admission = admitCreatePassport(account, SOLANA_NS);
-      assert.equal(admission.status, "support_refused");
-      if (admission.status !== "support_refused") return;
-      assert.equal(admission.cause, "authority_only");
-      const copy = createPassportSupportRefusalCopy(admission.cause);
-      assert.equal(copy.title, authority);
-      assert.notEqual(copy.title, ethereum);
-      assert.ok(!copy.title.includes("Ethereum"));
-      assert.ok(!copy.detail.includes("Ethereum wallet"));
-      assert.equal(
-        createPassportAdmissionDetail(admission),
-        copy.detail || undefined,
-      );
-    }
     const cell = surfaceSupport("create_passport", SOLANA_NS);
-    assert.ok(!("unresolved" in cell) && !cell.supported);
-    if (!("unresolved" in cell) && !cell.supported) {
-      assert.equal(cell.cause, "authority_only");
+    assert.ok(!("unresolved" in cell) && cell.supported);
+    if (!("unresolved" in cell) && cell.supported) {
+      assert.equal(cell.family, "svm");
     }
+
+    const available = admitCreatePassport(SVM_ACCOUNT, SOLANA_NS);
+    assert.equal(available.status, "available");
+    assert.ok(isSurfaceAdmissionAvailable(available));
+
+    const wrongFamily = admitCreatePassport(EVM_ACCOUNT, SOLANA_NS);
+    assert.equal(wrongFamily.status, "wrong_family");
+    if (wrongFamily.status !== "wrong_family") return;
+    assert.equal(wrongFamily.wanted, "svm");
+    assert.notEqual(
+      surfaceAdmissionRefusalCopy(wrongFamily).title,
+      ethereum,
+    );
+
+    const disconnected = admitCreatePassport(DISCONNECTED_ACCOUNT, SOLANA_NS);
+    assert.equal(disconnected.status, "disconnected");
   });
 
   it("plant: requireEvmSession-first on Solana yields Ethereum sentence (red vs live)", () => {
@@ -101,15 +96,13 @@ describe("admitCreatePassport — support before session", () => {
     assert.equal(plantedSentence, wrongVmActionCopy("evm"));
 
     const live = admitCreatePassport(SVM_ACCOUNT, SOLANA_NS);
-    assert.equal(live.status, "support_refused");
-    if (live.status !== "support_refused") return;
-    const liveTitle = createPassportSupportRefusalCopy(live.cause).title;
+    assert.equal(live.status, "available");
+    assert.ok(isSurfaceAdmissionAvailable(live));
     assert.notEqual(
-      liveTitle,
+      "available",
       plantedSentence,
       "live admit must not match old wrong_vm Ethereum sentence",
     );
-    assert.equal(liveTitle, surfaceSupportCauseCopy("authority_only"));
   });
 
   it("84532 disconnected: disconnected sentence via SurfaceAdmission", () => {
@@ -170,14 +163,14 @@ describe("resolveCreatePassportNamespace", () => {
 
 describe("createPassportWhereAvailableCopy", () => {
   it("names only namespaces that admit create_passport; never Solana", () => {
-    const detail = createPassportWhereAvailableCopy();
-    assert.ok(detail.length > 0);
-    assert.ok(detail.startsWith("Creation is available on "));
-    assert.ok(!detail.includes(commercialNetworkLabel(SOLANA_NS)));
-    assert.ok(detail.includes(commercialNetworkLabel(84532)));
-    assert.ok(detail.includes(commercialNetworkLabel(11155111)));
+    // Inverted: Solana admits; where-available helper deleted (unreachable).
     const solana = surfaceSupport("create_passport", SOLANA_NS);
-    assert.ok(!("unresolved" in solana) && !solana.supported);
+    assert.ok(!("unresolved" in solana) && solana.supported);
+    const owner = read(OWNER_REL);
+    assert.ok(
+      !/createPassportWhereAvailableCopy/.test(owner),
+      "where-available helper must be deleted once every commercial ns admits",
+    );
   });
 });
 
@@ -187,10 +180,6 @@ describe("wizard consumes owners — no invent", () => {
     assert.ok(
       /admitCreatePassport/.test(src),
       "wizard must call admitCreatePassport",
-    );
-    assert.ok(
-      /createPassportAdmissionDetail/.test(src),
-      "wizard must call createPassportAdmissionDetail",
     );
     assert.ok(
       /SurfaceAdmissionRefusalView/.test(src),
@@ -205,16 +194,20 @@ describe("wizard consumes owners — no invent", () => {
       "wizard must not gate with requireEvmSession",
     );
     assert.ok(
-      /mintPassport/.test(src),
-      "EVM mint body must still call mintPassport",
+      /useMintPassport|mintPassport/.test(src),
+      "wizard must mint through the dual-VM owner",
+    );
+    assert.ok(
+      !/\badmitSurfaceEvmPacked\b/.test(src),
+      "wizard must not force EVM packed admission",
     );
   });
 
   it("plant: sentence literal in wizard is red", () => {
     const authority = surfaceSupportCauseCopy("authority_only");
-    const where = createPassportWhereAvailableCopy();
+    const intro = createPassportIntroCopy();
     const ethereum = wrongVmActionCopy("evm");
-    const owners = [OWNER_REL, "lib/web3/surface-support.ts"];
+    const owners = [OWNER_REL, "lib/web3/surface-support.ts", "lib/passport/mint-passport.ts", "lib/web3/wallet-rejection.ts", "lib/web3/commercial-active.ts"];
     const planted = `const x = ${JSON.stringify(authority)};\n`;
     assert.ok(planted.includes(JSON.stringify(authority)));
     assert.throws(
@@ -236,10 +229,19 @@ describe("wizard consumes owners — no invent", () => {
     );
     const scan = scanProductSources((rel, source) => {
       if (rel !== WIZARD_REL) return false;
-      for (const sentence of [authority, where, ethereum]) {
+      for (const sentence of [authority, ethereum]) {
         if (source.includes(JSON.stringify(sentence)) || source.includes(sentence)) {
-          return `re-inlined create-passport sentence (sole owners: surfaceSupportCauseCopy / createPassportWhereAvailableCopy): ${sentence}`;
+          return `re-inlined create-passport sentence: ${sentence}`;
         }
+      }
+      // Intro must come from createPassportIntroCopy call, not a re-inlined literal
+      // beyond the owner call site — allow the call, ban a second copy of the string
+      // as a string literal assignment.
+      if (
+        source.includes(JSON.stringify(intro)) &&
+        !/createPassportIntroCopy\s*\(/.test(source)
+      ) {
+        return `re-inlined intro without owner call: ${intro}`;
       }
       return false;
     }, { owners });
@@ -249,9 +251,10 @@ describe("wizard consumes owners — no invent", () => {
 
 describe("owner file exists", () => {
   it("create-passport-surface.ts is the sole where-available home", () => {
+    // Inverted: where-available deleted; admitSurface remains sole admit path.
     const src = read(OWNER_REL);
-    assert.ok(/surfaceSupport\(\s*"create_passport"/.test(src));
-    assert.ok(/createPassportWhereAvailableCopy/.test(src));
     assert.ok(/admitSurface/.test(src));
+    assert.ok(/createPassportIntroCopy/.test(src));
+    assert.ok(!/createPassportWhereAvailableCopy/.test(src));
   });
 });

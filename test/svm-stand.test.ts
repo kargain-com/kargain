@@ -29,6 +29,10 @@ import {
   probeValidator as probePermissionlessMintValidator,
   runLivePermissionlessMint,
 } from "../svm/stand/live-permissionless-mint.ts";
+import {
+  probeValidator as probeProductMintValidator,
+  runLiveProductMint,
+} from "../svm/stand/live-product-mint.ts";
 import { runLiveVerifierFlow } from "../svm/stand/live-verifier-flow.ts";
 import {
   probeValidator as probeMoneyValidator,
@@ -200,6 +204,28 @@ describe("svm-stand live Core CPI round trip", () => {
         `\n[svm-stand] permissionless-mint PASS payer≠authority freeze=${perm.freezeAuthority.slice(0, 8)}… ` +
           `refusals InvalidSeeds@${perm.refusals.foreignFreezeIndex}+InvalidReceiver@${perm.refusals.ownerIsGatewayIndex} ` +
           `gateway.overridden=${perm.artifacts.programs.kar_gateway.overridden}\n`,
+      );
+
+      const productMintReady = await probeProductMintValidator("http://127.0.0.1:8899");
+      if (!productMintReady) {
+        throw new Error("validator lost health before product mint proof");
+      }
+      const productMint = await runLiveProductMint();
+      assertStandArtifactBindings(productMint.artifacts);
+      assert.equal(
+        productMint.happy.plannedTokenId,
+        productMint.happy.landedTokenId,
+      );
+      assert.ok(productMint.happy.signature.length > 0);
+      assert.equal(productMint.concurrency.cause, "mint_sequence_advanced");
+      assert.equal(
+        productMint.concurrency.plannedTokenId,
+        productMint.happy.landedTokenId,
+      );
+      console.warn(
+        `\n[svm-stand] product-mint PASS sig=${productMint.happy.signature.slice(0, 12)}… ` +
+          `id=${productMint.happy.landedTokenId} concurrency=${productMint.concurrency.cause} ` +
+          `next=${productMint.concurrency.nextTokenIdAfter}\n`,
       );
 
       const verifier = await runLiveVerifierFlow({ reuseInited: true });

@@ -19,6 +19,10 @@ import { arUriToHttp } from "@/lib/storage/ar-gateway";
 import { karProPassAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
+import {
+  isWalletRejection,
+  walletRejectionCopy,
+} from "@/lib/web3/wallet-rejection";
 
 type KarProProfileSectionProps = {
   chainId: number;
@@ -140,8 +144,8 @@ export function KarProProfileSection({
           }),
         {
           mapError: (err) =>
-            err instanceof Error && err.message.includes("User rejected")
-              ? "Transaction cancelled."
+            isWalletRejection(err)
+              ? walletRejectionCopy()
               : err instanceof Error
                 ? err.message
                 : "Update failed. Try again.",

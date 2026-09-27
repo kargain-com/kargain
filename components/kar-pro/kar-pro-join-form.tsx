@@ -28,6 +28,10 @@ import {
 } from "@/lib/web3/surface-admission";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
+import {
+  isWalletRejection,
+  walletRejectionCopy,
+} from "@/lib/web3/wallet-rejection";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type LoadingPhase = "idle" | "uploading";
@@ -169,8 +173,8 @@ export function KarProJoinForm({
           }),
         {
           mapError: (err) =>
-            err instanceof Error && err.message.includes("User rejected")
-              ? "Transaction cancelled."
+            isWalletRejection(err)
+              ? walletRejectionCopy()
               : err instanceof Error
                 ? err.message
                 : "Something went wrong. Try again.",

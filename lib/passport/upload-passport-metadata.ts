@@ -18,6 +18,10 @@ import {
   commercialActive,
   type CommercialActiveStack,
 } from "@/lib/web3/commercial-active";
+import {
+  isWalletRejection,
+  walletRejectionCopy,
+} from "@/lib/web3/wallet-rejection";
 import type { Wallet } from "@wallet-standard/base";
 
 export type { IrysTag };
@@ -49,10 +53,10 @@ const METADATA_TAGS: IrysTag[] = [
 ];
 
 export function formatPassportUploadError(err: unknown): string {
+  if (isWalletRejection(err)) {
+    return walletRejectionCopy();
+  }
   if (err instanceof Error) {
-    if (err.message.includes("User rejected")) {
-      return "Wallet signature cancelled.";
-    }
     if (err.message.includes("402 error")) {
       return "Your Irys storage balance is too low. Confirm the deposit transaction in your wallet, then try again.";
     }

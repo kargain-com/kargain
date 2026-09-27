@@ -253,13 +253,6 @@ function classCEvmOnBoth(): SupportRow {
   };
 }
 
-function createPassportRow(): SupportRow {
-  return {
-    evm: { supported: true, family: "evm" },
-    svm: { supported: false, cause: "authority_only" },
-  };
-}
-
 function notInProgramOnSvm(): SupportRow {
   return {
     evm: { supported: true, family: "evm" },
@@ -312,7 +305,7 @@ export const SURFACE_SUPPORT_TABLE: Readonly<
   ascending_judge_challenge: productOwnerOwed(),
   ascending_conclude_challenge: productOwnerOwed(),
   set_verification_fee: dualVmOwner(),
-  create_passport: createPassportRow(),
+  create_passport: dualVmOwner(),
   custody_locked: dualVmOwner(),
   may_open_consignment: dualVmOwner(),
   may_leave_chain: dualVmOwner(),

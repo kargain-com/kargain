@@ -563,6 +563,7 @@ export const KNOWN_SESSION_GATES_WITHOUT_WRITES: readonly string[] = [
   "components/marketplace/listing-make-offer-button.tsx",
   "components/marketplace/nostr-comments-section.tsx",
   "components/marketplace/seller-contact-button.tsx",
+  "components/passport/create-passport-wizard.tsx",
   "components/passport/edit-passport-wizard.tsx",
   "components/passport/passport-actions-panel.tsx",
   "components/passport/passport-bridge-panel.tsx",

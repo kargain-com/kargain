@@ -18,6 +18,10 @@ import { requireCommercialActive } from "@/lib/web3/commercial-active";
 import { explorerAddressUrl } from "@/lib/web3/network-explorer";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
+import {
+  isWalletRejection,
+  walletRejectionCopy,
+} from "@/lib/web3/wallet-rejection";
 
 type KarProMembershipSectionProps = {
   chainId: number;
@@ -74,9 +78,7 @@ export function KarProMembershipSection({
         }),
       {
         mapError: (err) =>
-          err instanceof Error && err.message.includes("User rejected")
-            ? "Transaction cancelled."
-            : txErrorMessage(err),
+          isWalletRejection(err) ? walletRejectionCopy() : txErrorMessage(err),
       },
     );
     if (succeeded) {
@@ -100,9 +102,7 @@ export function KarProMembershipSection({
         }),
       {
         mapError: (err) =>
-          err instanceof Error && err.message.includes("User rejected")
-            ? "Transaction cancelled."
-            : txErrorMessage(err),
+          isWalletRejection(err) ? walletRejectionCopy() : txErrorMessage(err),
       },
     );
     if (succeeded) {

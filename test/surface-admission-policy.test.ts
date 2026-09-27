@@ -385,7 +385,7 @@ describe("admitSurface — census before session", () => {
 
   it("admitCreatePassport and ForCapability adapt admitSurface (no second composer)", () => {
     const create = admitCreatePassport(DISCONNECTED_ACCOUNT, SOLANA_NS);
-    assert.equal(create.status, "support_refused");
+    assert.equal(create.status, "disconnected");
     const write = txWriteAvailabilityForCapability(
       DISCONNECTED_ACCOUNT,
       "kar_pro_join",

@@ -93,6 +93,19 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["set-passport-uri-policy.test.ts"],
   },
   {
+    id: "passport-mint",
+    owner:
+      "lib/passport/mint-passport.ts · hooks/use-mint-passport.ts · components/passport/create-passport-wizard.tsx",
+    rule: "Dual-VM Create mint: sole owner plans EVM mintPassport / SVM MintPassport nine metas from PassportConfig.next_token_id + registry gateway freeze/config; registry_bridge_gateway_mismatch refuses before send; landed InvalidSeeds with advanced next_token_id → mint_sequence_advanced; wizard has no VM fork; outcome via runTx mintedPassportTokenId",
+    guardTests: ["mint-passport-policy.test.ts"],
+  },
+  {
+    id: "wallet-rejection",
+    owner: "lib/web3/wallet-rejection.ts",
+    rule: "Sole typed wallet-rejection classifier (viem UserRejectedRequestError / EIP-1193 4001 / Wallet Standard rejection discriminants) + sole sentence; product roots must not message.includes User rejected/denied",
+    guardTests: ["wallet-rejection-policy.test.ts"],
+  },
+  {
     id: "passport-append-record",
     owner:
       "lib/passport/append-passport-record.ts · hooks/use-append-passport-record.ts · lib/passport/prepare-passport-record-write.ts · lib/svm/decode-account-state.ts · components/shell/tx-write-refusal.tsx",
@@ -185,7 +198,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "create-passport-surface",
     owner:
       "lib/passport/create-passport-surface.ts · components/passport/create-passport-wizard.tsx",
-    rule: "admitCreatePassport returns SurfaceAdmission from admitSurface; unsupported namespaces → SurfaceAdmissionRefusal + createPassportWhereAvailableCopy detail (never wrong_vm Ethereum sentence); wizard consumes owners — no inlined sentences, no requireEvmSession-first gate, no VM fork in the page",
+    rule: "admitCreatePassport returns SurfaceAdmission from admitSurface for either commercial family (create_passport dualVmOwner); wizard consumes owners + mint-passport — no inlined sentences, no requireEvmSession-first gate, no VM fork in the page",
     guardTests: ["create-passport-surface-policy.test.ts"],
   },
   {
@@ -854,12 +867,6 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     owner: "scripts/lib/svm-devnet-evidence-write.ts",
     rule: "Sole additive writer for deployments/svm-{eid}.json; refuse drop / digest absence / deploySlot move",
     guardTests: ["svm-devnet-evidence-write-policy.test.ts"],
-  },
-  {
-    id: "svm-devnet-mint-passport",
-    owner: "scripts/svm-devnet-mint-passport.ts",
-    rule: "Sole Devnet MintPassport ops door: exactly one instruction via encodeSvmInstruction+deriveSvmPda; named config refusals; no evidence write, no staking, no hand-rolled MintPassport tag",
-    guardTests: ["svm-devnet-mint-passport-policy.test.ts"],
   },
   {
     id: "svm-devnet-product-send",
