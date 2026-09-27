@@ -209,6 +209,7 @@ const MINT_PASSPORT_CAUSE_COPY: Record<MintPassportCause, string> = {
   unmapped_program_error: "Mint failed. Please try again.",
   missing_wallet_standard_chain: "Solana wallet chain is not configured.",
   wallet_returned_no_signature: "Wallet returned no signature.",
+  signature_not_64_bytes: "Wallet returned an invalid signature.",
   blockhash_unavailable: "Network blockhash unavailable. Try again.",
   blockhash_expired: "Transaction expired. Try again.",
   unregistered_program: "Passport program is not registered for this network.",

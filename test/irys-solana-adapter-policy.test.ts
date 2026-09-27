@@ -100,7 +100,7 @@ describe("irys solana adapter boundary", () => {
   });
 
   it("toIrysSolanaProvider passes MessageSigner-shaped wallets through", async () => {
-    const { toIrysSolanaProvider, encodeIrysSolanaSignatureBase58 } = await import(
+    const { toIrysSolanaProvider } = await import(
       "../adapters/irys-solana/to-irys-provider.ts"
     );
     const shaped = fakeSolanaProvider();
@@ -111,8 +111,19 @@ describe("irys solana adapter boundary", () => {
       devnet: true,
     });
     assert.equal(out, shaped);
-    assert.equal(encodeIrysSolanaSignatureBase58(Uint8Array.of(0)), "1");
-    assert.equal(encodeIrysSolanaSignatureBase58(Uint8Array.of()), "");
+  });
+
+  it("deleted encodeIrysSolanaSignatureBase58 is absent from the adapter", async () => {
+    const source = fs.readFileSync(
+      path.join(ROOT, "adapters/irys-solana/to-irys-provider.ts"),
+      "utf8",
+    );
+    assert.equal(/\bencodeIrysSolanaSignatureBase58\b/.test(source), false);
+    assert.equal(
+      /123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz/.test(source),
+      false,
+    );
+    assert.match(source, /\bwalletStandardSignatureBase58\b/);
   });
 
   it("toIrysSolanaProvider refuses unknown provider shapes by name", async () => {

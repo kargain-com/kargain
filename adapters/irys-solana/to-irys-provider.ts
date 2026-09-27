@@ -3,6 +3,7 @@
  *
  * Product code must never import `@solana/web3.js`; this adapter owns the bridge.
  * Already-shaped providers (tests / wallet-adapter) pass through unchanged.
+ * Signature bytes → base58 via the sole product owner in svm-write-adapter.
  */
 import {
   PublicKey,
@@ -13,38 +14,26 @@ import {
 import type { Wallet, WalletAccount } from "@wallet-standard/base";
 
 import type { IrysUploadPlan } from "@/lib/storage/irys-upload-plan";
+import {
+  walletStandardSignatureBase58,
+  type WalletStandardSignatureBase58Cause,
+} from "@/lib/web3/svm-write-adapter";
 
 const SOLANA_SIGN_AND_SEND = "solana:signAndSendTransaction";
 const SOLANA_SIGN_MESSAGE = "solana:signMessage";
 
-const BASE58_ALPHABET =
-  "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+/**
+ * Typed refusal when Wallet Standard signature bytes cannot become a tx id.
+ * Discriminant is {@link signatureCause} — never a guessed user sentence.
+ */
+export class IrysSolanaSignatureRefusalError extends Error {
+  readonly signatureCause: WalletStandardSignatureBase58Cause;
 
-/** Compact base58 for Ed25519 signatures — avoids a product-level bs58 dep. */
-export function encodeIrysSolanaSignatureBase58(bytes: Uint8Array): string {
-  if (bytes.length === 0) return "";
-  let zeros = 0;
-  while (zeros < bytes.length && bytes[zeros] === 0) zeros += 1;
-  const size = ((bytes.length - zeros) * 138) / 100 + 1;
-  const b58 = new Uint8Array(size);
-  let length = 0;
-  for (let i = zeros; i < bytes.length; i += 1) {
-    let carry = bytes[i]!;
-    let j = 0;
-    for (let k = size - 1; (carry !== 0 || j < length) && k >= 0; k -= 1, j += 1) {
-      carry += 256 * b58[k]!;
-      b58[k] = carry % 58;
-      carry = (carry / 58) | 0;
-    }
-    length = j;
+  constructor(signatureCause: WalletStandardSignatureBase58Cause) {
+    super(signatureCause);
+    this.name = "IrysSolanaSignatureRefusalError";
+    this.signatureCause = signatureCause;
   }
-  let i = size - length;
-  while (i < size && b58[i] === 0) i += 1;
-  let out = "1".repeat(zeros);
-  for (; i < size; i += 1) {
-    out += BASE58_ALPHABET[b58[i]!]!;
-  }
-  return out;
 }
 
 export type IrysSolanaWalletProvider = {
@@ -154,9 +143,13 @@ function wrapWalletStandard(
         },
       });
       if (output == null) {
-        throw new Error("Wallet returned no signature");
+        throw new IrysSolanaSignatureRefusalError("wallet_returned_no_signature");
       }
-      return encodeIrysSolanaSignatureBase58(output.signature);
+      const decoded = walletStandardSignatureBase58(output.signature);
+      if (!decoded.ok) {
+        throw new IrysSolanaSignatureRefusalError(decoded.cause);
+      }
+      return decoded.signature;
     },
     async signMessage(message) {
       const [output] = await signMessageFeature.signMessage({

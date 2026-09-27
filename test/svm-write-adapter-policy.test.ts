@@ -10,7 +10,6 @@ import {
   AccountRole,
   decompileTransactionMessage,
   getBase58Decoder,
-  getBase58Encoder,
   getCompiledTransactionMessageDecoder,
   getTransactionDecoder,
 } from "@solana/kit";
@@ -50,6 +49,7 @@ const ALL_CAUSES: readonly SendSvmInstructionCause[] = [
   "wallet_cannot_sign_and_send",
   "no_connected_account",
   "wallet_returned_no_signature",
+  "signature_not_64_bytes",
   "blockhash_unavailable",
   "blockhash_expired",
   "unregistered_program",
@@ -126,10 +126,7 @@ describe("svm-write-adapter assembly proof", () => {
       async signAndSendTransaction({ transaction, chain }) {
         captured = transaction;
         assert.equal(chain, FIXTURE_SVM_STACK.walletStandardChain);
-        const bytes = getBase58Encoder().encode(
-          "5VEJvtcXsmsTMDoVYArRw7QtQAFBFax9AGyxhR2B4F7P",
-        );
-        return new Uint8Array(bytes);
+        return new Uint8Array(64).fill(9);
       },
     };
 
@@ -322,6 +319,22 @@ describe("svm-write-adapter named refusals", () => {
         accounts: [],
         feePayer: FEE_PAYER,
         port: { async signAndSendTransaction() { return new Uint8Array(0); } },
+        fetchBlockhash: mockBlockhashOk(),
+      }),
+    );
+
+    await mark("signature_not_64_bytes", () =>
+      sendSvmInstruction({
+        stack: FIXTURE_SVM_STACK,
+        programId: FIXTURE_SVM_STACK.karPassport,
+        data,
+        accounts: [],
+        feePayer: FEE_PAYER,
+        port: {
+          async signAndSendTransaction() {
+            return new Uint8Array(63).fill(1);
+          },
+        },
         fetchBlockhash: mockBlockhashOk(),
       }),
     );

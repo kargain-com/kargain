@@ -83,8 +83,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "svm-write-adapter",
     owner:
       "lib/web3/svm-write-adapter.ts · lib/web3/svm-sign-and-send-port.ts · lib/web3/svm-rpc.ts · lib/web3/commercial-active.ts",
-    rule: "SVM write: kit-assemble instruction + COMMERCIAL_ACTIVE program/chain + svm-rpc blockhash + solana:signAndSendTransaction port only (no signTransaction, no product submitter); base58 via kit decoder",
-    guardTests: ["svm-write-adapter-policy.test.ts"],
+    rule: "SVM write: kit-assemble instruction + COMMERCIAL_ACTIVE program/chain + svm-rpc blockhash + solana:signAndSendTransaction port only (no signTransaction, no product submitter); Wallet Standard signature bytes → base58 solely via walletStandardSignatureBase58 (kit decoder; empty → wallet_returned_no_signature; length≠64 → signature_not_64_bytes); Irys Solana adapter consumes the same owner — never a hand-rolled alphabet",
+    guardTests: [
+      "svm-write-adapter-policy.test.ts",
+      "wallet-standard-signature-base58-policy.test.ts",
+      "base58-handroll-policy.test.ts",
+    ],
   },
   {
     id: "passport-set-uri",

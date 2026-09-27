@@ -45,6 +45,7 @@ export type SendSvmInstructionCause =
   | "wallet_cannot_sign_and_send"
   | "no_connected_account"
   | "wallet_returned_no_signature"
+  | "signature_not_64_bytes"
   | "blockhash_unavailable"
   | "blockhash_expired"
   | "unregistered_program"
@@ -58,6 +59,37 @@ export type SendSvmInstructionResult =
       cause: SendSvmInstructionCause;
       detail: string;
     };
+
+/** Ed25519 signature length returned by Wallet Standard `signAndSendTransaction`. */
+export const WALLET_STANDARD_SIGNATURE_BYTE_LENGTH = 64;
+
+export type WalletStandardSignatureBase58Cause =
+  | "wallet_returned_no_signature"
+  | "signature_not_64_bytes";
+
+export type WalletStandardSignatureBase58Result =
+  | { ok: true; signature: string }
+  | { ok: false; cause: WalletStandardSignatureBase58Cause };
+
+/**
+ * Sole product conversion: Wallet Standard signature bytes → base58 tx id.
+ * Kit decoder only — never a hand-rolled alphabet loop.
+ */
+export function walletStandardSignatureBase58(
+  signatureBytes: Uint8Array | null | undefined,
+): WalletStandardSignatureBase58Result {
+  if (signatureBytes == null || signatureBytes.byteLength === 0) {
+    return { ok: false, cause: "wallet_returned_no_signature" };
+  }
+  if (signatureBytes.byteLength !== WALLET_STANDARD_SIGNATURE_BYTE_LENGTH) {
+    return { ok: false, cause: "signature_not_64_bytes" };
+  }
+  const signature = getBase58Decoder().decode(signatureBytes);
+  if (signature.length === 0) {
+    return { ok: false, cause: "wallet_returned_no_signature" };
+  }
+  return { ok: true, signature };
+}
 
 export type SvmWriteAccountMeta = {
   address: string;
@@ -214,18 +246,19 @@ export async function sendSvmInstruction(args: {
     return refuse("wallet_cannot_sign_and_send", messageText);
   }
 
-  if (signatureBytes == null || signatureBytes.byteLength === 0) {
-    return refuse("wallet_returned_no_signature", "wallet returned no signature");
-  }
-
-  const signature = getBase58Decoder().decode(signatureBytes);
-  if (signature.length === 0) {
-    return refuse("wallet_returned_no_signature", "base58 signature is empty");
+  const decoded = walletStandardSignatureBase58(signatureBytes);
+  if (!decoded.ok) {
+    return refuse(
+      decoded.cause,
+      decoded.cause === "signature_not_64_bytes"
+        ? `wallet signature is ${signatureBytes?.byteLength ?? 0} bytes, expected ${WALLET_STANDARD_SIGNATURE_BYTE_LENGTH}`
+        : "wallet returned no signature",
+    );
   }
 
   const submission: SvmWriteSubmission = {
     vm: "svm",
-    signature,
+    signature: decoded.signature,
     lastValidBlockHeight: blockhashResult.value.lastValidBlockHeight,
   };
   return { ok: true, submission };
