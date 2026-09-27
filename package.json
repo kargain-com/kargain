@@ -87,7 +87,9 @@
     "svm:bind-modes": "node --import tsx scripts/svm-devnet-bind-modes.ts",
     "install:svm-lab": "pnpm --dir svm/lab install --frozen-lockfile",
     "svm:init-modes": "node --import tsx scripts/svm-devnet-init-modes.ts",
-    "svm:build-artifacts": "node --import tsx scripts/svm-build-deploy-artifacts.ts"
+    "svm:build-artifacts": "node --import tsx scripts/svm-build-deploy-artifacts.ts",
+    "svm:upgrade": "node --import tsx scripts/svm-upgrade-in-place.ts",
+    "svm:extend": "node --import tsx scripts/svm-program-extend.ts"
   },
   "dependencies": {
     "@irys/web-upload": "^0.0.15",

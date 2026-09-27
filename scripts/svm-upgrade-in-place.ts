@@ -3,16 +3,14 @@
  * Does not create program keypairs. Writes evidence via svm-devnet-evidence-write owner.
  *
  * Usage:
- *   pnpm exec tsx scripts/svm-upgrade-in-place.ts \
- *     --programs kar_passport,kar_gateway,kar_pro_staking,kar_pro_pass \
- *     --so-dir svm/target/deploy-v3 \
+ *   pnpm svm:upgrade -- --programs kar_passport \
  *     --rpc <url> \
  *     --deployer-keypair <path> \
  *     --evidence deployments/svm-40168.json \
  *     [--dry-run]
  *
- * Artifacts must be `--arch v3` (ELF e_flags 0x3). Default `--so-dir` is the
- * shipping deploy dir owned by svm-deploy-artifact. Stand v0 trees refuse.
+ * Artifacts from svm-deploy-artifact shipping dir (deploy-v3) only — no --so-dir.
+ * sourceGitHead in evidence = manifest gitHead from resolveDeployArtifact.
  *
  * --dry-run: show + UA + capacity + digests + retention + payer cost; no deploy, no evidence write.
  * Live upgrades pass --no-auto-extend (capacity must already fit; extend is founder-approved).
@@ -33,15 +31,11 @@ import {
   startupRetentionUnavailableMessage,
 } from "../lib/svm/startup-retention.js";
 import { namespaceFromLayerZeroEid } from "../lib/web3/kargain-namespace.js";
-import {
-  deployArtifactOutDirAbs,
-  requireDeployArtifact,
-} from "./lib/svm-deploy-artifact.js";
+import { requireDeployArtifact } from "./lib/svm-deploy-artifact.js";
 import { assertSolanaUpgradeAuthorityMatchesDeployer } from "./lib/svm-deploy-plan.js";
 import { loadSvmDevnetEvidence } from "./lib/load-deployment.js";
 import {
   artifactDigestFromSo,
-  currentSourceGitHead,
   mergeAndWriteSvmDevnetEvidence,
   type SvmProgramEvidencePatch,
 } from "./lib/svm-devnet-evidence-write.js";
@@ -105,14 +99,6 @@ function registryProgramId(
     );
   }
   return id;
-}
-
-function soPathForEvidenceKey(soDir: string, evidenceKey: string): string {
-  return requireDeployArtifact({
-    purpose: "upgradeable_ship",
-    stem: evidenceKey,
-    soDir,
-  });
 }
 
 function runSolana(args: string[]): { status: number; stdout: string; stderr: string } {
@@ -262,13 +248,17 @@ function payerBalanceLamports(deployerKp: string, rpc: string): number {
 async function main(): Promise<void> {
   const dryRun = hasFlag("--dry-run");
   const programsCsv = arg("--programs");
-  const soDir =
-    optionalArg("--so-dir") ?? deployArtifactOutDirAbs("upgradeable_ship");
   const rpc = arg("--rpc");
   const deployerKp = arg("--deployer-keypair");
   const evidencePath =
     optionalArg("--evidence") ?? "deployments/svm-40168.json";
   const eid = Number(optionalArg("--eid") ?? "40168");
+
+  if (process.argv.includes("--so-dir")) {
+    throw new Error(
+      `${CALLER}: --so-dir removed — shipping artifacts come only from svm-deploy-artifact deploy-v3`,
+    );
+  }
 
   const keys = programsCsv
     .split(",")
@@ -301,13 +291,17 @@ async function main(): Promise<void> {
       `firstAvailableBlock=${retention.firstAvailableBlock} headSlot=${retention.headSlot}`,
   );
 
-  const sourceGitHead = currentSourceGitHead();
   const prior = loadSvmDevnetEvidence(eid);
   const patches: Record<string, SvmProgramEvidencePatch> = {};
   const planned: UpgradePlannedChangeRow[] = [];
   const capacityFailures: string[] = [];
   const bufferRents: number[] = [];
   const statusRows: UpgradeProgramStatusRow[] = [];
+  /** Per-key resolved shipping artifact (path + manifest gitHead). */
+  const resolvedByKey = new Map<
+    string,
+    { path: string; gitHead: string; digest: ReturnType<typeof artifactDigestFromSo> }
+  >();
 
   for (const evidenceKey of keys) {
     const programId = registryProgramId(stack, evidenceKey);
@@ -334,8 +328,26 @@ async function main(): Promise<void> {
         `dataLength=${deployedCapacityBytes}`,
     );
 
-    const soPath = soPathForEvidenceKey(soDir, evidenceKey);
-    const digest = artifactDigestFromSo(soPath);
+    const resolved = requireDeployArtifact({
+      purpose: "upgradeable_ship",
+      stem: evidenceKey,
+    });
+    if (resolved.gitHead === undefined) {
+      throw new Error(
+        `${CALLER}: resolveDeployArtifact missing gitHead for ${evidenceKey}`,
+      );
+    }
+    const digest = artifactDigestFromSo(resolved.path);
+    resolvedByKey.set(evidenceKey, {
+      path: resolved.path,
+      gitHead: resolved.gitHead,
+      digest,
+    });
+    console.log(
+      `==> artifact ${evidenceKey} path=${resolved.path} sha256=${digest.soSha256} ` +
+        `bytes=${digest.soBytes} manifestGitHead=${resolved.gitHead}`,
+    );
+
     const fit = evaluateArtifactCapacityFit({
       evidenceKey,
       programId,
@@ -390,7 +402,10 @@ async function main(): Promise<void> {
       `(sum of solana rent <soBytes> --lamports for programs that fit)`,
   );
 
-  console.log(`==> sourceGitHead=${sourceGitHead}`);
+  const uniqueHeads = [
+    ...new Set([...resolvedByKey.values()].map((r) => r.gitHead)),
+  ];
+  console.log(`==> sourceGitHead(from manifest)=${uniqueHeads.join(",")}`);
   console.log(formatUpgradePlannedChangeTable(planned));
 
   if (capacityFailures.length > 0) {
@@ -408,14 +423,20 @@ async function main(): Promise<void> {
     console.log(
       "==> DRY-RUN complete — no transactions, no evidence write; deploySlot unchanged",
     );
+    for (const evidenceKey of keys) {
+      const r = resolvedByKey.get(evidenceKey)!;
+      console.log(
+        `==> would-write evidence ${evidenceKey}: soSha256=${r.digest.soSha256} ` +
+          `soBytes=${r.digest.soBytes} sourceGitHead=${r.gitHead}`,
+      );
+    }
     return;
   }
 
   for (const evidenceKey of keys) {
     const programId = registryProgramId(stack, evidenceKey);
-    const soPath = soPathForEvidenceKey(soDir, evidenceKey);
-    const digest = artifactDigestFromSo(soPath);
-    // Capacity already proven in the preflight pass above.
+    const resolved = resolvedByKey.get(evidenceKey)!;
+    const { path: soPath, gitHead: sourceGitHead, digest } = resolved;
     assertArtifactFitsProgramCapacity({
       evidenceKey,
       programId,

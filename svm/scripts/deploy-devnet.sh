@@ -70,17 +70,27 @@ if [[ -z "$BAL" ]]; then
   exit 1
 fi
 
-echo "==> build kar_passport + kar_gateway + mock_staking (--arch v3 → deploy-v3)"
-pnpm svm:build-artifacts --purpose upgradeable_ship --programs kar_passport,kar_gateway,mock_staking
+echo "==> build kar_passport + kar_gateway (--arch v3 → deploy-v3 via owner)"
+pnpm svm:build-artifacts -- --purpose upgradeable_ship --programs kar_passport,kar_gateway
+# Aux mock_staking is outside the commercial census — build via owner API (same out dir).
+# Separate invocation replaces the shipping manifest; rebuild census stems if upgrading next.
+if [[ "${SVM_DEPLOY_MOCK_STAKING:-0}" == "1" ]]; then
+  echo "==> build mock_staking into deploy-v3 (owner API; not census CLI)"
+  pnpm exec tsx -e '
+    import { buildDeployArtifacts } from "./scripts/lib/svm-deploy-artifact.ts";
+    buildDeployArtifacts({ purpose: "upgradeable_ship", programDirs: ["mock-staking"] });
+  '
+fi
 
 DEPLOY_DIR="$ROOT/svm/target/deploy-v3"
 EVIDENCE="$ROOT/deployments/svm-40168.json"
 mkdir -p "$ROOT/deployments" "$WORK/program-keys"
 
 echo "==> upgrade kar_passport + kar_gateway (no new program keypairs)"
-pnpm exec tsx scripts/svm-upgrade-in-place.ts \
+# Re-build commercial pair so manifest covers both before upgrade.
+pnpm svm:build-artifacts -- --purpose upgradeable_ship --programs kar_passport,kar_gateway
+pnpm svm:upgrade -- \
   --programs kar_passport,kar_gateway \
-  --so-dir "$DEPLOY_DIR" \
   --rpc "$RPC" \
   --deployer-keypair "$DEPLOYER_KP" \
   --evidence "$EVIDENCE"

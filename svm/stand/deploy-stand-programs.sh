@@ -46,7 +46,7 @@ deploy_one() {
   local so="$DEPLOY/${name}.so"
   local kp="$DEPLOY/${name}-keypair.json"
   if [[ ! -f "$so" || ! -f "$kp" ]]; then
-    echo "missing $so or $kp — build via pnpm svm:build-artifacts --purpose upgradeable_ship" >&2
+    echo "missing $so or $kp — build via pnpm svm:build-artifacts -- --purpose upgradeable_ship" >&2
     exit 1
   fi
   local pid

@@ -46,7 +46,7 @@ pnpm exec tsx scripts/assert-solana-ua-matches-deployer.ts >/dev/null
 echo "    upgradeAuthority: $DEPLOYER_PUB (retained S4–S9)"
 
 echo "==> build kar_fixed_price + kar_ascending (--arch v3 → deploy-v3)"
-pnpm svm:build-artifacts --purpose upgradeable_ship --programs kar_fixed_price,kar_ascending
+pnpm svm:build-artifacts -- --purpose upgradeable_ship --programs kar_fixed_price,kar_ascending
 
 DEPLOY_DIR="$ROOT/svm/target/deploy-v3"
 EVIDENCE="$ROOT/deployments/svm-40168.json"
@@ -55,9 +55,8 @@ mkdir -p "$ROOT/deployments"
 # Prefer registry upgrade when commercial ids already committed (S9-B+).
 if pnpm exec tsx -e 'import { requireSvmCommercialActive } from "./lib/web3/commercial-active.ts"; import { namespaceFromLayerZeroEid } from "./lib/web3/kargain-namespace.ts"; const s=requireSvmCommercialActive(namespaceFromLayerZeroEid(40168)); if(!s.fixedPriceConsignment||!s.ascendingConsignment) process.exit(2);' 2>/dev/null; then
   echo "==> upgrade modes from COMMERCIAL_ACTIVE program ids"
-  pnpm exec tsx scripts/svm-upgrade-in-place.ts \
+  pnpm svm:upgrade -- \
     --programs kar_fixed_price,kar_ascending \
-    --so-dir "$DEPLOY_DIR" \
     --rpc "$RPC" \
     --deployer-keypair "$DEPLOYER_KP" \
     --evidence "$EVIDENCE"

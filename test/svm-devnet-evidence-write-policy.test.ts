@@ -291,17 +291,26 @@ describe("svm-devnet-evidence-write owner", () => {
       head: "d".repeat(40),
     });
     assert.equal(head, "d".repeat(40));
+  });
 
+  it("upgrade-in-place sourceGitHead comes from deploy-artifact resolve (not currentSourceGitHead)", () => {
     const upgradeSrc = readFileSync(
       join(ROOT, "scripts/svm-upgrade-in-place.ts"),
       "utf8",
     );
-    assert.match(upgradeSrc, /currentSourceGitHead/);
+    assert.doesNotMatch(
+      upgradeSrc,
+      /currentSourceGitHead/,
+      "upgrade must not recompute HEAD for evidence — manifest gitHead only",
+    );
     assert.doesNotMatch(
       upgradeSrc,
       /git rev-parse HEAD/,
-      "upgrade must not bypass the source identity owner",
+      "upgrade must not bypass the deploy-artifact / evidence owners",
     );
+    assert.match(upgradeSrc, /requireDeployArtifact/);
+    assert.match(upgradeSrc, /resolved\.gitHead|sourceGitHead/);
+    assert.match(upgradeSrc, /sourceGitHead,/);
   });
 
   it("RED then green: identity-field change", () => {

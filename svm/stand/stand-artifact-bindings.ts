@@ -27,8 +27,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  DEPLOY_ARTIFACT_PURPOSES,
   formatDeployArtifactRefusal,
-  resolveDeployArtifact,
+  readSbfEFlags,
   type DeployArtifactPurpose,
 } from "../../scripts/lib/svm-deploy-artifact.ts";
 
@@ -209,25 +210,40 @@ export function resolveStandProgramSo(
   };
 }
 
-/** Refuse wrong SBF arch for the active load mode (named). */
+/**
+ * Refuse wrong SBF arch for the active load mode (named).
+ * Arch only — shipping provenance is owned by resolveDeployArtifact(upgradeable_ship);
+ * stand already attests gitHead/gitDirty/sha per LIVE run.
+ */
 export function assertStandProgramSoArch(
   soPath: string,
   loadMode: "preload" | "upgradeable",
 ): void {
   const purpose = purposeForLoadMode(loadMode);
-  const stem = path.basename(soPath, ".so");
-  const result = resolveDeployArtifact({
-    purpose,
-    stem,
-    soDir: path.dirname(soPath),
-  });
-  if (!result.ok) {
-    if (result.cause === "artifact_wrong_arch") {
-      throw new Error(
-        `${STAND_ARTIFACT_WRONG_ARCH}: ${formatDeployArtifactRefusal(result)}`,
-      );
-    }
-    throw new Error(formatDeployArtifactRefusal(result));
+  const spec = DEPLOY_ARTIFACT_PURPOSES[purpose];
+  const flags = readSbfEFlags(soPath);
+  if (!flags.ok) {
+    throw new Error(
+      formatDeployArtifactRefusal({
+        ok: false,
+        cause: flags.cause,
+        path: soPath,
+        purpose,
+        expectedEFlags: spec.requiredEFlags,
+      }),
+    );
+  }
+  if (flags.eFlags !== spec.requiredEFlags) {
+    throw new Error(
+      `${STAND_ARTIFACT_WRONG_ARCH}: ${formatDeployArtifactRefusal({
+        ok: false,
+        cause: "artifact_wrong_arch",
+        path: soPath,
+        purpose,
+        expectedEFlags: spec.requiredEFlags,
+        measuredEFlags: flags.eFlags,
+      })}`,
+    );
   }
 }
 

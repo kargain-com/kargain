@@ -39,24 +39,22 @@ pnpm exec tsx scripts/assert-solana-ua-matches-deployer.ts >/dev/null
 echo "    upgradeAuthority: $DEPLOYER_PUB (retained S4–S9)"
 
 echo "==> build kar_pro_staking + kar_pro_pass (+ passport for prove) (--arch v3 → deploy-v3)"
-pnpm svm:build-artifacts --purpose upgradeable_ship --programs kar_pro_staking,kar_pro_pass,kar_passport
+pnpm svm:build-artifacts -- --purpose upgradeable_ship --programs kar_pro_staking,kar_pro_pass,kar_passport
 
-DEPLOY_DIR="$ROOT/svm/target/deploy-v3"
 EVIDENCE="$ROOT/deployments/svm-40168.json"
 mkdir -p "$ROOT/deployments"
 
 echo "==> upgrade kar_pro_staking + kar_pro_pass (no new program keypairs)"
-pnpm exec tsx scripts/svm-upgrade-in-place.ts \
+pnpm svm:upgrade -- \
   --programs kar_pro_staking,kar_pro_pass \
-  --so-dir "$DEPLOY_DIR" \
   --rpc "$RPC" \
   --deployer-keypair "$DEPLOYER_KP" \
   --evidence "$EVIDENCE"
 
 # Also refresh passport BPF when prove needs VerifyPassport / SetStakingProgram
-pnpm exec tsx scripts/svm-upgrade-in-place.ts \
+pnpm svm:build-artifacts -- --purpose upgradeable_ship --programs kar_passport
+pnpm svm:upgrade -- \
   --programs kar_passport \
-  --so-dir "$DEPLOY_DIR" \
   --rpc "$RPC" \
   --deployer-keypair "$DEPLOYER_KP" \
   --evidence "$EVIDENCE"

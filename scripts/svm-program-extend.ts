@@ -3,16 +3,12 @@
  * upgrade-in-place — never auto-invoked by the upgrade path.
  *
  * Usage:
- *   pnpm exec tsx scripts/svm-program-extend.ts \
- *     --programs kar_passport,kar_gateway,kar_pro_staking,kar_pro_pass,kar_fixed_price,kar_ascending \
- *     --so-dir svm/target/deploy-v3 \
+ *   pnpm svm:extend -- --programs kar_passport,kar_gateway,... \
  *     --rpc <url> \
  *     --deployer-keypair <path> \
  *     [--dry-run]
  *
- * Artifacts must be `--arch v3` (ELF e_flags 0x3). Default `--so-dir` is the
- * shipping deploy dir owned by svm-deploy-artifact.
- *
+ * Artifacts from svm-deploy-artifact shipping dir (deploy-v3) only — no --so-dir.
  * `--programs` may list any commercial census evidence key (six).
  */
 
@@ -24,10 +20,7 @@ import {
 } from "../lib/web3/commercial-active.js";
 import { SVM_COMMERCIAL_PROGRAM_CENSUS } from "../lib/svm/ingest-config.js";
 import { namespaceFromLayerZeroEid } from "../lib/web3/kargain-namespace.js";
-import {
-  deployArtifactOutDirAbs,
-  requireDeployArtifact,
-} from "./lib/svm-deploy-artifact.js";
+import { requireDeployArtifact } from "./lib/svm-deploy-artifact.js";
 import { assertSolanaUpgradeAuthorityMatchesDeployer } from "./lib/svm-deploy-plan.js";
 import { artifactDigestFromSo } from "./lib/svm-devnet-evidence-write.js";
 import {
@@ -65,12 +58,6 @@ function arg(name: string): string {
   return process.argv[i + 1]!;
 }
 
-function optionalArg(name: string): string | undefined {
-  const i = process.argv.indexOf(name);
-  if (i < 0 || i + 1 >= process.argv.length) return undefined;
-  return process.argv[i + 1];
-}
-
 function hasFlag(name: string): boolean {
   return process.argv.includes(name);
 }
@@ -92,11 +79,10 @@ function registryProgramId(
   return id;
 }
 
-function soPathForEvidenceKey(soDir: string, evidenceKey: string): string {
-  const path = requireDeployArtifact({
+function shippingSoPath(evidenceKey: string): string {
+  const { path } = requireDeployArtifact({
     purpose: "upgradeable_ship",
     stem: evidenceKey,
-    soDir,
   });
   assertExtendArtifactPresent({
     evidenceKey,
@@ -174,11 +160,15 @@ function programShow(args: {
 async function main(): Promise<void> {
   const dryRun = hasFlag("--dry-run");
   const programsCsv = arg("--programs");
-  const soDir =
-    optionalArg("--so-dir") ?? deployArtifactOutDirAbs("upgradeable_ship");
   const rpc = arg("--rpc");
   const deployerKp = arg("--deployer-keypair");
   const eid = 40168;
+
+  if (process.argv.includes("--so-dir")) {
+    throw new Error(
+      `${CALLER}: --so-dir removed — shipping artifacts come only from svm-deploy-artifact deploy-v3`,
+    );
+  }
 
   const keys = programsCsv
     .split(",")
@@ -220,7 +210,7 @@ async function main(): Promise<void> {
       showText,
       parseCapacity: parseProgramDataCapacityBytes,
     });
-    const digest = artifactDigestFromSo(soPathForEvidenceKey(soDir, evidenceKey));
+    const digest = artifactDigestFromSo(shippingSoPath(evidenceKey));
     const plan = planProgramExtend({
       deployedCapacityBytes,
       artifactBytes: digest.soBytes,

@@ -888,7 +888,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-deploy-artifact",
     owner: "scripts/lib/svm-deploy-artifact.ts",
-    rule: "Sole SBF artifact owner: stand_preload → svm/target/deploy e_flags 0x0; upgradeable_ship → svm/target/deploy-v3 e_flags 0x3; cargo-build-sbf only via --arch + --sbf-out-dir; upgrade/extend resolve refuse wrong arch by name; no dual soPathForEvidenceKey",
+    rule: "Sole SBF artifact owner: stand_preload → svm/target/deploy e_flags 0x0 (arch only; stand attests git); upgradeable_ship → svm/target/deploy-v3 e_flags 0x3 + deploy-artifact.manifest.json (gitHead/sha256); cargo-build-sbf only via --arch + --sbf-out-dir; upgrade/extend resolve refuse dirty/stale/sha/arch by name and write sourceGitHead from manifest only; no --so-dir; no dual soPathForEvidenceKey",
     guardTests: ["svm-deploy-artifact-policy.test.ts"],
   },
   {

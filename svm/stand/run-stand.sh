@@ -93,7 +93,7 @@ build_arch() {
   fi
   local joined
   joined="$(IFS=,; echo "${dirs[*]}")"
-  pnpm svm:build-artifacts --purpose "$purpose" --programs "$joined"
+  pnpm svm:build-artifacts -- --purpose "$purpose" --programs "$joined"
 }
 
 assert_isolation() {

@@ -2,14 +2,18 @@
  * Thin CLI for the svm-deploy-artifact owner.
  *
  * Usage:
- *   pnpm svm:build-artifacts --purpose upgradeable_ship --programs kar_passport,kar_gateway
- *   pnpm svm:build-artifacts --purpose stand_preload --programs kar-passport,kar-gateway
+ *   pnpm svm:build-artifacts -- --purpose upgradeable_ship --programs kar_passport
+ *   pnpm svm:build-artifacts -- --purpose upgradeable_ship
+ *   pnpm svm:build-artifacts -- --purpose stand_preload --programs kar_passport,kar_gateway
  *
- * --programs accepts evidence stems (kar_passport) or crate dirs (kar-passport).
+ * Shipping --programs: census evidence keys only (default = whole census).
+ * Stand --programs: crate dirs or stems (harness allowed); required when purpose is stand_preload.
  */
 
 import {
+  admitCommercialDeployStem,
   buildDeployArtifacts,
+  commercialDeployArtifactStems,
   DEPLOY_ARTIFACT_PURPOSES,
   programDirForStem,
   type DeployArtifactPurpose,
@@ -25,6 +29,12 @@ function arg(name: string): string {
   return process.argv[i + 1]!;
 }
 
+function optionalArg(name: string): string | undefined {
+  const i = process.argv.indexOf(name);
+  if (i < 0 || i + 1 >= process.argv.length) return undefined;
+  return process.argv[i + 1];
+}
+
 function main(): void {
   const purposeRaw = arg("--purpose");
   if (!(purposeRaw in DEPLOY_ARTIFACT_PURPOSES)) {
@@ -33,25 +43,64 @@ function main(): void {
     );
   }
   const purpose = purposeRaw as DeployArtifactPurpose;
-  const programsCsv = arg("--programs");
-  const entries = programsCsv
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (entries.length === 0) {
-    throw new Error(`${CALLER}: --programs empty`);
+  const programsCsv = optionalArg("--programs");
+
+  let programDirs: string[];
+  if (purpose === "upgradeable_ship") {
+    const entries =
+      programsCsv === undefined || programsCsv.trim() === ""
+        ? [...commercialDeployArtifactStems()]
+        : programsCsv
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+    if (entries.length === 0) {
+      throw new Error(`${CALLER}: --programs empty`);
+    }
+    programDirs = [];
+    for (const entry of entries) {
+      const admitted = admitCommercialDeployStem(entry);
+      if (!admitted.ok) {
+        throw new Error(
+          `${CALLER}: deploy_artifact_unknown_program entry=${entry} — ` +
+            `shipping builds admit only SVM_COMMERCIAL_PROGRAM_CENSUS evidence keys`,
+        );
+      }
+      programDirs.push(admitted.programDir);
+    }
+  } else {
+    if (programsCsv === undefined || programsCsv.trim() === "") {
+      throw new Error(
+        `${CALLER}: --programs required for stand_preload (crate dirs or stems)`,
+      );
+    }
+    const entries = programsCsv
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (entries.length === 0) {
+      throw new Error(`${CALLER}: --programs empty`);
+    }
+    programDirs = entries.map((e) =>
+      e.includes("-") ? e : programDirForStem(e),
+    );
   }
-  const programDirs = entries.map((e) =>
-    e.includes("-") ? e : programDirForStem(e),
-  );
 
   const result = buildDeployArtifacts({ purpose, programDirs });
   console.log(
-    `==> built purpose=${result.purpose} outDir=${result.outDirAbs} n=${result.artifacts.length}`,
+    `==> built purpose=${result.purpose} outDir=${result.outDirAbs} n=${result.artifacts.length}` +
+      (result.gitHead !== undefined ? ` gitHead=${result.gitHead}` : "") +
+      (result.manifestPath !== undefined
+        ? ` manifest=${result.manifestPath}`
+        : ""),
   );
   for (const a of result.artifacts) {
+    const digest =
+      a.sha256 !== undefined
+        ? ` sha256=${a.sha256} bytes=${a.bytes}`
+        : "";
     console.log(
-      `    ${a.stem} e_flags=0x${a.eFlags.toString(16)} path=${a.path}`,
+      `    ${a.stem} e_flags=0x${a.eFlags.toString(16)}${digest} path=${a.path}`,
     );
   }
 }

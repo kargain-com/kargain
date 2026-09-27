@@ -37,8 +37,8 @@ target now sits below its deployed capacity.
 
 ## Upgrade
 
-All six upgraded in one run with `--so-dir` pointing at the `--arch v3` build
-(`svm/target/deploy-v3` via `svm-deploy-artifact` / `pnpm svm:build-artifacts --purpose upgradeable_ship`),
+All six upgraded in one run from the shipping owner dir (`svm/target/deploy-v3` via
+`pnpm svm:build-artifacts -- --purpose upgradeable_ship` then `pnpm svm:upgrade -- …`),
 evidence written to
 the deploy machine's evidence file. Recorded source for all six: `4fd0b92`.
 
