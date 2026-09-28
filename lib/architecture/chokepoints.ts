@@ -83,7 +83,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "svm-write-adapter",
     owner:
       "lib/web3/svm-write-adapter.ts · lib/web3/svm-sign-and-send-port.ts · lib/web3/svm-rpc.ts · lib/web3/commercial-active.ts",
-    rule: "SVM write: kit-assemble instruction + COMMERCIAL_ACTIVE program/chain + svm-rpc blockhash + solana:signAndSendTransaction port only (no signTransaction, no product submitter); Wallet Standard signature bytes → base58 solely via walletStandardSignatureBase58 (kit decoder; empty → wallet_returned_no_signature; length≠64 → signature_not_64_bytes); Irys Solana adapter consumes the same owner — never a hand-rolled alphabet",
+    rule: "SVM write: kit-assemble instruction + svmKargainProgramIds gate + svm-rpc blockhash + solana:signAndSendTransaction port only (no signTransaction, no product submitter); sibling sendSvmNativeTransfer for System Transfer (not through Kargain gate; System on sendSvmInstruction → unregistered_program); Wallet Standard signature bytes → base58 solely via walletStandardSignatureBase58 (kit decoder; empty → wallet_returned_no_signature; length≠64 → signature_not_64_bytes); Irys Solana adapter consumes the same owner — never a hand-rolled alphabet",
     guardTests: [
       "svm-write-adapter-policy.test.ts",
       "wallet-standard-signature-base58-policy.test.ts",
@@ -107,7 +107,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-tx-confirm",
     owner: "lib/web3/svm-tx-confirm.ts · lib/web3/svm-write-lifecycle.ts · hooks/use-tx-sync.ts",
-    rule: "Product SVM confirm: per poll height(confirmed) then status; landed_ok/landed_with_error only at ≥ confirmed with observed slot; expired only when no status at all and that earlier height > lastValid; processed keeps polling (never expired); status_unknown on wall ceiling; failingProgram attribution; lifecycle throws SvmConfirmRefusal; runTx returns RunTxResult { ok:false; refusal } with guard_refused/write_refused (no message fields)",
+    rule: "Product SVM confirm: per poll height(confirmed) then status; landed_ok/landed_with_error only at ≥ confirmed with observed slot; expired only when no status at all and that earlier height > lastValid; processed keeps polling (never expired); status_unknown on wall ceiling; failingProgram attribution; lifecycle throws SvmConfirmRefusal; runTx returns RunTxResult { ok:false; refusal } with guard_refused/write_refused (no message fields). Sibling createSvmFundingTxConfirmPort / createProductSvmFundingTxConfirmPort: same law with success only at finalized (Irys deposit)",
     guardTests: ["s8-3-write-path.test.ts"],
   },
   {
@@ -526,10 +526,21 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     ],
   },
   {
+    id: "irys-deposit",
+    owner:
+      "lib/storage/irys-deposit.ts · lib/storage/irys-deposit-record.ts · lib/storage/irys-bundler-deposit-post.ts · lib/storage/irys-client.ts · lib/web3/svm-write-adapter.ts · lib/svm/encode-system-transfer.ts · lib/web3/svm-tx-confirm.ts",
+    rule: "Sole Irys storage deposit owner: balance-first; pending record (namespace|payer|bundler) in injectable/localStorage store; status-only bundler POST (200|202 accepted, 400 not_seen); never SDK fund()/submitFundTransaction; SVM sendSvmNativeTransfer (System Transfer beside sendSvmInstruction) + funding confirm at finalized; EVM inject send + minConfirm=5; contract wallet refuse; no runTx; never double-pay while record open; sendSvmInstruction gated via svmKargainProgramIds (System → unregistered_program)",
+    guardTests: [
+      "irys-deposit-policy.test.ts",
+      "passport-upload.test.ts",
+      "svm-write-adapter-policy.test.ts",
+    ],
+  },
+  {
     id: "irys-solana-adapter",
     owner:
       "adapters/irys-solana/build-uploader.ts · adapters/irys-solana/to-irys-provider.ts · lib/storage/irys-client.ts",
-    rule: "Solana Irys SDK lives outside product roots and is reached only by one dynamic import from irys-client; Wallet Standard→Irys wrap stays in the adapter; EVM path does not fetch it",
+    rule: "Solana Irys SDK lives outside product roots and is reached only by one dynamic import from irys-client; Wallet Standard→Irys wrap stays in the adapter; EVM path does not fetch it; product never calls uploader.fund",
     guardTests: ["irys-solana-adapter-policy.test.ts", "solana-web3-app-graph-policy.test.ts"],
   },
   {

@@ -6,6 +6,7 @@ import { postSolanaJsonRpc } from "@/lib/svm/solana-json-rpc";
 import type { SvmCommercialActiveStack } from "@/lib/web3/commercial-active";
 import type { SvmKeyedAccountSource } from "@/lib/web3/svm-keyed-read";
 import {
+  createSvmFundingTxConfirmPort,
   createSvmTxConfirmPort,
   type SvmTxConfirmPort,
 } from "@/lib/web3/svm-tx-confirm";
@@ -385,6 +386,25 @@ export function createProductSvmTxConfirmPort(
     throw new Error(productSvmRpcUrlRefusalCopy());
   }
   return createSvmTxConfirmPort({
+    stack,
+    getSignatureStatuses: fetchProductSvmSignatureStatuses,
+    getBlockHeight: () => fetchProductSvmBlockHeight(rpcUrl),
+    getTransactionLogMessages: (signature) =>
+      fetchProductSvmTransactionLogMessages(rpcUrl, signature),
+  });
+}
+
+/**
+ * JSON-RPC confirm port for Irys funding — success only at `finalized`.
+ */
+export function createProductSvmFundingTxConfirmPort(
+  stack: SvmCommercialActiveStack,
+): SvmTxConfirmPort {
+  const rpcUrl = productSvmRpcUrl();
+  if (!rpcUrl) {
+    throw new Error(productSvmRpcUrlRefusalCopy());
+  }
+  return createSvmFundingTxConfirmPort({
     stack,
     getSignatureStatuses: fetchProductSvmSignatureStatuses,
     getBlockHeight: () => fetchProductSvmBlockHeight(rpcUrl),

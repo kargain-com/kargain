@@ -19,11 +19,13 @@ export async function uploadEvidenceFile(
   args: WalletUploadProviderArgs,
 ): Promise<string> {
   const session = await resolveIrysUploadSession(args);
-  const uploader = await prepareUserPaidUploadForStack(
-    session.stack,
-    session.provider,
-    file.size,
-  );
+  const uploader = await prepareUserPaidUploadForStack({
+    stack: session.stack,
+    provider: session.provider,
+    totalBytes: file.size,
+    account: session.account,
+    svmWallet: session.svmWallet,
+  });
   return withRetry(() =>
     uploadFileWithUploader(uploader, file, EVIDENCE_TAGS),
   );

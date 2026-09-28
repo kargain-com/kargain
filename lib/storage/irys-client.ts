@@ -3,14 +3,21 @@ import type BaseWebIrys from "@irys/web-upload/base";
 import { WebBaseEth, WebEthereum } from "@irys/web-upload-ethereum";
 import { EthersV6Adapter } from "@irys/web-upload-ethereum-ethers-v6";
 import { BrowserProvider } from "ethers";
+import type { Wallet } from "@wallet-standard/base";
 
-import { estimateIrysUploadBytes } from "@/lib/storage/irys-upload-estimate";
+import {
+  buildIrysDepositPorts,
+  ensureIrysDeposit,
+  IrysDepositRefusal,
+  type IrysDepositPorts,
+} from "@/lib/storage/irys-deposit";
 import {
   irysUploadPlanRefusalMessage,
   planIrysUpload,
   type IrysPaymentToken,
   type IrysUploadPlan,
 } from "@/lib/storage/irys-upload-plan";
+import type { ActiveAccount } from "@/lib/web3/active-account";
 import type { CommercialActiveStack } from "@/lib/web3/commercial-active";
 import { commercialActive } from "@/lib/web3/commercial-active";
 
@@ -28,14 +35,6 @@ type Eip1193Provider = {
 
 /** HTTP timeout for Irys bundler requests (large photo batches can be slow). */
 const UPLOAD_TIMEOUT_MS = 120_000;
-
-/** Gas fee multiplier passed to Irys fund() for congested testnets. */
-const FUND_FEE_MULTIPLIER = 1.2;
-
-const FUND_POLL_INTERVAL_MS = 2_000;
-const FUND_POLL_TIMEOUT_MS = 60_000;
-
-type IrysBalance = Awaited<ReturnType<IrysUploader["getBalance"]>>;
 
 type IrysEvmTokenConstructable = typeof WebBaseEth | typeof WebEthereum;
 
@@ -62,22 +61,6 @@ function irysEvmTokenConstructable(
       throw new Error(`Unknown Irys payment token: ${_exhaustive}`);
     }
   }
-}
-
-async function waitForFundingConfirmation(
-  uploader: IrysUploader,
-  requiredBalance: IrysBalance,
-  timeoutMs = FUND_POLL_TIMEOUT_MS,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const balance = await uploader.getBalance();
-    if (balance.gte(requiredBalance)) return;
-    await new Promise((resolve) => setTimeout(resolve, FUND_POLL_INTERVAL_MS));
-  }
-  throw new Error(
-    "Irys deposit did not confirm within 60 seconds. Please try again.",
-  );
 }
 
 let cachedUploader: {
@@ -124,24 +107,6 @@ function photoUploadName(file: File, index: number): string {
   const match = file.name.match(/\.([a-zA-Z0-9]+)$/);
   const ext = match?.[1]?.toLowerCase() ?? "jpg";
   return `photo-${String(index).padStart(3, "0")}.${ext}`;
-}
-
-/**
- * Ensure the connected wallet has funded its Irys balance for the upcoming upload.
- * The user pays storage from their own wallet via a direct ETH transfer to Irys.
- */
-async function ensureFunded(uploader: IrysUploader, totalBytes: number): Promise<void> {
-  const bytes = estimateIrysUploadBytes(totalBytes);
-  const price = await uploader.getPrice(bytes);
-  const balance = await uploader.getBalance();
-
-  if (balance.lt(price)) {
-    const needed = price.minus(balance).multipliedBy(1.1).integerValue(2);
-    if (needed.gt(0)) {
-      await uploader.fund(needed, FUND_FEE_MULTIPLIER);
-      await waitForFundingConfirmation(uploader, price);
-    }
-  }
 }
 
 async function loadIrysSolanaAdapter(
@@ -298,20 +263,52 @@ export async function uploadJsonWithUploader(
   tags?: IrysTag[],
 ): Promise<string> {
   const body = JSON.stringify(data);
-  await ensureFunded(uploader, new TextEncoder().encode(body).length);
   const receipt = await uploader.upload(body, {
     tags: mergeTags("application/json", tags),
   });
   return `ar://${receipt.id}`;
 }
 
-/** Fund the user's Irys balance for a total byte size, then return the uploader. */
+export type PrepareUserPaidUploadArgs = {
+  stack: CommercialActiveStack;
+  provider: unknown;
+  totalBytes: number;
+  account: ActiveAccount;
+  svmWallet?: Wallet | null;
+  /** Injectable deposit ports (tests). Defaults from account + provider + wallet. */
+  depositPorts?: IrysDepositPorts;
+};
+
+/**
+ * Ensure Irys balance via {@link ensureIrysDeposit}, then return the uploader.
+ * Never calls SDK `fund()`.
+ */
 export async function prepareUserPaidUploadForStack(
-  stack: CommercialActiveStack,
-  provider: unknown,
-  totalBytes: number,
+  args: PrepareUserPaidUploadArgs,
 ): Promise<IrysUploader> {
-  const uploader = await getIrysUploaderForStack(stack, provider);
-  await ensureFunded(uploader, totalBytes);
+  const planned = planIrysUpload(args.stack);
+  if (!planned.ok) {
+    throw new Error(irysUploadPlanRefusalMessage(planned.cause));
+  }
+  const uploader = await getIrysUploaderForStack(args.stack, args.provider);
+  const ports =
+    args.depositPorts ??
+    buildIrysDepositPorts({
+      stack: args.stack,
+      provider: args.provider,
+      svmWallet: args.svmWallet,
+    });
+  const deposit = await ensureIrysDeposit({
+    stack: args.stack,
+    account: args.account,
+    uploader,
+    totalBytes: args.totalBytes,
+    paymentToken: planned.plan.paymentToken,
+    bundlerUrl: planned.plan.bundlerUrl,
+    ports,
+  });
+  if (!deposit.ok) {
+    throw new IrysDepositRefusal(deposit.cause, deposit.detail);
+  }
   return uploader;
 }

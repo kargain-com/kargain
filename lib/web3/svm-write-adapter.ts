@@ -22,9 +22,12 @@ import {
 } from "@solana/kit";
 
 import {
+  svmKargainProgramIds,
   walletStandardChainOf,
   type SvmCommercialActiveStack,
 } from "@/lib/web3/commercial-active";
+import { encodeSystemTransfer } from "@/lib/svm/encode-system-transfer";
+import { systemProgramId } from "@/lib/svm/foreign-programs";
 import {
   fetchProductSvmLatestBlockhash,
   type FetchSvmLatestBlockhashResult,
@@ -96,27 +99,11 @@ export type SvmWriteAccountMeta = {
   role: AccountRole;
 };
 
-/** Commercial program fields that may appear as instruction program ids. */
-const SVM_WRITE_PROGRAM_FIELDS = [
-  "karPassport",
-  "karProPass",
-  "karProStaking",
-  "bridgeGateway",
-  "fixedPriceConsignment",
-  "ascendingConsignment",
-] as const satisfies readonly (keyof SvmCommercialActiveStack)[];
-
 function isRegisteredProgramOnStack(
   stack: SvmCommercialActiveStack,
   programId: string,
 ): boolean {
-  for (const field of SVM_WRITE_PROGRAM_FIELDS) {
-    const value = stack[field];
-    if (typeof value === "string" && value === programId) {
-      return true;
-    }
-  }
-  return false;
+  return svmKargainProgramIds(stack).includes(programId);
 }
 
 function refuse(
@@ -127,10 +114,10 @@ function refuse(
 }
 
 /**
- * Assemble one instruction into a transaction, sign-and-send via the port,
- * return the base58 signature expected by {@link runSvmWriteLifecycle}.
+ * Shared assemble → sign-and-send — used by commercial instruction sends and
+ * System native transfers. Caller owns the program-id admission gate.
  */
-export async function sendSvmInstruction(args: {
+async function assembleSignAndSendSvmInstruction(args: {
   stack: SvmCommercialActiveStack;
   programId: string;
   data: Uint8Array;
@@ -144,9 +131,6 @@ export async function sendSvmInstruction(args: {
   }
   if (!args.feePayer || args.feePayer.trim().length === 0) {
     return refuse("no_connected_account", "fee payer address is empty");
-  }
-  if (!isRegisteredProgramOnStack(args.stack, args.programId)) {
-    return refuse("unregistered_program", args.programId);
   }
 
   const chainResult = walletStandardChainOf(args.stack);
@@ -262,4 +246,68 @@ export async function sendSvmInstruction(args: {
     lastValidBlockHeight: blockhashResult.value.lastValidBlockHeight,
   };
   return { ok: true, submission };
+}
+
+/**
+ * Assemble one commercial Kargain instruction into a transaction, sign-and-send
+ * via the port, return the base58 signature expected by {@link runSvmWriteLifecycle}.
+ * System program is refused (`unregistered_program`) — use {@link sendSvmNativeTransfer}.
+ */
+export async function sendSvmInstruction(args: {
+  stack: SvmCommercialActiveStack;
+  programId: string;
+  data: Uint8Array;
+  accounts: readonly SvmWriteAccountMeta[];
+  feePayer: string;
+  port: SvmSignAndSendPort;
+  fetchBlockhash?: () => Promise<FetchSvmLatestBlockhashResult>;
+}): Promise<SendSvmInstructionResult> {
+  if (!isRegisteredProgramOnStack(args.stack, args.programId)) {
+    return refuse("unregistered_program", args.programId);
+  }
+  return assembleSignAndSendSvmInstruction(args);
+}
+
+export type SendSvmNativeTransferCause =
+  | SendSvmInstructionCause
+  | "lamports_zero"
+  | "lamports_not_u64";
+
+export type SendSvmNativeTransferResult =
+  | { ok: true; submission: SvmWriteSubmission }
+  | {
+      ok: false;
+      cause: SendSvmNativeTransferCause;
+      detail: string;
+    };
+
+/**
+ * System-program Transfer (payer → recipient, lamports). Sibling of
+ * {@link sendSvmInstruction} — shares port/blockhash/signature conversion.
+ * Not admitted through the Kargain program gate.
+ */
+export async function sendSvmNativeTransfer(args: {
+  stack: SvmCommercialActiveStack;
+  from: string;
+  to: string;
+  lamports: bigint;
+  port: SvmSignAndSendPort;
+  fetchBlockhash?: () => Promise<FetchSvmLatestBlockhashResult>;
+}): Promise<SendSvmNativeTransferResult> {
+  const encoded = encodeSystemTransfer(args.lamports);
+  if (!encoded.ok) {
+    return { ok: false, cause: encoded.cause, detail: encoded.cause };
+  }
+  return assembleSignAndSendSvmInstruction({
+    stack: args.stack,
+    programId: systemProgramId(),
+    data: encoded.data,
+    accounts: [
+      { address: args.from, role: AccountRole.WRITABLE_SIGNER },
+      { address: args.to, role: AccountRole.WRITABLE },
+    ],
+    feePayer: args.from,
+    port: args.port,
+    fetchBlockhash: args.fetchBlockhash,
+  });
 }

@@ -9,6 +9,7 @@ import {
 import {
   irysUploadPlanRefusalMessage,
 } from "@/lib/storage/irys-upload-plan";
+import { formatIrysUploadError } from "@/lib/storage/irys-deposit";
 import { withRetry } from "@/lib/storage/upload-with-retry";
 import {
   commercialNamespaceOf,
@@ -18,10 +19,6 @@ import {
   commercialActive,
   type CommercialActiveStack,
 } from "@/lib/web3/commercial-active";
-import {
-  isWalletRejection,
-  walletRejectionCopy,
-} from "@/lib/web3/wallet-rejection";
 import type { Wallet } from "@wallet-standard/base";
 
 export type { IrysTag };
@@ -39,6 +36,8 @@ export type WalletUploadProviderArgs = {
 export type IrysUploadSession = {
   stack: CommercialActiveStack;
   provider: unknown;
+  account: ActiveAccount;
+  svmWallet?: Wallet | null;
 };
 
 const PHOTO_TAGS: IrysTag[] = [
@@ -52,27 +51,9 @@ const METADATA_TAGS: IrysTag[] = [
   { name: "version", value: "1.1" },
 ];
 
+/** Sole passport/upload error sentence owner — delegates to Irys deposit copy. */
 export function formatPassportUploadError(err: unknown): string {
-  if (isWalletRejection(err)) {
-    return walletRejectionCopy();
-  }
-  if (err instanceof Error) {
-    if (err.message.includes("402 error")) {
-      return "Your Irys storage balance is too low. Confirm the deposit transaction in your wallet, then try again.";
-    }
-    if (err.message.includes("not sent to any of this bundler")) {
-      return (
-        "Your wallet could not deposit to Irys storage. Smart contract wallets often cannot send " +
-        "the required direct transfer. Try fewer optimized photos, or switch to a standard MetaMask " +
-        "account for upload. Minting still works with any wallet."
-      );
-    }
-    if (err.message.includes("failed to post funding tx")) {
-      return "The Irys storage deposit could not be confirmed. Wait a minute and try again, or use a standard wallet (EOA) on a supported testnet.";
-    }
-    return err.message;
-  }
-  return "Upload failed. Please try again.";
+  return formatIrysUploadError(err);
 }
 
 /**
@@ -120,7 +101,12 @@ export async function resolveIrysUploadSession(
     throw new Error(irysUploadPlanRefusalMessage("wrong_vm"));
   }
   const provider = await getWalletUploadProvider(args);
-  return { stack, provider };
+  return {
+    stack,
+    provider,
+    account: args.account,
+    svmWallet: args.svmWallet,
+  };
 }
 
 export async function uploadPassportPhotos(
@@ -138,11 +124,13 @@ export async function uploadPassportPhotos(
   }
 
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
-  const uploader = await prepareUserPaidUploadForStack(
-    session.stack,
-    session.provider,
+  const uploader = await prepareUserPaidUploadForStack({
+    stack: session.stack,
+    provider: session.provider,
     totalBytes,
-  );
+    account: session.account,
+    svmWallet: session.svmWallet,
+  });
   const batch = files.length > 1;
 
   onProgress?.({ kind: "photos", current: 0, total: files.length, batch });
@@ -167,16 +155,27 @@ export async function uploadPassportMetadataJson(
   uploader?: IrysUploader,
 ): Promise<string> {
   onProgress?.({ kind: "metadata" });
+  const bodyBytes = new TextEncoder().encode(JSON.stringify(metadata)).length;
   if (uploader) {
+    // Follow-on metadata after photos — ensure deposit covers JSON bytes too.
+    await prepareUserPaidUploadForStack({
+      stack: session.stack,
+      provider: session.provider,
+      totalBytes: bodyBytes,
+      account: session.account,
+      svmWallet: session.svmWallet,
+    });
     return withRetry(() =>
       uploadJsonWithUploader(uploader, metadata, METADATA_TAGS),
     );
   }
-  const built = await prepareUserPaidUploadForStack(
-    session.stack,
-    session.provider,
-    new TextEncoder().encode(JSON.stringify(metadata)).length,
-  );
+  const built = await prepareUserPaidUploadForStack({
+    stack: session.stack,
+    provider: session.provider,
+    totalBytes: bodyBytes,
+    account: session.account,
+    svmWallet: session.svmWallet,
+  });
   return withRetry(() =>
     uploadJsonWithUploader(built, metadata, METADATA_TAGS),
   );

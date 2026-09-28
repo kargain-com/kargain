@@ -3,15 +3,27 @@ import { describe, it } from "node:test";
 import { UserRejectedRequestError } from "viem";
 
 import { formatPassportUploadError } from "../lib/passport/upload-passport-metadata.ts";
+import {
+  IrysDepositRefusal,
+  irysDepositCauseCopy,
+} from "../lib/storage/irys-deposit.ts";
 import { walletRejectionCopy } from "../lib/web3/wallet-rejection.ts";
 
 describe("formatPassportUploadError", () => {
-  it("maps bundler deposit failure to smart-wallet hint", () => {
+  it("maps deposit_contract_wallet to sole deposit copy", () => {
     const message = formatPassportUploadError(
-      new Error("Transaction not sent to any of this bundler"),
+      new IrysDepositRefusal("deposit_contract_wallet"),
     );
-    assert.match(message, /could not deposit to Irys storage/i);
-    assert.match(message, /fewer optimized photos/i);
+    assert.equal(message, irysDepositCauseCopy("deposit_contract_wallet"));
+    assert.match(message, /Smart contract wallets/i);
+  });
+
+  it("maps deposit_pending without raw Error.message", () => {
+    const message = formatPassportUploadError(
+      new IrysDepositRefusal("deposit_pending"),
+    );
+    assert.equal(message, irysDepositCauseCopy("deposit_pending"));
+    assert.match(message, /not be charged twice/i);
   });
 
   it("maps user rejection to cancelled message", () => {
@@ -19,5 +31,13 @@ describe("formatPassportUploadError", () => {
       new UserRejectedRequestError(new Error("denied")),
     );
     assert.equal(message, walletRejectionCopy());
+  });
+
+  it("generic Error is one upload sentence — never err.message", () => {
+    const message = formatPassportUploadError(
+      new Error("402 error secret internals"),
+    );
+    assert.equal(message, "Upload failed. Please try again.");
+    assert.equal(message.includes("402"), false);
   });
 });

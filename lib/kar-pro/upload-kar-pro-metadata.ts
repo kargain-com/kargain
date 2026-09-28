@@ -28,11 +28,13 @@ export async function uploadKarProMetadata(
   if (!metadata) throw new Error("Invalid metadata.");
   const session = await resolveIrysUploadSession(args);
   const encoded = new TextEncoder().encode(JSON.stringify(metadata));
-  const uploader = await prepareUserPaidUploadForStack(
-    session.stack,
-    session.provider,
-    encoded.length,
-  );
+  const uploader = await prepareUserPaidUploadForStack({
+    stack: session.stack,
+    provider: session.provider,
+    totalBytes: encoded.length,
+    account: session.account,
+    svmWallet: session.svmWallet,
+  });
   return withRetry(() =>
     uploadJsonWithUploader(uploader, metadata, KAR_PRO_METADATA_TAGS),
   );

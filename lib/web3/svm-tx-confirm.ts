@@ -18,8 +18,16 @@ import type { SvmWriteSubmission } from "@/lib/web3/write-outcome";
 
 export type SvmConfirmCommitment = "confirmed";
 
-/** Owner-chosen finality for SVM writes — never a call-site parameter. */
+/** Owner-chosen finality for SVM product writes — never a call-site parameter. */
 export const SVM_TX_CONFIRM_COMMITMENT: SvmConfirmCommitment = "confirmed";
+
+/**
+ * Irys funding deposit finality — stricter than product writes.
+ * Bundler credits only after the transfer is finalized on Solana.
+ */
+export type SvmFundingConfirmCommitment = "finalized";
+export const SVM_FUNDING_TX_CONFIRM_COMMITMENT: SvmFundingConfirmCommitment =
+  "finalized";
 
 export type SvmConfirmOutcome =
   | { kind: "landed_ok"; signature: string; slot: bigint }
@@ -92,7 +100,13 @@ function observedSlot(
   return null;
 }
 
-function isConfirmedOrStronger(status: string | null | undefined): boolean {
+function isSuccessStatus(
+  status: string | null | undefined,
+  success: SvmConfirmCommitment | SvmFundingConfirmCommitment,
+): boolean {
+  if (success === "finalized") {
+    return status === "finalized";
+  }
   return status === SVM_TX_CONFIRM_COMMITMENT || status === "finalized";
 }
 
@@ -114,15 +128,11 @@ export type SvmConfirmTransport = {
   timeoutMs?: number;
 };
 
-/**
- * Polling confirm port. Transport stays outside.
- *
- * Per poll: read confirmed block height first, then signature status.
- * `expired` only when the node returns no status at all and that earlier
- * height is past the submission lifetime. `processed` keeps polling.
- */
-export function createSvmTxConfirmPort(
-  opts: SvmConfirmTransport & { stack: SvmCommercialActiveStack },
+function createSvmTxConfirmPortAtCommitment(
+  opts: SvmConfirmTransport & {
+    stack: SvmCommercialActiveStack;
+    successCommitment: SvmConfirmCommitment | SvmFundingConfirmCommitment;
+  },
 ): SvmTxConfirmPort {
   const pollIntervalMs = opts.pollIntervalMs ?? 400;
   const timeoutMs = opts.timeoutMs ?? 60_000;
@@ -135,7 +145,7 @@ export function createSvmTxConfirmPort(
         const [row] = await opts.getSignatureStatuses([signature]);
         const status = row?.confirmationStatus ?? null;
 
-        if (isConfirmedOrStronger(status)) {
+        if (isSuccessStatus(status, opts.successCommitment)) {
           const slot = observedSlot(row?.slot);
           if (slot == null) {
             await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
@@ -161,7 +171,7 @@ export function createSvmTxConfirmPort(
           return { kind: "landed_ok", signature, slot };
         }
 
-        // Any present sub-confirmed status (incl. processed) → keep polling.
+        // Any present sub-success status (incl. processed / confirmed-before-finalized) → keep polling.
         if (status != null) {
           await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
           continue;
@@ -181,4 +191,34 @@ export function createSvmTxConfirmPort(
       return { kind: "status_unknown", signature };
     },
   };
+}
+
+/**
+ * Polling confirm port for product writes (`confirmed` or stronger).
+ * Transport stays outside.
+ *
+ * Per poll: read confirmed block height first, then signature status.
+ * `expired` only when the node returns no status at all and that earlier
+ * height is past the submission lifetime. `processed` keeps polling.
+ */
+export function createSvmTxConfirmPort(
+  opts: SvmConfirmTransport & { stack: SvmCommercialActiveStack },
+): SvmTxConfirmPort {
+  return createSvmTxConfirmPortAtCommitment({
+    ...opts,
+    successCommitment: SVM_TX_CONFIRM_COMMITMENT,
+  });
+}
+
+/**
+ * Polling confirm port for Irys funding deposits — success only at `finalized`.
+ * Same expiry / status_unknown law as product confirm; never softens to confirmed.
+ */
+export function createSvmFundingTxConfirmPort(
+  opts: SvmConfirmTransport & { stack: SvmCommercialActiveStack },
+): SvmTxConfirmPort {
+  return createSvmTxConfirmPortAtCommitment({
+    ...opts,
+    successCommitment: SVM_FUNDING_TX_CONFIRM_COMMITMENT,
+  });
 }

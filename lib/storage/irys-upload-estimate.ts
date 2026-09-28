@@ -1,7 +1,7 @@
-/** Extra bytes reserved for bundle overhead when pre-funding multi-file uploads. */
+/** Extra bytes reserved for bundle overhead when estimating Irys deposit size. */
 export const BUNDLE_OVERHEAD_BYTES = 16_384;
 
-/** Mirrors Irys pre-fund byte calculation in irys-client ensureFunded. */
+/** Byte estimate for Irys deposit pricing (same formula as pre–Unit B ensureFunded). */
 export function estimateIrysUploadBytes(totalFileBytes: number): number {
   return Math.ceil(totalFileBytes * 1.15) + BUNDLE_OVERHEAD_BYTES;
 }

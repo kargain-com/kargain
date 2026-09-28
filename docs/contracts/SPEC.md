@@ -1125,7 +1125,7 @@ Declaration order includes fields that are `indexed` on EVM. Native settlement a
 | EVM RPC | Public endpoints already used (e.g. base.org, publicnode) |
 | Solana RPC | Public Devnet RPC + local `solana-test-validator` for heavy runs |
 | LayerZero metadata | `pnpm lz:snapshot` (free API → committed snapshot) |
-| Irys / Arweave upload | Devnet / free tier suitable for test pointers |
+| Irys / Arweave upload | Devnet / free tier suitable for test pointers. Product owns the storage deposit transfer (EVM native send or Solana System Transfer) and never double-pays while a pending deposit record is open; never SDK `fund()`. |
 | Multisig | Squads on Devnet (faucet SOL) / Safe on EVM testnet |
 | FX for derive | On-chain price accounts / Chainlink `eth_call` only |
 
