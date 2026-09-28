@@ -1,4 +1,4 @@
-import { shortChainName } from "@/lib/web3/supported-chains";
+import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
 
 export type KarProMembershipStatus = "active" | "not_joined" | "unresolved";
 
@@ -49,11 +49,11 @@ export const KAR_PRO_PAYMENTS_NETWORK_SCOPE =
 
 /** Membership leave scope for the current hub chain. */
 export function karProLeaveNetworkScopeCopy(chainId: number): string {
-  return `This leave applies only to ${shortChainName(chainId)}.`;
+  return `This leave applies only to ${commercialNetworkChromeLabel(chainId)}.`;
 }
 
 export function karProNetworkInstrumentLine(chainId: number): string {
-  return `Network · ${shortChainName(chainId)}`;
+  return `Network · ${commercialNetworkChromeLabel(chainId)}`;
 }
 
 export function karProAlreadyActiveElsewhereCopy(chainIds: readonly number[]): string {
@@ -61,7 +61,7 @@ export function karProAlreadyActiveElsewhereCopy(chainIds: readonly number[]): s
   if (unique.length === 0) return "";
   const names = unique
     .sort((a, b) => a - b)
-    .map((id) => shortChainName(id))
+    .map((id) => commercialNetworkChromeLabel(id))
     .join(", ");
   return `Already KarPro on ${names}.`;
 }

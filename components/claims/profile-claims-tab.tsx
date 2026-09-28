@@ -12,7 +12,7 @@ import { explainClaimFromCredits } from "@/lib/claims/explain-credits";
 import type { PendingClaimView } from "@/lib/claims/map-pending-claim";
 import { pendingClaimsRefusedPresentation } from "@/lib/claims/pending-claims-fact";
 import { monoNumeric } from "@/lib/design/instrument-classes";
-import { shortChainName } from "@/lib/web3/supported-chains";
+import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
 import { cn } from "@/lib/utils";
 import { CreditCardIcon } from "@/components/ui/icons";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
@@ -64,7 +64,7 @@ function ClaimRow({ claim }: { claim: PendingClaimView }) {
       <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
         <p className={cn(monoNumeric, "text-base")}>{amountLabel}</p>
         <p className="font-mono text-xs text-text-tertiary tabular-nums">
-          {shortChainName(claim.chainId)}
+          {commercialNetworkChromeLabel(claim.chainId)}
         </p>
       </div>
       <p className="text-sm text-text-secondary">

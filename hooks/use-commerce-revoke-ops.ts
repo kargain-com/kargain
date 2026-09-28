@@ -23,7 +23,8 @@ import {
   type KeyedContract,
 } from "@/lib/web3/keyed-multicall";
 import { shortAddress } from "@/lib/web3/wallet-display";
-import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
 
 const STALE_MS = 15_000;
 
@@ -189,7 +190,7 @@ export function useCommerceRevokeOps() {
       return {
         key: `${c.chainId}-${c.mode}-${c.token}`,
         chainId: c.chainId,
-        chainLabel: shortChainName(c.chainId),
+        chainLabel: commercialNetworkChromeLabel(c.chainId),
         mode: c.mode,
         modeLabel: c.modeLabel,
         modeAddress: c.modeAddress,

@@ -4,7 +4,7 @@ import {
 } from "@/lib/custody/normalized-event";
 import type { PassportStatus } from "@/lib/types/ponder";
 import type { KeyedReadCause } from "@/lib/web3/keyed-multicall";
-import { shortChainName } from "@/lib/web3/supported-chains";
+import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
 
 /**
  * Chain-relative answer: is the usable passport on the chain being viewed?
@@ -191,7 +191,7 @@ export function passportAwayActionCopy(presence: PassportPresence): string {
     return "";
   }
   if (presence.locationChainId != null) {
-    return `This passport is on ${shortChainName(presence.locationChainId)}. Return it to this chain to restore this action.`;
+    return `This passport is on ${commercialNetworkChromeLabel(presence.locationChainId)}. Return it to this chain to restore this action.`;
   }
   return "This passport is on another chain. Return it here to restore this action.";
 }

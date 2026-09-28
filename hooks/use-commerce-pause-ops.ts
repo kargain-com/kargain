@@ -23,7 +23,8 @@ import {
   useKeyedReadContracts,
   type KeyedContract,
 } from "@/lib/web3/keyed-multicall";
-import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
 
 const STALE_MS = 15_000;
 
@@ -109,7 +110,7 @@ export function useCommercePauseOps() {
       return {
         key: `${target.chainId}-${target.mode}`,
         chainId: target.chainId,
-        chainLabel: shortChainName(target.chainId),
+        chainLabel: commercialNetworkChromeLabel(target.chainId),
         mode: target.mode,
         modeLabel: commerceModeLabel(target.mode),
         address: target.address,

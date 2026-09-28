@@ -8,7 +8,7 @@ import {
   endsAtDateTimeAttr,
   formatAuctionCountdownSeconds,
 } from "@/lib/auction/format-auction";
-import { shortChainName } from "@/lib/web3/supported-chains";
+import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
 import type { OutstandingObligation } from "@/lib/obligation";
 import { cn } from "@/lib/utils";
 
@@ -78,7 +78,7 @@ function ObligationRow({
         <span className="font-mono text-xs text-text-tertiary">
           {roleLabel(item.role)}
           {" · "}
-          {shortChainName(item.chainId)}
+          {commercialNetworkChromeLabel(item.chainId)}
         </span>
       </div>
       {deadline && countdown != null && (

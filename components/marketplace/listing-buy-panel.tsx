@@ -30,7 +30,8 @@ import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { needsBuyRiskAck } from "@/lib/passport/trust-signals";
 import type { PassportStatus } from "@/lib/types/ponder";
-import { eip155WagmiChainId, shortChainName } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
+import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { cn } from "@/lib/utils";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
@@ -424,7 +425,7 @@ export function ListingBuyPanel({
         {priceBlock}
         <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
           <p className="text-sm text-text-secondary">
-            Switch to {shortChainName(chainId)}
+            Switch to {commercialNetworkChromeLabel(chainId)}
           </p>
           <Button
             type="button"

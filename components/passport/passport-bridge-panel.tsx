@@ -44,7 +44,8 @@ import {
 } from "@/lib/web3/commercial-active";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { formatNativeAmountLabeled } from "@/lib/web3/native-amount";
-import { shortChainName, eip155WagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
+import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
 import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 import { cn } from "@/lib/utils";
 import type { ActiveAccount } from "@/hooks/use-active-account";
@@ -61,7 +62,7 @@ function nextHopWrongVmCopyForRoute(
   const dstStack = commercialActive(hop.dstChainId);
   if (!dstStack || dstStack.vm === account.vm) return null;
   return bridgeNextHopWrongVmCopy({
-    networkName: shortChainName(hop.dstChainId),
+    networkName: commercialNetworkChromeLabel(hop.dstChainId),
     wantedFamily: dstStack.vm,
   });
 }
@@ -105,7 +106,7 @@ export function PassportBridgePanel({
   const passport = karPassportAddress(chainId);
   const tid = BigInt(tokenId);
   const dstChainId = bridgeCounterpartChainId(chainId);
-  const dstName = dstChainId != null ? shortChainName(dstChainId) : null;
+  const dstName = dstChainId != null ? commercialNetworkChromeLabel(dstChainId) : null;
   const originChainId = parsePassportTokenId(tokenId).chainId;
   const directionMode = deriveBridgeDirectionMode({
     custodyChainId: chainId,
@@ -221,7 +222,7 @@ export function PassportBridgePanel({
 
   const inTransitUi = transitActive && ui != null;
   const displayDstName =
-    record != null ? shortChainName(record.dstChainId) : dstName;
+    record != null ? commercialNetworkChromeLabel(record.dstChainId) : dstName;
 
   // Every hop the route takes — a two-hop move is stated before the send.
   const route =

@@ -4,7 +4,7 @@ import { PassportPhotoGallery } from "@/components/passport/passport-photo-galle
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { usePassportPresence } from "@/hooks/use-passport-presence";
 import type { PassportStatus } from "@/lib/types/ponder";
-import { shortChainName } from "@/lib/web3/supported-chains";
+import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
 
 type BadgeProps = {
   tokenId: string;
@@ -57,9 +57,9 @@ export function PassportPresenceStatusBadge({
     }
     const location =
       presence.status === "away" && presence.locationChainId != null
-        ? shortChainName(presence.locationChainId)
+        ? commercialNetworkChromeLabel(presence.locationChainId)
         : ponderCustodyChain != null && ponderCustodyChain !== chainId
-          ? shortChainName(ponderCustodyChain)
+          ? commercialNetworkChromeLabel(ponderCustodyChain)
           : null;
     return (
       <span

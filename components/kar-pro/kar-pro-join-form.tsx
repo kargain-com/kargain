@@ -27,7 +27,8 @@ import {
   isSurfaceAdmissionAvailable,
 } from "@/lib/web3/surface-admission";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
 import {
   isWalletRejection,
   walletRejectionCopy,
@@ -43,7 +44,7 @@ function JoinNetworkContext({
   chainId: number;
   otherActiveChainIds: readonly number[];
 }) {
-  const networkLabel = shortChainName(chainId);
+  const networkLabel = commercialNetworkChromeLabel(chainId);
   const alreadyElsewhere = karProAlreadyActiveElsewhereCopy(otherActiveChainIds);
   return (
     <div className="space-y-2">

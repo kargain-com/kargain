@@ -31,7 +31,7 @@ import {
   getBridgeReadClient,
   layerZeroScanTxUrl,
 } from "@/lib/web3/bridge";
-import { shortChainName } from "@/lib/web3/supported-chains";
+import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
 import {
   INDEXER_SYNC_INTERVAL_MS,
   INDEXER_SYNC_MAX_ATTEMPTS,
@@ -219,7 +219,7 @@ export function useBridgeTransit(opts: {
     tokenId,
   ]);
 
-  const dstName = record ? shortChainName(record.dstChainId) : "";
+  const dstName = record ? commercialNetworkChromeLabel(record.dstChainId) : "";
   const ui = record ? deriveBridgeTransitUi(record, dstName) : null;
   const scanUrl =
     record?.guid != null && record.guid.startsWith("0x")

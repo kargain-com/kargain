@@ -19,7 +19,7 @@ import {
 } from "@/lib/web3/commercial-active";
 import { admitSessionSurface, admitSurfaceAllowsEvmRead, isSurfaceAdmissionAvailable } from "@/lib/web3/surface-admission";
 import { SurfaceAdmissionRefusalView } from "@/components/shell/surface-admission-refusal";
-import { shortChainName } from "@/lib/web3/supported-chains";
+import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
 
 type ProfileVerifierStatsBandProps = {
   membershipRows: readonly KarProMembershipRow[];
@@ -85,7 +85,7 @@ export function ProfileVerifierStatsBand({
           <span className="font-medium text-text-primary">{amountLine}</span>
         )}
         <span className="ml-1.5 text-text-secondary">
-          staked on {shortChainName(sessionNs)}
+          staked on {commercialNetworkChromeLabel(sessionNs)}
         </span>
       </span>
       <Link href={karProSectionHref("membership")} className={monoLinkSm}>

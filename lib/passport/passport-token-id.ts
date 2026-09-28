@@ -1,4 +1,4 @@
-import { shortChainName } from "@/lib/web3/supported-chains";
+import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
 
 const LOCAL_ID_MASK = (1n << 128n) - 1n;
 
@@ -31,9 +31,8 @@ export function parsePassportTokenId(tokenId: string | bigint): ParsedPassportTo
 }
 
 function resolveChainDisplayName(chainId: number): string {
-  const name = shortChainName(chainId);
-  if (name === "Unknown network") return `Chain ${chainId}`;
-  return name;
+  const named = commercialNetworkLabel(chainId);
+  return named.ok ? named.label : `Chain ${chainId}`;
 }
 
 function formatLocalNumber(tokenId: string | bigint, contextChainId?: number): string {

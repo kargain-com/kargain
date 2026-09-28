@@ -47,7 +47,8 @@ import {
   karPassportAddress,
 } from "@/lib/web3/deployment-addresses";
 import { commercialActive } from "@/lib/web3/commercial-active";
-import { eip155WagmiChainId, shortChainName } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
+import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 import { txWriteAvailability } from "@/lib/web3/tx-write-availability";
@@ -459,7 +460,7 @@ export function ListingEditClient({
     return (
       <div className="space-y-4">
         <p className="text-sm text-text-secondary">
-          Switch to {shortChainName(chainId)}
+          Switch to {commercialNetworkChromeLabel(chainId)}
         </p>
         <Button
           type="button"
@@ -468,7 +469,7 @@ export function ListingEditClient({
             void switchChain(wc);
           }}
         >
-          Switch to {shortChainName(chainId)}
+          Switch to {commercialNetworkChromeLabel(chainId)}
         </Button>
       </div>
     );

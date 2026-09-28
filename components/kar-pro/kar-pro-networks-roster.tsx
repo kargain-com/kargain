@@ -7,7 +7,7 @@ import {
 
 import { categoryLabel, instrumentReadoutPanel, monoLinkSm } from "@/lib/design/instrument-classes";
 import type { KarProMembershipRow } from "@/lib/kar-pro/membership-roster";
-import { shortChainName } from "@/lib/web3/supported-chains";
+import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
 
 function statusLabel(status: KarProMembershipRow["status"]): string {
   switch (status) {
@@ -42,7 +42,7 @@ export function KarProNetworksRoster({ rows }: KarProNetworksRosterProps) {
       </div>
       <ul className="mt-4 divide-y divide-border-default">
         {rows.map((row) => {
-          const name = shortChainName(row.chainId);
+          const name = commercialNetworkChromeLabel(row.chainId);
           const showManaging = row.isCurrentWalletChain;
           let action: { label: string; onClick: () => void } | null = null;
           if (!showManaging && row.status === "active") {

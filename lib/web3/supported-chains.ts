@@ -77,9 +77,3 @@ export function rpcUrlForChain(chainId: number): string {
   if (fb) return fb;
   throw new Error(`No RPC configured for chain ${chainId}`);
 }
-
-export function shortChainName(chainId: number): string {
-  const c = byId.get(chainId);
-  if (!c) return "Unknown network";
-  return c.name;
-}

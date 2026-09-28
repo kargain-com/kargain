@@ -23,7 +23,8 @@ import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { categoryLabel } from "@/lib/design/instrument-classes";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { indexerQueryKey } from "@/lib/web3/indexer-query-keys";
-import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -173,7 +174,7 @@ export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
                   peerLabel="Owner"
                   extraMeta={
                     <span className="font-mono text-xs text-text-tertiary">
-                      {shortChainName(row.chainId)}
+                      {commercialNetworkChromeLabel(row.chainId)}
                     </span>
                   }
                 >
@@ -224,7 +225,7 @@ export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
                   peerLabel="Owner"
                   extraMeta={
                     <span className="font-mono text-xs text-text-tertiary">
-                      {shortChainName(row.chainId)}
+                      {commercialNetworkChromeLabel(row.chainId)}
                     </span>
                   }
                 >

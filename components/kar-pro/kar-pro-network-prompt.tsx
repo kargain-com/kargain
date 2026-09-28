@@ -8,7 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { commercialChainIds } from "@/lib/web3/chain-context";
-import { shortChainName } from "@/lib/web3/supported-chains";
+import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
 
 type Props = {
   title?: string;
@@ -40,7 +40,7 @@ export function KarProNetworkPrompt({
                 void switchChain(id);
               }}
             >
-              Switch to {shortChainName(id)}{" "}
+              Switch to {commercialNetworkChromeLabel(id)}{" "}
               <span className="font-mono text-xs tabular-nums text-text-tertiary">
                 ({id})
               </span>

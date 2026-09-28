@@ -30,7 +30,7 @@ import {
   nativeUnitOf,
   requireCommercialActive,
 } from "@/lib/web3/commercial-active";
-import { shortChainName } from "@/lib/web3/supported-chains";
+import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
 import { parseWeiString } from "@/lib/web3/parse-wei-string";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
@@ -98,7 +98,7 @@ function VerifierCard({ verifier, profile, onSelectAgent, layout = "grid" }: Ver
             {categoryIndexToLabel(verifier.category)}
           </p>
           <p className="font-mono text-xs text-text-tertiary">
-            {shortChainName(verifier.chainId)}
+            {commercialNetworkChromeLabel(verifier.chainId)}
           </p>
         </div>
         <Button
@@ -130,7 +130,7 @@ function VerifierCard({ verifier, profile, onSelectAgent, layout = "grid" }: Ver
             {categoryIndexToLabel(verifier.category)}
           </p>
           <p className="font-mono text-xs text-text-tertiary">
-            {shortChainName(verifier.chainId)}
+            {commercialNetworkChromeLabel(verifier.chainId)}
           </p>
           {verifier.locationLabel.trim() !== "" && (
             <p className="font-mono text-xs text-text-secondary">
@@ -375,7 +375,7 @@ export function VerifierDirectory({
                     : "border-border-default bg-transparent text-text-secondary hover:border-border-hover hover:text-text-primary"
                 }`}
               >
-                {shortChainName(id)}
+                {commercialNetworkChromeLabel(id)}
               </button>
             );
           })}

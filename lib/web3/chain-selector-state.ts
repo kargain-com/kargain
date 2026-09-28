@@ -8,10 +8,15 @@ import {
   type CommercialRegistry,
   COMMERCIAL_ACTIVE,
   commercialActive,
-  nativeUnitOf,
   registeredCommercialNamespaceIds,
+  unresolvedNamespaceCopy,
+  walletStandardChainOf,
 } from "@/lib/web3/commercial-active";
 import { getViemChain, kargainChains } from "@/lib/web3/supported-chains";
+import type {
+  WalletStandardChain,
+  WalletStandardChainValue,
+} from "@/lib/web3/wallet-standard-chain";
 
 /** True when `chainId` is in the wagmi write-union (`kargainChains`). EVM-only. */
 export function isKargainWriteChain(chainId: number): boolean {
@@ -26,20 +31,63 @@ export type CommercialPickerEntry = {
   vm: "evm" | "svm";
 };
 
+export type CommercialNetworkLabelResult =
+  | { ok: true; label: string }
+  | { ok: false; cause: "unresolved_namespace" };
+
 /**
- * Full network label for picker / chrome — registry-driven.
- * EVM uses the viem chain name; SVM uses `{symbol} network` (no invented hub name).
+ * Full display name for a commercial namespace — sole chrome label owner.
+ * EVM: viem chain name. SVM: derived from {@link walletStandardChainOf}.
+ * Never returns a sentence as a value (unresolved is a typed cause).
  */
 export function commercialNetworkLabel(
   namespace: number,
   registry: CommercialRegistry = COMMERCIAL_ACTIVE,
-): string {
+): CommercialNetworkLabelResult {
   const stack = commercialActive(namespace, registry);
-  if (stack == null) return "Unknown network";
-  if (stack.vm === "evm") {
-    return getViemChain(stack.chainId)?.name ?? `Chain ${stack.chainId}`;
+  if (stack == null) {
+    return { ok: false, cause: "unresolved_namespace" };
   }
-  return `${nativeUnitOf(stack).symbol} network`;
+  if (stack.vm === "evm") {
+    const name = getViemChain(stack.chainId)?.name;
+    if (name == null || name.length === 0) {
+      return { ok: false, cause: "unresolved_namespace" };
+    }
+    return { ok: true, label: name };
+  }
+  const chainResult = walletStandardChainOf(stack);
+  if (!chainResult.ok) {
+    return { ok: false, cause: "unresolved_namespace" };
+  }
+  return { ok: true, label: svmWalletStandardChainLabel(chainResult.chain) };
+}
+
+/**
+ * Chrome sentence for a namespace — registered label, else
+ * {@link unresolvedNamespaceCopy}. Token-id formatters must not use this;
+ * they own the `Chain ${n}` fallback.
+ */
+export function commercialNetworkChromeLabel(
+  namespace: number,
+  registry: CommercialRegistry = COMMERCIAL_ACTIVE,
+): string {
+  const named = commercialNetworkLabel(namespace, registry);
+  return named.ok ? named.label : unresolvedNamespaceCopy();
+}
+
+function svmWalletStandardChainLabel(chain: WalletStandardChain): string {
+  switch (chain as WalletStandardChainValue) {
+    case "solana:devnet":
+      return "Solana Devnet";
+    case "solana:testnet":
+      return "Solana Testnet";
+    case "solana:mainnet":
+      return "Solana";
+    default: {
+      const _exhaustive: never = chain as never;
+      return _exhaustive;
+    }
+  }
 }
 
 /**
@@ -51,9 +99,15 @@ export function commercialPickerEntries(
 ): readonly CommercialPickerEntry[] {
   return registeredCommercialNamespaceIds(registry).map((namespace) => {
     const stack = commercialActive(namespace, registry)!;
+    const named = commercialNetworkLabel(namespace, registry);
+    if (!named.ok) {
+      throw new Error(
+        `registered commercial namespace ${namespace} has no display label`,
+      );
+    }
     return {
       namespace,
-      label: commercialNetworkLabel(namespace, registry),
+      label: named.label,
       vm: stack.vm,
     };
   });

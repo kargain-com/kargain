@@ -1,7 +1,7 @@
 import { getAddress } from "viem";
 
+import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
 import { shortAddress } from "@/lib/web3/wallet-display";
-import { shortChainName } from "@/lib/web3/supported-chains";
 
 export type ParsedProPassTokenId = {
   full: string;
@@ -37,9 +37,8 @@ export function parseProPassTokenId(tokenId: string | bigint): ParsedProPassToke
 }
 
 function resolveChainDisplayName(chainId: number): string {
-  const name = shortChainName(chainId);
-  if (name === "Unknown network") return `Chain ${chainId}`;
-  return name;
+  const named = commercialNetworkLabel(chainId);
+  return named.ok ? named.label : `Chain ${chainId}`;
 }
 
 export function truncateProPassTokenId(full: string, head = 8, tail = 8): string {

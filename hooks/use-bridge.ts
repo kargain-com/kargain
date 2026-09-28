@@ -44,7 +44,8 @@ import {
   type BridgeSendParam,
 } from "@/lib/web3/bridge";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
-import { shortChainName, eip155WagmiChainId } from "@/lib/web3/supported-chains";
+import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
+import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 export type BridgePhase =
@@ -329,7 +330,7 @@ export function useBridge(
               phase: "timed_out",
             });
             setLocalError(
-              `Bridge sent, but delivery was not confirmed on ${shortChainName(dstChainId)} within 10 minutes. Check LayerZero Scan.`,
+              `Bridge sent, but delivery was not confirmed on ${commercialNetworkChromeLabel(dstChainId)} within 10 minutes. Check LayerZero Scan.`,
             );
             setPhase("error");
             return false;

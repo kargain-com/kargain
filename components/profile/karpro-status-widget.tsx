@@ -13,7 +13,7 @@ import {
 } from "@/lib/kar-pro/membership-roster";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { karProSectionHref } from "@/lib/kar-pro/kar-pro-section-url";
-import { shortChainName } from "@/lib/web3/supported-chains";
+import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
 
 export type KarProStatusWidgetProps = {
   isOwner: boolean;
@@ -46,7 +46,7 @@ export function KarProStatusWidget({
           <p className="mt-1 font-sans text-sm text-text-secondary">
             <span className="font-mono tabular-nums text-text-primary">{stakeLabel} ETH</span>
             {" staked on "}
-            {shortChainName(chainId)}
+            {commercialNetworkChromeLabel(chainId)}
             {" · Stake is fully refundable · No slash · No delay"}
           </p>
         ) : (

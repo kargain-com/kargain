@@ -173,10 +173,10 @@ describe("commercial picker ≡ registry", () => {
     };
     const entries = commercialPickerEntries(registry);
     assert.ok(entries.some((e) => e.namespace === plantedNs));
-    assert.equal(
-      commercialNetworkLabel(plantedNs, registry),
-      "SOL network",
-    );
+    assert.deepEqual(commercialNetworkLabel(plantedNs, registry), {
+      ok: true,
+      label: "Solana Devnet",
+    });
   });
 });
 

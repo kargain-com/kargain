@@ -20,10 +20,12 @@ import {
   chainSelectorMaySwitchChain,
   chainSelectorStateCopy,
   chainSelectorSwitchTargets,
+  commercialNetworkChromeLabel,
   commercialNetworkLabel,
   commercialPickerEntries,
   deriveChainSelectorState,
 } from "@/lib/web3/chain-selector-state";
+import { unresolvedNamespaceCopy } from "@/lib/web3/commercial-active";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -77,8 +79,8 @@ export function ChainSelector({
   const chainName =
     stateCopy ??
     (displayNamespace != null
-      ? commercialNetworkLabel(displayNamespace)
-      : "Unknown network");
+      ? commercialNetworkChromeLabel(displayNamespace)
+      : unresolvedNamespaceCopy());
   const switchTargets = chainSelectorSwitchTargets(
     expectedNamespace,
     selectorState,
@@ -154,9 +156,15 @@ export function ChainSelector({
   );
 
   if (wrong) {
-    const ariaTarget =
+    const expectedNamed =
       expectedNamespace != null
         ? commercialNetworkLabel(expectedNamespace)
+        : null;
+    const ariaTarget =
+      expectedNamed != null
+        ? expectedNamed.ok
+          ? expectedNamed.label
+          : unresolvedNamespaceCopy()
         : "a Kargain network";
     const ariaLabel =
       selectorState === "wrong_vm"
@@ -183,7 +191,7 @@ export function ChainSelector({
                 className="font-mono text-xs"
                 onSelect={() => onSwitchTo(id)}
               >
-                Switch to {commercialNetworkLabel(id)}
+                Switch to {commercialNetworkChromeLabel(id)}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>

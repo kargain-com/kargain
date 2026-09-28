@@ -74,7 +74,8 @@ import { processPassportPhotoFiles } from "@/lib/passport/process-passport-photo
 import { reorderArrayItem } from "@/lib/reorder-array";
 import { resetIrysUploaderCache } from "@/lib/storage/irys-client";
 import { resolveUri } from "@/lib/storage/resolve-uri";
-import { shortChainName, wagmiChainId } from "@/lib/web3/supported-chains";
+import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
 import { txWriteAvailability } from "@/lib/web3/tx-write-availability";
 
 type EditPhotoItem =
@@ -438,7 +439,7 @@ export function EditPassportWizard({
 
       {switchPrompt.show && (
         <p className="rounded-md border border-border-hover bg-bg-surface p-4 text-sm text-text-secondary">
-          Switch to {shortChainName(chainId)} to save.{" "}
+          Switch to {commercialNetworkChromeLabel(chainId)} to save.{" "}
           <button
             type="button"
             className="link-underline"
@@ -531,7 +532,7 @@ export function EditPassportWizard({
 
         {displayPhase === "confirming" && (
           <p className="font-sans text-sm text-text-secondary">
-            {editConfirmingOnChain(shortChainName(chainId))}
+            {editConfirmingOnChain(commercialNetworkChromeLabel(chainId))}
           </p>
         )}
 
