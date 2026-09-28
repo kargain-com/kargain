@@ -24,7 +24,10 @@ import {
   type KeyedContract,
 } from "@/lib/web3/keyed-multicall";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
-import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
+import {
+  commercialNetworkLabel,
+  commercialNetworkLabelCauseCopy,
+} from "@/lib/web3/chain-selector-state";
 
 const STALE_MS = 15_000;
 
@@ -107,10 +110,13 @@ export function useCommercePauseOps() {
         ownerEntry?.status === "success"
           ? normalizeAddress(ownerEntry.result as string)
           : undefined;
+      const named = commercialNetworkLabel(target.chainId);
       return {
         key: `${target.chainId}-${target.mode}`,
         chainId: target.chainId,
-        chainLabel: commercialNetworkChromeLabel(target.chainId),
+        chainLabel: named.ok
+          ? named.label
+          : commercialNetworkLabelCauseCopy(named.cause),
         mode: target.mode,
         modeLabel: commerceModeLabel(target.mode),
         address: target.address,

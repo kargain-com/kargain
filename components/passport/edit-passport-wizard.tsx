@@ -51,6 +51,7 @@ import {
 } from "@/lib/passport/metadata-schema";
 import { parseMetadataJson } from "@/lib/passport/parse-metadata-json";
 import {
+  editConfirming,
   editConfirmingOnChain,
   editPhaseLabel,
   editSavingOnChain,
@@ -75,7 +76,7 @@ import { reorderArrayItem } from "@/lib/reorder-array";
 import { resetIrysUploaderCache } from "@/lib/storage/irys-client";
 import { resolveUri } from "@/lib/storage/resolve-uri";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
-import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
+import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
 import { txWriteAvailability } from "@/lib/web3/tx-write-availability";
 
 type EditPhotoItem =
@@ -439,7 +440,12 @@ export function EditPassportWizard({
 
       {switchPrompt.show && (
         <p className="rounded-md border border-border-hover bg-bg-surface p-4 text-sm text-text-secondary">
-          Switch to {commercialNetworkChromeLabel(chainId)} to save.{" "}
+          {(() => {
+            const named = commercialNetworkLabel(chainId);
+            return named.ok
+              ? `Switch to ${named.label} to save. `
+              : "Switch to a configured Kargain network to save. ";
+          })()}
           <button
             type="button"
             className="link-underline"
@@ -532,7 +538,12 @@ export function EditPassportWizard({
 
         {displayPhase === "confirming" && (
           <p className="font-sans text-sm text-text-secondary">
-            {editConfirmingOnChain(commercialNetworkChromeLabel(chainId))}
+            {(() => {
+              const named = commercialNetworkLabel(chainId);
+              return named.ok
+                ? editConfirmingOnChain(named.label)
+                : editConfirming();
+            })()}
           </p>
         )}
 

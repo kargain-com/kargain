@@ -13,7 +13,10 @@ import {
 } from "@/lib/kar-pro/membership-roster";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { karProSectionHref } from "@/lib/kar-pro/kar-pro-section-url";
-import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
+import {
+  commercialNetworkLabel,
+  commercialNetworkLabelCauseCopy,
+} from "@/lib/web3/chain-selector-state";
 
 export type KarProStatusWidgetProps = {
   isOwner: boolean;
@@ -44,10 +47,31 @@ export function KarProStatusWidget({
         <span className={categoryLabel}>KarPro status</span>
         {walletOnActive && chainId != null ? (
           <p className="mt-1 font-sans text-sm text-text-secondary">
-            <span className="font-mono tabular-nums text-text-primary">{stakeLabel} ETH</span>
-            {" staked on "}
-            {commercialNetworkChromeLabel(chainId)}
-            {" · Stake is fully refundable · No slash · No delay"}
+            {(() => {
+              const named = commercialNetworkLabel(chainId);
+              if (named.ok) {
+                return (
+                  <>
+                    <span className="font-mono tabular-nums text-text-primary">
+                      {stakeLabel} ETH
+                    </span>
+                    {" staked on "}
+                    {named.label}
+                    {" · Stake is fully refundable · No slash · No delay"}
+                  </>
+                );
+              }
+              return (
+                <>
+                  <span className="font-mono tabular-nums text-text-primary">
+                    {stakeLabel} ETH
+                  </span>
+                  {" · "}
+                  {commercialNetworkLabelCauseCopy(named.cause)}
+                  {" · Stake is fully refundable · No slash · No delay"}
+                </>
+              );
+            })()}
           </p>
         ) : (
           <p className="mt-1 font-sans text-sm text-text-secondary">

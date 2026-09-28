@@ -28,7 +28,10 @@ import {
 } from "@/lib/web3/surface-admission";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
-import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
+import {
+  commercialNetworkLabel,
+  commercialNetworkLabelCauseCopy,
+} from "@/lib/web3/chain-selector-state";
 import {
   isWalletRejection,
   walletRejectionCopy,
@@ -44,13 +47,19 @@ function JoinNetworkContext({
   chainId: number;
   otherActiveChainIds: readonly number[];
 }) {
-  const networkLabel = commercialNetworkChromeLabel(chainId);
+  const named = commercialNetworkLabel(chainId);
   const alreadyElsewhere = karProAlreadyActiveElsewhereCopy(otherActiveChainIds);
   return (
     <div className="space-y-2">
       <p className="font-mono text-xs tabular-nums text-text-tertiary">
-        Creating on {networkLabel}{" "}
-        <span className="text-text-tertiary">({chainId})</span>
+        {named.ok ? (
+          <>
+            Creating on {named.label}{" "}
+            <span className="text-text-tertiary">({chainId})</span>
+          </>
+        ) : (
+          commercialNetworkLabelCauseCopy(named.cause)
+        )}
       </p>
       {alreadyElsewhere ? (
         <p className="font-sans text-xs text-text-tertiary">{alreadyElsewhere}</p>

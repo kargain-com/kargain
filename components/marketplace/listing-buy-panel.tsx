@@ -31,7 +31,7 @@ import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { needsBuyRiskAck } from "@/lib/passport/trust-signals";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
-import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
+import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { cn } from "@/lib/utils";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
@@ -420,12 +420,15 @@ export function ListingBuyPanel({
   }
 
   if (wrongChain) {
+    const named = commercialNetworkLabel(chainId);
     return (
       <div className="space-y-3">
         {priceBlock}
         <div className="space-y-3 rounded-md border border-border-default bg-bg-surface p-4">
           <p className="text-sm text-text-secondary">
-            Switch to {commercialNetworkChromeLabel(chainId)}
+            {named.ok
+              ? `Switch to ${named.label}`
+              : "Switch to a configured Kargain network."}
           </p>
           <Button
             type="button"

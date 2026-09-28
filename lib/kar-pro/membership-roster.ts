@@ -1,4 +1,7 @@
-import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
+import {
+  commercialNetworkLabel,
+  commercialNetworkLabelCauseCopy,
+} from "@/lib/web3/chain-selector-state";
 
 export type KarProMembershipStatus = "active" | "not_joined" | "unresolved";
 
@@ -49,11 +52,19 @@ export const KAR_PRO_PAYMENTS_NETWORK_SCOPE =
 
 /** Membership leave scope for the current hub chain. */
 export function karProLeaveNetworkScopeCopy(chainId: number): string {
-  return `This leave applies only to ${commercialNetworkChromeLabel(chainId)}.`;
+  const named = commercialNetworkLabel(chainId);
+  if (named.ok) {
+    return `This leave applies only to ${named.label}.`;
+  }
+  return "This leave applies only to this network.";
 }
 
 export function karProNetworkInstrumentLine(chainId: number): string {
-  return `Network · ${commercialNetworkChromeLabel(chainId)}`;
+  const named = commercialNetworkLabel(chainId);
+  if (named.ok) {
+    return `Network · ${named.label}`;
+  }
+  return commercialNetworkLabelCauseCopy(named.cause);
 }
 
 export function karProAlreadyActiveElsewhereCopy(chainIds: readonly number[]): string {
@@ -61,9 +72,11 @@ export function karProAlreadyActiveElsewhereCopy(chainIds: readonly number[]): s
   if (unique.length === 0) return "";
   const names = unique
     .sort((a, b) => a - b)
-    .map((id) => commercialNetworkChromeLabel(id))
-    .join(", ");
-  return `Already KarPro on ${names}.`;
+    .map((id) => commercialNetworkLabel(id))
+    .filter((r): r is { ok: true; label: string } => r.ok)
+    .map((r) => r.label);
+  if (names.length === 0) return "";
+  return `Already KarPro on ${names.join(", ")}.`;
 }
 
 export function otherActiveChainIdsFromRoster(

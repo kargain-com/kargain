@@ -21,7 +21,10 @@ import { formatPassportTitle, parsePassportTokenId } from "@/lib/passport/passpo
 import type { PonderVerifierAttestation } from "@/lib/types/ponder";
 import { parseOptionalChainParam } from "@/lib/web3/chain-context";
 import { isCommercialEip155Id } from "@/lib/web3/commercial-active";
-import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
+import {
+  commercialNetworkLabel,
+  commercialNetworkLabelCauseCopy,
+} from "@/lib/web3/chain-selector-state";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { LISTING_CARD_GRID_PRO } from "@/lib/marketplace/listing-card-grid";
 import { cn } from "@/lib/utils";
@@ -210,7 +213,12 @@ export default async function ProShowroomPage({
                         {c.name || navShortAddress(c.address)}
                       </p>
                       <p className="font-mono text-xs text-text-tertiary">
-                        {commercialNetworkChromeLabel(c.chainId)}{" "}
+                        {(() => {
+                          const named = commercialNetworkLabel(c.chainId);
+                          return named.ok
+                            ? named.label
+                            : commercialNetworkLabelCauseCopy(named.cause);
+                        })()}{" "}
                         <span className="tabular-nums">({c.chainId})</span>
                       </p>
                     </div>

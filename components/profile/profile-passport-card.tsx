@@ -21,7 +21,7 @@ import {
 import { buildProfilePassportTitle } from "@/lib/passport/vehicle-label";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { cn } from "@/lib/utils";
-import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
+import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
 
 export type ProfilePassportCardProps = {
   tokenId: string;
@@ -110,7 +110,10 @@ export function ProfilePassportCard({
         presence.status === "location_unresolved"
       ? passportAwayActionCopy(presence)
       : bridgedAway && custodyChain != null
-        ? `on ${commercialNetworkChromeLabel(custodyChain)}`
+        ? (() => {
+            const named = commercialNetworkLabel(custodyChain);
+            return named.ok ? `on ${named.label}` : "on another network";
+          })()
         : "";
   const vinText = vin?.trim() ?? "";
 

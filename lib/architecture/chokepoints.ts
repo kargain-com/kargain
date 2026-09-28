@@ -597,7 +597,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "chain-selector-state",
     owner: "lib/web3/chain-selector-state.ts · lib/web3/wallet-standard-chain.ts",
-    rule: "Sole commercial display-label owner: commercialNetworkLabel Result (EVM viem name / SVM from walletStandardChainOf: solana:devnet→Solana Devnet, testnet→Solana Testnet, mainnet→Solana); unresolved_namespace cause never a sentence value; picker enumerates registered only; no shortChainName / Unknown network in product; symmetric wrong_vm; EVM-only switch targets; no hub invent",
+    rule: "Sole commercial display-label owner: commercialNetworkLabel Result (ok label | unresolved_namespace | evm_chain_unnamed | svm_chain_unresolved); cause copy never nested in another sentence; no commercialNetworkChromeLabel / shortChainName / Unknown network; WalletStandardChain brand over solana:devnet|mainnet only; svm label switch exhaustive without casts; picker registered-only; symmetric wrong_vm; EVM-only switch targets; no hub invent",
     guardTests: [
       "chain-selector-state.test.ts",
       "commercial-network-label-policy.test.ts",

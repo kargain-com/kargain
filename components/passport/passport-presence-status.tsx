@@ -4,7 +4,10 @@ import { PassportPhotoGallery } from "@/components/passport/passport-photo-galle
 import { PassportStatusBadge } from "@/components/ui/passport-status-badge";
 import { usePassportPresence } from "@/hooks/use-passport-presence";
 import type { PassportStatus } from "@/lib/types/ponder";
-import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
+import {
+  commercialNetworkLabel,
+  commercialNetworkLabelCauseCopy,
+} from "@/lib/web3/chain-selector-state";
 
 type BadgeProps = {
   tokenId: string;
@@ -55,12 +58,18 @@ export function PassportPresenceStatusBadge({
         </span>
       );
     }
-    const location =
+    const locationNamed =
       presence.status === "away" && presence.locationChainId != null
-        ? commercialNetworkChromeLabel(presence.locationChainId)
+        ? commercialNetworkLabel(presence.locationChainId)
         : ponderCustodyChain != null && ponderCustodyChain !== chainId
-          ? commercialNetworkChromeLabel(ponderCustodyChain)
+          ? commercialNetworkLabel(ponderCustodyChain)
           : null;
+    const locationText =
+      locationNamed == null
+        ? null
+        : locationNamed.ok
+          ? `On ${locationNamed.label}`
+          : commercialNetworkLabelCauseCopy(locationNamed.cause);
     return (
       <span
         className={
@@ -69,7 +78,7 @@ export function PassportPresenceStatusBadge({
         }
         role="status"
       >
-        {location ? `On ${location}` : "Away"}
+        {locationText ?? "Away"}
       </span>
     );
   }

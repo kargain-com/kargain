@@ -24,6 +24,10 @@ export function editUploadStarting(): string {
   return "Starting upload…";
 }
 
+export function editConfirming(): string {
+  return "Confirming…";
+}
+
 export function editConfirmingOnChain(chainName: string): string {
   return `Confirming on ${chainName}…`;
 }

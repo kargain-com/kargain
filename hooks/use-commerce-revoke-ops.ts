@@ -24,7 +24,10 @@ import {
 } from "@/lib/web3/keyed-multicall";
 import { shortAddress } from "@/lib/web3/wallet-display";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
-import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
+import {
+  commercialNetworkLabel,
+  commercialNetworkLabelCauseCopy,
+} from "@/lib/web3/chain-selector-state";
 
 const STALE_MS = 15_000;
 
@@ -187,10 +190,13 @@ export function useCommerceRevokeOps() {
         entry?.status === "success"
           ? parseChainEnabled(c.mode, entry.result)
           : undefined;
+      const named = commercialNetworkLabel(c.chainId);
       return {
         key: `${c.chainId}-${c.mode}-${c.token}`,
         chainId: c.chainId,
-        chainLabel: commercialNetworkChromeLabel(c.chainId),
+        chainLabel: named.ok
+          ? named.label
+          : commercialNetworkLabelCauseCopy(named.cause),
         mode: c.mode,
         modeLabel: c.modeLabel,
         modeAddress: c.modeAddress,

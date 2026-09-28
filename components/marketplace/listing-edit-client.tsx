@@ -48,7 +48,7 @@ import {
 } from "@/lib/web3/deployment-addresses";
 import { commercialActive } from "@/lib/web3/commercial-active";
 import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
-import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
+import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 import { txWriteAvailability } from "@/lib/web3/tx-write-availability";
@@ -457,10 +457,14 @@ export function ListingEditClient({
   }
 
   if (wrongChain) {
+    const named = commercialNetworkLabel(chainId);
+    const switchCopy = named.ok
+      ? `Switch to ${named.label}`
+      : "Switch to a configured Kargain network.";
     return (
       <div className="space-y-4">
         <p className="text-sm text-text-secondary">
-          Switch to {commercialNetworkChromeLabel(chainId)}
+          {switchCopy}
         </p>
         <Button
           type="button"
@@ -469,7 +473,7 @@ export function ListingEditClient({
             void switchChain(wc);
           }}
         >
-          Switch to {commercialNetworkChromeLabel(chainId)}
+          {switchCopy}
         </Button>
       </div>
     );

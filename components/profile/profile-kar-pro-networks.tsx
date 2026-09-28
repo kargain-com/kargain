@@ -10,7 +10,10 @@ import {
   nativeUnitOf,
   requireCommercialActive,
 } from "@/lib/web3/commercial-active";
-import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
+import {
+  commercialNetworkLabel,
+  commercialNetworkLabelCauseCopy,
+} from "@/lib/web3/chain-selector-state";
 
 type ProfileKarProNetworksProps = {
   facts: readonly KarProActiveMembershipFact[];
@@ -34,7 +37,10 @@ export function ProfileKarProNetworks({ facts, isOwner }: ProfileKarProNetworksP
       </div>
       <ul className="mt-4 divide-y divide-border-default">
         {facts.map((fact) => {
-          const name = commercialNetworkChromeLabel(fact.chainId);
+          const named = commercialNetworkLabel(fact.chainId);
+          const name = named.ok
+            ? named.label
+            : commercialNetworkLabelCauseCopy(named.cause);
           return (
             <li
               key={fact.chainId}

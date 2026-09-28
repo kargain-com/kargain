@@ -76,7 +76,7 @@ import type {
   ProfilePassportRow,
 } from "@/lib/passport/map-profile-passport";
 import type { ProtocolOwner } from "@/lib/web3/protocol-address";
-import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
+import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
 export type ProfileOwnedPassport = ProfilePassportRow;
@@ -379,7 +379,11 @@ export function ProfilePage({
         originChainId: p.chainId,
         custodyChain: p.custodyChain,
         transit,
-        dstName: transit ? commercialNetworkChromeLabel(transit.dstChainId) : "",
+        dstName: (() => {
+          if (!transit) return "";
+          const named = commercialNetworkLabel(transit.dstChainId);
+          return named.ok ? named.label : "";
+        })(),
       });
       if (overlay.inTransit && overlay.badge) {
         map.set(p.tokenId, {

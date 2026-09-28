@@ -8,7 +8,10 @@ import {
   endsAtDateTimeAttr,
   formatAuctionCountdownSeconds,
 } from "@/lib/auction/format-auction";
-import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
+import {
+  commercialNetworkLabel,
+  commercialNetworkLabelCauseCopy,
+} from "@/lib/web3/chain-selector-state";
 import type { OutstandingObligation } from "@/lib/obligation";
 import { cn } from "@/lib/utils";
 
@@ -78,7 +81,12 @@ function ObligationRow({
         <span className="font-mono text-xs text-text-tertiary">
           {roleLabel(item.role)}
           {" · "}
-          {commercialNetworkChromeLabel(item.chainId)}
+          {(() => {
+            const named = commercialNetworkLabel(item.chainId);
+            return named.ok
+              ? named.label
+              : commercialNetworkLabelCauseCopy(named.cause);
+          })()}
         </span>
       </div>
       {deadline && countdown != null && (

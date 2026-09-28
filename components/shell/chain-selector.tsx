@@ -20,8 +20,8 @@ import {
   chainSelectorMaySwitchChain,
   chainSelectorStateCopy,
   chainSelectorSwitchTargets,
-  commercialNetworkChromeLabel,
   commercialNetworkLabel,
+  commercialNetworkLabelCauseCopy,
   commercialPickerEntries,
   deriveChainSelectorState,
 } from "@/lib/web3/chain-selector-state";
@@ -76,10 +76,14 @@ export function ChainSelector({
     : (sessionNamespace ?? null);
   const wrong = selectorState !== "ok";
   const stateCopy = chainSelectorStateCopy(selectorState, expectedNamespace);
+  const displayNamed =
+    displayNamespace != null ? commercialNetworkLabel(displayNamespace) : null;
   const chainName =
     stateCopy ??
-    (displayNamespace != null
-      ? commercialNetworkChromeLabel(displayNamespace)
+    (displayNamed != null
+      ? displayNamed.ok
+        ? displayNamed.label
+        : commercialNetworkLabelCauseCopy(displayNamed.cause)
       : unresolvedNamespaceCopy());
   const switchTargets = chainSelectorSwitchTargets(
     expectedNamespace,
@@ -160,16 +164,14 @@ export function ChainSelector({
       expectedNamespace != null
         ? commercialNetworkLabel(expectedNamespace)
         : null;
-    const ariaTarget =
-      expectedNamed != null
-        ? expectedNamed.ok
-          ? expectedNamed.label
-          : unresolvedNamespaceCopy()
-        : "a Kargain network";
     const ariaLabel =
       selectorState === "wrong_vm"
         ? (stateCopy ?? chainName)
-        : `Wrong network — switch to ${ariaTarget}`;
+        : expectedNamed == null
+          ? "Wrong network — switch to a Kargain network"
+          : expectedNamed.ok
+            ? `Wrong network — switch to ${expectedNamed.label}`
+            : commercialNetworkLabelCauseCopy(expectedNamed.cause);
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -185,15 +187,20 @@ export function ChainSelector({
         </DropdownMenuTrigger>
         {switchTargets.length > 0 ? (
           <DropdownMenuContent align="end" className="min-w-[180px] p-1">
-            {switchTargets.map((id) => (
+            {switchTargets.map((id) => {
+              const named = commercialNetworkLabel(id);
+              return (
               <DropdownMenuItem
                 key={id}
                 className="font-mono text-xs"
                 onSelect={() => onSwitchTo(id)}
               >
-                Switch to {commercialNetworkChromeLabel(id)}
+                {named.ok
+                  ? `Switch to ${named.label}`
+                  : "Switch to a configured Kargain network."}
               </DropdownMenuItem>
-            ))}
+              );
+            })}
           </DropdownMenuContent>
         ) : null}
       </DropdownMenu>

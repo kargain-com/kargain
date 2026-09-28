@@ -53,7 +53,8 @@ import { unresolvedNamespaceCopy } from "@/lib/web3/commercial-active";
 import {
   isSurfaceAdmissionAvailable,
 } from "@/lib/web3/surface-admission";
-import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
+import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
+
 const MAX_PHOTOS_LIMIT = MAX_PHOTOS;
 
 type Step = 1 | 2;
@@ -388,7 +389,10 @@ function CreatePassportWizardBody({
     txPhase !== "idle";
 
   const displayError = formError ?? txError;
-  const networkName = commercialNetworkChromeLabel(chainId);
+  const named = commercialNetworkLabel(chainId);
+  const step2Subtitle = named.ok
+    ? `Upload photos and mint your KarPassport on ${named.label}.`
+    : "Upload photos and mint your KarPassport.";
 
   return (
     <div className="mx-auto max-w-xl space-y-8 px-4 py-10">
@@ -400,7 +404,7 @@ function CreatePassportWizardBody({
         <p className="font-sans text-fluid-sm font-normal leading-[1.5] text-text-secondary">
           {step === 1
             ? "Enter the essentials. You can enrich the passport over time."
-            : `Upload photos and mint your KarPassport on ${networkName}.`}
+            : step2Subtitle}
         </p>
       </div>
       {displayError && (

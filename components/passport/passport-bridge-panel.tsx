@@ -45,7 +45,7 @@ import {
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { formatNativeAmountLabeled } from "@/lib/web3/native-amount";
 import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
-import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
+import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
 import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 import { cn } from "@/lib/utils";
 import type { ActiveAccount } from "@/hooks/use-active-account";
@@ -61,8 +61,9 @@ function nextHopWrongVmCopyForRoute(
     hops.find((h) => h.srcChainId === fromChainId) ?? hops[0]!;
   const dstStack = commercialActive(hop.dstChainId);
   if (!dstStack || dstStack.vm === account.vm) return null;
+  const named = commercialNetworkLabel(hop.dstChainId);
   return bridgeNextHopWrongVmCopy({
-    networkName: commercialNetworkChromeLabel(hop.dstChainId),
+    networkName: named.ok ? named.label : "another network",
     wantedFamily: dstStack.vm,
   });
 }
@@ -106,7 +107,9 @@ export function PassportBridgePanel({
   const passport = karPassportAddress(chainId);
   const tid = BigInt(tokenId);
   const dstChainId = bridgeCounterpartChainId(chainId);
-  const dstName = dstChainId != null ? commercialNetworkChromeLabel(dstChainId) : null;
+  const dstNamed =
+    dstChainId != null ? commercialNetworkLabel(dstChainId) : null;
+  const dstName = dstNamed?.ok ? dstNamed.label : null;
   const originChainId = parsePassportTokenId(tokenId).chainId;
   const directionMode = deriveBridgeDirectionMode({
     custodyChainId: chainId,
@@ -221,8 +224,14 @@ export function PassportBridgePanel({
         : null;
 
   const inTransitUi = transitActive && ui != null;
+  const displayDstNamed =
+    record != null ? commercialNetworkLabel(record.dstChainId) : null;
   const displayDstName =
-    record != null ? commercialNetworkChromeLabel(record.dstChainId) : dstName;
+    displayDstNamed != null
+      ? displayDstNamed.ok
+        ? displayDstNamed.label
+        : null
+      : dstName;
 
   // Every hop the route takes — a two-hop move is stated before the send.
   const route =

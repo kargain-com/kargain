@@ -14,7 +14,10 @@ import {
 import { proConsignmentsHref, proShowroomHref } from "@/lib/kar-pro/pro-showroom-href";
 import { parseOptionalChainParam } from "@/lib/web3/chain-context";
 import { isCommercialEip155Id } from "@/lib/web3/commercial-active";
-import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
+import {
+  commercialNetworkLabel,
+  commercialNetworkLabelCauseCopy,
+} from "@/lib/web3/chain-selector-state";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
 
@@ -93,7 +96,12 @@ export default async function ProConsignmentsPage({
                     className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0"
                   >
                     <p className="font-mono text-xs text-text-tertiary">
-                      {commercialNetworkChromeLabel(c.chainId)}{" "}
+                      {(() => {
+                        const named = commercialNetworkLabel(c.chainId);
+                        return named.ok
+                          ? named.label
+                          : commercialNetworkLabelCauseCopy(named.cause);
+                      })()}{" "}
                       <span className="tabular-nums">({c.chainId})</span>
                     </p>
                     <Link

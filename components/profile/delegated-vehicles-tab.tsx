@@ -29,7 +29,10 @@ import {
 } from "@/lib/web3/commercial-active";
 import { indexerQueryKey } from "@/lib/web3/indexer-query-keys";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
-import { commercialNetworkChromeLabel } from "@/lib/web3/chain-selector-state";
+import {
+  commercialNetworkLabel,
+  commercialNetworkLabelCauseCopy,
+} from "@/lib/web3/chain-selector-state";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -283,7 +286,12 @@ export function DelegatedVehiclesTab({ wallet, chainId }: Props) {
               attention={options.attention === true}
               extraMeta={
                 <span className="font-mono text-xs text-text-tertiary">
-                  {commercialNetworkChromeLabel(row.chainId)}
+                  {(() => {
+                    const named = commercialNetworkLabel(row.chainId);
+                    return named.ok
+                      ? named.label
+                      : commercialNetworkLabelCauseCopy(named.cause);
+                  })()}
                 </span>
               }
             >
@@ -322,7 +330,12 @@ export function DelegatedVehiclesTab({ wallet, chainId }: Props) {
                 peerLabel="Agent"
                 extraMeta={
                   <span className="font-mono text-xs text-text-tertiary">
-                    {commercialNetworkChromeLabel(row.chainId)}
+                    {(() => {
+                      const named = commercialNetworkLabel(row.chainId);
+                      return named.ok
+                        ? named.label
+                        : commercialNetworkLabelCauseCopy(named.cause);
+                    })()}
                   </span>
                 }
               >
