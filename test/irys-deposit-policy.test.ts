@@ -925,7 +925,7 @@ describe("irys deposit B2 — three-state reader + EVM replacement", () => {
     assert.equal(confirms, 0);
   });
 
-  it("replaced → record holds new hash; confirmations awaited on it; post uses it", async () => {
+  it("replaced to bundler → record holds new hash; post uses it", async () => {
     const store = createMemoryIrysDepositRecordStore();
     const key = irysDepositRecordKey({
       namespace: 84532,
@@ -943,7 +943,7 @@ describe("irys deposit B2 — three-state reader + EVM replacement", () => {
       balance: "0",
       bundler: EVM_BUNDLER,
     });
-    let waitedHash: string | null = null;
+    let waitedExpectedTo: string | null = null;
     let postedId: string | null = null;
     const r = await ensureIrysDeposit({
       stack: EVM_STACK,
@@ -954,9 +954,9 @@ describe("irys deposit B2 — three-state reader + EVM replacement", () => {
       bundlerUrl: "https://devnet.irys.xyz",
       ports: {
         store,
-        waitEvmConfirmations: async ({ txHash }) => {
-          waitedHash = txHash;
+        waitEvmConfirmations: async ({ txHash, expectedTo }) => {
           assert.equal(txHash, HASH_A);
+          waitedExpectedTo = expectedTo;
           return { kind: "confirmed", hash: HASH_B };
         },
         postBundlerDeposit: async ({ txId }) => {
@@ -967,7 +967,10 @@ describe("irys deposit B2 — three-state reader + EVM replacement", () => {
     });
     assert.equal(r.ok, false);
     if (!r.ok) assert.equal(r.cause, "deposit_pending");
-    assert.equal(waitedHash, HASH_A);
+    assert.equal(
+      String(waitedExpectedTo ?? "").toLowerCase(),
+      EVM_BUNDLER.toLowerCase(),
+    );
     assert.equal(postedId, HASH_B);
     const after = readIrysDepositRecord(store, key, "evm");
     assert.equal(after.kind, "record");
@@ -976,7 +979,87 @@ describe("irys deposit B2 — three-state reader + EVM replacement", () => {
     }
   });
 
-  it("repriced → same as replaced (final hash in record + post)", async () => {
+  it("replaced to non-bundler → diverted; cleared; post never; next sends once", async () => {
+    const store = createMemoryIrysDepositRecordStore();
+    const key = irysDepositRecordKey({
+      namespace: 84532,
+      payer: EVM_PAYER,
+      bundlerAddress: EVM_BUNDLER,
+    });
+    writeIrysDepositRecord(store, key, {
+      vm: "evm",
+      txHash: HASH_A,
+      amountBaseUnits: "100",
+      createdAt: Date.now(),
+    });
+    const { uploader } = fakeUploader({
+      price: "1000",
+      balance: "0",
+      bundler: EVM_BUNDLER,
+    });
+    let posted = 0;
+    const r1 = await ensureIrysDeposit({
+      stack: EVM_STACK,
+      account: evmAccount(),
+      uploader,
+      totalBytes: 100,
+      paymentToken: "base-eth",
+      bundlerUrl: "https://devnet.irys.xyz",
+      ports: {
+        store,
+        waitEvmConfirmations: async () => ({
+          kind: "diverted",
+          originalHash: HASH_A,
+          replacementHash: HASH_C,
+        }),
+        postBundlerDeposit: async () => {
+          posted += 1;
+          return { statusClass: "accepted", httpStatus: 200 };
+        },
+      },
+    });
+    assert.equal(r1.ok, false);
+    if (!r1.ok) assert.equal(r1.cause, "deposit_cancelled");
+    assert.equal(posted, 0);
+    assert.equal(readIrysDepositRecord(store, key, "evm").kind, "absent");
+    assert.match(
+      irysDepositCauseCopy("deposit_cancelled"),
+      /cancelled or replaced in the wallet/i,
+    );
+
+    let sends = 0;
+    const r2 = await ensureIrysDeposit({
+      stack: EVM_STACK,
+      account: evmAccount(),
+      uploader,
+      totalBytes: 100,
+      paymentToken: "base-eth",
+      bundlerUrl: "https://devnet.irys.xyz",
+      ports: {
+        store,
+        readEvmAccountKind: async () => "eoa",
+        sendEvmTransaction: {
+          sendTransaction: async () => {
+            sends += 1;
+            return HASH_B;
+          },
+        },
+        waitEvmConfirmations: async ({ txHash }) => ({
+          kind: "confirmed",
+          hash: txHash,
+        }),
+        postBundlerDeposit: async () => ({
+          statusClass: "not_seen_yet",
+          httpStatus: 400,
+        }),
+      },
+    });
+    assert.equal(r2.ok, false);
+    if (!r2.ok) assert.equal(r2.cause, "deposit_pending");
+    assert.equal(sends, 1);
+  });
+
+  it("repriced → followed (final hash in record + post)", async () => {
     const store = createMemoryIrysDepositRecordStore();
     const key = irysDepositRecordKey({
       namespace: 84532,
@@ -1066,7 +1149,7 @@ describe("irys deposit B2 — three-state reader + EVM replacement", () => {
     assert.equal(readIrysDepositRecord(store, key, "evm").kind, "absent");
     assert.match(
       irysDepositCauseCopy("deposit_cancelled"),
-      /cancelled in the wallet/i,
+      /cancelled or replaced in the wallet/i,
     );
 
     let sends = 0;
@@ -1190,15 +1273,26 @@ describe("irys deposit B2 — three-state reader + EVM replacement", () => {
     assert.match(confirm, /EvmDepositConfirmOutcome/);
     assert.match(confirm, /kind: "confirmed"/);
     assert.match(confirm, /kind: "cancelled"/);
+    assert.match(confirm, /kind: "diverted"/);
     assert.match(confirm, /kind: "timeout"/);
     assert.match(confirm, /onReplaced/);
     assert.match(confirm, /reason === "cancelled"/);
+    assert.match(confirm, /reason === "repriced"/);
+    assert.match(confirm, /confirmations:\s*minConfirmations/);
+    assert.match(confirm, /isAddressEqual/);
+    assert.equal(/getPublicClient/.test(confirm), false);
+    assert.equal(/getTransactionConfirmations/.test(confirm), false);
     // confirmEvmTransaction itself must not take onReplaced
     const plainFn = confirm.slice(
       confirm.indexOf("export async function confirmEvmTransaction"),
       confirm.indexOf("export type EvmDepositConfirmOutcome"),
     );
     assert.equal(/onReplaced/.test(plainFn), false);
+
+    const dirtyPoll =
+      'await client.getTransactionConfirmations({ hash });\ngetPublicClient(chainId);\n';
+    assert.match(dirtyPoll, /getTransactionConfirmations/);
+    assert.match(dirtyPoll, /getPublicClient/);
 
     const lifecycle = readFileSync(EVM_WRITE_LIFECYCLE, "utf8");
     assert.match(lifecycle, /confirmEvmTransaction/);
@@ -1207,6 +1301,7 @@ describe("irys deposit B2 — three-state reader + EVM replacement", () => {
     const deposit = readFileSync(IRYS_DEPOSIT, "utf8");
     assert.match(deposit, /EvmDepositConfirmOutcome/);
     assert.match(deposit, /deposit_cancelled/);
+    assert.match(deposit, /expectedTo/);
     assert.equal(/record\.txId as `0x\$\{string\}`/.test(deposit), false);
     assert.equal(/txId as `0x\$\{string\}`/.test(deposit), false);
   });
@@ -1274,6 +1369,9 @@ describe("irys deposit — wire + gates", () => {
     assert.match(confirm, /confirmEvmTransactionConfirmations/);
     assert.match(confirm, /waitForTransactionReceipt/);
     assert.match(confirm, /onReplaced/);
+    assert.match(confirm, /confirmations:\s*minConfirmations/);
+    assert.equal(/getPublicClient/.test(confirm), false);
+    assert.equal(/getTransactionConfirmations/.test(confirm), false);
 
     const hook = readFileSync(DEPOSIT_HOOK, "utf8");
     assert.match(hook, /useEvmSendTransaction/);

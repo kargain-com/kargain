@@ -38,12 +38,12 @@ export function useIrysDepositPorts(
         sendTransactionAsync({ to, value, chainId }),
     },
     switchChain: (chainId) => switchChain(chainId),
-    waitEvmConfirmations: ({ txHash, minConfirmations, chainId }) =>
+    waitEvmConfirmations: ({ txHash, minConfirmations, expectedTo }) =>
       confirmEvmTransactionConfirmations(
         config,
         txHash,
         minConfirmations,
-        chainId,
+        expectedTo,
       ),
   };
 

@@ -146,12 +146,12 @@ export type IrysDepositPorts = {
   /**
    * EVM confirmations wait — wraps {@link confirmEvmTransactionConfirmations}.
    * Required for EVM resolve; no default in product (hook injects).
-   * Returns typed outcome (final hash / cancelled / timeout).
+   * Returns typed outcome (final hash / cancelled / diverted / timeout).
    */
   waitEvmConfirmations?: (args: {
-    chainId: number;
     txHash: `0x${string}`;
     minConfirmations: number;
+    expectedTo: `0x${string}`;
   }) => Promise<EvmDepositConfirmOutcome>;
   /** Injectable bundler POST (defaults to {@link postIrysBundlerDepositTx}). */
   postBundlerDeposit?: (args: {
@@ -176,7 +176,7 @@ export function irysDepositCauseCopy(
       return "The previous storage deposit's status cannot be read. Contact support. Do not deposit again until this is resolved.";
     }
     case "deposit_cancelled":
-      return "The previous storage deposit was cancelled in the wallet. Nothing was sent to storage. Try again.";
+      return "The previous storage deposit was cancelled or replaced in the wallet. Nothing was sent to storage. Try again.";
     case "deposit_contract_wallet":
       return "Smart contract wallets cannot deposit to Irys storage. Switch to a standard wallet (EOA) for upload.";
     case "deposit_pending":
@@ -288,6 +288,7 @@ async function resolveOpenRecord(args: {
   price: bigint;
   paymentToken: string;
   bundlerUrl: string;
+  bundlerAddress: string;
 }): Promise<IrysDepositResult> {
   const balanceNow = parseAtomicAmount(await args.uploader.getBalance());
   if (balanceNow >= args.price) {
@@ -329,6 +330,12 @@ async function resolveOpenRecord(args: {
     if (minConfirm == null) {
       return refuse("deposit_unknown_token");
     }
+    if (!isAddress(args.bundlerAddress)) {
+      return refuse("deposit_send_failed", {
+        detail: "bundler_address_unusable",
+      });
+    }
+    const expectedTo = getAddress(args.bundlerAddress);
     const wait = args.ports.waitEvmConfirmations;
     if (wait == null) {
       return refuse("deposit_send_failed", { detail: "missing_evm_confirm_port" });
@@ -336,9 +343,9 @@ async function resolveOpenRecord(args: {
     let outcome: EvmDepositConfirmOutcome;
     try {
       outcome = await wait({
-        chainId: Number(args.stack.namespace),
         txHash: args.record.txHash,
         minConfirmations: minConfirm,
+        expectedTo,
       });
     } catch (err) {
       if (isWalletRejection(err)) return refuse("wallet_rejected");
@@ -351,7 +358,7 @@ async function resolveOpenRecord(args: {
       }
       return refuse("deposit_pending");
     }
-    if (outcome.kind === "cancelled") {
+    if (outcome.kind === "cancelled" || outcome.kind === "diverted") {
       clearIrysDepositRecord(args.store, args.key);
       return refuse("deposit_cancelled");
     }
@@ -534,6 +541,7 @@ async function sendNewDeposit(args: {
     price: args.price,
     paymentToken: args.paymentToken,
     bundlerUrl: args.bundlerUrl,
+    bundlerAddress,
   });
 }
 
@@ -594,6 +602,7 @@ export async function ensureIrysDeposit(args: {
       price,
       paymentToken: args.paymentToken,
       bundlerUrl: args.bundlerUrl,
+      bundlerAddress,
     });
   }
 
