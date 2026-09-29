@@ -528,8 +528,8 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "irys-deposit",
     owner:
-      "lib/storage/irys-deposit.ts · lib/storage/irys-deposit-record.ts · lib/storage/irys-bundler-deposit-post.ts · lib/storage/irys-client.ts · lib/web3/svm-write-adapter.ts · lib/svm/encode-system-transfer.ts · lib/web3/svm-tx-confirm.ts",
-    rule: "Sole Irys storage deposit owner: balance-first; pending record (namespace|payer|bundler) in injectable/localStorage store; status-only bundler POST (200|202 accepted, 400 not_seen); never SDK fund()/submitFundTransaction; SVM sendSvmNativeTransfer (System Transfer beside sendSvmInstruction) + funding confirm at finalized; EVM inject send + minConfirm=5; contract wallet refuse; no runTx; never double-pay while record open; sendSvmInstruction gated via svmKargainProgramIds (System → unregistered_program)",
+      "lib/storage/irys-deposit.ts · lib/storage/irys-deposit-record.ts · lib/storage/irys-bundler-deposit-post.ts · lib/storage/irys-client.ts · hooks/use-irys-deposit-ports.ts · lib/web3/evm-tx-confirm.ts · lib/web3/svm-write-adapter.ts · lib/svm/encode-system-transfer.ts · lib/web3/svm-tx-confirm.ts",
+    rule: "Sole Irys storage deposit owner: balance-first; pending record (namespace|payer|bundler); status-only bundler POST; never SDK fund(); SVM sendSvmNativeTransfer + funding confirm at finalized; EVM send/switch via useIrysDepositPorts (wagmi useEvmSendTransaction + session switchChain) + confirmEvmTransactionConfirmations; runtime uploader.tokenConfig.minConfirm (missing → deposit_unknown_token); disconnect refuses before store; missing SVM height → deposit_record_unreadable (keep); expired → deposit_expired (clear); typed TxWriteGuardPayload; no EIP-1193 eth_sendTransaction/eth_accounts in deposit; no runTx; never double-pay while fate unknown",
     guardTests: [
       "irys-deposit-policy.test.ts",
       "passport-upload.test.ts",

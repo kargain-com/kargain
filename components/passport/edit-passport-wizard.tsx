@@ -22,6 +22,7 @@ import { PhotoDropZone } from "@/components/passport/photo-drop-zone";
 import { PhotoThumbGrid } from "@/components/passport/photo-thumb-grid";
 import { Button } from "@/components/ui/button";
 import { TxWriteRefusal } from "@/components/shell/tx-write-refusal";
+import { useIrysDepositPorts } from "@/hooks/use-irys-deposit-ports";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useWalletAccountKind } from "@/hooks/use-wallet-account-kind";
 import { isHeicFile } from "@/lib/passport/compress-passport-image";
@@ -104,6 +105,7 @@ export function EditPassportWizard({
   existingPhotoUris,
 }: Props) {
   const { account, switchChain, signingBinding, svmWallet } = useActiveAccount();
+  const depositPorts = useIrysDepositPorts(svmWallet);
   const writeAvail = txWriteAvailability(account, chainId);
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const evmAddress = signingBinding.ok ? signingBinding.address : undefined;
@@ -306,6 +308,7 @@ export function EditPassportWizard({
         account,
         evmConnector: connector,
         svmWallet,
+        depositPorts,
         onProgress: setUploadProgress,
       });
 

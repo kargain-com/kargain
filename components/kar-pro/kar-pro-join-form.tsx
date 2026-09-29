@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { SurfaceAdmissionRefusalView } from "@/components/shell/surface-admission-refusal";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
+import { useIrysDepositPorts } from "@/hooks/use-irys-deposit-ports";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
@@ -81,6 +82,7 @@ export function KarProJoinForm({
   otherActiveChainIds?: readonly number[];
 }) {
   const { account, signingBinding, svmWallet } = useActiveAccount();
+  const depositPorts = useIrysDepositPorts(svmWallet);
   const admission = admitSurface(account, "kar_pro_join", chainId);
   const address = admitSurfaceEvmAddress(admission);
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
@@ -167,6 +169,7 @@ export function KarProJoinForm({
           account,
           evmConnector: connector,
           svmWallet,
+          depositPorts,
         },
       );
 

@@ -22,6 +22,10 @@ const SVM_OWNERS = [
   // П-8: entry re-exports UseActiveAccountResult with svmWallet; Irys door types Wallet.
   "hooks/use-active-account.ts",
   "lib/passport/upload-passport-metadata.ts",
+  // Unit B Irys deposit ports — Wallet type for SVM sign-and-send inject.
+  "lib/storage/irys-deposit.ts",
+  "lib/storage/irys-client.ts",
+  "hooks/use-irys-deposit-ports.ts",
   // §7.2 U4: sole PDA derivation owner — async getProgramDerivedAddress from kit.
   "lib/svm/derive-pda.ts",
   // §7.2 U5: write adapter (kit assemble) + sign-and-send port (Wallet Standard).

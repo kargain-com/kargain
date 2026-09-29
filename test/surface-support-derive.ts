@@ -109,6 +109,8 @@ const LIFECYCLE_TX_WRITE_HOMES = new Set([
   "lib/web3/tx-write-availability.ts",
   "lib/web3/write-lifecycle.ts",
   "lib/web3/evm-write-lifecycle.ts",
+  // Unit B Irys deposit — session gate for storage pay, not a census capability.
+  "lib/storage/irys-deposit.ts",
 ]);
 
 export type SurfaceConsumerPair = {

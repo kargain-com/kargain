@@ -9,7 +9,10 @@ import {
 import {
   irysUploadPlanRefusalMessage,
 } from "@/lib/storage/irys-upload-plan";
-import { formatIrysUploadError } from "@/lib/storage/irys-deposit";
+import {
+  formatIrysUploadError,
+  type IrysDepositPorts,
+} from "@/lib/storage/irys-deposit";
 import { withRetry } from "@/lib/storage/upload-with-retry";
 import {
   commercialNamespaceOf,
@@ -31,6 +34,8 @@ export type WalletUploadProviderArgs = {
   account: ActiveAccount;
   evmConnector?: { getProvider?: () => Promise<unknown> };
   svmWallet?: Wallet | null;
+  /** From {@link useIrysDepositPorts} — required for paid upload. */
+  depositPorts: IrysDepositPorts;
 };
 
 export type IrysUploadSession = {
@@ -38,6 +43,7 @@ export type IrysUploadSession = {
   provider: unknown;
   account: ActiveAccount;
   svmWallet?: Wallet | null;
+  depositPorts: IrysDepositPorts;
 };
 
 const PHOTO_TAGS: IrysTag[] = [
@@ -106,6 +112,7 @@ export async function resolveIrysUploadSession(
     provider,
     account: args.account,
     svmWallet: args.svmWallet,
+    depositPorts: args.depositPorts,
   };
 }
 
@@ -130,6 +137,7 @@ export async function uploadPassportPhotos(
     totalBytes,
     account: session.account,
     svmWallet: session.svmWallet,
+    depositPorts: session.depositPorts,
   });
   const batch = files.length > 1;
 
@@ -164,6 +172,7 @@ export async function uploadPassportMetadataJson(
       totalBytes: bodyBytes,
       account: session.account,
       svmWallet: session.svmWallet,
+      depositPorts: session.depositPorts,
     });
     return withRetry(() =>
       uploadJsonWithUploader(uploader, metadata, METADATA_TAGS),
@@ -175,6 +184,7 @@ export async function uploadPassportMetadataJson(
     totalBytes: bodyBytes,
     account: session.account,
     svmWallet: session.svmWallet,
+    depositPorts: session.depositPorts,
   });
   return withRetry(() =>
     uploadJsonWithUploader(built, metadata, METADATA_TAGS),
@@ -191,12 +201,14 @@ export async function uploadPassportToIrys(params: {
   account: ActiveAccount;
   evmConnector?: WalletUploadProviderArgs["evmConnector"];
   svmWallet?: Wallet | null;
+  depositPorts: IrysDepositPorts;
   onProgress?: (progress: UploadProgress) => void;
 }): Promise<string> {
   const session = await resolveIrysUploadSession({
     account: params.account,
     evmConnector: params.evmConnector,
     svmWallet: params.svmWallet,
+    depositPorts: params.depositPorts,
   });
   const { uris: uploadedNewUris, uploader } = await uploadPassportPhotos(
     params.newPhotoFiles,

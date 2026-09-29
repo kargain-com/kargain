@@ -43,6 +43,8 @@ const IRYS_CALL_SITES = [
 ] as const;
 
 describe("resolveIrysUploadSession / getWalletUploadProvider", () => {
+  const emptyPorts = {};
+
   it("EVM session resolves commercial stack without inventing SVM chain id", async () => {
     const fakeProvider = { request: async () => "0x14a34" };
     const session = await resolveIrysUploadSession({
@@ -50,10 +52,12 @@ describe("resolveIrysUploadSession / getWalletUploadProvider", () => {
       evmConnector: {
         getProvider: async () => fakeProvider,
       },
+      depositPorts: emptyPorts,
     });
     assert.equal(session.stack.vm, "evm");
     assert.equal(Number(session.stack.namespace), 84532);
     assert.equal(session.provider, fakeProvider);
+    assert.equal(session.depositPorts, emptyPorts);
   });
 
   it("SVM session resolves live commercial namespace + wallet handle", async () => {
@@ -61,6 +65,7 @@ describe("resolveIrysUploadSession / getWalletUploadProvider", () => {
     const session = await resolveIrysUploadSession({
       account: SVM,
       svmWallet: wallet as never,
+      depositPorts: emptyPorts,
     });
     assert.equal(session.stack.vm, "svm");
     assert.equal(Number(session.stack.namespace), Number(FIXTURE_SVM_STACK.namespace));
@@ -72,6 +77,7 @@ describe("resolveIrysUploadSession / getWalletUploadProvider", () => {
       () =>
         resolveIrysUploadSession({
           account: { status: "disconnected" },
+          depositPorts: emptyPorts,
         }),
       /Connect your wallet to continue/,
     );
@@ -83,6 +89,7 @@ describe("resolveIrysUploadSession / getWalletUploadProvider", () => {
         getWalletUploadProvider({
           account: SVM,
           svmWallet: null,
+          depositPorts: emptyPorts,
         }),
       /Connect your wallet to continue/,
     );
@@ -104,6 +111,7 @@ describe("resolveIrysUploadSession / getWalletUploadProvider", () => {
         resolveIrysUploadSession({
           account: orphan,
           evmConnector: { getProvider: async () => ({}) },
+          depositPorts: emptyPorts,
         }),
       new RegExp(irysUploadPlanRefusalMessage("wrong_vm").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
     );

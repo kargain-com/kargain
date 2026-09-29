@@ -23,6 +23,7 @@ import { useOpenChallenge } from "@/hooks/use-open-challenge";
 import { useJudgeChallenge } from "@/hooks/use-judge-challenge";
 import { useConcludeChallenge } from "@/hooks/use-conclude-challenge";
 import { useWithdrawChallenge } from "@/hooks/use-withdraw-challenge";
+import { useIrysDepositPorts } from "@/hooks/use-irys-deposit-ports";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useNow } from "@/hooks/use-now";
 import {
@@ -123,6 +124,7 @@ export function PassportActionsPanel({
 }: Props) {
   const pathname = usePathname();
   const { account, signingBinding, svmWallet } = useActiveAccount();
+  const depositPorts = useIrysDepositPorts(svmWallet);
   const sessionAddress =
     account.status === "connected" ? account.address : undefined;
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
@@ -295,6 +297,7 @@ export function PassportActionsPanel({
             account,
             evmConnector: connector ?? undefined,
             svmWallet,
+            depositPorts,
           });
         } finally {
           setIsUploadingEvidence(false);
@@ -302,7 +305,7 @@ export function PassportActionsPanel({
       }
       return paste.trim();
     },
-    [account, connector, svmWallet],
+    [account, connector, svmWallet, depositPorts],
   );
 
   const submitOwnerRecord = useCallback(async () => {

@@ -1,5 +1,5 @@
 /**
- * Unit B — Irys deposit owner: no double-pay, no SDK fund(), pending record.
+ * Unit B corrective — Irys deposit: EVM write path + record honesty.
  */
 
 import assert from "node:assert/strict";
@@ -20,10 +20,11 @@ import { postIrysBundlerDepositTx } from "../lib/storage/irys-bundler-deposit-po
 import {
   ensureIrysDeposit,
   formatIrysUploadError,
-  IRYS_EVM_DEPOSIT_MIN_CONFIRMATIONS,
   irysDepositCauseCopy,
-  irysDepositNeededAmountForTests,
   IrysDepositRefusal,
+  IRYS_DEPOSIT_AMOUNT_DENOMINATOR,
+  IRYS_DEPOSIT_AMOUNT_NUMERATOR,
+  readIrysEvmMinConfirm,
   type IrysDepositPorts,
   type IrysDepositUploader,
 } from "../lib/storage/irys-deposit.ts";
@@ -47,17 +48,21 @@ import {
 
 const IRYS_CLIENT = "lib/storage/irys-client.ts";
 const IRYS_DEPOSIT = "lib/storage/irys-deposit.ts";
+const EVM_TX_CONFIRM = "lib/web3/evm-tx-confirm.ts";
+const EVM_WRITE_ADAPTER = "lib/web3/evm-write-adapter.ts";
 const UPLOAD_META = "lib/passport/upload-passport-metadata.ts";
+const DEPOSIT_HOOK = "hooks/use-irys-deposit-ports.ts";
 
 const EVM_STACK = requireCommercialActive(84532);
+const ETH_STACK = requireCommercialActive(11155111);
 
-function evmAccount(): ActiveAccount {
+function evmAccount(chainId = 84532): ActiveAccount {
   return {
     status: "connected",
     vm: "evm",
     address: "0x1111111111111111111111111111111111111111",
-    namespace: mintKargainNamespace(84532),
-    chainId: 84532,
+    namespace: mintKargainNamespace(chainId),
+    chainId,
   };
 }
 
@@ -73,25 +78,65 @@ function fakeUploader(opts: {
   price: string;
   balance: string;
   bundler?: string;
-  token?: string;
+  minConfirm?: number | null;
 }): {
   uploader: IrysDepositUploader;
   setBalance: (v: string) => void;
 } {
   let balance = opts.balance;
+  const uploader: IrysDepositUploader = {
+    getPrice: async () => ({ toString: () => opts.price }),
+    getBalance: async () => ({ toString: () => balance }),
+    utils: {
+      getBundlerAddress: async () =>
+        opts.bundler ?? "Bundler1111111111111111111111111111111111",
+    },
+  };
+  if (opts.minConfirm === null) {
+    /* omit tokenConfig — deposit_unknown_token */
+  } else {
+    uploader.tokenConfig = { minConfirm: opts.minConfirm ?? 5 };
+  }
   return {
     setBalance: (v) => {
       balance = v;
     },
-    uploader: {
-      getPrice: async () => ({ toString: () => opts.price }),
-      getBalance: async () => ({ toString: () => balance }),
-      utils: {
-        getBundlerAddress: async () =>
-          opts.bundler ?? "Bundler1111111111111111111111111111111111",
-      },
-    },
+    uploader,
   };
+}
+
+/** ×1.1 amount via ensureIrysDeposit send value (no product test export). */
+async function observedNeededAmount(
+  price: string,
+  balance: string,
+): Promise<bigint> {
+  const store = createMemoryIrysDepositRecordStore();
+  const { uploader } = fakeUploader({ price, balance });
+  let observed = 0n;
+  await ensureIrysDeposit({
+    stack: EVM_STACK,
+    account: evmAccount(),
+    uploader,
+    totalBytes: 100,
+    paymentToken: "base-eth",
+    bundlerUrl: "https://devnet.irys.xyz",
+    ports: {
+      store,
+      readEvmAccountKind: async () => "eoa",
+      sendEvmTransaction: {
+        sendTransaction: async ({ value }) => {
+          observed = value;
+          return "0xamt";
+        },
+      },
+      waitEvmConfirmations: async () => undefined,
+      postBundlerDeposit: async () => ({
+        statusClass: "not_seen_yet",
+        httpStatus: 400,
+      }),
+    },
+  });
+  return observed;
 }
 
 describe("irys deposit — pending record no double-pay", () => {
@@ -136,7 +181,6 @@ describe("irys deposit — pending record no double-pay", () => {
     assert.equal(sendCount, 1);
     assert.deepEqual(postIds, ["0xabc123"]);
 
-    // Retry — must not send again
     postIds = [];
     const second = await ensureIrysDeposit({
       stack: EVM_STACK,
@@ -151,7 +195,6 @@ describe("irys deposit — pending record no double-pay", () => {
     assert.equal(sendCount, 1);
     assert.deepEqual(postIds, ["0xabc123"]);
 
-    // Accept on third resolve
     ports.postBundlerDeposit = async ({ txId }) => {
       postIds.push(txId);
       setBalance("1000");
@@ -171,7 +214,7 @@ describe("irys deposit — pending record no double-pay", () => {
     assert.equal(sendCount, 1);
   });
 
-  it("SVM expired closes open record (new send allowed later)", async () => {
+  it("SVM expired → deposit_expired; clears; new send allowed once", async () => {
     const store = createMemoryIrysDepositRecordStore();
     const key = irysDepositRecordKey({
       namespace: FIXTURE_SVM_NAMESPACE,
@@ -205,8 +248,9 @@ describe("irys deposit — pending record no double-pay", () => {
       },
     });
     assert.equal(r1.ok, false);
-    if (!r1.ok) assert.equal(r1.cause, "deposit_pending");
+    if (!r1.ok) assert.equal(r1.cause, "deposit_expired");
     assert.equal(readIrysDepositRecord(store, key), null);
+    assert.match(irysDepositCauseCopy("deposit_expired"), /did not land/i);
   });
 
   it("status_unknown keeps record", async () => {
@@ -243,6 +287,74 @@ describe("irys deposit — pending record no double-pay", () => {
     assert.equal(r.ok, false);
     if (!r.ok) assert.equal(r.cause, "deposit_pending");
     assert.ok(readIrysDepositRecord(store, key));
+  });
+
+  it("SVM record without lastValidBlockHeight kept; second attempt sends nothing", async () => {
+    const store = createMemoryIrysDepositRecordStore();
+    const key = irysDepositRecordKey({
+      namespace: FIXTURE_SVM_NAMESPACE,
+      payer: "11111111111111111111111111111111",
+      bundlerAddress: "Bundler1111111111111111111111111111111111",
+    });
+    writeIrysDepositRecord(store, key, {
+      txId: "sigNoHeightABCDEFGH",
+      amountBaseUnits: "100",
+      createdAt: Date.now(),
+      // missing lastValidBlockHeight
+    });
+    const { uploader } = fakeUploader({ price: "1000", balance: "0" });
+    let sent = 0;
+    const ports: IrysDepositPorts = {
+      store,
+      svmSignAndSend: {
+        signAndSendTransaction: async () => {
+          sent += 1;
+          return new Uint8Array(64);
+        },
+      },
+      confirmSvmFunding: {
+        confirmSubmission: async () => {
+          throw new Error("must not confirm without height");
+        },
+      },
+    };
+    const r1 = await ensureIrysDeposit({
+      stack: FIXTURE_SVM_STACK,
+      account: svmAccount(),
+      uploader,
+      totalBytes: 100,
+      paymentToken: "solana",
+      bundlerUrl: "https://devnet.irys.xyz",
+      ports,
+    });
+    assert.equal(r1.ok, false);
+    if (!r1.ok) {
+      assert.equal(r1.cause, "deposit_record_unreadable");
+      assert.equal(r1.txId, "sigNoHeightABCDEFGH");
+    }
+    assert.ok(readIrysDepositRecord(store, key));
+    assert.equal(sent, 0);
+
+    const r2 = await ensureIrysDeposit({
+      stack: FIXTURE_SVM_STACK,
+      account: svmAccount(),
+      uploader,
+      totalBytes: 100,
+      paymentToken: "solana",
+      bundlerUrl: "https://devnet.irys.xyz",
+      ports,
+    });
+    assert.equal(r2.ok, false);
+    if (!r2.ok) assert.equal(r2.cause, "deposit_record_unreadable");
+    assert.equal(sent, 0);
+    assert.match(
+      formatIrysUploadError(
+        new IrysDepositRefusal("deposit_record_unreadable", {
+          txId: "sigNoHeightABCDEFGH",
+        }),
+      ),
+      /sigNoH·EFGH|sigNoHeight/,
+    );
   });
 
   it("POST 400 keeps; 200 and 202 close", async () => {
@@ -408,63 +520,158 @@ describe("irys deposit — pending record no double-pay", () => {
     assert.equal(sent, false);
   });
 
-  it("expired closes then new send is allowed exactly once", async () => {
-    // Use EVM path to avoid SVM kit assembly in this plant.
+  it("disconnected refuses before any store access", async () => {
+    const { uploader } = fakeUploader({ price: "1000", balance: "0" });
+    let storeTouched = false;
+    const r = await ensureIrysDeposit({
+      stack: EVM_STACK,
+      account: { status: "disconnected" },
+      uploader,
+      totalBytes: 100,
+      paymentToken: "base-eth",
+      bundlerUrl: "https://devnet.irys.xyz",
+      ports: {
+        store: {
+          getItem: () => {
+            storeTouched = true;
+            return null;
+          },
+          setItem: () => {
+            storeTouched = true;
+          },
+          removeItem: () => {
+            storeTouched = true;
+          },
+        },
+        sendEvmTransaction: {
+          sendTransaction: async () => "0xno",
+        },
+      },
+    });
+    assert.equal(r.ok, false);
+    if (!r.ok) {
+      assert.equal(r.cause, "deposit_write_unavailable");
+      assert.equal(r.guard?.guard, "write_availability");
+      if (r.guard?.guard === "write_availability") {
+        assert.equal(r.guard.refusal.cause, "disconnected");
+      }
+    }
+    assert.equal(storeTouched, false);
+  });
+
+  it("EVM wallet on other commercial chain switches before send", async () => {
     const store = createMemoryIrysDepositRecordStore();
-    const key = irysDepositRecordKey({
-      namespace: 84532,
-      payer: "0x1111111111111111111111111111111111111111",
-      bundlerAddress: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    });
-    // Simulate expired by clearing (SVM expired clears). Then one send.
-    writeIrysDepositRecord(store, key, {
-      txId: "0xexpired",
-      amountBaseUnits: "1",
-      createdAt: 1,
-    });
-    clearIrysDepositRecord(store, key);
     const { uploader } = fakeUploader({
       price: "1000",
       balance: "0",
       bundler: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     });
-    let sendCount = 0;
-    const ports: IrysDepositPorts = {
-      store,
-      readEvmAccountKind: async () => "eoa",
-      sendEvmTransaction: {
-        sendTransaction: async () => {
-          sendCount += 1;
-          return "0xnew1";
+    let switchedTo: number | null = null;
+    let sendChainId: number | null = null;
+    const accountOnEth = evmAccount(11155111);
+    const r = await ensureIrysDeposit({
+      stack: EVM_STACK,
+      account: accountOnEth,
+      uploader,
+      totalBytes: 100,
+      paymentToken: "base-eth",
+      bundlerUrl: "https://devnet.irys.xyz",
+      ports: {
+        store,
+        readEvmAccountKind: async () => "eoa",
+        switchChain: async (chainId) => {
+          switchedTo = chainId;
+        },
+        sendEvmTransaction: {
+          sendTransaction: async ({ chainId }) => {
+            sendChainId = chainId;
+            if (switchedTo !== 84532) {
+              throw new Error("plant: send without switch");
+            }
+            return "0xswitched";
+          },
+        },
+        waitEvmConfirmations: async () => undefined,
+        postBundlerDeposit: async () => ({
+          statusClass: "not_seen_yet",
+          httpStatus: 400,
+        }),
+      },
+    });
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.equal(r.cause, "deposit_pending");
+    assert.equal(switchedTo, 84532);
+    assert.equal(sendChainId, 84532);
+    // Plant: wrong-chain send without switch must not occur
+    assert.notEqual(sendChainId, 11155111);
+  });
+
+  it("wrong-chain without switchChain port refuses", async () => {
+    const { uploader } = fakeUploader({ price: "1000", balance: "0" });
+    let sent = false;
+    const r = await ensureIrysDeposit({
+      stack: EVM_STACK,
+      account: evmAccount(11155111),
+      uploader,
+      totalBytes: 100,
+      paymentToken: "base-eth",
+      bundlerUrl: "https://devnet.irys.xyz",
+      ports: {
+        store: createMemoryIrysDepositRecordStore(),
+        readEvmAccountKind: async () => "eoa",
+        sendEvmTransaction: {
+          sendTransaction: async () => {
+            sent = true;
+            return "0xno";
+          },
         },
       },
-      waitEvmConfirmations: async () => undefined,
-      postBundlerDeposit: async () => ({
-        statusClass: "not_seen_yet",
-        httpStatus: 400,
-      }),
-    };
+    });
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.equal(r.cause, "deposit_send_failed");
+    assert.equal(sent, false);
+  });
+
+  it("minConfirm from uploader.tokenConfig; missing → deposit_unknown_token", async () => {
+    const ok = fakeUploader({ price: "1000", balance: "0", minConfirm: 5 });
+    assert.equal(readIrysEvmMinConfirm(ok.uploader), 5);
+    const missing = fakeUploader({
+      price: "1000",
+      balance: "0",
+      minConfirm: null,
+    });
+    assert.equal(readIrysEvmMinConfirm(missing.uploader), null);
+    let sent = false;
     const r = await ensureIrysDeposit({
       stack: EVM_STACK,
       account: evmAccount(),
-      uploader,
+      uploader: missing.uploader,
       totalBytes: 100,
       paymentToken: "base-eth",
       bundlerUrl: "https://devnet.irys.xyz",
-      ports,
+      ports: {
+        store: createMemoryIrysDepositRecordStore(),
+        readEvmAccountKind: async () => "eoa",
+        sendEvmTransaction: {
+          sendTransaction: async () => {
+            sent = true;
+            return "0xno";
+          },
+        },
+      },
     });
     assert.equal(r.ok, false);
-    assert.equal(sendCount, 1);
-    await ensureIrysDeposit({
-      stack: EVM_STACK,
-      account: evmAccount(),
-      uploader,
-      totalBytes: 100,
-      paymentToken: "base-eth",
-      bundlerUrl: "https://devnet.irys.xyz",
-      ports,
-    });
-    assert.equal(sendCount, 1);
+    if (!r.ok) assert.equal(r.cause, "deposit_unknown_token");
+    assert.equal(sent, false);
+  });
+
+  it("deposit amount is ×1.1 only (via ensureIrysDeposit)", async () => {
+    assert.equal(IRYS_DEPOSIT_AMOUNT_NUMERATOR, 11n);
+    assert.equal(IRYS_DEPOSIT_AMOUNT_DENOMINATOR, 10n);
+    assert.equal(await observedNeededAmount("1000", "0"), 1100n);
+    const client = readFileSync(IRYS_CLIENT, "utf8");
+    assert.equal(/FUND_FEE_MULTIPLIER/.test(client), false);
+    assert.equal(/\.fund\s*\(/.test(client), false);
   });
 });
 
@@ -479,10 +686,7 @@ describe("irys deposit — wire + gates", () => {
       toPubkey: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
       lamports: Number(lamports),
     });
-    assert.deepEqual(
-      Buffer.from(encoded.data),
-      Buffer.from(web3.data),
-    );
+    assert.deepEqual(Buffer.from(encoded.data), Buffer.from(web3.data));
     assert.equal(SYSTEM_TRANSFER_IX_INDEX, 2);
   });
 
@@ -498,28 +702,70 @@ describe("irys deposit — wire + gates", () => {
       },
       fetchBlockhash: async () => ({
         ok: true,
-        value: { blockhash: "EkSnNWid2cvwEVnVx9aBqawnmiCNiDgp3gUqlTPUYFJm", lastValidBlockHeight: 1n },
+        value: {
+          blockhash: "EkSnNWid2cvwEVnVx9aBqawnmiCNiDgp3gUqlTPUYFJm",
+          lastValidBlockHeight: 1n,
+        },
       }),
     });
     assert.equal(r.ok, false);
     if (!r.ok) assert.equal(r.cause, "unregistered_program");
   });
 
-  it("minConfirm pin is 5; invent plant would be wrong", () => {
-    assert.equal(IRYS_EVM_DEPOSIT_MIN_CONFIRMATIONS, 5);
-    const src = readFileSync(IRYS_DEPOSIT, "utf8");
-    assert.match(src, /IRYS_EVM_DEPOSIT_MIN_CONFIRMATIONS\s*=\s*5/);
-    assert.equal(/\bminConfirm(?:ations)?\s*=\s*1\b/.test(src), false);
+  it("no EIP-1193 deposit path; confirmations live in evm-tx-confirm", () => {
+    const deposit = readFileSync(IRYS_DEPOSIT, "utf8");
+    assert.equal(/eth_sendTransaction/.test(deposit), false);
+    assert.equal(/eth_accounts/.test(deposit), false);
+    assert.equal(/waitForTransactionReceipt/.test(deposit), false);
+    assert.equal(/getPublicClient/.test(deposit), false);
+    assert.equal(/createIrysEvmDepositSendPortFromProvider/.test(deposit), false);
+    assert.equal(/waitIrysEvmDepositConfirmations/.test(deposit), false);
+    assert.equal(/IRYS_EVM_DEPOSIT_MIN_CONFIRMATIONS/.test(deposit), false);
+    assert.equal(/irysDepositNeededAmountForTests/.test(deposit), false);
+    assert.match(deposit, /tokenConfig/);
+    assert.match(deposit, /readIrysEvmMinConfirm/);
+    assert.match(deposit, /deposit_record_unreadable/);
+    assert.match(deposit, /deposit_expired/);
+
+    const confirm = readFileSync(EVM_TX_CONFIRM, "utf8");
+    assert.match(confirm, /confirmEvmTransactionConfirmations/);
+    assert.match(confirm, /waitForTransactionReceipt/);
+
+    const hook = readFileSync(DEPOSIT_HOOK, "utf8");
+    assert.match(hook, /useEvmSendTransaction/);
+    assert.match(hook, /confirmEvmTransactionConfirmations/);
+    assert.match(hook, /switchChain/);
   });
 
-  it("deposit amount is ×1.1 only (no 1.2 gas multiplier)", () => {
-    assert.equal(irysDepositNeededAmountForTests("1000", "0"), "1100");
-    const client = readFileSync(IRYS_CLIENT, "utf8");
-    assert.equal(/FUND_FEE_MULTIPLIER/.test(client), false);
-    assert.equal(/\.fund\s*\(/.test(client), false);
+  it("product scan: eth_sendTransaction / eth_accounts / waitForTransactionReceipt outside owners", () => {
+    const owners = new Set([
+      EVM_WRITE_ADAPTER,
+      EVM_TX_CONFIRM,
+      // wagmi adapter is the send owner; confirm owner holds receipt wait
+    ]);
+    const banned =
+      /\beth_sendTransaction\b|\beth_accounts\b|\bwaitForTransactionReceipt\b/;
+    const scan = scanProductSources((text, relativePath) => {
+      if (owners.has(relativePath)) return false;
+      if (!banned.test(text)) return false;
+      // Deposit must never carry these; other product files may mention in comments —
+      // only flag when the deposit module or raw EIP-1193 deposit path reappears.
+      if (
+        relativePath === IRYS_DEPOSIT ||
+        relativePath.includes("irys-deposit")
+      ) {
+        return "irys_deposit_eip1193_or_receipt";
+      }
+      return false;
+    });
+    assertCleanProductScan(scan);
+
+    const dirtyPlant =
+      'await provider.request({ method: "eth_sendTransaction", params: [] });\n';
+    assert.match(dirtyPlant, banned);
   });
 
-  it("no raw err.message in upload copy; wallet rejection named", () => {
+  it("no raw err.message in upload copy; wallet rejection named; guard copy", () => {
     const meta = readFileSync(UPLOAD_META, "utf8");
     assert.equal(/err\.message\.includes/.test(meta), false);
     assert.equal(/return err\.message/.test(meta), false);
@@ -528,6 +774,16 @@ describe("irys deposit — wire + gates", () => {
       formatIrysUploadError(new IrysDepositRefusal("deposit_pending")),
       irysDepositCauseCopy("deposit_pending"),
     );
+    const guardCopy = formatIrysUploadError(
+      new IrysDepositRefusal("deposit_write_unavailable", {
+        guard: {
+          guard: "write_availability",
+          refusal: { available: false, cause: "disconnected" },
+        },
+      }),
+    );
+    assert.notEqual(guardCopy, irysDepositCauseCopy("deposit_write_unavailable"));
+    assert.match(guardCopy, /connect/i);
   });
 
   it("product roots ban .fund( and submitFundTransaction — plant red→green", () => {
@@ -571,5 +827,9 @@ describe("irys deposit — wire + gates", () => {
       }),
       false,
     );
+  });
+
+  it("Eth Sepolia stack exists for wrong-chain plant", () => {
+    assert.equal(Number(ETH_STACK.namespace), 11155111);
   });
 });

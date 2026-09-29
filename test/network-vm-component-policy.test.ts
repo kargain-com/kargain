@@ -37,6 +37,8 @@ export const VM_BRANCH_ALLOWLIST = [
   // SVM write Outcome — WriteSubmission discriminant (vm:"svm" + height).
   "lib/web3/write-outcome.ts",
   "lib/storage/irys-upload-plan.ts",
+  // Unit B Irys deposit — dual-VM owner (EVM wagmi inject / SVM System Transfer).
+  "lib/storage/irys-deposit.ts",
   // П-8 Irys session door — account.vm fork lives here, not in wizards.
   "lib/passport/upload-passport-metadata.ts",
   // U6 set-URI write owner — VM fork for EVM/SVM arms; panels stay blind.

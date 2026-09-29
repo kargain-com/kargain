@@ -275,8 +275,8 @@ export type PrepareUserPaidUploadArgs = {
   totalBytes: number;
   account: ActiveAccount;
   svmWallet?: Wallet | null;
-  /** Injectable deposit ports (tests). Defaults from account + provider + wallet. */
-  depositPorts?: IrysDepositPorts;
+  /** From {@link useIrysDepositPorts} — required for EVM send/switch/confirm. */
+  depositPorts: IrysDepositPorts;
 };
 
 /**
@@ -291,13 +291,14 @@ export async function prepareUserPaidUploadForStack(
     throw new Error(irysUploadPlanRefusalMessage(planned.cause));
   }
   const uploader = await getIrysUploaderForStack(args.stack, args.provider);
-  const ports =
-    args.depositPorts ??
-    buildIrysDepositPorts({
-      stack: args.stack,
-      provider: args.provider,
-      svmWallet: args.svmWallet,
-    });
+  const svmDefaults = buildIrysDepositPorts({
+    stack: args.stack,
+    svmWallet: args.svmWallet,
+  });
+  const ports: IrysDepositPorts = {
+    ...svmDefaults,
+    ...args.depositPorts,
+  };
   const deposit = await ensureIrysDeposit({
     stack: args.stack,
     account: args.account,
@@ -308,7 +309,11 @@ export async function prepareUserPaidUploadForStack(
     ports,
   });
   if (!deposit.ok) {
-    throw new IrysDepositRefusal(deposit.cause, deposit.detail);
+    throw new IrysDepositRefusal(deposit.cause, {
+      detail: deposit.detail,
+      guard: deposit.guard,
+      txId: deposit.txId,
+    });
   }
   return uploader;
 }

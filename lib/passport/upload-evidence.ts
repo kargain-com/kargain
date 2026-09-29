@@ -25,6 +25,7 @@ export async function uploadEvidenceFile(
     totalBytes: file.size,
     account: session.account,
     svmWallet: session.svmWallet,
+    depositPorts: session.depositPorts,
   });
   return withRetry(() =>
     uploadFileWithUploader(uploader, file, EVIDENCE_TAGS),

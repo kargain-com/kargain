@@ -34,6 +34,7 @@ export async function uploadKarProMetadata(
     totalBytes: encoded.length,
     account: session.account,
     svmWallet: session.svmWallet,
+    depositPorts: session.depositPorts,
   });
   return withRetry(() =>
     uploadJsonWithUploader(uploader, metadata, KAR_PRO_METADATA_TAGS),

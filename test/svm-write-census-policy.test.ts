@@ -65,6 +65,7 @@ const ENUMERATED_WRITE_FILES: readonly string[] = [
   "components/passport/passport-actions-panel.tsx",
   "components/verifier/verification-payment-modal.tsx",
   "hooks/use-bridge.ts",
+  "hooks/use-irys-deposit-ports.ts",
   "hooks/use-passport-approval.ts",
   "hooks/use-set-passport-uri.ts",
   "hooks/use-mint-passport.ts",
@@ -136,7 +137,11 @@ describe("svm write census policy", () => {
     );
 
     // Compared objects: one sorted file path per write-site file.
-    assert.equal(detected.length, 43);
+    assert.equal(detected.length, 44);
+    assert.ok(
+      detected.includes("hooks/use-irys-deposit-ports.ts"),
+      "irys deposit ports hook must be in the write-file set",
+    );
     assert.ok(
       detected.includes("hooks/use-mint-passport.ts"),
       "mint-passport port hook must be in the write-file set",

@@ -10,6 +10,7 @@ import {
   type KarProProfileFieldValues,
 } from "@/components/kar-pro/kar-pro-profile-fields";
 import { Button } from "@/components/ui/button";
+import { useIrysDepositPorts } from "@/hooks/use-irys-deposit-ports";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { KarProPassAbi } from "@/lib/contracts/abis.generated";
 import { parseKarProMetadataJson } from "@/lib/kar-pro/kar-pro-metadata";
@@ -68,6 +69,7 @@ export function KarProProfileSection({
   onUpdated,
 }: KarProProfileSectionProps) {
   const { account, signingBinding, svmWallet } = useActiveAccount();
+  const depositPorts = useIrysDepositPorts(svmWallet);
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const { writeContractAsync } = useEvmWriteContract();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
@@ -129,6 +131,7 @@ export function KarProProfileSection({
           account,
           evmConnector: connector,
           svmWallet,
+          depositPorts,
         },
       );
 

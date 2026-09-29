@@ -593,6 +593,8 @@ export const KNOWN_SESSION_GATES_WITHOUT_WRITES: readonly string[] = [
   "hooks/use-ponder-notifications.ts",
   "hooks/use-watchlist-notifications.ts",
   "hooks/use-watchlist.ts",
+  // Unit B Irys deposit — txWriteAvailability gate before storage transfer; no census write.
+  "lib/storage/irys-deposit.ts",
 ];
 
 /** Payment write actions that may absorb an ERC-20 allowance read in the same file. */

@@ -14,6 +14,7 @@ import { PassportUploadProgressPanel } from "@/components/passport/passport-uplo
 import { PhotoUploadZone } from "@/components/passport/photo-upload-zone";
 import { Button } from "@/components/ui/button";
 import { SurfaceAdmissionRefusalView } from "@/components/shell/surface-admission-refusal";
+import { useIrysDepositPorts } from "@/hooks/use-irys-deposit-ports";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { useMintPassport } from "@/hooks/use-mint-passport";
 import { useWalletAccountKind } from "@/hooks/use-wallet-account-kind";
@@ -171,6 +172,7 @@ function CreatePassportWizardBody({
   svmWallet,
 }: BodyProps) {
   const router = useRouter();
+  const depositPorts = useIrysDepositPorts(svmWallet);
   const { signMessageAsync } = useSignMessage();
   const {
     planMint,
@@ -365,6 +367,7 @@ function CreatePassportWizardBody({
         account,
         evmConnector: connector,
         svmWallet,
+        depositPorts,
         onProgress: setUploadProgress,
       });
 
