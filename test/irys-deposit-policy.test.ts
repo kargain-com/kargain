@@ -1,11 +1,12 @@
 /**
- * Unit B corrective — Irys deposit: EVM write path + record honesty.
+ * Unit B2 — Irys deposit: three-state record + EVM replacement honesty.
  */
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
+import { getBase58Decoder } from "@solana/kit";
 import { SystemProgram, PublicKey } from "@solana/web3.js";
 
 import {
@@ -15,6 +16,8 @@ import {
   probeIrysDepositRecordStoreWritable,
   readIrysDepositRecord,
   writeIrysDepositRecord,
+  type IrysDepositRecordStore,
+  type IrysDepositStoreGetResult,
 } from "../lib/storage/irys-deposit-record.ts";
 import { postIrysBundlerDepositTx } from "../lib/storage/irys-bundler-deposit-post.ts";
 import {
@@ -48,19 +51,37 @@ import {
 
 const IRYS_CLIENT = "lib/storage/irys-client.ts";
 const IRYS_DEPOSIT = "lib/storage/irys-deposit.ts";
+const IRYS_DEPOSIT_RECORD = "lib/storage/irys-deposit-record.ts";
 const EVM_TX_CONFIRM = "lib/web3/evm-tx-confirm.ts";
 const EVM_WRITE_ADAPTER = "lib/web3/evm-write-adapter.ts";
+const EVM_WRITE_LIFECYCLE = "lib/web3/evm-write-lifecycle.ts";
 const UPLOAD_META = "lib/passport/upload-passport-metadata.ts";
 const DEPOSIT_HOOK = "hooks/use-irys-deposit-ports.ts";
 
 const EVM_STACK = requireCommercialActive(84532);
 const ETH_STACK = requireCommercialActive(11155111);
 
+/** Valid 32-byte EVM tx hashes (viem isHash). */
+const HASH_A =
+  "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as const;
+const HASH_B =
+  "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as const;
+const HASH_C =
+  "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" as const;
+
+/** Valid 64-byte Ed25519 signature as base58 (kit codec). */
+const SVM_SIG = getBase58Decoder().decode(new Uint8Array(64));
+
+const EVM_PAYER = "0x1111111111111111111111111111111111111111";
+const EVM_BUNDLER = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const SVM_PAYER = "11111111111111111111111111111111";
+const SVM_BUNDLER = "Bundler1111111111111111111111111111111111";
+
 function evmAccount(chainId = 84532): ActiveAccount {
   return {
     status: "connected",
     vm: "evm",
-    address: "0x1111111111111111111111111111111111111111",
+    address: EVM_PAYER,
     namespace: mintKargainNamespace(chainId),
     chainId,
   };
@@ -70,7 +91,7 @@ function svmAccount(): ActiveAccount {
   return {
     status: "connected",
     vm: "svm",
-    address: "11111111111111111111111111111111",
+    address: SVM_PAYER,
   };
 }
 
@@ -88,8 +109,7 @@ function fakeUploader(opts: {
     getPrice: async () => ({ toString: () => opts.price }),
     getBalance: async () => ({ toString: () => balance }),
     utils: {
-      getBundlerAddress: async () =>
-        opts.bundler ?? "Bundler1111111111111111111111111111111111",
+      getBundlerAddress: async () => opts.bundler ?? EVM_BUNDLER,
     },
   };
   if (opts.minConfirm === null) {
@@ -103,6 +123,14 @@ function fakeUploader(opts: {
     },
     uploader,
   };
+}
+
+function rawSet(
+  store: IrysDepositRecordStore,
+  key: string,
+  raw: string,
+): void {
+  store.setItem(key, raw);
 }
 
 /** ×1.1 amount via ensureIrysDeposit send value (no product test export). */
@@ -126,10 +154,10 @@ async function observedNeededAmount(
       sendEvmTransaction: {
         sendTransaction: async ({ value }) => {
           observed = value;
-          return "0xamt";
+          return HASH_A;
         },
       },
-      waitEvmConfirmations: async () => undefined,
+      waitEvmConfirmations: async () => ({ kind: "confirmed", hash: HASH_A }),
       postBundlerDeposit: async () => ({
         statusClass: "not_seen_yet",
         httpStatus: 400,
@@ -153,13 +181,14 @@ describe("irys deposit — pending record no double-pay", () => {
       sendEvmTransaction: {
         sendTransaction: async () => {
           sendCount += 1;
-          return "0xabc123";
+          return HASH_A;
         },
       },
       readEvmAccountKind: async () => "eoa",
-      waitEvmConfirmations: async () => {
-        /* ok */
-      },
+      waitEvmConfirmations: async ({ txHash }) => ({
+        kind: "confirmed",
+        hash: txHash,
+      }),
       postBundlerDeposit: async ({ txId }) => {
         postIds.push(txId);
         return { statusClass: "not_seen_yet", httpStatus: 400 };
@@ -179,7 +208,7 @@ describe("irys deposit — pending record no double-pay", () => {
     if (first.ok) return;
     assert.equal(first.cause, "deposit_pending");
     assert.equal(sendCount, 1);
-    assert.deepEqual(postIds, ["0xabc123"]);
+    assert.deepEqual(postIds, [HASH_A]);
 
     postIds = [];
     const second = await ensureIrysDeposit({
@@ -193,7 +222,7 @@ describe("irys deposit — pending record no double-pay", () => {
     });
     assert.equal(second.ok, false);
     assert.equal(sendCount, 1);
-    assert.deepEqual(postIds, ["0xabc123"]);
+    assert.deepEqual(postIds, [HASH_A]);
 
     ports.postBundlerDeposit = async ({ txId }) => {
       postIds.push(txId);
@@ -218,16 +247,21 @@ describe("irys deposit — pending record no double-pay", () => {
     const store = createMemoryIrysDepositRecordStore();
     const key = irysDepositRecordKey({
       namespace: FIXTURE_SVM_NAMESPACE,
-      payer: "11111111111111111111111111111111",
-      bundlerAddress: "Bundler1111111111111111111111111111111111",
+      payer: SVM_PAYER,
+      bundlerAddress: SVM_BUNDLER,
     });
     writeIrysDepositRecord(store, key, {
-      txId: "oldSig",
+      vm: "svm",
+      signature: SVM_SIG,
+      lastValidBlockHeight: "10",
       amountBaseUnits: "100",
       createdAt: Date.now(),
-      lastValidBlockHeight: "10",
     });
-    const { uploader } = fakeUploader({ price: "1000", balance: "0" });
+    const { uploader } = fakeUploader({
+      price: "1000",
+      balance: "0",
+      bundler: SVM_BUNDLER,
+    });
     const r1 = await ensureIrysDeposit({
       stack: FIXTURE_SVM_STACK,
       account: svmAccount(),
@@ -240,7 +274,7 @@ describe("irys deposit — pending record no double-pay", () => {
         confirmSvmFunding: {
           confirmSubmission: async () => ({
             kind: "expired",
-            signature: "oldSig",
+            signature: SVM_SIG,
             lastValidBlockHeight: 10n,
             observedBlockHeight: 20n,
           }),
@@ -249,7 +283,7 @@ describe("irys deposit — pending record no double-pay", () => {
     });
     assert.equal(r1.ok, false);
     if (!r1.ok) assert.equal(r1.cause, "deposit_expired");
-    assert.equal(readIrysDepositRecord(store, key), null);
+    assert.equal(readIrysDepositRecord(store, key, "svm").kind, "absent");
     assert.match(irysDepositCauseCopy("deposit_expired"), /did not land/i);
   });
 
@@ -257,16 +291,21 @@ describe("irys deposit — pending record no double-pay", () => {
     const store = createMemoryIrysDepositRecordStore();
     const key = irysDepositRecordKey({
       namespace: FIXTURE_SVM_NAMESPACE,
-      payer: "11111111111111111111111111111111",
-      bundlerAddress: "Bundler1111111111111111111111111111111111",
+      payer: SVM_PAYER,
+      bundlerAddress: SVM_BUNDLER,
     });
     writeIrysDepositRecord(store, key, {
-      txId: "sigUnknown",
+      vm: "svm",
+      signature: SVM_SIG,
+      lastValidBlockHeight: "999",
       amountBaseUnits: "100",
       createdAt: Date.now(),
-      lastValidBlockHeight: "999",
     });
-    const { uploader } = fakeUploader({ price: "1000", balance: "0" });
+    const { uploader } = fakeUploader({
+      price: "1000",
+      balance: "0",
+      bundler: SVM_BUNDLER,
+    });
     const r = await ensureIrysDeposit({
       stack: FIXTURE_SVM_STACK,
       account: svmAccount(),
@@ -279,31 +318,41 @@ describe("irys deposit — pending record no double-pay", () => {
         confirmSvmFunding: {
           confirmSubmission: async () => ({
             kind: "status_unknown",
-            signature: "sigUnknown",
+            signature: SVM_SIG,
           }),
         },
       },
     });
     assert.equal(r.ok, false);
     if (!r.ok) assert.equal(r.cause, "deposit_pending");
-    assert.ok(readIrysDepositRecord(store, key));
+    assert.equal(readIrysDepositRecord(store, key, "svm").kind, "record");
   });
 
-  it("SVM record without lastValidBlockHeight kept; second attempt sends nothing", async () => {
+  it("SVM record without lastValidBlockHeight → unreadable; no confirm; no send", async () => {
     const store = createMemoryIrysDepositRecordStore();
     const key = irysDepositRecordKey({
       namespace: FIXTURE_SVM_NAMESPACE,
-      payer: "11111111111111111111111111111111",
-      bundlerAddress: "Bundler1111111111111111111111111111111111",
+      payer: SVM_PAYER,
+      bundlerAddress: SVM_BUNDLER,
     });
-    writeIrysDepositRecord(store, key, {
-      txId: "sigNoHeightABCDEFGH",
-      amountBaseUnits: "100",
-      createdAt: Date.now(),
-      // missing lastValidBlockHeight
+    // Legacy / corrupt: missing height — reader refuses as unreadable.
+    rawSet(
+      store,
+      key,
+      JSON.stringify({
+        vm: "svm",
+        signature: SVM_SIG,
+        amountBaseUnits: "100",
+        createdAt: Date.now(),
+      }),
+    );
+    const { uploader } = fakeUploader({
+      price: "1000",
+      balance: "0",
+      bundler: SVM_BUNDLER,
     });
-    const { uploader } = fakeUploader({ price: "1000", balance: "0" });
     let sent = 0;
+    let confirmed = 0;
     const ports: IrysDepositPorts = {
       store,
       svmSignAndSend: {
@@ -314,6 +363,7 @@ describe("irys deposit — pending record no double-pay", () => {
       },
       confirmSvmFunding: {
         confirmSubmission: async () => {
+          confirmed += 1;
           throw new Error("must not confirm without height");
         },
       },
@@ -330,10 +380,11 @@ describe("irys deposit — pending record no double-pay", () => {
     assert.equal(r1.ok, false);
     if (!r1.ok) {
       assert.equal(r1.cause, "deposit_record_unreadable");
-      assert.equal(r1.txId, "sigNoHeightABCDEFGH");
+      assert.equal(r1.txId, undefined);
     }
-    assert.ok(readIrysDepositRecord(store, key));
+    assert.equal(readIrysDepositRecord(store, key, "svm").kind, "unreadable");
     assert.equal(sent, 0);
+    assert.equal(confirmed, 0);
 
     const r2 = await ensureIrysDeposit({
       stack: FIXTURE_SVM_STACK,
@@ -348,12 +399,14 @@ describe("irys deposit — pending record no double-pay", () => {
     if (!r2.ok) assert.equal(r2.cause, "deposit_record_unreadable");
     assert.equal(sent, 0);
     assert.match(
-      formatIrysUploadError(
-        new IrysDepositRefusal("deposit_record_unreadable", {
-          txId: "sigNoHeightABCDEFGH",
-        }),
+      irysDepositCauseCopy("deposit_record_unreadable"),
+      /Contact support\./,
+    );
+    assert.equal(
+      /transaction unknown/.test(
+        irysDepositCauseCopy("deposit_record_unreadable"),
       ),
-      /sigNoH·EFGH|sigNoHeight/,
+      false,
     );
   });
 
@@ -361,18 +414,19 @@ describe("irys deposit — pending record no double-pay", () => {
     const store = createMemoryIrysDepositRecordStore();
     const key = irysDepositRecordKey({
       namespace: 84532,
-      payer: "0x1111111111111111111111111111111111111111",
-      bundlerAddress: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      payer: EVM_PAYER,
+      bundlerAddress: EVM_BUNDLER,
     });
     writeIrysDepositRecord(store, key, {
-      txId: "0xdead",
+      vm: "evm",
+      txHash: HASH_A,
       amountBaseUnits: "100",
       createdAt: Date.now(),
     });
     const { uploader, setBalance } = fakeUploader({
       price: "1000",
       balance: "0",
-      bundler: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      bundler: EVM_BUNDLER,
     });
 
     const keep = await ensureIrysDeposit({
@@ -384,7 +438,10 @@ describe("irys deposit — pending record no double-pay", () => {
       bundlerUrl: "https://devnet.irys.xyz",
       ports: {
         store,
-        waitEvmConfirmations: async () => undefined,
+        waitEvmConfirmations: async ({ txHash }) => ({
+          kind: "confirmed",
+          hash: txHash,
+        }),
         postBundlerDeposit: async () => ({
           statusClass: "not_seen_yet",
           httpStatus: 400,
@@ -392,11 +449,13 @@ describe("irys deposit — pending record no double-pay", () => {
       },
     });
     assert.equal(keep.ok, false);
-    assert.ok(readIrysDepositRecord(store, key));
+    assert.equal(readIrysDepositRecord(store, key, "evm").kind, "record");
 
     for (const httpStatus of [200, 202] as const) {
+      const hash = httpStatus === 200 ? HASH_B : HASH_C;
       writeIrysDepositRecord(store, key, {
-        txId: `0xdead${httpStatus}`,
+        vm: "evm",
+        txHash: hash,
         amountBaseUnits: "100",
         createdAt: Date.now(),
       });
@@ -410,7 +469,10 @@ describe("irys deposit — pending record no double-pay", () => {
         bundlerUrl: "https://devnet.irys.xyz",
         ports: {
           store,
-          waitEvmConfirmations: async () => undefined,
+          waitEvmConfirmations: async ({ txHash }) => ({
+            kind: "confirmed",
+            hash: txHash,
+          }),
           postBundlerDeposit: async () => {
             setBalance("1000");
             return { statusClass: "accepted", httpStatus };
@@ -418,7 +480,7 @@ describe("irys deposit — pending record no double-pay", () => {
         },
       });
       assert.equal(closed.ok, true, `http ${httpStatus}`);
-      assert.equal(readIrysDepositRecord(store, key), null);
+      assert.equal(readIrysDepositRecord(store, key, "evm").kind, "absent");
     }
   });
 
@@ -426,18 +488,19 @@ describe("irys deposit — pending record no double-pay", () => {
     const store = createMemoryIrysDepositRecordStore();
     const key = irysDepositRecordKey({
       namespace: 84532,
-      payer: "0x1111111111111111111111111111111111111111",
-      bundlerAddress: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      payer: EVM_PAYER,
+      bundlerAddress: EVM_BUNDLER,
     });
     writeIrysDepositRecord(store, key, {
-      txId: "0xold",
+      vm: "evm",
+      txHash: HASH_A,
       amountBaseUnits: "100",
       createdAt: Date.now(),
     });
     const { uploader } = fakeUploader({
       price: "1000",
       balance: "1000",
-      bundler: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      bundler: EVM_BUNDLER,
     });
     let sent = false;
     const r = await ensureIrysDeposit({
@@ -452,14 +515,14 @@ describe("irys deposit — pending record no double-pay", () => {
         sendEvmTransaction: {
           sendTransaction: async () => {
             sent = true;
-            return "0xno";
+            return HASH_B;
           },
         },
       },
     });
     assert.equal(r.ok, true);
     assert.equal(sent, false);
-    assert.equal(readIrysDepositRecord(store, key), null);
+    assert.equal(readIrysDepositRecord(store, key, "evm").kind, "absent");
   });
 
   it("unwritable store refuses before send", async () => {
@@ -474,7 +537,7 @@ describe("irys deposit — pending record no double-pay", () => {
       bundlerUrl: "https://devnet.irys.xyz",
       ports: {
         store: {
-          getItem: () => null,
+          getItem: (): IrysDepositStoreGetResult => ({ kind: "absent" }),
           setItem: () => {
             throw new Error("quota");
           },
@@ -483,7 +546,7 @@ describe("irys deposit — pending record no double-pay", () => {
         sendEvmTransaction: {
           sendTransaction: async () => {
             sent = true;
-            return "0xno";
+            return HASH_A;
           },
         },
         readEvmAccountKind: async () => "eoa",
@@ -510,7 +573,7 @@ describe("irys deposit — pending record no double-pay", () => {
         sendEvmTransaction: {
           sendTransaction: async () => {
             sent = true;
-            return "0xno";
+            return HASH_A;
           },
         },
       },
@@ -532,9 +595,9 @@ describe("irys deposit — pending record no double-pay", () => {
       bundlerUrl: "https://devnet.irys.xyz",
       ports: {
         store: {
-          getItem: () => {
+          getItem: (): IrysDepositStoreGetResult => {
             storeTouched = true;
-            return null;
+            return { kind: "absent" };
           },
           setItem: () => {
             storeTouched = true;
@@ -544,7 +607,7 @@ describe("irys deposit — pending record no double-pay", () => {
           },
         },
         sendEvmTransaction: {
-          sendTransaction: async () => "0xno",
+          sendTransaction: async () => HASH_A,
         },
       },
     });
@@ -564,7 +627,7 @@ describe("irys deposit — pending record no double-pay", () => {
     const { uploader } = fakeUploader({
       price: "1000",
       balance: "0",
-      bundler: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      bundler: EVM_BUNDLER,
     });
     let switchedTo: number | null = null;
     let sendChainId: number | null = null;
@@ -588,10 +651,13 @@ describe("irys deposit — pending record no double-pay", () => {
             if (switchedTo !== 84532) {
               throw new Error("plant: send without switch");
             }
-            return "0xswitched";
+            return HASH_A;
           },
         },
-        waitEvmConfirmations: async () => undefined,
+        waitEvmConfirmations: async ({ txHash }) => ({
+          kind: "confirmed",
+          hash: txHash,
+        }),
         postBundlerDeposit: async () => ({
           statusClass: "not_seen_yet",
           httpStatus: 400,
@@ -602,7 +668,6 @@ describe("irys deposit — pending record no double-pay", () => {
     if (!r.ok) assert.equal(r.cause, "deposit_pending");
     assert.equal(switchedTo, 84532);
     assert.equal(sendChainId, 84532);
-    // Plant: wrong-chain send without switch must not occur
     assert.notEqual(sendChainId, 11155111);
   });
 
@@ -622,7 +687,7 @@ describe("irys deposit — pending record no double-pay", () => {
         sendEvmTransaction: {
           sendTransaction: async () => {
             sent = true;
-            return "0xno";
+            return HASH_A;
           },
         },
       },
@@ -655,7 +720,7 @@ describe("irys deposit — pending record no double-pay", () => {
         sendEvmTransaction: {
           sendTransaction: async () => {
             sent = true;
-            return "0xno";
+            return HASH_A;
           },
         },
       },
@@ -672,6 +737,478 @@ describe("irys deposit — pending record no double-pay", () => {
     const client = readFileSync(IRYS_CLIENT, "utf8");
     assert.equal(/FUND_FEE_MULTIPLIER/.test(client), false);
     assert.equal(/\.fund\s*\(/.test(client), false);
+  });
+});
+
+describe("irys deposit B2 — three-state reader + EVM replacement", () => {
+  it("stored {not-json → sends === 0, deposit_record_unreadable", async () => {
+    const store = createMemoryIrysDepositRecordStore();
+    const key = irysDepositRecordKey({
+      namespace: 84532,
+      payer: EVM_PAYER,
+      bundlerAddress: EVM_BUNDLER,
+    });
+    rawSet(store, key, "{not-json");
+    const { uploader } = fakeUploader({
+      price: "1000",
+      balance: "0",
+      bundler: EVM_BUNDLER,
+    });
+    let sends = 0;
+    const r = await ensureIrysDeposit({
+      stack: EVM_STACK,
+      account: evmAccount(),
+      uploader,
+      totalBytes: 100,
+      paymentToken: "base-eth",
+      bundlerUrl: "https://devnet.irys.xyz",
+      ports: {
+        store,
+        readEvmAccountKind: async () => "eoa",
+        sendEvmTransaction: {
+          sendTransaction: async () => {
+            sends += 1;
+            return HASH_A;
+          },
+        },
+        waitEvmConfirmations: async () => ({
+          kind: "confirmed",
+          hash: HASH_A,
+        }),
+      },
+    });
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.equal(r.cause, "deposit_record_unreadable");
+    assert.equal(sends, 0);
+    assert.equal(readIrysDepositRecord(store, key, "evm").kind, "unreadable");
+  });
+
+  it("getItem throwing → sends === 0, unreadable", async () => {
+    const { uploader } = fakeUploader({ price: "1000", balance: "0" });
+    let sends = 0;
+    const r = await ensureIrysDeposit({
+      stack: EVM_STACK,
+      account: evmAccount(),
+      uploader,
+      totalBytes: 100,
+      paymentToken: "base-eth",
+      bundlerUrl: "https://devnet.irys.xyz",
+      ports: {
+        store: {
+          getItem: () => {
+            throw new Error("storage_read_failed");
+          },
+          setItem: () => undefined,
+          removeItem: () => undefined,
+        },
+        readEvmAccountKind: async () => "eoa",
+        sendEvmTransaction: {
+          sendTransaction: async () => {
+            sends += 1;
+            return HASH_A;
+          },
+        },
+      },
+    });
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.equal(r.cause, "deposit_record_unreadable");
+    assert.equal(sends, 0);
+  });
+
+  it("invalid EVM hash → unreadable; no confirm; no send", async () => {
+    const store = createMemoryIrysDepositRecordStore();
+    const key = irysDepositRecordKey({
+      namespace: 84532,
+      payer: EVM_PAYER,
+      bundlerAddress: EVM_BUNDLER,
+    });
+    rawSet(
+      store,
+      key,
+      JSON.stringify({
+        vm: "evm",
+        txHash: "not-a-hash",
+        amountBaseUnits: "100",
+        createdAt: Date.now(),
+      }),
+    );
+    const { uploader } = fakeUploader({
+      price: "1000",
+      balance: "0",
+      bundler: EVM_BUNDLER,
+    });
+    let sends = 0;
+    let confirms = 0;
+    const r = await ensureIrysDeposit({
+      stack: EVM_STACK,
+      account: evmAccount(),
+      uploader,
+      totalBytes: 100,
+      paymentToken: "base-eth",
+      bundlerUrl: "https://devnet.irys.xyz",
+      ports: {
+        store,
+        readEvmAccountKind: async () => "eoa",
+        sendEvmTransaction: {
+          sendTransaction: async () => {
+            sends += 1;
+            return HASH_A;
+          },
+        },
+        waitEvmConfirmations: async () => {
+          confirms += 1;
+          return { kind: "confirmed", hash: HASH_A };
+        },
+      },
+    });
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.equal(r.cause, "deposit_record_unreadable");
+    assert.equal(sends, 0);
+    assert.equal(confirms, 0);
+  });
+
+  it("invalid SVM signature → unreadable; no confirm; no send", async () => {
+    const store = createMemoryIrysDepositRecordStore();
+    const key = irysDepositRecordKey({
+      namespace: FIXTURE_SVM_NAMESPACE,
+      payer: SVM_PAYER,
+      bundlerAddress: SVM_BUNDLER,
+    });
+    rawSet(
+      store,
+      key,
+      JSON.stringify({
+        vm: "svm",
+        signature: "notAValidEd25519Signature",
+        lastValidBlockHeight: "10",
+        amountBaseUnits: "100",
+        createdAt: Date.now(),
+      }),
+    );
+    const { uploader } = fakeUploader({
+      price: "1000",
+      balance: "0",
+      bundler: SVM_BUNDLER,
+    });
+    let sends = 0;
+    let confirms = 0;
+    const r = await ensureIrysDeposit({
+      stack: FIXTURE_SVM_STACK,
+      account: svmAccount(),
+      uploader,
+      totalBytes: 100,
+      paymentToken: "solana",
+      bundlerUrl: "https://devnet.irys.xyz",
+      ports: {
+        store,
+        svmSignAndSend: {
+          signAndSendTransaction: async () => {
+            sends += 1;
+            return new Uint8Array(64);
+          },
+        },
+        confirmSvmFunding: {
+          confirmSubmission: async () => {
+            confirms += 1;
+            return {
+              kind: "landed_ok",
+              signature: SVM_SIG,
+              slot: 1n,
+            };
+          },
+        },
+      },
+    });
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.equal(r.cause, "deposit_record_unreadable");
+    assert.equal(sends, 0);
+    assert.equal(confirms, 0);
+  });
+
+  it("replaced → record holds new hash; confirmations awaited on it; post uses it", async () => {
+    const store = createMemoryIrysDepositRecordStore();
+    const key = irysDepositRecordKey({
+      namespace: 84532,
+      payer: EVM_PAYER,
+      bundlerAddress: EVM_BUNDLER,
+    });
+    writeIrysDepositRecord(store, key, {
+      vm: "evm",
+      txHash: HASH_A,
+      amountBaseUnits: "100",
+      createdAt: Date.now(),
+    });
+    const { uploader } = fakeUploader({
+      price: "1000",
+      balance: "0",
+      bundler: EVM_BUNDLER,
+    });
+    let waitedHash: string | null = null;
+    let postedId: string | null = null;
+    const r = await ensureIrysDeposit({
+      stack: EVM_STACK,
+      account: evmAccount(),
+      uploader,
+      totalBytes: 100,
+      paymentToken: "base-eth",
+      bundlerUrl: "https://devnet.irys.xyz",
+      ports: {
+        store,
+        waitEvmConfirmations: async ({ txHash }) => {
+          waitedHash = txHash;
+          assert.equal(txHash, HASH_A);
+          return { kind: "confirmed", hash: HASH_B };
+        },
+        postBundlerDeposit: async ({ txId }) => {
+          postedId = txId;
+          return { statusClass: "not_seen_yet", httpStatus: 400 };
+        },
+      },
+    });
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.equal(r.cause, "deposit_pending");
+    assert.equal(waitedHash, HASH_A);
+    assert.equal(postedId, HASH_B);
+    const after = readIrysDepositRecord(store, key, "evm");
+    assert.equal(after.kind, "record");
+    if (after.kind === "record" && after.record.vm === "evm") {
+      assert.equal(after.record.txHash, HASH_B);
+    }
+  });
+
+  it("repriced → same as replaced (final hash in record + post)", async () => {
+    const store = createMemoryIrysDepositRecordStore();
+    const key = irysDepositRecordKey({
+      namespace: 84532,
+      payer: EVM_PAYER,
+      bundlerAddress: EVM_BUNDLER,
+    });
+    writeIrysDepositRecord(store, key, {
+      vm: "evm",
+      txHash: HASH_A,
+      amountBaseUnits: "100",
+      createdAt: Date.now(),
+    });
+    const { uploader } = fakeUploader({
+      price: "1000",
+      balance: "0",
+      bundler: EVM_BUNDLER,
+    });
+    let postedId: string | null = null;
+    await ensureIrysDeposit({
+      stack: EVM_STACK,
+      account: evmAccount(),
+      uploader,
+      totalBytes: 100,
+      paymentToken: "base-eth",
+      bundlerUrl: "https://devnet.irys.xyz",
+      ports: {
+        store,
+        waitEvmConfirmations: async () => ({
+          kind: "confirmed",
+          hash: HASH_C,
+        }),
+        postBundlerDeposit: async ({ txId }) => {
+          postedId = txId;
+          return { statusClass: "not_seen_yet", httpStatus: 400 };
+        },
+      },
+    });
+    assert.equal(postedId, HASH_C);
+    const after = readIrysDepositRecord(store, key, "evm");
+    assert.equal(after.kind, "record");
+    if (after.kind === "record" && after.record.vm === "evm") {
+      assert.equal(after.record.txHash, HASH_C);
+    }
+  });
+
+  it("cancelled (receipt present, reason cancelled) → cleared; deposit_cancelled; next sends once", async () => {
+    const store = createMemoryIrysDepositRecordStore();
+    const key = irysDepositRecordKey({
+      namespace: 84532,
+      payer: EVM_PAYER,
+      bundlerAddress: EVM_BUNDLER,
+    });
+    writeIrysDepositRecord(store, key, {
+      vm: "evm",
+      txHash: HASH_A,
+      amountBaseUnits: "100",
+      createdAt: Date.now(),
+    });
+    const { uploader } = fakeUploader({
+      price: "1000",
+      balance: "0",
+      bundler: EVM_BUNDLER,
+    });
+    let posted = 0;
+    const r1 = await ensureIrysDeposit({
+      stack: EVM_STACK,
+      account: evmAccount(),
+      uploader,
+      totalBytes: 100,
+      paymentToken: "base-eth",
+      bundlerUrl: "https://devnet.irys.xyz",
+      ports: {
+        store,
+        waitEvmConfirmations: async () => ({
+          kind: "cancelled",
+          originalHash: HASH_A,
+        }),
+        postBundlerDeposit: async () => {
+          posted += 1;
+          return { statusClass: "accepted", httpStatus: 200 };
+        },
+      },
+    });
+    assert.equal(r1.ok, false);
+    if (!r1.ok) assert.equal(r1.cause, "deposit_cancelled");
+    assert.equal(posted, 0);
+    assert.equal(readIrysDepositRecord(store, key, "evm").kind, "absent");
+    assert.match(
+      irysDepositCauseCopy("deposit_cancelled"),
+      /cancelled in the wallet/i,
+    );
+
+    let sends = 0;
+    const r2 = await ensureIrysDeposit({
+      stack: EVM_STACK,
+      account: evmAccount(),
+      uploader,
+      totalBytes: 100,
+      paymentToken: "base-eth",
+      bundlerUrl: "https://devnet.irys.xyz",
+      ports: {
+        store,
+        readEvmAccountKind: async () => "eoa",
+        sendEvmTransaction: {
+          sendTransaction: async () => {
+            sends += 1;
+            return HASH_B;
+          },
+        },
+        waitEvmConfirmations: async ({ txHash }) => ({
+          kind: "confirmed",
+          hash: txHash,
+        }),
+        postBundlerDeposit: async () => ({
+          statusClass: "not_seen_yet",
+          httpStatus: 400,
+        }),
+      },
+    });
+    assert.equal(r2.ok, false);
+    if (!r2.ok) assert.equal(r2.cause, "deposit_pending");
+    assert.equal(sends, 1);
+  });
+
+  it("timeout → record kept; deposit_pending", async () => {
+    const store = createMemoryIrysDepositRecordStore();
+    const key = irysDepositRecordKey({
+      namespace: 84532,
+      payer: EVM_PAYER,
+      bundlerAddress: EVM_BUNDLER,
+    });
+    writeIrysDepositRecord(store, key, {
+      vm: "evm",
+      txHash: HASH_A,
+      amountBaseUnits: "100",
+      createdAt: Date.now(),
+    });
+    const { uploader } = fakeUploader({
+      price: "1000",
+      balance: "0",
+      bundler: EVM_BUNDLER,
+    });
+    let posted = 0;
+    const r = await ensureIrysDeposit({
+      stack: EVM_STACK,
+      account: evmAccount(),
+      uploader,
+      totalBytes: 100,
+      paymentToken: "base-eth",
+      bundlerUrl: "https://devnet.irys.xyz",
+      ports: {
+        store,
+        waitEvmConfirmations: async () => ({ kind: "timeout" }),
+        postBundlerDeposit: async () => {
+          posted += 1;
+          return { statusClass: "accepted", httpStatus: 200 };
+        },
+      },
+    });
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.equal(r.cause, "deposit_pending");
+    assert.equal(posted, 0);
+    assert.equal(readIrysDepositRecord(store, key, "evm").kind, "record");
+  });
+
+  it("absent → exactly one send", async () => {
+    const store = createMemoryIrysDepositRecordStore();
+    const { uploader } = fakeUploader({
+      price: "1000",
+      balance: "0",
+      bundler: EVM_BUNDLER,
+    });
+    let sends = 0;
+    const r = await ensureIrysDeposit({
+      stack: EVM_STACK,
+      account: evmAccount(),
+      uploader,
+      totalBytes: 100,
+      paymentToken: "base-eth",
+      bundlerUrl: "https://devnet.irys.xyz",
+      ports: {
+        store,
+        readEvmAccountKind: async () => "eoa",
+        sendEvmTransaction: {
+          sendTransaction: async () => {
+            sends += 1;
+            return HASH_A;
+          },
+        },
+        waitEvmConfirmations: async ({ txHash }) => ({
+          kind: "confirmed",
+          hash: txHash,
+        }),
+        postBundlerDeposit: async () => ({
+          statusClass: "not_seen_yet",
+          httpStatus: 400,
+        }),
+      },
+    });
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.equal(r.cause, "deposit_pending");
+    assert.equal(sends, 1);
+  });
+
+  it("runTx pin: confirmEvmTransaction still plain receipt; confirmations return outcome", () => {
+    const confirm = readFileSync(EVM_TX_CONFIRM, "utf8");
+    assert.match(
+      confirm,
+      /export async function confirmEvmTransaction\([\s\S]*?\): Promise<TransactionReceipt>/,
+    );
+    assert.match(confirm, /EvmDepositConfirmOutcome/);
+    assert.match(confirm, /kind: "confirmed"/);
+    assert.match(confirm, /kind: "cancelled"/);
+    assert.match(confirm, /kind: "timeout"/);
+    assert.match(confirm, /onReplaced/);
+    assert.match(confirm, /reason === "cancelled"/);
+    // confirmEvmTransaction itself must not take onReplaced
+    const plainFn = confirm.slice(
+      confirm.indexOf("export async function confirmEvmTransaction"),
+      confirm.indexOf("export type EvmDepositConfirmOutcome"),
+    );
+    assert.equal(/onReplaced/.test(plainFn), false);
+
+    const lifecycle = readFileSync(EVM_WRITE_LIFECYCLE, "utf8");
+    assert.match(lifecycle, /confirmEvmTransaction/);
+    assert.equal(/confirmEvmTransactionConfirmations/.test(lifecycle), false);
+
+    const deposit = readFileSync(IRYS_DEPOSIT, "utf8");
+    assert.match(deposit, /EvmDepositConfirmOutcome/);
+    assert.match(deposit, /deposit_cancelled/);
+    assert.equal(/record\.txId as `0x\$\{string\}`/.test(deposit), false);
+    assert.equal(/txId as `0x\$\{string\}`/.test(deposit), false);
   });
 });
 
@@ -726,10 +1263,17 @@ describe("irys deposit — wire + gates", () => {
     assert.match(deposit, /readIrysEvmMinConfirm/);
     assert.match(deposit, /deposit_record_unreadable/);
     assert.match(deposit, /deposit_expired/);
+    assert.match(deposit, /deposit_cancelled/);
+
+    const record = readFileSync(IRYS_DEPOSIT_RECORD, "utf8");
+    assert.match(record, /kind: "absent"/);
+    assert.match(record, /kind: "unreadable"/);
+    assert.equal(/catch \{\s*return null/.test(record), false);
 
     const confirm = readFileSync(EVM_TX_CONFIRM, "utf8");
     assert.match(confirm, /confirmEvmTransactionConfirmations/);
     assert.match(confirm, /waitForTransactionReceipt/);
+    assert.match(confirm, /onReplaced/);
 
     const hook = readFileSync(DEPOSIT_HOOK, "utf8");
     assert.match(hook, /useEvmSendTransaction/);
@@ -741,15 +1285,12 @@ describe("irys deposit — wire + gates", () => {
     const owners = new Set([
       EVM_WRITE_ADAPTER,
       EVM_TX_CONFIRM,
-      // wagmi adapter is the send owner; confirm owner holds receipt wait
     ]);
     const banned =
       /\beth_sendTransaction\b|\beth_accounts\b|\bwaitForTransactionReceipt\b/;
     const scan = scanProductSources((text, relativePath) => {
       if (owners.has(relativePath)) return false;
       if (!banned.test(text)) return false;
-      // Deposit must never carry these; other product files may mention in comments —
-      // only flag when the deposit module or raw EIP-1193 deposit path reappears.
       if (
         relativePath === IRYS_DEPOSIT ||
         relativePath.includes("irys-deposit")
@@ -819,7 +1360,7 @@ describe("irys deposit — wire + gates", () => {
   it("probe refuses when setItem throws", () => {
     assert.equal(
       probeIrysDepositRecordStoreWritable({
-        getItem: () => null,
+        getItem: (): IrysDepositStoreGetResult => ({ kind: "absent" }),
         setItem: () => {
           throw new Error("no");
         },

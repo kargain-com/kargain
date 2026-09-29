@@ -7,6 +7,7 @@
  */
 
 import type { Wallet } from "@wallet-standard/base";
+import { getAddress, isAddress } from "viem";
 
 import { estimateIrysUploadBytes } from "@/lib/storage/irys-upload-estimate";
 import {
@@ -32,6 +33,7 @@ import {
   type CommercialActiveStack,
   type SvmCommercialActiveStack,
 } from "@/lib/web3/commercial-active";
+import type { EvmDepositConfirmOutcome } from "@/lib/web3/evm-tx-confirm";
 import { createProductSvmFundingTxConfirmPort } from "@/lib/web3/svm-rpc";
 import {
   sendSvmNativeTransfer,
@@ -95,6 +97,7 @@ export function readIrysEvmMinConfirm(
 export type IrysDepositCause =
   | "deposit_record_unavailable"
   | "deposit_record_unreadable"
+  | "deposit_cancelled"
   | "deposit_contract_wallet"
   | "deposit_pending"
   | "deposit_expired"
@@ -114,7 +117,7 @@ export type IrysDepositResult =
       detail?: string;
       /** Typed write/switch guard when cause is deposit_write_unavailable. */
       guard?: TxWriteGuardPayload;
-      /** Shown truncated in deposit_record_unreadable copy. */
+      /** Shown truncated in deposit_record_unreadable copy when present. */
       txId?: string;
     };
 
@@ -143,12 +146,13 @@ export type IrysDepositPorts = {
   /**
    * EVM confirmations wait — wraps {@link confirmEvmTransactionConfirmations}.
    * Required for EVM resolve; no default in product (hook injects).
+   * Returns typed outcome (final hash / cancelled / timeout).
    */
   waitEvmConfirmations?: (args: {
     chainId: number;
     txHash: `0x${string}`;
     minConfirmations: number;
-  }) => Promise<void>;
+  }) => Promise<EvmDepositConfirmOutcome>;
   /** Injectable bundler POST (defaults to {@link postIrysBundlerDepositTx}). */
   postBundlerDeposit?: (args: {
     bundlerUrl: string;
@@ -166,12 +170,13 @@ export function irysDepositCauseCopy(
     case "deposit_record_unavailable":
       return "Storage deposit could not be tracked in this browser. Enable site storage and try again.";
     case "deposit_record_unreadable": {
-      const id =
-        opts?.txId != null && opts.txId.length > 0
-          ? shortAddress(opts.txId)
-          : "unknown";
-      return `The previous storage deposit's status cannot be read. Contact support with transaction ${id}. Do not deposit again until this is resolved.`;
+      if (opts?.txId != null && opts.txId.length > 0) {
+        return `The previous storage deposit's status cannot be read. Contact support with transaction ${shortAddress(opts.txId)}. Do not deposit again until this is resolved.`;
+      }
+      return "The previous storage deposit's status cannot be read. Contact support. Do not deposit again until this is resolved.";
     }
+    case "deposit_cancelled":
+      return "The previous storage deposit was cancelled in the wallet. Nothing was sent to storage. Try again.";
     case "deposit_contract_wallet":
       return "Smart contract wallets cannot deposit to Irys storage. Switch to a standard wallet (EOA) for upload.";
     case "deposit_pending":
@@ -269,6 +274,10 @@ function neededDepositAmount(price: bigint, balance: bigint): bigint {
   );
 }
 
+function recordTxId(record: IrysDepositRecord): string {
+  return record.vm === "evm" ? record.txHash : record.signature;
+}
+
 async function resolveOpenRecord(args: {
   stack: CommercialActiveStack;
   uploader: IrysDepositUploader;
@@ -286,19 +295,19 @@ async function resolveOpenRecord(args: {
     return { ok: true };
   }
 
+  let postTxId = recordTxId(args.record);
+
   if (args.stack.vm === "svm") {
-    const heightRaw = args.record.lastValidBlockHeight;
-    if (heightRaw == null || heightRaw.length === 0) {
-      // Keep record — fate of the transfer is unknown; never reopen payment.
-      return refuse("deposit_record_unreadable", { txId: args.record.txId });
+    if (args.record.vm !== "svm") {
+      return refuse("deposit_record_unreadable");
     }
     const confirm =
       args.ports.confirmSvmFunding ??
       createProductSvmFundingTxConfirmPort(args.stack);
     const outcome = await confirm.confirmSubmission({
       vm: "svm",
-      signature: args.record.txId,
-      lastValidBlockHeight: BigInt(heightRaw),
+      signature: args.record.signature,
+      lastValidBlockHeight: BigInt(args.record.lastValidBlockHeight),
     });
     if (outcome.kind === "expired") {
       clearIrysDepositRecord(args.store, args.key);
@@ -313,6 +322,9 @@ async function resolveOpenRecord(args: {
     }
     // landed_ok at finalized → POST
   } else {
+    if (args.record.vm !== "evm") {
+      return refuse("deposit_record_unreadable");
+    }
     const minConfirm = readIrysEvmMinConfirm(args.uploader);
     if (minConfirm == null) {
       return refuse("deposit_unknown_token");
@@ -321,10 +333,11 @@ async function resolveOpenRecord(args: {
     if (wait == null) {
       return refuse("deposit_send_failed", { detail: "missing_evm_confirm_port" });
     }
+    let outcome: EvmDepositConfirmOutcome;
     try {
-      await wait({
+      outcome = await wait({
         chainId: Number(args.stack.namespace),
-        txHash: args.record.txId as `0x${string}`,
+        txHash: args.record.txHash,
         minConfirmations: minConfirm,
       });
     } catch (err) {
@@ -338,6 +351,25 @@ async function resolveOpenRecord(args: {
       }
       return refuse("deposit_pending");
     }
+    if (outcome.kind === "cancelled") {
+      clearIrysDepositRecord(args.store, args.key);
+      return refuse("deposit_cancelled");
+    }
+    if (outcome.kind === "timeout") {
+      return refuse("deposit_pending", { detail: "evm_confirmations_timeout" });
+    }
+    postTxId = outcome.hash;
+    if (outcome.hash !== args.record.txHash) {
+      const rewritten: IrysDepositRecord = {
+        vm: "evm",
+        txHash: outcome.hash,
+        amountBaseUnits: args.record.amountBaseUnits,
+        createdAt: args.record.createdAt,
+      };
+      if (!writeIrysDepositRecord(args.store, args.key, rewritten)) {
+        return refuse("deposit_record_unavailable");
+      }
+    }
   }
 
   const post =
@@ -347,7 +379,7 @@ async function resolveOpenRecord(args: {
   const posted = await post({
     bundlerUrl: args.bundlerUrl.replace(/\/$/, ""),
     token: args.paymentToken,
-    txId: args.record.txId,
+    txId: postTxId,
   });
   if (posted.statusClass === "accepted") {
     clearIrysDepositRecord(args.store, args.key);
@@ -387,8 +419,7 @@ async function sendNewDeposit(args: {
   );
   const amountBase = args.needed;
 
-  let txId: string;
-  let lastValidBlockHeight: string | undefined;
+  let record: IrysDepositRecord;
 
   try {
     if (args.stack.vm === "svm") {
@@ -414,8 +445,13 @@ async function sendNewDeposit(args: {
       if (!sent.ok) {
         return refuse("deposit_send_failed", { detail: sent.cause });
       }
-      txId = sent.submission.signature;
-      lastValidBlockHeight = sent.submission.lastValidBlockHeight.toString();
+      record = {
+        vm: "svm",
+        signature: sent.submission.signature,
+        lastValidBlockHeight: sent.submission.lastValidBlockHeight.toString(),
+        amountBaseUnits: amountBase.toString(),
+        createdAt: Date.now(),
+      };
     } else {
       if (args.account.vm !== "evm" || avail.vm !== "evm") {
         return refuse("deposit_write_unavailable", {
@@ -453,11 +489,22 @@ async function sendNewDeposit(args: {
       if (sendPort == null) {
         return refuse("deposit_send_failed", { detail: "missing_evm_port" });
       }
-      txId = await sendPort.sendTransaction({
-        to: bundlerAddress as `0x${string}`,
+      if (!isAddress(bundlerAddress)) {
+        return refuse("deposit_send_failed", {
+          detail: "bundler_address_unusable",
+        });
+      }
+      const txHash = await sendPort.sendTransaction({
+        to: getAddress(bundlerAddress),
         value: amountBase,
         chainId: ns,
       });
+      record = {
+        vm: "evm",
+        txHash,
+        amountBaseUnits: amountBase.toString(),
+        createdAt: Date.now(),
+      };
     }
   } catch (err) {
     if (isWalletRejection(err)) return refuse("wallet_rejected");
@@ -473,12 +520,6 @@ async function sendNewDeposit(args: {
     });
   }
 
-  const record: IrysDepositRecord = {
-    txId,
-    amountBaseUnits: amountBase.toString(),
-    createdAt: Date.now(),
-    ...(lastValidBlockHeight != null ? { lastValidBlockHeight } : {}),
-  };
   if (!writeIrysDepositRecord(args.store, args.key, record)) {
     return refuse("deposit_record_unavailable");
   }
@@ -538,12 +579,15 @@ export async function ensureIrysDeposit(args: {
     return { ok: true };
   }
 
-  const open = readIrysDepositRecord(store, key);
-  if (open != null) {
+  const open = readIrysDepositRecord(store, key, args.stack.vm);
+  if (open.kind === "unreadable") {
+    return refuse("deposit_record_unreadable");
+  }
+  if (open.kind === "record") {
     return resolveOpenRecord({
       stack: args.stack,
       uploader: args.uploader,
-      record: open,
+      record: open.record,
       key,
       store,
       ports,

@@ -39,6 +39,8 @@ export const VM_BRANCH_ALLOWLIST = [
   "lib/storage/irys-upload-plan.ts",
   // Unit B Irys deposit — dual-VM owner (EVM wagmi inject / SVM System Transfer).
   "lib/storage/irys-deposit.ts",
+  // Unit B2 — VM-tagged deposit record parse (evm|svm discriminant at reader).
+  "lib/storage/irys-deposit-record.ts",
   // П-8 Irys session door — account.vm fork lives here, not in wizards.
   "lib/passport/upload-passport-metadata.ts",
   // U6 set-URI write owner — VM fork for EVM/SVM arms; panels stay blind.

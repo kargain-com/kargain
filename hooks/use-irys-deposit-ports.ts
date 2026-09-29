@@ -38,14 +38,13 @@ export function useIrysDepositPorts(
         sendTransactionAsync({ to, value, chainId }),
     },
     switchChain: (chainId) => switchChain(chainId),
-    waitEvmConfirmations: async ({ txHash, minConfirmations, chainId }) => {
-      await confirmEvmTransactionConfirmations(
+    waitEvmConfirmations: ({ txHash, minConfirmations, chainId }) =>
+      confirmEvmTransactionConfirmations(
         config,
         txHash,
         minConfirmations,
         chainId,
-      );
-    },
+      ),
   };
 
   const ns = commercialNamespaceOf(account);

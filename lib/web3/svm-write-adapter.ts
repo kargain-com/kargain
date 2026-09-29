@@ -14,6 +14,7 @@ import {
   compileTransaction,
   createTransactionMessage,
   getBase58Decoder,
+  getBase58Encoder,
   getTransactionEncoder,
   pipe,
   setTransactionMessageFeePayer,
@@ -92,6 +93,19 @@ export function walletStandardSignatureBase58(
     return { ok: false, cause: "wallet_returned_no_signature" };
   }
   return { ok: true, signature };
+}
+
+/**
+ * Stored base58 string → true iff kit encodes to exactly 64 Ed25519 bytes.
+ * Deposit-record reader consumes this — never imports kit itself.
+ */
+export function isWalletStandardSignatureBase58(signature: string): boolean {
+  try {
+    const bytes = getBase58Encoder().encode(signature);
+    return bytes.byteLength === WALLET_STANDARD_SIGNATURE_BYTE_LENGTH;
+  } catch {
+    return false;
+  }
 }
 
 export type SvmWriteAccountMeta = {
