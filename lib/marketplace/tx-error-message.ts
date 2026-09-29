@@ -13,9 +13,9 @@ import {
   decodeCustomErrorData,
   type DecodedCustomError,
 } from "@/lib/web3/decode-custom-error";
-import { svmProgramErrorName } from "@/lib/web3/svm-program-errors";
 import {
   writeConfirmExpiredCopy,
+  writeConfirmFailedCopy,
   writeConfirmRevertedCopy,
   writeConfirmStatusUnknownCopy,
   writeConfirmSupersededCopy,
@@ -38,9 +38,9 @@ import {
 
 /**
  * Exact error-name → user copy. Every production custom error must appear here with a
- * distinct message. Resolution uses whole-identifier match + longest-name wins (no list order).
- * Errors whose ABI args are rendered by `formatDecodedRevert` keep a static fallback here
- * for when decode fails (fail closed — never invent a confident wrong statement).
+ * distinct message. Product chrome reaches these via ABI decode (viem / returndata), never
+ * via message-text sniff. Errors whose ABI args are rendered by `formatDecodedRevert` keep a
+ * static fallback here for when decode fails (fail closed — never invent a confident wrong statement).
  */
 export const REVERT_COPY: Readonly<Record<string, string>> = {
   NotOwner: "Only the passport owner can do this.",
@@ -224,8 +224,6 @@ export const REVERT_COPY: Readonly<Record<string, string>> = {
   ConfidenceTooWide: "The oracle price confidence interval is too wide.",
 };
 
-const ERROR_NAMES = Object.keys(REVERT_COPY).sort((a, b) => b.length - a.length);
-
 /** Production contract ABIs tried in order for write-path custom-error decode. */
 const PRODUCTION_DECODE_ABIS: readonly Abi[] = [
   COMMERCIAL_CONTRACT_ABIS.KarPassport as Abi,
@@ -343,17 +341,6 @@ export function formatDecodedRevert(
   return null;
 }
 
-/** Whole-identifier match; longest matching name wins (order-independent). */
-export function resolveRevertCopy(message: string): string | null {
-  let best: string | null = null;
-  for (const name of ERROR_NAMES) {
-    const re = new RegExp(`(^|[^A-Za-z0-9_])${name}([^A-Za-z0-9_]|$)`);
-    if (!re.test(message)) continue;
-    if (best == null || name.length > best.length) best = name;
-  }
-  return best == null ? null : REVERT_COPY[best]!;
-}
-
 /** Format BidTooLow with mono min-bid + increment % (blueprint §4.3). */
 export function formatBidTooLowMessage(
   minNextBidLabel: string,
@@ -368,68 +355,6 @@ export function formatPassportBridgeBlockedMessage(): string {
   return "Resolve the open challenge before bridging.";
 }
 
-/**
- * Extract a Solana custom-program error ordinal from a thrown value.
- * Matches Anchor / kit shapes: `Custom(N)`, `custom program error: 0x…`, or `{ InstructionError: [_, { Custom: N }] }`.
- * Returns null when no ordinal is present (fail closed — no invented name).
- */
-export function extractSvmProgramErrorOrdinal(error: unknown): number | null {
-  if (error == null) return null;
-
-  if (typeof error === "object") {
-    const rec = error as Record<string, unknown>;
-    const direct = rec.Custom ?? rec.custom;
-    if (typeof direct === "number" && Number.isInteger(direct) && direct >= 0) {
-      return direct;
-    }
-    const instructionError = rec.InstructionError;
-    if (Array.isArray(instructionError) && instructionError.length >= 2) {
-      const inner = instructionError[1];
-      if (inner && typeof inner === "object") {
-        const custom = (inner as Record<string, unknown>).Custom;
-        if (typeof custom === "number" && Number.isInteger(custom) && custom >= 0) {
-          return custom;
-        }
-      }
-    }
-  }
-
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === "string"
-        ? error
-        : "";
-  if (!message) return null;
-
-  const customParen = message.match(/\bCustom\((\d+)\)/);
-  if (customParen) return Number(customParen[1]);
-
-  const hex = message.match(/custom program error:\s*0x([0-9a-fA-F]+)/i);
-  if (hex) {
-    const n = Number.parseInt(hex[1]!, 16);
-    return Number.isInteger(n) && n >= 0 ? n : null;
-  }
-
-  const decimal = message.match(/custom program error:\s*(\d+)/i);
-  if (decimal) return Number(decimal[1]);
-
-  return null;
-}
-
-/**
- * Map an SVM program failure to the shared error name (no args — D-43).
- */
-export function decodeSvmProgramError(
-  error: unknown,
-): DecodedCustomError | null {
-  const ordinal = extractSvmProgramErrorOrdinal(error);
-  if (ordinal == null) return null;
-  const name = svmProgramErrorName(ordinal);
-  if (name == null) return null;
-  return { name, args: [] };
-}
-
 function landedWithErrorCopy(
   landed: SvmLandedInstructionError | null,
 ): string {
@@ -437,9 +362,13 @@ function landedWithErrorCopy(
     const staticCopy = REVERT_COPY[landed.name];
     if (staticCopy != null) return staticCopy;
   }
-  return "Transaction failed.";
+  return writeConfirmFailedCopy();
 }
 
+/**
+ * Sole product write chrome for thrown write failures.
+ * Typed refusals and ABI-decoded custom errors only — never message text.
+ */
 export function txErrorMessage(err: unknown): string {
   if (isSvmWriteOwnerRefusal(err)) {
     return svmWriteOwnerRefusalCopy(err);
@@ -449,7 +378,6 @@ export function txErrorMessage(err: unknown): string {
     return walletRejectionCopy();
   }
 
-  // Landed SVM confirm: structured InstructionError before any message path.
   if (isSvmConfirmRefusal(err)) {
     if (err.outcome.kind === "expired") {
       return writeConfirmExpiredCopy();
@@ -479,8 +407,7 @@ export function txErrorMessage(err: unknown): string {
     return txWriteGuardRefusalCopy(err.refusal);
   }
 
-  const decoded =
-    decodeProductionCustomError(err) ?? decodeSvmProgramError(err);
+  const decoded = decodeProductionCustomError(err);
   if (decoded != null) {
     const enriched = formatDecodedRevert(decoded);
     if (enriched != null) return enriched;
@@ -488,10 +415,5 @@ export function txErrorMessage(err: unknown): string {
     if (staticCopy != null) return staticCopy;
   }
 
-  if (err instanceof Error && err.message.trim()) {
-    const mapped = resolveRevertCopy(err.message);
-    if (mapped) return mapped;
-    return err.message.length > 160 ? `${err.message.slice(0, 160)}…` : err.message;
-  }
-  return "Transaction failed.";
+  return writeConfirmFailedCopy();
 }

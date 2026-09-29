@@ -388,10 +388,21 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "custom-error-coverage",
     owner: "contracts ABIs · Hardhat suites · lib/marketplace/tx-error-message.ts · svm/crates/kargain-errors",
-    rule: "Declared custom errors have revertsWith; Rust KargainError names mirror Solidity (SVM-only allowlist); UI names money-path outcomes",
+    rule: "Declared custom errors have revertsWith; Rust KargainError names mirror Solidity (SVM-only allowlist); UI names money-path outcomes via ABI decode + typed refusals only — never resolveRevertCopy / err.message / unattributed SVM ordinal-from-text",
     guardTests: [
       "error-coverage-policy.test.ts",
       "error-name-truth-policy.test.ts",
+      "tx-error-message-coverage.test.ts",
+      "write-error-message-policy.test.ts",
+    ],
+  },
+  {
+    id: "tx-error-message",
+    owner:
+      "lib/marketplace/tx-error-message.ts · lib/web3/write-confirm-copy.ts (writeConfirmFailedCopy)",
+    rule: "Sole write UI sentence owner: typed refusals + production ABI decode only; ban raw Error.message / resolveRevertCopy / decodeSvmProgramError; generic = writeConfirmFailedCopy",
+    guardTests: [
+      "write-error-message-policy.test.ts",
       "tx-error-message-coverage.test.ts",
     ],
   },

@@ -1,6 +1,7 @@
 /**
  * Sole sentences for non-ok write confirm outcomes that are not program errors.
  * Covers both VMs: expired / status_unknown (SVM) and reverted / superseded (EVM).
+ * Also owns the generic write-failure sentence when no typed refusal or ABI name applies.
  */
 
 export function writeConfirmExpiredCopy(): string {
@@ -17,4 +18,9 @@ export function writeConfirmRevertedCopy(): string {
 
 export function writeConfirmSupersededCopy(): string {
   return "The transaction was cancelled or replaced in your wallet. Nothing was written.";
+}
+
+/** Generic write failure when no typed refusal or ABI-decoded custom error applies. */
+export function writeConfirmFailedCopy(): string {
+  return "Transaction failed. Try again.";
 }

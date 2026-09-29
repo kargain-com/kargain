@@ -24,6 +24,7 @@ import { formatWindowDurationLabel } from "@/lib/commerce/format-window-duration
 import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
 import {
+  decodeProductionCustomError,
   formatBidTooLowMessage,
   txErrorMessage,
 } from "@/lib/marketplace/tx-error-message";
@@ -194,8 +195,7 @@ export function AuctionBidPanel({
     insufficientBalance;
 
   const mapBidError = (err: unknown): string => {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("BidTooLow")) {
+    if (decodeProductionCustomError(err)?.name === "BidTooLow") {
       return formatBidTooLowMessage(minLabel, minIncrementBps);
     }
     return txErrorMessage(err);

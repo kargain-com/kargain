@@ -37,23 +37,45 @@ export class BridgeUriTooLongError extends Error {
   readonly max?: number;
 
   constructor(result: LzReceiveGasCapExceeded | LzReceiveUriCeilingExceeded) {
+    super(bridgeUriTooLongCopyFromResult(result));
     if (result.reason === "exceeds_uri_ceiling") {
-      super(
-        `This passport metadata URI is too long to bridge (${result.length} bytes, max ${result.max}). Shorten the token URI and try again.`,
-      );
       this.reason = "exceeds_uri_ceiling";
       this.length = result.length;
       this.max = result.max;
     } else {
-      super(
-        `This passport metadata URI is too long to bridge safely (${result.required} gas needed, cap ${result.cap}). Shorten the token URI and try again.`,
-      );
       this.reason = "exceeds_cap";
       this.required = result.required;
       this.cap = result.cap;
     }
     this.name = "BridgeUriTooLongError";
   }
+}
+
+/** Sole chrome sentence for a BridgeUriTooLongError — never read Error.message. */
+export function bridgeUriTooLongCopy(err: BridgeUriTooLongError): string {
+  if (err.reason === "exceeds_uri_ceiling") {
+    return bridgeUriTooLongCopyFromResult({
+      ok: false,
+      reason: "exceeds_uri_ceiling",
+      length: err.length ?? 0,
+      max: err.max ?? 0,
+    });
+  }
+  return bridgeUriTooLongCopyFromResult({
+    ok: false,
+    reason: "exceeds_cap",
+    required: err.required ?? 0,
+    cap: err.cap ?? 0,
+  });
+}
+
+function bridgeUriTooLongCopyFromResult(
+  result: LzReceiveGasCapExceeded | LzReceiveUriCeilingExceeded,
+): string {
+  if (result.reason === "exceeds_uri_ceiling") {
+    return `This passport metadata URI is too long to bridge (${result.length} bytes, max ${result.max}). Shorten the token URI and try again.`;
+  }
+  return `This passport metadata URI is too long to bridge safely (${result.required} gas needed, cap ${result.cap}). Shorten the token URI and try again.`;
 }
 
 /** Executor lzReceive option hex for the given gas units (value=0). */

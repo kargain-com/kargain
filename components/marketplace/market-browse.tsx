@@ -168,7 +168,9 @@ export function MarketBrowse({ initialListingsPage, chainId }: MarketBrowseProps
         {isError && (
           <div className="mb-4 rounded-md border border-status-error bg-bg-card p-4" role="alert">
             <p className="text-sm font-medium text-status-error">Could not load listings right now.</p>
-            <p className="mt-1 text-xs text-status-error">{(error as Error).message}</p>
+            <p className="mt-1 text-xs text-status-error">
+              Listings could not be loaded. Try again.
+            </p>
           </div>
         )}
 

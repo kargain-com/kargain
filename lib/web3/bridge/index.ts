@@ -43,6 +43,7 @@ export {
 export { quoteMessagingFee } from "./bridge-quote";
 export {
   BridgeUriTooLongError,
+  bridgeUriTooLongCopy,
   buildSendParam,
   encodeLzReceiveExtraOptions,
   sendArgs,

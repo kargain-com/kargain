@@ -16,6 +16,7 @@ import {
   type CommonsReviewKind,
 } from "@/lib/vincent-commons/review";
 import { buildWmiClaim } from "@/lib/vincent-commons/wmi-claim";
+import { isWalletRejection } from "@/lib/web3/wallet-rejection";
 
 const WMI_BUILD_ERROR_COPY: Record<string, string> = {
   "manufacturer-required": "Manufacturer is required.",
@@ -28,7 +29,7 @@ function wmiBuildErrorMessage(reason: string): string {
 }
 
 function isUserRejected(error: unknown): boolean {
-  return error instanceof Error && /user rejected|user denied/i.test(error.message);
+  return isWalletRejection(error);
 }
 
 export type ProposalFormFields = {

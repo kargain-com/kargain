@@ -17,7 +17,6 @@ import {
   KarPassportBridgeGatewayAbi,
 } from "@/lib/contracts/abis.generated";
 import {
-  formatPassportBridgeBlockedMessage,
   txErrorMessage,
 } from "@/lib/marketplace/tx-error-message";
 import {
@@ -36,6 +35,7 @@ import {
   bridgeCounterpartChainId,
   bridgeDstEid,
   bridgeTokenAddress,
+  bridgeUriTooLongCopy,
   buildSendParam,
   getBridgeReadClient,
   layerZeroScanTxUrl,
@@ -58,14 +58,7 @@ export type BridgePhase =
 
 function mapBridgeError(err: unknown): string {
   if (err instanceof BridgeUriTooLongError) {
-    return err.message;
-  }
-  const msg = err instanceof Error ? err.message : String(err);
-  if (msg.includes("LeaveChainRefused")) {
-    return "This passport cannot leave the chain right now (encumbrance refused).";
-  }
-  if (msg.includes("PassportDisputed")) {
-    return formatPassportBridgeBlockedMessage();
+    return bridgeUriTooLongCopy(err);
   }
   return txErrorMessage(err);
 }

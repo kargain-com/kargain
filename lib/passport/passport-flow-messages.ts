@@ -61,8 +61,8 @@ export function uploadProgressSubtitle(context: PassportFlowContext): string {
   return `${cap} ${storage}`;
 }
 
-export function passportImageOptimizeErrorMessage(err: unknown): string {
-  if (err instanceof Error && err.message) return err.message;
+/** Sole chrome sentence for photo optimize failure — never Error.message. */
+export function passportImageOptimizeErrorMessage(_err?: unknown): string {
   return "Could not optimize one or more photos. Try different images.";
 }
 

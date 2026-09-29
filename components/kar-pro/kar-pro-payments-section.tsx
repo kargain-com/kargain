@@ -126,7 +126,7 @@ export function KarProPaymentsSection({ chainId, address }: KarProPaymentsSectio
       setMethodsSaved(true);
       setLud16Editing(false);
     } catch (err) {
-      setMethodsError(err instanceof Error ? err.message : "Save failed. Try again.");
+      setMethodsError("Could not save payment methods. Try again.");
     } finally {
       setMethodsSaving(false);
     }

@@ -8,7 +8,8 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { REVERT_COPY, txErrorMessage, decodeSvmProgramError } from "../lib/marketplace/tx-error-message.ts";
+import { REVERT_COPY, txErrorMessage } from "../lib/marketplace/tx-error-message.ts";
+import { writeConfirmFailedCopy } from "../lib/web3/write-confirm-copy.ts";
 import { commercialActive } from "../lib/web3/commercial-active.ts";
 import { mintKargainNamespace } from "../lib/web3/kargain-namespace.ts";
 import {
@@ -166,29 +167,28 @@ describe("svm program error ordinals", () => {
     }
   });
 
-  it("decodes Custom(ordinal) to REVERT_COPY via the shared name (D-43, no args)", () => {
-    const decoded = decodeSvmProgramError(new Error("Custom(2)"));
-    assert.ok(decoded);
-    assert.equal(decoded!.name, "NotActiveVerifier");
-    assert.deepEqual(decoded!.args, []);
-    const copy = txErrorMessage(new Error("Custom(2)"));
-    assert.equal(copy, REVERT_COPY.NotActiveVerifier);
+  it("message-only Custom(ordinal) never invents REVERT_COPY via text (Unit E)", () => {
+    assert.equal(
+      txErrorMessage(new Error("Custom(2)")),
+      writeConfirmFailedCopy(),
+    );
   });
 
-  it("Custom(1) is NotOwner; IllegalOwner is not a mapped name", () => {
-    const decoded = decodeSvmProgramError(new Error("Custom(1)"));
-    assert.ok(decoded);
-    assert.equal(decoded!.name, "NotOwner");
-    assert.deepEqual(decoded!.args, []);
-    assert.equal(txErrorMessage(new Error("Custom(1)")), REVERT_COPY.NotOwner);
+  it("Custom(1) message text is not NotOwner; ordinal table still names NotOwner", () => {
+    assert.equal(
+      txErrorMessage(new Error("Custom(1)")),
+      writeConfirmFailedCopy(),
+    );
     assert.equal(SVM_PROGRAM_ERROR_BY_ORDINAL[1], "NotOwner");
   });
 
-  it("maps ConfidenceTooWide (SVM-only) from ordinal without inventing params", () => {
+  it("InstructionError Custom shape without landed typed refusal is generic", () => {
     const ordinal = SVM_PROGRAM_ERROR_BY_ORDINAL.indexOf("ConfidenceTooWide");
     assert.ok(ordinal >= 0);
-    const copy = txErrorMessage({ InstructionError: [0, { Custom: ordinal }] });
-    assert.equal(copy, REVERT_COPY.ConfidenceTooWide);
+    assert.equal(
+      txErrorMessage({ InstructionError: [0, { Custom: ordinal }] }),
+      writeConfirmFailedCopy(),
+    );
   });
 
   it("catches a planted ordinal name missing from REVERT_COPY (red→green)", () => {

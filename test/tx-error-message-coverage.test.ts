@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { REVERT_COPY, resolveRevertCopy } from "../lib/marketplace/tx-error-message.ts";
+import { REVERT_COPY } from "../lib/marketplace/tx-error-message.ts";
 import {
   ERROR_COVERAGE_REGISTRY,
   LIB_ERROR_COVERAGE_REGISTRY,
@@ -78,34 +78,23 @@ describe("tx-error-message coverage", () => {
     );
   });
 
-  it("substring name pairs resolve to the longer name by construction", () => {
+  it("substring name pairs keep distinct REVERT_COPY sentences", () => {
     const names = Object.keys(REVERT_COPY);
     for (const longer of names) {
       for (const shorter of names) {
         if (longer === shorter) continue;
         if (!longer.includes(shorter)) continue;
-        const message = `reverted with custom error ${longer}()`;
-        assert.equal(
-          resolveRevertCopy(message),
+        assert.notEqual(
           REVERT_COPY[longer],
-          `${longer} containing ${shorter} must resolve to ${longer}`,
+          REVERT_COPY[shorter],
+          `${longer} and ${shorter} must not share chrome copy`,
         );
       }
     }
   });
 
-  it("NotSellerOrAgent resolves to its own copy", () => {
-    assert.equal(
-      resolveRevertCopy("reverted with custom error NotSellerOrAgent()"),
-      REVERT_COPY.NotSellerOrAgent,
-    );
-  });
-
-  it("NotConsignmentSeller wins over NotConsignmentRunner substrings", () => {
-    assert.equal(
-      resolveRevertCopy("reverted with custom error NotConsignmentSeller()"),
-      REVERT_COPY.NotConsignmentSeller,
-    );
+  it("NotSellerOrAgent and NotConsignmentSeller keep distinct copy", () => {
+    assert.ok(REVERT_COPY.NotSellerOrAgent);
     assert.notEqual(
       REVERT_COPY.NotConsignmentSeller,
       REVERT_COPY.NotConsignmentRunner,
@@ -140,5 +129,16 @@ describe("tx-error-message coverage", () => {
     ]) {
       assert.equal(REVERT_COPY[retired], undefined, `${retired} must be removed`);
     }
+  });
+
+  it("owner source has no resolveRevertCopy / decodeSvmProgramError / raw message arm", () => {
+    const src = fs.readFileSync(
+      path.join(ROOT, "lib/marketplace/tx-error-message.ts"),
+      "utf8",
+    );
+    assert.doesNotMatch(src, /\bresolveRevertCopy\b/);
+    assert.doesNotMatch(src, /\bdecodeSvmProgramError\b/);
+    assert.doesNotMatch(src, /\bextractSvmProgramErrorOrdinal\b/);
+    assert.doesNotMatch(src, /err\.message/);
   });
 });

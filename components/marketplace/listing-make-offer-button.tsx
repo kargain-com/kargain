@@ -13,6 +13,7 @@ import {
   withdrawListingOffer,
 } from "@/lib/nostr/listing-offers";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
+import { writeConfirmFailedCopy } from "@/lib/web3/write-confirm-copy";
 import { hasListingAgent } from "@/lib/marketplace/listing-agent";
 
 type Props = {
@@ -98,7 +99,7 @@ export function ListingMakeOfferButton({
     } catch (err) {
       const msg = txErrorMessage(err);
       setError(
-        msg && msg !== "Transaction failed."
+        msg !== writeConfirmFailedCopy()
           ? msg
           : "Failed to publish offer. Please try again.",
       );

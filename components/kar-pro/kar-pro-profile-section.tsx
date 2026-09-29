@@ -20,10 +20,7 @@ import { arUriToHttp } from "@/lib/storage/ar-gateway";
 import { karProPassAddress } from "@/lib/web3/deployment-addresses";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
-import {
-  isWalletRejection,
-  walletRejectionCopy,
-} from "@/lib/web3/wallet-rejection";
+import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 
 type KarProProfileSectionProps = {
   chainId: number;
@@ -146,12 +143,7 @@ export function KarProProfileSection({
             chainId: wc,
           }),
         {
-          mapError: (err) =>
-            isWalletRejection(err)
-              ? walletRejectionCopy()
-              : err instanceof Error
-                ? err.message
-                : "Update failed. Try again.",
+          mapError: txErrorMessage,
         },
       );
       if (result.ok) {
@@ -159,7 +151,7 @@ export function KarProProfileSection({
         onUpdated?.();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Update failed. Try again.");
+      setError(txErrorMessage(err));
     } finally {
       setLoading(false);
     }

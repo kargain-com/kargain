@@ -34,10 +34,7 @@ import {
   commercialNetworkLabel,
   commercialNetworkLabelCauseCopy,
 } from "@/lib/web3/chain-selector-state";
-import {
-  isWalletRejection,
-  walletRejectionCopy,
-} from "@/lib/web3/wallet-rejection";
+import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type LoadingPhase = "idle" | "uploading";
@@ -188,18 +185,13 @@ export function KarProJoinForm({
             chainId: wc,
           }),
         {
-          mapError: (err) =>
-            isWalletRejection(err)
-              ? walletRejectionCopy()
-              : err instanceof Error
-                ? err.message
-                : "Something went wrong. Try again.",
+          mapError: txErrorMessage,
         },
       );
       if (result.ok) onSuccess();
     } catch (err) {
       setLoadingPhase("idle");
-      setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
+      setError(txErrorMessage(err));
     }
   };
 

@@ -367,7 +367,7 @@ function ConnectWalletDialog(props: {
 
           {connectError && (
             <p className="mt-3 font-sans text-xs text-status-error" role="alert">
-              {connectError.message}
+              Could not connect. Try again or choose another wallet.
             </p>
           )}
         </DialogContent>

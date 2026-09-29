@@ -35,7 +35,7 @@ import {
   AscendingConsignmentAbi,
   KarPassportAbi,
 } from "@/lib/contracts/abis.generated";
-import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
+import { REVERT_COPY } from "@/lib/marketplace/tx-error-message";
 import {
   commercialActive,
   nativeUnitOf,
@@ -232,7 +232,7 @@ export function AgentCreateAuctionPanel({
       return;
     }
     if (!meetsFloor) {
-      setTxError(txErrorMessage(new Error("BelowFloor")));
+      setTxError(REVERT_COPY.BelowFloor);
       return;
     }
 

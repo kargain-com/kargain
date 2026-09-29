@@ -24,10 +24,18 @@ import {
 export const PEER_REGISTRATION_DEADLINE_MS = 5_000;
 
 export class ContactPeerError extends Error {
-  constructor(message: string) {
-    super(message);
+  /** Owned chrome sentence — consumers must use this, never Error.message. */
+  readonly copy: string;
+
+  constructor(copy: string) {
+    super(copy);
+    this.copy = copy;
     this.name = "ContactPeerError";
   }
+}
+
+export function contactPeerErrorCopy(err: ContactPeerError): string {
+  return err.copy;
 }
 
 function mapSdkError(error: unknown): string {

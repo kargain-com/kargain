@@ -13,7 +13,7 @@ import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { usePeerMessagingReachability } from "@/hooks/use-peer-messaging-reachability";
 import { VerificationFeeDisplay } from "@/components/verifier/verification-fee-display";
 import { WalletLoginButton } from "@/components/wallet-login-button";
-import { ContactPeerError, contactPeer } from "@/lib/messaging/contact-peer";
+import { ContactPeerError, contactPeer, contactPeerErrorCopy } from "@/lib/messaging/contact-peer";
 import { setComposeDraft } from "@/lib/messaging/compose-draft";
 import {
   awaitActiveSnapshot,
@@ -150,10 +150,8 @@ export function VerificationRequestButton({
     } catch (e) {
       setActionError(
         e instanceof ContactPeerError
-          ? e.message
-          : e instanceof Error
-            ? e.message
-            : "Could not open conversation.",
+          ? contactPeerErrorCopy(e)
+          : "Could not open conversation.",
       );
     } finally {
       session?.releaseLocalClient();

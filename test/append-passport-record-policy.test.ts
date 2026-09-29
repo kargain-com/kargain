@@ -43,10 +43,10 @@ import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import type { SvmSignAndSendPort } from "@/lib/web3/svm-write-adapter";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
-  decodeSvmProgramError,
   REVERT_COPY,
   txErrorMessage,
 } from "@/lib/marketplace/tx-error-message";
+import { writeConfirmFailedCopy } from "@/lib/web3/write-confirm-copy";
 import { writeSubmissionReference, isSvmWriteSubmission } from "../lib/web3/write-outcome.ts";
 import {
   vmBranchViolationInSource,
@@ -514,13 +514,10 @@ describe("appendPassportRecord no compensating patch + named refusal", () => {
     assert.match(src, /decodePassportState/);
   });
 
-  it("EmptyField still surfaces through existing SVM error owners", () => {
+  it("message-only SVM EmptyField ordinal never invents copy (Unit E)", () => {
     const err = new Error("Transaction failed: custom program error: 0x5");
-    const decoded = decodeSvmProgramError(err);
-    assert.ok(decoded);
-    assert.equal(decoded!.name, "EmptyField");
+    assert.equal(txErrorMessage(err), writeConfirmFailedCopy());
     assert.equal(REVERT_COPY.EmptyField, "A required field is empty.");
-    assert.equal(txErrorMessage(err), REVERT_COPY.EmptyField);
   });
 });
 

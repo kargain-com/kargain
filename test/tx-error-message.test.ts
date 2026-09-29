@@ -3,17 +3,25 @@ import { describe, it } from "node:test";
 import {
   ContractFunctionRevertedError,
   encodeErrorResult,
+  type Abi,
 } from "viem";
 
-import { KarPassportAbi } from "../lib/contracts/abis.generated.ts";
+import {
+  AscendingConsignmentAbi,
+  FixedPriceConsignmentAbi,
+  KarPassportAbi,
+  KarPassportBridgeGatewayAbi,
+} from "../lib/contracts/abis.generated.ts";
 import {
   formatDecodedRevert,
+  REVERT_COPY,
   txErrorMessage,
 } from "../lib/marketplace/tx-error-message.ts";
 import {
   encumbrancePermissionCopy,
   sourceUnanswerableCopy,
 } from "../lib/passport/encumbrance-permission.ts";
+import { writeConfirmFailedCopy } from "../lib/web3/write-confirm-copy.ts";
 import { shortAddress } from "../lib/web3/wallet-display.ts";
 import { mintProtocolOwner } from "../lib/web3/protocol-address.ts";
 
@@ -21,22 +29,29 @@ const SOURCE_HEX = "0x1111111111111111111111111111111111111111" as const;
 const SOURCE = mintProtocolOwner(84_532, SOURCE_HEX)!;
 const KNOWN_SOURCE = { presence: "known" as const, address: SOURCE };
 
-function sourceUnanswerableError(): ContractFunctionRevertedError {
+function reverted(
+  abi: Abi,
+  errorName: string,
+  args: readonly unknown[] = [],
+  functionName = "call",
+): ContractFunctionRevertedError {
   const raw = encodeErrorResult({
-    abi: KarPassportAbi,
-    errorName: "SourceUnanswerable",
-    args: [SOURCE_HEX],
+    abi,
+    errorName,
+    args: args as never,
   });
   return new ContractFunctionRevertedError({
-    abi: KarPassportAbi,
+    abi,
     data: raw,
-    functionName: "open",
+    functionName,
   });
 }
 
 describe("txErrorMessage", () => {
   it("names the SourceUnanswerable source on the write path", () => {
-    const message = txErrorMessage(sourceUnanswerableError());
+    const message = txErrorMessage(
+      reverted(KarPassportAbi, "SourceUnanswerable", [SOURCE_HEX], "open"),
+    );
     assert.equal(message, sourceUnanswerableCopy(KNOWN_SOURCE));
     assert.ok(message.includes(shortAddress(SOURCE)));
     assert.equal(
@@ -53,18 +68,10 @@ describe("txErrorMessage", () => {
   });
 
   it("names EmptyField when the field string is present", () => {
-    const raw = encodeErrorResult({
-      abi: KarPassportAbi,
-      errorName: "EmptyField",
-      args: ["mileage"],
-    });
-    const err = new ContractFunctionRevertedError({
-      abi: KarPassportAbi,
-      data: raw,
-      functionName: "setTokenURI",
-    });
     assert.equal(
-      txErrorMessage(err),
+      txErrorMessage(
+        reverted(KarPassportAbi, "EmptyField", ["mileage"], "setTokenURI"),
+      ),
       "A required field is empty (mileage).",
     );
   });
@@ -75,16 +82,7 @@ describe("txErrorMessage", () => {
     [2, "DISPUTED"],
   ] as const) {
     it(`names InvalidStatus as ${status}`, () => {
-      const raw = encodeErrorResult({
-        abi: KarPassportAbi,
-        errorName: "InvalidStatus",
-        args: [index],
-      });
-      const err = new ContractFunctionRevertedError({
-        abi: KarPassportAbi,
-        data: raw,
-        functionName: "verify",
-      });
+      const err = reverted(KarPassportAbi, "InvalidStatus", [index], "verify");
       assert.equal(
         txErrorMessage(err),
         `Not allowed in the current passport status (${status}).`,
@@ -103,101 +101,121 @@ describe("txErrorMessage", () => {
     );
   });
 
-  it("maps WrongValue", () => {
+  it("maps WrongValue via ABI decode", () => {
     assert.equal(
-      txErrorMessage(new Error("ContractFunctionRevertedError: WrongValue()")),
-      "Native amount does not match. Refresh and try again.",
+      txErrorMessage(reverted(KarPassportAbi, "WrongValue")),
+      REVERT_COPY.WrongValue,
     );
   });
 
-  it("maps NotDisputeOpener", () => {
+  it("maps NotDisputeOpener via ABI decode", () => {
     assert.equal(
-      txErrorMessage(new Error("reverted with custom error NotDisputeOpener()")),
-      "Only the dispute opener can withdraw this dispute.",
+      txErrorMessage(reverted(KarPassportAbi, "NotDisputeOpener")),
+      REVERT_COPY.NotDisputeOpener,
     );
   });
 
-  it("maps NoActiveDispute", () => {
+  it("maps NoActiveDispute via ABI decode", () => {
     assert.equal(
-      txErrorMessage(new Error("reverted with custom error NoActiveDispute()")),
-      "This passport is not in an active dispute.",
+      txErrorMessage(reverted(KarPassportAbi, "NoActiveDispute")),
+      REVERT_COPY.NoActiveDispute,
     );
   });
 
-  it("maps CannotResolveOwnDispute", () => {
+  it("maps CannotResolveOwnDispute via ABI decode", () => {
     assert.equal(
-      txErrorMessage(new Error("reverted with custom error CannotResolveOwnDispute()")),
-      "You cannot resolve this dispute — you opened it, own the passport, or are the challenged verifier.",
+      txErrorMessage(reverted(KarPassportAbi, "CannotResolveOwnDispute")),
+      REVERT_COPY.CannotResolveOwnDispute,
     );
   });
 
-  it("maps NotOwner", () => {
+  it("maps NotOwner via ABI decode", () => {
     assert.equal(
-      txErrorMessage(new Error("reverted with custom error NotOwner()")),
-      "Only the passport owner can do this.",
+      txErrorMessage(reverted(KarPassportAbi, "NotOwner")),
+      REVERT_COPY.NotOwner,
     );
   });
 
-  it("maps NotSellerOrAgent", () => {
+  it("maps NotSellerOrAgent via ABI decode", () => {
     assert.equal(
-      txErrorMessage(new Error("reverted with custom error NotSellerOrAgent()")),
-      "Only the seller or listing agent can confirm this payment.",
+      txErrorMessage(reverted(FixedPriceConsignmentAbi, "NotSellerOrAgent")),
+      REVERT_COPY.NotSellerOrAgent,
     );
   });
 
-  it("maps NotAgent", () => {
+  it("NotAgent stays in REVERT_COPY for harness / static fallback", () => {
     assert.equal(
-      txErrorMessage(new Error("reverted with custom error NotAgent()")),
+      REVERT_COPY.NotAgent,
       "Only the authorized agent can do this.",
     );
   });
 
-  it("maps NoClaim", () => {
+  it("maps NoClaim via ABI decode", () => {
     assert.equal(
-      txErrorMessage(new Error("reverted with custom error NoClaim()")),
-      "There is no pending claim to withdraw for this asset.",
+      txErrorMessage(reverted(KarPassportAbi, "NoClaim")),
+      REVERT_COPY.NoClaim,
     );
   });
 
-  it("maps EscrowNotApproved", () => {
+  it("maps EscrowNotApproved via ABI decode", () => {
     assert.equal(
-      txErrorMessage(new Error("reverted with custom error EscrowNotApproved()")),
-      "Approve the selling mode contract to hold your passport first.",
+      txErrorMessage(reverted(FixedPriceConsignmentAbi, "EscrowNotApproved")),
+      REVERT_COPY.EscrowNotApproved,
     );
   });
 
-  it("maps NotOffered to bidding-or-withdrawal cause", () => {
+  it("maps NotOffered to bidding-or-withdrawal cause via ABI decode", () => {
     assert.equal(
-      txErrorMessage(new Error("reverted with custom error NotOffered()")),
-      "This lot is not open for bidding or withdrawal.",
+      txErrorMessage(reverted(AscendingConsignmentAbi, "NotOffered")),
+      REVERT_COPY.NotOffered,
     );
   });
 
-  it("maps DisputeActive as settlement challenge", () => {
+  it("maps DisputeActive as settlement challenge via ABI decode", () => {
     assert.equal(
-      txErrorMessage(new Error("reverted with custom error DisputeActive()")),
-      "A settlement challenge is still open. Wait for resolution or the challenge window to end.",
+      txErrorMessage(reverted(KarPassportAbi, "DisputeActive")),
+      REVERT_COPY.DisputeActive,
     );
   });
 
-  it("maps MandateExpired", () => {
+  it("maps MandateExpired via ABI decode", () => {
     assert.equal(
-      txErrorMessage(new Error("reverted with custom error MandateExpired()")),
-      "This mandate has expired. Grant a new one to open a consignment.",
+      txErrorMessage(reverted(FixedPriceConsignmentAbi, "MandateExpired")),
+      REVERT_COPY.MandateExpired,
     );
   });
 
-  it("maps LiveConsignment", () => {
+  it("maps LiveConsignment via ABI decode", () => {
     assert.equal(
-      txErrorMessage(new Error("reverted with custom error LiveConsignment()")),
-      "Finish or return the live consignment before changing the mandate.",
+      txErrorMessage(reverted(FixedPriceConsignmentAbi, "LiveConsignment")),
+      REVERT_COPY.LiveConsignment,
     );
   });
 
-  it("maps LeaveChainRefused", () => {
+  it("maps LeaveChainRefused via ABI decode", () => {
     assert.equal(
-      txErrorMessage(new Error("reverted with custom error LeaveChainRefused()")),
-      "This passport cannot leave the chain right now (encumbrance refused).",
+      txErrorMessage(
+        reverted(KarPassportBridgeGatewayAbi, "LeaveChainRefused"),
+      ),
+      REVERT_COPY.LeaveChainRefused,
+    );
+  });
+
+  it("plain Error never leaks raw text — generic writeConfirmFailedCopy", () => {
+    assert.equal(
+      txErrorMessage(new Error("boom internal detail")),
+      writeConfirmFailedCopy(),
+    );
+  });
+
+  it("message-only Custom(1) / hex ordinal never invents NotOwner", () => {
+    assert.equal(
+      txErrorMessage(new Error("Custom(1)")),
+      writeConfirmFailedCopy(),
+    );
+    assert.equal(
+      txErrorMessage(new Error("custom program error: 0x1")),
+      writeConfirmFailedCopy(),
     );
   });
 });
