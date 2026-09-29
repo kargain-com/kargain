@@ -1366,7 +1366,7 @@ describeE2e("Unit T — EVM confirm Outcome on Hardhat 31337", () => {
       });
 
       assert.equal(chainId, hardhatChain.id);
-      const outcome = await confirmEvmTransaction(config, hash);
+      const outcome = await confirmEvmTransaction(config, hash, chainId);
       assert.equal(
         outcome.kind,
         "reverted",
@@ -1375,9 +1375,35 @@ describeE2e("Unit T — EVM confirm Outcome on Hardhat 31337", () => {
       if (outcome.kind === "reverted") {
         assert.equal(outcome.hash, hash);
         assert.ok(outcome.blockNumber > 0n);
+        assert.ok(
+          outcome.revertData != null && outcome.revertData.length >= 10,
+          "expected non-null revertData from SameURI replay",
+        );
       }
+      const { EvmConfirmRefusal } = await import("../lib/web3/evm-tx-confirm.js");
+      const {
+        evmLandedRevertCopy,
+        REVERT_COPY,
+        txErrorMessage,
+      } = await import("../lib/marketplace/tx-error-message.js");
+      assert.equal(
+        outcome.kind === "reverted"
+          ? evmLandedRevertCopy(outcome.revertData)
+          : "",
+        REVERT_COPY.SameURI,
+      );
+      assert.equal(
+        txErrorMessage(
+          new EvmConfirmRefusal(
+            outcome.kind === "reverted"
+              ? outcome
+              : { kind: "status_unknown", hash },
+          ),
+        ),
+        REVERT_COPY.SameURI,
+      );
       console.log(
-        `[e2e-unit-t] setPassportURI SameURI → confirmEvmTransaction kind=reverted hash=${hash.slice(0, 12)}… block=${outcome.kind === "reverted" ? outcome.blockNumber : "?"}`,
+        `[e2e-unit-t] setPassportURI SameURI → confirmEvmTransaction kind=reverted hash=${hash.slice(0, 12)}… block=${outcome.kind === "reverted" ? outcome.blockNumber : "?"} sentence=${REVERT_COPY.SameURI}`,
       );
     } finally {
       await connection?.close();

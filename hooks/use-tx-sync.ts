@@ -83,6 +83,7 @@ function txRefusalFromEvmConfirm(
         kind: "reverted",
         writeReference: outcome.hash,
         blockNumber: outcome.blockNumber,
+        revertData: outcome.revertData,
       };
     case "superseded":
       return {

@@ -33,6 +33,7 @@ export type WriteLifecycleConfig = {
 type ConfirmEvmTransactionFn = (
   config: Config,
   hash: `0x${string}`,
+  chainId: number,
 ) => Promise<EvmConfirmOutcome>;
 
 type AwaitWriteReceiptOptions = {

@@ -42,6 +42,7 @@ export type EvmWriteLifecyclePhase = "wallet" | "confirming" | "indexing";
 type ConfirmEvmTransactionFn = (
   config: Config,
   hash: `0x${string}`,
+  chainId: number,
 ) => Promise<EvmConfirmOutcome>;
 
 type EvmReceiptAwaitOptions = {
@@ -133,7 +134,7 @@ export async function awaitEvmWriteReceipt({
     });
   }
   onPhase?.("confirming");
-  return requireLandedOk(await confirmTransaction(config, hash));
+  return requireLandedOk(await confirmTransaction(config, hash, chainId));
 }
 
 export async function runEvmWriteLifecycle({
@@ -179,7 +180,9 @@ export async function runEvmWriteLifecycle({
   const txHash = assertEvmWriteSubmission(await writeFn());
 
   onPhase?.("confirming");
-  const receipt = requireLandedOk(await confirmTransaction(config, txHash));
+  const receipt = requireLandedOk(
+    await confirmTransaction(config, txHash, targetChainId),
+  );
 
   onPhase?.("indexing");
   const { synced } = await waitForIndexerBlock({

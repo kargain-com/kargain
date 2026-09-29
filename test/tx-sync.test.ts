@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   encodeAbiParameters,
+  encodeErrorResult,
   encodeEventTopics,
   getAddress,
   parseEventLogs,
@@ -20,6 +21,10 @@ import {
   KarPassportAbi,
   KarPassportBridgeGatewayAbi,
 } from "../lib/contracts/abis.generated.ts";
+import {
+  REVERT_COPY,
+  txErrorMessage,
+} from "../lib/marketplace/tx-error-message.ts";
 import {
   INDEXER_SYNC_CONSECUTIVE_FAILURES,
   INDEXER_SYNC_INTERVAL_MS,
@@ -1235,6 +1240,7 @@ describe("Unit T — EVM confirm Outcome honesty", () => {
             kind: "reverted",
             hash,
             blockNumber: 42n,
+            revertData: null,
           }),
           resolveTargetChainId: (v) => v,
         }),
@@ -1249,6 +1255,75 @@ describe("Unit T — EVM confirm Outcome honesty", () => {
       },
     );
     assert.equal(indexerCalls, 0);
+  });
+
+  it("reverted with custom-error hex → TxRefusal.revertData + REVERT_COPY via txErrorMessage", async () => {
+    const hash = `0x${"a".repeat(64)}` as const;
+    const sameUriData = encodeErrorResult({
+      abi: KarPassportAbi,
+      errorName: "SameURI",
+    });
+    let captured: EvmConfirmRefusal | undefined;
+    await assert.rejects(
+      () =>
+        runEvmWriteLifecycle({
+          account: fixtureEvmAccount(84532),
+          chainId: 84532,
+          config: undefined as never,
+          switchChain: async () => {},
+          writeFn: async () => hash,
+          fetchIndexerStatus: async () => ({ ok: true, blockNumber: 1 }),
+          wait: async () => {},
+          confirmTransaction: async () => ({
+            kind: "reverted",
+            hash,
+            blockNumber: 7n,
+            revertData: sameUriData,
+          }),
+          resolveTargetChainId: (v) => v,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof EvmConfirmRefusal);
+        captured = err;
+        return true;
+      },
+    );
+    assert.ok(captured !== undefined);
+    assert.equal(captured.outcome.kind, "reverted");
+    if (captured.outcome.kind === "reverted") {
+      assert.equal(captured.outcome.revertData, sameUriData);
+    }
+    assert.equal(txErrorMessage(captured), REVERT_COPY.SameURI);
+  });
+
+  it("lifecycle + awaitReceipt pass write chainId into confirmTransaction", async () => {
+    const hash = `0x${"7".repeat(64)}` as const;
+    const seen: number[] = [];
+    await runEvmWriteLifecycle({
+      account: fixtureEvmAccount(84532),
+      chainId: 84532,
+      config: undefined as never,
+      switchChain: async () => {},
+      writeFn: async () => hash,
+      fetchIndexerStatus: async () => ({ ok: true, blockNumber: 3 }),
+      wait: async () => {},
+      confirmTransaction: async (_config, _hash, chainId) => {
+        seen.push(chainId);
+        return landedOk(fakeReceipt(hash, 3n));
+      },
+      resolveTargetChainId: (v) => v,
+    });
+    await awaitWriteReceipt({
+      account: fixtureEvmAccount(11155111),
+      chainId: 11155111,
+      config: { wagmiConfig: undefined as never },
+      hash,
+      confirmTransaction: async (_config, _hash, chainId) => {
+        seen.push(chainId);
+        return landedOk(fakeReceipt(hash, 4n));
+      },
+    });
+    assert.deepEqual(seen, [84532, 11155111]);
   });
 
   it("status_unknown → EvmConfirmRefusal", async () => {
@@ -1347,6 +1422,7 @@ describe("Unit T — EVM confirm Outcome honesty", () => {
             kind: "reverted",
             hash: replacement,
             blockNumber: 9n,
+            revertData: null,
           }),
           resolveTargetChainId: (v) => v,
         }),
@@ -1364,7 +1440,7 @@ describe("Unit T — EVM confirm Outcome honesty", () => {
   it("awaitReceipt path: same four non-ok outcomes throw EvmConfirmRefusal", async () => {
     const hash = `0x${"3".repeat(64)}` as const;
     const cases = [
-      { kind: "reverted" as const, hash, blockNumber: 1n },
+      { kind: "reverted" as const, hash, blockNumber: 1n, revertData: null },
       { kind: "status_unknown" as const, hash },
       {
         kind: "superseded" as const,

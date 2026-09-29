@@ -3,9 +3,13 @@
  * (and confirmations wait for Irys deposits). Product callers go through
  * use-tx-sync / deposit ports; never call waitForTransactionReceipt directly.
  *
- * Waits via viem on `config.getClient()` — not wagmi's action, which throws on
- * `status === "reverted"` and erases the receipt. Timeout is always explicit:
- * wagmi's default `timeout = 0` disables viem's timer.
+ * Waits via viem on `config.getClient({ chainId })` — not wagmi's action, which
+ * throws on `status === "reverted"` and erases the receipt. Timeout is always
+ * explicit: wagmi's default `timeout = 0` disables viem's timer.
+ *
+ * Landed reverts: re-fetch the tx and replay with `call` at the receipt block;
+ * carry raw `revertData` Hex (or null). Confirm stays ABI-agnostic — chrome
+ * decodes via decode-custom-error + REVERT_COPY.
  *
  * `confirmEvmTransaction` is the runTx Outcome door.
  * `confirmEvmTransactionConfirmations` is deposit-only: follows only bundler-bound
@@ -17,9 +21,16 @@ import {
   isAddressEqual,
   WaitForTransactionReceiptTimeoutError,
   type Hash,
+  type Hex,
   type TransactionReceipt,
 } from "viem";
-import { waitForTransactionReceipt } from "viem/actions";
+import {
+  call,
+  getTransaction,
+  waitForTransactionReceipt,
+} from "viem/actions";
+
+import { extractRevertDataHex } from "@/lib/web3/decode-custom-error";
 
 /**
  * Explicit wait ceiling — viem's own default when `timeout` is omitted.
@@ -30,7 +41,12 @@ export const EVM_TX_CONFIRM_TIMEOUT_MS = 180_000;
 
 export type EvmConfirmOutcome =
   | { kind: "landed_ok"; receipt: TransactionReceipt }
-  | { kind: "reverted"; hash: `0x${string}`; blockNumber: bigint }
+  | {
+      kind: "reverted";
+      hash: `0x${string}`;
+      blockNumber: bigint;
+      revertData: Hex | null;
+    }
   | {
       kind: "superseded";
       originalHash: `0x${string}`;
@@ -68,11 +84,59 @@ export function isEvmConfirmRefusal(err: unknown): err is EvmConfirmRefusal {
   return err instanceof EvmConfirmRefusal;
 }
 
+/**
+ * Replay a mined reverted tx via eth_call at the receipt block.
+ * Returns raw returndata Hex, or null when replay succeeds / fails without
+ * usable data / fails in transport. Never throws.
+ */
+async function revertDataFromReplay(
+  client: Parameters<typeof getTransaction>[0],
+  receipt: TransactionReceipt,
+): Promise<Hex | null> {
+  try {
+    const txn = await getTransaction(client, {
+      hash: receipt.transactionHash,
+    });
+    try {
+      const base = {
+        account: txn.from,
+        to: txn.to ?? undefined,
+        data: txn.input,
+        value: txn.value,
+        blockNumber: receipt.blockNumber,
+      };
+      if (txn.type === "eip1559" || txn.type === "eip7702") {
+        await call(client, {
+          ...base,
+          ...(txn.maxFeePerGas != null
+            ? { maxFeePerGas: txn.maxFeePerGas }
+            : {}),
+          ...(txn.maxPriorityFeePerGas != null
+            ? { maxPriorityFeePerGas: txn.maxPriorityFeePerGas }
+            : {}),
+        });
+      } else {
+        await call(client, {
+          ...base,
+          ...(txn.gasPrice != null ? { gasPrice: txn.gasPrice } : {}),
+        });
+      }
+      // Call succeeded — no revert data to name.
+      return null;
+    } catch (replayErr) {
+      return extractRevertDataHex(replayErr);
+    }
+  } catch {
+    return null;
+  }
+}
+
 export async function confirmEvmTransaction(
   config: Config,
   hash: `0x${string}`,
+  chainId: number,
 ): Promise<EvmConfirmOutcome> {
-  const client = config.getClient();
+  const client = config.getClient({ chainId });
   const replacedState: {
     superseded: {
       replacementHash: `0x${string}`;
@@ -112,10 +176,12 @@ export async function confirmEvmTransaction(
   }
 
   if (receipt.status === "reverted") {
+    const revertData = await revertDataFromReplay(client, receipt);
     return {
       kind: "reverted",
       hash: receipt.transactionHash,
       blockNumber: receipt.blockNumber,
+      revertData,
     };
   }
 
@@ -146,8 +212,9 @@ export async function confirmEvmTransactionConfirmations(
   hash: `0x${string}`,
   minConfirmations: number,
   expectedTo: `0x${string}`,
+  chainId: number,
 ): Promise<EvmDepositConfirmOutcome> {
-  const client = config.getClient();
+  const client = config.getClient({ chainId });
   let finalHash: Hash = hash;
   let cancelled = false;
   let divertedReplacement: Hash | null = null;

@@ -152,6 +152,7 @@ export type IrysDepositPorts = {
     txHash: `0x${string}`;
     minConfirmations: number;
     expectedTo: `0x${string}`;
+    chainId: number;
   }) => Promise<EvmDepositConfirmOutcome>;
   /** Injectable bundler POST (defaults to {@link postIrysBundlerDepositTx}). */
   postBundlerDeposit?: (args: {
@@ -346,6 +347,7 @@ async function resolveOpenRecord(args: {
         txHash: args.record.txHash,
         minConfirmations: minConfirm,
         expectedTo,
+        chainId: Number(args.stack.namespace),
       });
     } catch (err) {
       if (isWalletRejection(err)) return refuse("wallet_rejected");

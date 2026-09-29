@@ -1,6 +1,7 @@
 import {
   isAddress,
   type Abi,
+  type Hex,
 } from "viem";
 
 import { sourceUnanswerableCopy } from "@/lib/passport/encumbrance-permission";
@@ -9,6 +10,7 @@ import { passportStatusFromChainIndex } from "@/lib/passport/passport-status-cha
 import { COMMERCIAL_CONTRACT_ABIS } from "@/lib/svm/commercial-abi-events";
 import {
   decodeCustomError,
+  decodeCustomErrorData,
   type DecodedCustomError,
 } from "@/lib/web3/decode-custom-error";
 import { svmProgramErrorName } from "@/lib/web3/svm-program-errors";
@@ -245,6 +247,36 @@ export function decodeProductionCustomError(
 }
 
 /**
+ * Decode raw returndata Hex against production ABIs (landed EVM revert path).
+ */
+export function decodeProductionCustomErrorData(
+  data: Hex,
+): DecodedCustomError | null {
+  for (const abi of PRODUCTION_DECODE_ABIS) {
+    const decoded = decodeCustomErrorData(data, abi);
+    if (decoded != null) return decoded;
+  }
+  return null;
+}
+
+/**
+ * Sole sentence for a landed EVM confirm Outcome `reverted`.
+ * Named custom error → REVERT_COPY / formatDecodedRevert; else generic included-but-reverted.
+ */
+export function evmLandedRevertCopy(revertData: Hex | null): string {
+  if (revertData != null) {
+    const decoded = decodeProductionCustomErrorData(revertData);
+    if (decoded != null) {
+      const enriched = formatDecodedRevert(decoded);
+      if (enriched != null) return enriched;
+      const staticCopy = REVERT_COPY[decoded.name];
+      if (staticCopy != null) return staticCopy;
+    }
+  }
+  return writeConfirmRevertedCopy();
+}
+
+/**
  * Enrich messages for mapped errors whose ABI args identify something
  * actionable. Returns null when args are absent, malformed, or unactionable
  * (caller falls back to static REVERT_COPY).
@@ -423,7 +455,7 @@ export function txErrorMessage(err: unknown): string {
   if (isEvmConfirmRefusal(err)) {
     switch (err.outcome.kind) {
       case "reverted":
-        return writeConfirmRevertedCopy();
+        return evmLandedRevertCopy(err.outcome.revertData);
       case "superseded":
         return writeConfirmSupersededCopy();
       case "status_unknown":

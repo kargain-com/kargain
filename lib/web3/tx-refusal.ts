@@ -1,3 +1,5 @@
+import type { Hex } from "viem";
+
 import type { SvmLandedInstructionError } from "@/lib/web3/svm-landed-error";
 import type { TxWriteGuardPayload } from "@/lib/web3/tx-write-availability";
 import type { WriteOutcome } from "@/lib/web3/write-outcome";
@@ -30,6 +32,8 @@ export type TxRefusal =
       kind: "reverted";
       writeReference: string;
       blockNumber: bigint;
+      /** Raw returndata from eth_call replay — null when unavailable. */
+      revertData: Hex | null;
     }
   | {
       kind: "superseded";

@@ -55,7 +55,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "evm-tx-confirm",
     owner: "lib/web3/evm-tx-confirm.ts",
-    rule: "Sole product EVM receipt-wait door via viem on config.getClient (never wagmi's receipt action — it throws away reverted receipts); every wait passes EVM_TX_CONFIRM_TIMEOUT_MS (viem default; wagmi's timeout=0 disables the timer); confirmEvmTransaction returns EvmConfirmOutcome landed_ok|reverted|superseded|status_unknown; lifecycle throws EvmConfirmRefusal before indexer wait; deposit confirmations keep expectedTo divert and map only WaitForTransactionReceiptTimeoutError → timeout",
+    rule: "Sole product EVM receipt-wait door via viem on config.getClient({ chainId }) (never wagmi's receipt action — it throws away reverted receipts); every wait passes EVM_TX_CONFIRM_TIMEOUT_MS (viem default; wagmi's timeout=0 disables the timer); confirmEvmTransaction returns EvmConfirmOutcome landed_ok|reverted{revertData Hex|null from getTransaction+call replay}|superseded|status_unknown — confirm stays ABI-agnostic; chrome names via decode-custom-error + REVERT_COPY; lifecycle throws EvmConfirmRefusal before indexer wait; deposit confirmations keep expectedTo divert and map only WaitForTransactionReceiptTimeoutError → timeout",
     guardTests: [
       "evm-tx-confirm-policy.test.ts",
       "evm-write-adapter-policy.test.ts",

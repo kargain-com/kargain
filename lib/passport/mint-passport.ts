@@ -30,7 +30,10 @@ import {
   type SvmCommercialActiveStack,
 } from "@/lib/web3/commercial-active";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
-import { REVERT_COPY } from "@/lib/marketplace/tx-error-message";
+import {
+  evmLandedRevertCopy,
+  REVERT_COPY,
+} from "@/lib/marketplace/tx-error-message";
 import {
   writeConfirmExpiredCopy,
   writeConfirmRevertedCopy,
@@ -351,7 +354,7 @@ export async function resolveMintRefusal(input: {
     case "reverted":
       return {
         cause: "reverted",
-        copy: mintPassportCauseCopy("reverted"),
+        copy: evmLandedRevertCopy(refusal.revertData),
       };
     case "superseded":
       return {

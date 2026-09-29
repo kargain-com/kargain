@@ -26,6 +26,12 @@ import {
   writeConfirmSupersededCopy,
 } from "@/lib/web3/write-confirm-copy";
 import {
+  evmLandedRevertCopy,
+  REVERT_COPY,
+} from "@/lib/marketplace/tx-error-message";
+import { encodeErrorResult, type Hex } from "viem";
+import { KarPassportAbi } from "@/lib/contracts/abis.generated";
+import {
   commercialSvmNamespaceIds,
   requireSvmCommercialActive,
 } from "@/lib/web3/commercial-active";
@@ -40,7 +46,6 @@ import {
 import { encodePassportConfigAccount } from "@/lib/svm/decode-account-state";
 import { deriveSvmPda } from "@/lib/svm/derive-pda";
 import { tokenIdToBytes32 } from "@/lib/svm/event-payload-decode";
-import { REVERT_COPY } from "@/lib/marketplace/tx-error-message";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OWNER_REL = "lib/passport/mint-passport.ts";
@@ -387,11 +392,29 @@ describe("mint confirm cause copy consumes write-confirm-copy owner", () => {
         kind: "reverted",
         writeReference: "0xabc",
         blockNumber: 1n,
+        revertData: null,
       },
     });
     assert.equal(reverted.cause, "reverted");
     assert.equal(reverted.copy, writeConfirmRevertedCopy());
 
+    const sameUriData = encodeErrorResult({
+      abi: KarPassportAbi,
+      errorName: "SameURI",
+    }) as Hex;
+    const named = await resolveMintRefusal({
+      plan: evmPlan,
+      refusal: {
+        kind: "reverted",
+        writeReference: "0xabc",
+        blockNumber: 1n,
+        revertData: sameUriData,
+      },
+    });
+    assert.equal(named.cause, "reverted");
+    assert.equal(named.copy, REVERT_COPY.SameURI);
+    assert.equal(named.copy, evmLandedRevertCopy(sameUriData));
+    // URI retain is wizard-side — resolveMintRefusal never clears it.
     const superseded = await resolveMintRefusal({
       plan: evmPlan,
       refusal: {
