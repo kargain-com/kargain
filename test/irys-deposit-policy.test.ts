@@ -1264,11 +1264,11 @@ describe("irys deposit B2 — three-state reader + EVM replacement", () => {
     assert.equal(sends, 1);
   });
 
-  it("runTx pin: confirmEvmTransaction still plain receipt; confirmations return outcome", () => {
+  it("runTx pin: confirmEvmTransaction returns EvmConfirmOutcome; confirmations return deposit outcome", () => {
     const confirm = readFileSync(EVM_TX_CONFIRM, "utf8");
     assert.match(
       confirm,
-      /export async function confirmEvmTransaction\([\s\S]*?\): Promise<TransactionReceipt>/,
+      /export async function confirmEvmTransaction\([\s\S]*?\): Promise<EvmConfirmOutcome>/,
     );
     assert.match(confirm, /EvmDepositConfirmOutcome/);
     assert.match(confirm, /kind: "confirmed"/);
@@ -1280,14 +1280,11 @@ describe("irys deposit B2 — three-state reader + EVM replacement", () => {
     assert.match(confirm, /reason === "repriced"/);
     assert.match(confirm, /confirmations:\s*minConfirmations/);
     assert.match(confirm, /isAddressEqual/);
+    assert.match(confirm, /EVM_TX_CONFIRM_TIMEOUT_MS/);
+    assert.match(confirm, /WaitForTransactionReceiptTimeoutError/);
     assert.equal(/getPublicClient/.test(confirm), false);
     assert.equal(/getTransactionConfirmations/.test(confirm), false);
-    // confirmEvmTransaction itself must not take onReplaced
-    const plainFn = confirm.slice(
-      confirm.indexOf("export async function confirmEvmTransaction"),
-      confirm.indexOf("export type EvmDepositConfirmOutcome"),
-    );
-    assert.equal(/onReplaced/.test(plainFn), false);
+    assert.equal(/from "wagmi\/actions"/.test(confirm), false);
 
     const dirtyPoll =
       'await client.getTransactionConfirmations({ hash });\ngetPublicClient(chainId);\n';
@@ -1296,6 +1293,7 @@ describe("irys deposit B2 — three-state reader + EVM replacement", () => {
 
     const lifecycle = readFileSync(EVM_WRITE_LIFECYCLE, "utf8");
     assert.match(lifecycle, /confirmEvmTransaction/);
+    assert.match(lifecycle, /EvmConfirmRefusal/);
     assert.equal(/confirmEvmTransactionConfirmations/.test(lifecycle), false);
 
     const deposit = readFileSync(IRYS_DEPOSIT, "utf8");

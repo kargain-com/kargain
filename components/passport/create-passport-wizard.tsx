@@ -278,7 +278,9 @@ function CreatePassportWizardBody({
         if (
           mapped.cause === "wallet_rejected" ||
           mapped.cause === "mint_sequence_advanced" ||
-          mapped.cause === "expired"
+          mapped.cause === "expired" ||
+          mapped.cause === "reverted" ||
+          mapped.cause === "superseded"
         ) {
           // Resubmittable — retain metadata URI (phase idle keeps uri state).
           setPhase("idle");

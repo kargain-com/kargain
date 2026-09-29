@@ -1,12 +1,12 @@
 import { useConfig } from "wagmi";
 import type { Config } from "wagmi";
-import type { TransactionReceipt } from "viem";
 
 import type { ActiveAccount } from "@/lib/web3/active-account";
 import type {
   CommercialRegistry,
   SvmCommercialActiveStack,
 } from "@/lib/web3/commercial-active";
+import type { EvmConfirmOutcome } from "@/lib/web3/evm-tx-confirm";
 import {
   awaitEvmWriteReceipt,
   runEvmWriteLifecycle,
@@ -30,6 +30,11 @@ export type WriteLifecycleConfig = {
   wagmiConfig: Config;
 };
 
+type ConfirmEvmTransactionFn = (
+  config: Config,
+  hash: `0x${string}`,
+) => Promise<EvmConfirmOutcome>;
+
 type AwaitWriteReceiptOptions = {
   account: ActiveAccount;
   chainId: number;
@@ -37,10 +42,7 @@ type AwaitWriteReceiptOptions = {
   hash: `0x${string}`;
   onPhase?: (phase: WriteLifecyclePhase) => void;
   registry?: CommercialRegistry;
-  confirmTransaction?: (
-    config: Config,
-    hash: `0x${string}`,
-  ) => Promise<TransactionReceipt>;
+  confirmTransaction?: ConfirmEvmTransactionFn;
 };
 
 type RunWriteLifecycleOptions = {
@@ -53,10 +55,7 @@ type RunWriteLifecycleOptions = {
   wait: (ms: number) => Promise<void>;
   onPhase?: (phase: WriteLifecyclePhase) => void;
   registry?: CommercialRegistry;
-  confirmTransaction?: (
-    config: Config,
-    hash: `0x${string}`,
-  ) => Promise<TransactionReceipt>;
+  confirmTransaction?: ConfirmEvmTransactionFn;
   resolveTargetChainId?: (chainId: number) => number;
   createConfirmPort?: (stack: SvmCommercialActiveStack) => SvmTxConfirmPort;
   fetchStructuredPayloads?: FetchSvmStructuredPayloads;

@@ -32,6 +32,7 @@ import {
   runEvmWriteLifecycle,
   type EvmWriteLifecyclePhase,
 } from "../lib/web3/evm-write-lifecycle.ts";
+import { EvmConfirmRefusal } from "../lib/web3/evm-tx-confirm.ts";
 import { onftSentGuidFromLogs } from "../lib/web3/bridge/bridge-guid.ts";
 import { commercialActive } from "../lib/web3/commercial-active.ts";
 import { evmSwitchChainAvailability } from "../lib/web3/active-account.ts";
@@ -107,6 +108,7 @@ function fakeReceipt(
   hash: `0x${string}`,
   blockNumber: bigint,
   logs: Log[] = [],
+  status: "success" | "reverted" = "success",
 ): TransactionReceipt {
   return {
     blockHash: `0x${"a".repeat(64)}`,
@@ -118,12 +120,16 @@ function fakeReceipt(
     gasUsed: 1n,
     logs,
     logsBloom: `0x${"0".repeat(512)}`,
-    status: "success",
+    status,
     to: "0x0000000000000000000000000000000000000002",
     transactionHash: hash,
     transactionIndex: 0,
     type: "eip1559",
   } as TransactionReceipt;
+}
+
+function landedOk(receipt: TransactionReceipt) {
+  return { kind: "landed_ok" as const, receipt };
 }
 
 function fixtureSvmAccount() {
@@ -757,7 +763,7 @@ describe("runEvmWriteLifecycle equivalence", () => {
       },
       confirmTransaction: async (_config, confirmedHash) => {
         events.push(`confirm:${confirmedHash}`);
-        return receipt;
+        return landedOk(receipt);
       },
       resolveTargetChainId: (value: number) => value,
     });
@@ -820,7 +826,7 @@ describe("runEvmWriteLifecycle equivalence", () => {
       onPhase: (phase) => actualEvents.push(`phase:${phase}`),
       confirmTransaction: async (_config, confirmedHash) => {
         actualEvents.push(`confirm:${confirmedHash}`);
-        return receipt;
+        return landedOk(receipt);
       },
       resolveTargetChainId: (value) => value,
     });
@@ -908,7 +914,7 @@ describe("runEvmWriteLifecycle equivalence", () => {
       onPhase: (phase) => phases.push(phase),
       confirmTransaction: async (_config, confirmedHash) => {
         assert.equal(confirmedHash, hash);
-        return receipt;
+        return landedOk(receipt);
       },
     });
     assert.equal(result.transactionHash, hash);
@@ -929,7 +935,7 @@ describe("runEvmWriteLifecycle equivalence", () => {
       writeFn: async () => hash,
       fetchIndexerStatus: async () => ({ ok: true, blockNumber: 88 }),
       wait: async () => {},
-      confirmTransaction: async () => receipt,
+      confirmTransaction: async () => landedOk(receipt),
       resolveTargetChainId: (value) => value,
     });
     assert.equal(
@@ -950,7 +956,7 @@ describe("runEvmWriteLifecycle equivalence", () => {
       writeFn: async () => hash,
       fetchIndexerStatus: async () => ({ ok: true, blockNumber: 89 }),
       wait: async () => {},
-      confirmTransaction: async () => receipt,
+      confirmTransaction: async () => landedOk(receipt),
       resolveTargetChainId: (value) => value,
     });
     assert.equal(legacyClaimRecordedForAccount(receipt, account), true);
@@ -975,7 +981,7 @@ describe("runEvmWriteLifecycle equivalence", () => {
       writeFn: async () => hash,
       fetchIndexerStatus: async () => ({ ok: true, blockNumber: 90 }),
       wait: async () => {},
-      confirmTransaction: async () => receipt,
+      confirmTransaction: async () => landedOk(receipt),
       resolveTargetChainId: (value) => value,
     });
     const actualGuid = outcome.bridgeSendGuid;
@@ -995,7 +1001,7 @@ describe("runEvmWriteLifecycle equivalence", () => {
       writeFn: async () => hash,
       fetchIndexerStatus: async () => ({ ok: true, blockNumber: 91 }),
       wait: async () => {},
-      confirmTransaction: async () => fakeReceipt(hash, 91n),
+      confirmTransaction: async () => landedOk(fakeReceipt(hash, 91n)),
       resolveTargetChainId: (value) => value,
     });
     assert.deepEqual(outcome.mintedPassportTokenId, {
@@ -1138,7 +1144,7 @@ describe("runWriteLifecycle dispatcher", () => {
       writeFn: async () => evmHash,
       fetchIndexerStatus: async () => ({ ok: true, blockNumber: 10 }),
       wait: async () => undefined,
-      confirmTransaction: async () => fakeReceipt(evmHash, 11n),
+      confirmTransaction: async () => landedOk(fakeReceipt(evmHash, 11n)),
       resolveTargetChainId: (chainId) => chainId,
     });
 
@@ -1205,5 +1211,190 @@ describe("runWriteLifecycle dispatcher", () => {
       ok: false,
       cause: "missing_bridge_send_guid",
     });
+  });
+});
+
+describe("Unit T — EVM confirm Outcome honesty", () => {
+  it("reverted receipt → EvmConfirmRefusal; indexer wait never called", async () => {
+    const hash = `0x${"a".repeat(64)}` as const;
+    let indexerCalls = 0;
+    await assert.rejects(
+      () =>
+        runEvmWriteLifecycle({
+          account: fixtureEvmAccount(84532),
+          chainId: 84532,
+          config: undefined as never,
+          switchChain: async () => {},
+          writeFn: async () => hash,
+          fetchIndexerStatus: async () => {
+            indexerCalls += 1;
+            return { ok: true, blockNumber: 1 };
+          },
+          wait: async () => {},
+          confirmTransaction: async () => ({
+            kind: "reverted",
+            hash,
+            blockNumber: 42n,
+          }),
+          resolveTargetChainId: (v) => v,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof EvmConfirmRefusal);
+        assert.equal(err.outcome.kind, "reverted");
+        if (err.outcome.kind === "reverted") {
+          assert.equal(err.outcome.hash, hash);
+          assert.equal(err.outcome.blockNumber, 42n);
+        }
+        return true;
+      },
+    );
+    assert.equal(indexerCalls, 0);
+  });
+
+  it("status_unknown → EvmConfirmRefusal", async () => {
+    const hash = `0x${"b".repeat(64)}` as const;
+    await assert.rejects(
+      () =>
+        runEvmWriteLifecycle({
+          account: fixtureEvmAccount(84532),
+          chainId: 84532,
+          config: undefined as never,
+          switchChain: async () => {},
+          writeFn: async () => hash,
+          fetchIndexerStatus: async () => ({ ok: true, blockNumber: 1 }),
+          wait: async () => {},
+          confirmTransaction: async () => ({
+            kind: "status_unknown",
+            hash,
+          }),
+          resolveTargetChainId: (v) => v,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof EvmConfirmRefusal);
+        assert.equal(err.outcome.kind, "status_unknown");
+        return true;
+      },
+    );
+  });
+
+  it("cancelled → superseded; replaced → superseded", async () => {
+    const original = `0x${"c".repeat(64)}` as const;
+    const replacement = `0x${"d".repeat(64)}` as const;
+    for (const reason of ["cancelled", "replaced"] as const) {
+      await assert.rejects(
+        () =>
+          runEvmWriteLifecycle({
+            account: fixtureEvmAccount(84532),
+            chainId: 84532,
+            config: undefined as never,
+            switchChain: async () => {},
+            writeFn: async () => original,
+            fetchIndexerStatus: async () => ({ ok: true, blockNumber: 1 }),
+            wait: async () => {},
+            confirmTransaction: async () => ({
+              kind: "superseded",
+              originalHash: original,
+              replacementHash: replacement,
+              reason,
+            }),
+            resolveTargetChainId: (v) => v,
+          }),
+        (err: unknown) => {
+          assert.ok(err instanceof EvmConfirmRefusal);
+          assert.equal(err.outcome.kind, "superseded");
+          if (err.outcome.kind === "superseded") {
+            assert.equal(err.outcome.reason, reason);
+            assert.equal(err.outcome.replacementHash, replacement);
+          }
+          return true;
+        },
+      );
+    }
+  });
+
+  it("repriced success → writeReference is replacement hash", async () => {
+    const original = `0x${"e".repeat(64)}` as const;
+    const replacement = `0x${"f".repeat(64)}` as const;
+    const outcome = await runEvmWriteLifecycle({
+      account: fixtureEvmAccount(84532),
+      chainId: 84532,
+      config: undefined as never,
+      switchChain: async () => {},
+      writeFn: async () => original,
+      fetchIndexerStatus: async () => ({ ok: true, blockNumber: 10 }),
+      wait: async () => {},
+      confirmTransaction: async () =>
+        landedOk(fakeReceipt(replacement, 10n)),
+      resolveTargetChainId: (v) => v,
+    });
+    assert.equal(outcome.writeReference, replacement);
+  });
+
+  it("repriced reverted → EvmConfirmRefusal reverted", async () => {
+    const original = `0x${"1".repeat(64)}` as const;
+    const replacement = `0x${"2".repeat(64)}` as const;
+    await assert.rejects(
+      () =>
+        runEvmWriteLifecycle({
+          account: fixtureEvmAccount(84532),
+          chainId: 84532,
+          config: undefined as never,
+          switchChain: async () => {},
+          writeFn: async () => original,
+          fetchIndexerStatus: async () => ({ ok: true, blockNumber: 1 }),
+          wait: async () => {},
+          confirmTransaction: async () => ({
+            kind: "reverted",
+            hash: replacement,
+            blockNumber: 9n,
+          }),
+          resolveTargetChainId: (v) => v,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof EvmConfirmRefusal);
+        assert.equal(err.outcome.kind, "reverted");
+        if (err.outcome.kind === "reverted") {
+          assert.equal(err.outcome.hash, replacement);
+        }
+        return true;
+      },
+    );
+  });
+
+  it("awaitReceipt path: same four non-ok outcomes throw EvmConfirmRefusal", async () => {
+    const hash = `0x${"3".repeat(64)}` as const;
+    const cases = [
+      { kind: "reverted" as const, hash, blockNumber: 1n },
+      { kind: "status_unknown" as const, hash },
+      {
+        kind: "superseded" as const,
+        originalHash: hash,
+        replacementHash: `0x${"4".repeat(64)}` as const,
+        reason: "cancelled" as const,
+      },
+      {
+        kind: "superseded" as const,
+        originalHash: hash,
+        replacementHash: `0x${"5".repeat(64)}` as const,
+        reason: "replaced" as const,
+      },
+    ];
+    for (const outcome of cases) {
+      await assert.rejects(
+        () =>
+          awaitWriteReceipt({
+            account: fixtureEvmAccount(84532),
+            chainId: 84532,
+            config: { wagmiConfig: undefined as never },
+            hash,
+            confirmTransaction: async () => outcome,
+          }),
+        (err: unknown) => {
+          assert.ok(err instanceof EvmConfirmRefusal);
+          assert.equal(err.outcome.kind, outcome.kind);
+          return true;
+        },
+      );
+    }
   });
 });

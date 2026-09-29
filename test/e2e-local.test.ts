@@ -1316,3 +1316,71 @@ describeE2e("localhost Phase 1 PENDING-REDEPLOY walk", () => {
     }
   });
 });
+
+describeE2e("Unit T — EVM confirm Outcome on Hardhat 31337", () => {
+  it("real reverted write surfaces as reverted via confirmEvmTransaction", async () => {
+    requireLocalDeployment();
+
+    let connection: NetworkConnection | undefined;
+    try {
+      connection = await hardhat.network.connect({ network: "localhost" });
+      const { viem } = connection;
+      const publicClient = await viem.getPublicClient();
+      const deployment = requireLocalDeployment();
+      const passport = await viem.getContractAt("KarPassport", deployment.karPassport);
+      const wallets = await viem.getWalletClients();
+      const owner = asWallet(wallets[1]!);
+
+      const chainId = await publicClient.getChainId();
+      const nextBefore = (await passport.read.nextTokenId()) as bigint;
+      const uri = "ar://unit-t-revert";
+      await passport.write.mintPassport([owner.account.address, uri], {
+        account: owner.account,
+      });
+      const tokenId = nextBefore;
+
+      // SameURI: setPassportURI with the mint URI — mined, status reverted.
+      const data = encodeFunctionData({
+        abi: passport.abi,
+        functionName: "setPassportURI",
+        args: [tokenId, uri],
+      });
+      // Fixed gas so Hardhat does not reject at estimateGas; the mined receipt is reverted.
+      const hash = await owner.sendTransaction({
+        to: passport.address,
+        data,
+        account: owner.account,
+        chain: null,
+        gas: 500_000n,
+      });
+
+      const { createConfig, http } = await import("wagmi");
+      const { hardhat: hardhatChain } = await import("viem/chains");
+      const { confirmEvmTransaction } = await import("../lib/web3/evm-tx-confirm.js");
+
+      const config = createConfig({
+        chains: [hardhatChain],
+        transports: {
+          [hardhatChain.id]: http("http://127.0.0.1:8545"),
+        },
+      });
+
+      assert.equal(chainId, hardhatChain.id);
+      const outcome = await confirmEvmTransaction(config, hash);
+      assert.equal(
+        outcome.kind,
+        "reverted",
+        `expected reverted Outcome, got kind=${outcome.kind} hash=${"hash" in outcome ? outcome.hash : "n/a"}`,
+      );
+      if (outcome.kind === "reverted") {
+        assert.equal(outcome.hash, hash);
+        assert.ok(outcome.blockNumber > 0n);
+      }
+      console.log(
+        `[e2e-unit-t] setPassportURI SameURI → confirmEvmTransaction kind=reverted hash=${hash.slice(0, 12)}… block=${outcome.kind === "reverted" ? outcome.blockNumber : "?"}`,
+      );
+    } finally {
+      await connection?.close();
+    }
+  });
+});

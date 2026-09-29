@@ -9,6 +9,10 @@ import { revalidateIndexerCache } from "@/app/actions/revalidate-indexer-cache";
 import { useActiveAccount } from "@/hooks/use-active-account";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import {
+  isEvmConfirmRefusal,
+  type EvmConfirmRefusalOutcome,
+} from "@/lib/web3/evm-tx-confirm";
+import {
   isSvmConfirmRefusal,
   type SvmConfirmOutcome,
 } from "@/lib/web3/svm-tx-confirm";
@@ -53,7 +57,7 @@ function txRefusalFromSvmConfirm(
         observedBlockHeight: outcome.observedBlockHeight,
       };
     case "status_unknown":
-      return { kind: "status_unknown", signature: outcome.signature };
+      return { kind: "status_unknown", writeReference: outcome.signature };
     case "landed_with_error":
       return {
         kind: "landed_with_error",
@@ -63,6 +67,36 @@ function txRefusalFromSvmConfirm(
         failingProgram: outcome.failingProgram,
         landed: outcome.landed,
       };
+    default: {
+      const _never: never = outcome;
+      return _never;
+    }
+  }
+}
+
+function txRefusalFromEvmConfirm(
+  outcome: EvmConfirmRefusalOutcome,
+): TxRefusal {
+  switch (outcome.kind) {
+    case "reverted":
+      return {
+        kind: "reverted",
+        writeReference: outcome.hash,
+        blockNumber: outcome.blockNumber,
+      };
+    case "superseded":
+      return {
+        kind: "superseded",
+        writeReference: outcome.originalHash,
+        replacementHash: outcome.replacementHash,
+        reason: outcome.reason,
+      };
+    case "status_unknown":
+      return { kind: "status_unknown", writeReference: outcome.hash };
+    default: {
+      const _never: never = outcome;
+      return _never;
+    }
   }
 }
 
@@ -112,6 +146,9 @@ export function useTxSync(chainId: number) {
       } catch (err) {
         const message = (options?.mapError ?? txErrorMessage)(err);
         setError(message);
+        if (isEvmConfirmRefusal(err)) {
+          throw err;
+        }
         throw new Error(message);
       } finally {
         setPhase(nested ? "wallet" : "idle");
@@ -174,6 +211,11 @@ export function useTxSync(chainId: number) {
       } catch (err) {
         if (isSvmConfirmRefusal(err)) {
           const refusal = txRefusalFromSvmConfirm(err.outcome);
+          setError((options?.mapError ?? txErrorMessage)(err));
+          return { ok: false, refusal };
+        }
+        if (isEvmConfirmRefusal(err)) {
+          const refusal = txRefusalFromEvmConfirm(err.outcome);
           setError((options?.mapError ?? txErrorMessage)(err));
           return { ok: false, refusal };
         }

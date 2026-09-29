@@ -53,6 +53,16 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["evm-write-adapter-policy.test.ts"],
   },
   {
+    id: "evm-tx-confirm",
+    owner: "lib/web3/evm-tx-confirm.ts",
+    rule: "Sole product EVM receipt-wait door via viem on config.getClient (never wagmi's receipt action — it throws away reverted receipts); every wait passes EVM_TX_CONFIRM_TIMEOUT_MS (viem default; wagmi's timeout=0 disables the timer); confirmEvmTransaction returns EvmConfirmOutcome landed_ok|reverted|superseded|status_unknown; lifecycle throws EvmConfirmRefusal before indexer wait; deposit confirmations keep expectedTo divert and map only WaitForTransactionReceiptTimeoutError → timeout",
+    guardTests: [
+      "evm-tx-confirm-policy.test.ts",
+      "evm-write-adapter-policy.test.ts",
+      "irys-deposit-policy.test.ts",
+    ],
+  },
+  {
     id: "svm-instruction-encoder",
     owner: "lib/svm/encode-instruction.ts · svm/crates/kargain-ix-wire",
     rule: "Commercial instruction data bytes only via encode-instruction; layout+goldens from Rust BorshSerialize (committed ix.manifest.json); append-only vs published-trunk baseline (not HEAD)",
@@ -529,7 +539,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "irys-deposit",
     owner:
       "lib/storage/irys-deposit.ts · lib/storage/irys-deposit-record.ts · lib/storage/irys-bundler-deposit-post.ts · lib/storage/irys-client.ts · hooks/use-irys-deposit-ports.ts · lib/web3/evm-tx-confirm.ts · lib/web3/svm-write-adapter.ts · lib/svm/encode-system-transfer.ts · lib/web3/svm-tx-confirm.ts",
-    rule: "Sole Irys storage deposit owner: balance-first; pending record (namespace|payer|bundler); three-state reader (absent|record|unreadable) — storage getItem throw and corrupt/invalid values are unreadable (never absent); VM-tagged records with validated EVM isHash / SVM 64-byte base58 + height; status-only bundler POST; never SDK fund(); SVM sendSvmNativeTransfer + funding confirm at finalized; EVM send/switch via useIrysDepositPorts + confirmEvmTransactionConfirmations outcome (confirmed final hash | cancelled | diverted | timeout) — follow only repriced or replaced-to-bundler expectedTo; diverted/cancelled clear as deposit_cancelled; viem confirmations param only (no getPublicClient poll); rewrite+POST final hash on confirmed; confirmEvmTransaction unchanged for runTx; runtime uploader.tokenConfig.minConfirm (missing → deposit_unknown_token); disconnect refuses before store; typed TxWriteGuardPayload; no EIP-1193 eth_sendTransaction/eth_accounts in deposit; no runTx; never double-pay while fate unknown",
+    rule: "Sole Irys storage deposit owner: balance-first; pending record (namespace|payer|bundler); three-state reader (absent|record|unreadable) — storage getItem throw and corrupt/invalid values are unreadable (never absent); VM-tagged records with validated EVM isHash / SVM 64-byte base58 + height; status-only bundler POST; never SDK fund(); SVM sendSvmNativeTransfer + funding confirm at finalized; EVM send/switch via useIrysDepositPorts + confirmEvmTransactionConfirmations outcome (confirmed final hash | cancelled | diverted | timeout) — follow only repriced or replaced-to-bundler expectedTo; diverted/cancelled clear as deposit_cancelled; viem confirmations + EVM_TX_CONFIRM_TIMEOUT_MS; only WaitForTransactionReceiptTimeoutError → timeout; rewrite+POST final hash on confirmed; confirmEvmTransaction returns EvmConfirmOutcome for runTx; runtime uploader.tokenConfig.minConfirm (missing → deposit_unknown_token); disconnect refuses before store; typed TxWriteGuardPayload; no EIP-1193 eth_sendTransaction/eth_accounts in deposit; no runTx; never double-pay while fate unknown",
     guardTests: [
       "irys-deposit-policy.test.ts",
       "passport-upload.test.ts",

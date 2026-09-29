@@ -20,9 +20,11 @@ import {
   sendMintPassport,
 } from "@/lib/passport/mint-passport";
 import {
-  svmConfirmExpiredCopy,
-  svmConfirmStatusUnknownCopy,
-} from "@/lib/web3/svm-confirm-copy";
+  writeConfirmExpiredCopy,
+  writeConfirmRevertedCopy,
+  writeConfirmStatusUnknownCopy,
+  writeConfirmSupersededCopy,
+} from "@/lib/web3/write-confirm-copy";
 import {
   commercialSvmNamespaceIds,
   requireSvmCommercialActive,
@@ -317,16 +319,21 @@ describe("wizard consumes causes only", () => {
   });
 });
 
-describe("mint confirm cause copy consumes svm-confirm-copy owner", () => {
-  it("expired and status_unknown sentences delegate to svm-confirm-copy", () => {
-    assert.equal(mintPassportCauseCopy("expired"), svmConfirmExpiredCopy());
+describe("mint confirm cause copy consumes write-confirm-copy owner", () => {
+  it("expired / status_unknown / reverted / superseded sentences delegate to write-confirm-copy", () => {
+    assert.equal(mintPassportCauseCopy("expired"), writeConfirmExpiredCopy());
     assert.equal(
       mintPassportCauseCopy("status_unknown"),
-      svmConfirmStatusUnknownCopy(),
+      writeConfirmStatusUnknownCopy(),
+    );
+    assert.equal(mintPassportCauseCopy("reverted"), writeConfirmRevertedCopy());
+    assert.equal(
+      mintPassportCauseCopy("superseded"),
+      writeConfirmSupersededCopy(),
     );
   });
 
-  it("resolveMintRefusal maps expired / status_unknown to owner copy", async () => {
+  it("resolveMintRefusal maps confirm refusals to owner copy", async () => {
     const plan = {
       ok: true as const,
       vm: "svm" as const,
@@ -351,14 +358,51 @@ describe("mint confirm cause copy consumes svm-confirm-copy owner", () => {
       },
     });
     assert.equal(expired.cause, "expired");
-    assert.equal(expired.copy, svmConfirmExpiredCopy());
+    assert.equal(expired.copy, writeConfirmExpiredCopy());
 
     const unknown = await resolveMintRefusal({
       plan,
-      refusal: { kind: "status_unknown", signature: "sig" },
+      refusal: { kind: "status_unknown", writeReference: "sig" },
     });
     assert.equal(unknown.cause, "status_unknown");
-    assert.equal(unknown.copy, svmConfirmStatusUnknownCopy());
+    assert.equal(unknown.copy, writeConfirmStatusUnknownCopy());
+
+    const evmPlan = {
+      ok: true as const,
+      vm: "evm" as const,
+      call: {
+        address: "0x0000000000000000000000000000000000000001" as `0x${string}`,
+        abi: [] as never,
+        functionName: "mintPassport" as const,
+        args: [
+          "0x0000000000000000000000000000000000000002" as `0x${string}`,
+          "ar://x",
+        ] as [`0x${string}`, string],
+        chainId: 84532,
+      },
+    };
+    const reverted = await resolveMintRefusal({
+      plan: evmPlan,
+      refusal: {
+        kind: "reverted",
+        writeReference: "0xabc",
+        blockNumber: 1n,
+      },
+    });
+    assert.equal(reverted.cause, "reverted");
+    assert.equal(reverted.copy, writeConfirmRevertedCopy());
+
+    const superseded = await resolveMintRefusal({
+      plan: evmPlan,
+      refusal: {
+        kind: "superseded",
+        writeReference: "0xabc",
+        replacementHash: `0x${"9".repeat(64)}`,
+        reason: "cancelled",
+      },
+    });
+    assert.equal(superseded.cause, "superseded");
+    assert.equal(superseded.copy, writeConfirmSupersededCopy());
   });
 
   it("EVM write_refused never returns raw Error.message as copy (raw-text leak plant)", async () => {

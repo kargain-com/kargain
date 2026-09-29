@@ -32,9 +32,11 @@ import {
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { REVERT_COPY } from "@/lib/marketplace/tx-error-message";
 import {
-  svmConfirmExpiredCopy,
-  svmConfirmStatusUnknownCopy,
-} from "@/lib/web3/svm-confirm-copy";
+  writeConfirmExpiredCopy,
+  writeConfirmRevertedCopy,
+  writeConfirmStatusUnknownCopy,
+  writeConfirmSupersededCopy,
+} from "@/lib/web3/write-confirm-copy";
 import {
   type SvmLandedInstructionError,
 } from "@/lib/web3/svm-landed-error";
@@ -103,6 +105,8 @@ export type MintPassportCause =
   | "mint_sequence_advanced"
   | "expired"
   | "status_unknown"
+  | "reverted"
+  | "superseded"
   | "unmapped_program_error"
   | SendSvmInstructionCause;
 
@@ -204,8 +208,10 @@ const MINT_PASSPORT_CAUSE_COPY: Record<MintPassportCause, string> = {
   write_guard_refused: "Mint could not start. Check your wallet and network.",
   mint_sequence_advanced:
     "Another mint landed first. Your metadata is kept — submit again.",
-  expired: svmConfirmExpiredCopy(),
-  status_unknown: svmConfirmStatusUnknownCopy(),
+  expired: writeConfirmExpiredCopy(),
+  status_unknown: writeConfirmStatusUnknownCopy(),
+  reverted: writeConfirmRevertedCopy(),
+  superseded: writeConfirmSupersededCopy(),
   unmapped_program_error: "Mint failed. Please try again.",
   missing_wallet_standard_chain: "Solana wallet chain is not configured.",
   wallet_returned_no_signature: "Wallet returned no signature.",
@@ -326,40 +332,62 @@ export async function resolveMintRefusal(input: {
 }): Promise<{ cause: MintPassportCause; copy: string }> {
   const { refusal } = input;
 
-  if (refusal.kind === "wallet_rejected") {
-    return {
-      cause: "wallet_rejected",
-      copy: mintPassportCauseCopy("wallet_rejected"),
-    };
-  }
-  if (refusal.kind === "expired") {
-    return {
-      cause: "expired",
-      copy: mintPassportCauseCopy("expired"),
-    };
-  }
-  if (refusal.kind === "status_unknown") {
-    return {
-      cause: "status_unknown",
-      copy: mintPassportCauseCopy("status_unknown"),
-    };
-  }
-  if (refusal.kind === "guard_refused") {
-    return {
-      cause: "write_guard_refused",
-      copy: txWriteGuardRefusalCopy(refusal.refusal),
-    };
-  }
-
-  if (input.plan.vm !== "svm") {
-    // EVM cannot produce an SVM landed confirm Outcome.
-    if (refusal.kind === "landed_with_error") {
+  switch (refusal.kind) {
+    case "wallet_rejected":
       return {
-        cause: "unmapped_program_error",
-        copy: mintPassportCauseCopy("unmapped_program_error"),
+        cause: "wallet_rejected",
+        copy: mintPassportCauseCopy("wallet_rejected"),
       };
+    case "expired":
+      return {
+        cause: "expired",
+        copy: mintPassportCauseCopy("expired"),
+      };
+    case "status_unknown":
+      return {
+        cause: "status_unknown",
+        copy: mintPassportCauseCopy("status_unknown"),
+      };
+    case "reverted":
+      return {
+        cause: "reverted",
+        copy: mintPassportCauseCopy("reverted"),
+      };
+    case "superseded":
+      return {
+        cause: "superseded",
+        copy: mintPassportCauseCopy("superseded"),
+      };
+    case "guard_refused":
+      return {
+        cause: "write_guard_refused",
+        copy: txWriteGuardRefusalCopy(refusal.refusal),
+      };
+    case "landed_with_error": {
+      if (input.plan.vm !== "svm") {
+        // EVM cannot produce an SVM landed confirm Outcome.
+        return {
+          cause: "unmapped_program_error",
+          copy: mintPassportCauseCopy("unmapped_program_error"),
+        };
+      }
+      const plannedNext = input.plan.plan.plannedNextTokenId;
+      const configAddress = input.plan.plan.configAddress;
+      const fresh = await readFreshNextTokenId({
+        configAddress,
+        fetchAccountData: input.fetchAccountData,
+      });
+      if (!fresh.ok) {
+        return {
+          cause: fresh.cause,
+          copy: mintPassportCauseCopy(fresh.cause),
+        };
+      }
+      return mintCauseFromLandedClassification(
+        classifyMintLandedError(refusal.landed, plannedNext, fresh.nextTokenId),
+      );
     }
-    if (refusal.kind === "write_refused") {
+    case "write_refused": {
       if (isWalletRejection(refusal.error)) {
         return {
           cause: "wallet_rejected",
@@ -372,62 +400,34 @@ export async function resolveMintRefusal(input: {
           copy: mintPassportCauseCopy(refusal.error.mintCause),
         };
       }
-    }
-    return {
-      cause: "send_failed",
-      copy: mintPassportCauseCopy("send_failed"),
-    };
-  }
-
-  const plannedNext = input.plan.plan.plannedNextTokenId;
-  const configAddress = input.plan.plan.configAddress;
-
-  if (refusal.kind === "landed_with_error") {
-    const fresh = await readFreshNextTokenId({
-      configAddress,
-      fetchAccountData: input.fetchAccountData,
-    });
-    if (!fresh.ok) {
+      if (input.plan.vm !== "svm") {
+        return {
+          cause: "send_failed",
+          copy: mintPassportCauseCopy("send_failed"),
+        };
+      }
+      const plannedNext = input.plan.plan.plannedNextTokenId;
+      const configAddress = input.plan.plan.configAddress;
+      const fresh = await readFreshNextTokenId({
+        configAddress,
+        fetchAccountData: input.fetchAccountData,
+      });
+      if (fresh.ok && bytesGt(fresh.nextTokenId, plannedNext)) {
+        return {
+          cause: "mint_sequence_advanced",
+          copy: mintPassportCauseCopy("mint_sequence_advanced"),
+        };
+      }
       return {
-        cause: fresh.cause,
-        copy: mintPassportCauseCopy(fresh.cause),
+        cause: "send_failed",
+        copy: mintPassportCauseCopy("send_failed"),
       };
     }
-    return mintCauseFromLandedClassification(
-      classifyMintLandedError(refusal.landed, plannedNext, fresh.nextTokenId),
-    );
-  }
-
-  // write_refused — send or preflight threw a typed value.
-  if (refusal.kind === "write_refused") {
-    if (isWalletRejection(refusal.error)) {
-      return {
-        cause: "wallet_rejected",
-        copy: mintPassportCauseCopy("wallet_rejected"),
-      };
-    }
-    if (isMintPassportSendRefusal(refusal.error)) {
-      return {
-        cause: refusal.error.mintCause,
-        copy: mintPassportCauseCopy(refusal.error.mintCause),
-      };
+    default: {
+      const _never: never = refusal;
+      return _never;
     }
   }
-
-  const fresh = await readFreshNextTokenId({
-    configAddress,
-    fetchAccountData: input.fetchAccountData,
-  });
-  if (fresh.ok && bytesGt(fresh.nextTokenId, plannedNext)) {
-    return {
-      cause: "mint_sequence_advanced",
-      copy: mintPassportCauseCopy("mint_sequence_advanced"),
-    };
-  }
-  return {
-    cause: "send_failed",
-    copy: mintPassportCauseCopy("send_failed"),
-  };
 }
 
 function refusePlan(

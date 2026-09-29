@@ -17,7 +17,7 @@ export type TxRefusal =
       lastValidBlockHeight: bigint;
       observedBlockHeight: bigint;
     }
-  | { kind: "status_unknown"; signature: string }
+  | { kind: "status_unknown"; writeReference: string }
   | {
       kind: "landed_with_error";
       signature: string;
@@ -25,6 +25,17 @@ export type TxRefusal =
       error: unknown;
       failingProgram: string | null;
       landed: SvmLandedInstructionError | null;
+    }
+  | {
+      kind: "reverted";
+      writeReference: string;
+      blockNumber: bigint;
+    }
+  | {
+      kind: "superseded";
+      writeReference: string;
+      replacementHash: `0x${string}`;
+      reason: "cancelled" | "replaced";
     };
 
 export type RunTxResult =

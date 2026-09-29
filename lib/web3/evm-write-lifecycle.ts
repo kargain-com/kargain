@@ -14,7 +14,11 @@ import {
   type ActiveAccount,
 } from "@/lib/web3/active-account";
 import { onftSentGuidFromLogs } from "@/lib/web3/bridge/bridge-guid";
-import { confirmEvmTransaction } from "@/lib/web3/evm-tx-confirm";
+import {
+  confirmEvmTransaction,
+  EvmConfirmRefusal,
+  type EvmConfirmOutcome,
+} from "@/lib/web3/evm-tx-confirm";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
   waitForIndexerBlock,
@@ -35,16 +39,18 @@ import {
 
 export type EvmWriteLifecyclePhase = "wallet" | "confirming" | "indexing";
 
+type ConfirmEvmTransactionFn = (
+  config: Config,
+  hash: `0x${string}`,
+) => Promise<EvmConfirmOutcome>;
+
 type EvmReceiptAwaitOptions = {
   account: ActiveAccount;
   chainId: number;
   config: Config;
   hash: `0x${string}`;
   onPhase?: (phase: EvmWriteLifecyclePhase) => void;
-  confirmTransaction?: (
-    config: Config,
-    hash: `0x${string}`,
-  ) => Promise<TransactionReceipt>;
+  confirmTransaction?: ConfirmEvmTransactionFn;
 };
 
 type RunEvmWriteLifecycleOptions = {
@@ -56,10 +62,7 @@ type RunEvmWriteLifecycleOptions = {
   fetchIndexerStatus: () => Promise<IndexerBlockNumberResult>;
   wait: (ms: number) => Promise<void>;
   onPhase?: (phase: EvmWriteLifecyclePhase) => void;
-  confirmTransaction?: (
-    config: Config,
-    hash: `0x${string}`,
-  ) => Promise<TransactionReceipt>;
+  confirmTransaction?: ConfirmEvmTransactionFn;
   resolveTargetChainId?: (chainId: number) => number;
 };
 
@@ -107,6 +110,13 @@ function claimRecipientsFromReceipt(
   return claimRecordedFromReceipt(receipt).map((claim) => getAddress(claim.account));
 }
 
+function requireLandedOk(outcome: EvmConfirmOutcome): TransactionReceipt {
+  if (outcome.kind === "landed_ok") {
+    return outcome.receipt;
+  }
+  throw new EvmConfirmRefusal(outcome);
+}
+
 export async function awaitEvmWriteReceipt({
   account,
   chainId,
@@ -123,7 +133,7 @@ export async function awaitEvmWriteReceipt({
     });
   }
   onPhase?.("confirming");
-  return confirmTransaction(config, hash);
+  return requireLandedOk(await confirmTransaction(config, hash));
 }
 
 export async function runEvmWriteLifecycle({
@@ -169,7 +179,7 @@ export async function runEvmWriteLifecycle({
   const txHash = assertEvmWriteSubmission(await writeFn());
 
   onPhase?.("confirming");
-  const receipt = await confirmTransaction(config, txHash);
+  const receipt = requireLandedOk(await confirmTransaction(config, txHash));
 
   onPhase?.("indexing");
   const { synced } = await waitForIndexerBlock({

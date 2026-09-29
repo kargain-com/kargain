@@ -28,6 +28,17 @@ const config: HardhatUserConfig = {
       // EndpointV2Mock (LZ test-devtools) exceeds EIP-170; local tests only.
       allowUnlimitedContractSize: true,
     },
+    /**
+     * `hardhat node` defaults to this network name. Mine reverting txs
+     * (real-chain behaviour) so product confirm can observe `reverted`
+     * receipts — in-process `default` tests keep throw-on-failure.
+     */
+    node: {
+      type: "edr-simulated",
+      chainType: "l1",
+      allowUnlimitedContractSize: true,
+      throwOnTransactionFailures: false,
+    },
     hardhatMain: {
       type: "edr-simulated",
       chainType: "l1",

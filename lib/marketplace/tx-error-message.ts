@@ -13,10 +13,13 @@ import {
 } from "@/lib/web3/decode-custom-error";
 import { svmProgramErrorName } from "@/lib/web3/svm-program-errors";
 import {
-  svmConfirmExpiredCopy,
-  svmConfirmStatusUnknownCopy,
-} from "@/lib/web3/svm-confirm-copy";
+  writeConfirmExpiredCopy,
+  writeConfirmRevertedCopy,
+  writeConfirmStatusUnknownCopy,
+  writeConfirmSupersededCopy,
+} from "@/lib/web3/write-confirm-copy";
 import type { SvmLandedInstructionError } from "@/lib/web3/svm-landed-error";
+import { isEvmConfirmRefusal } from "@/lib/web3/evm-tx-confirm";
 import { isSvmConfirmRefusal } from "@/lib/web3/svm-tx-confirm";
 import {
   isTxWriteGuardRefusal,
@@ -409,12 +412,27 @@ export function txErrorMessage(err: unknown): string {
   // Landed SVM confirm: structured InstructionError before any message path.
   if (isSvmConfirmRefusal(err)) {
     if (err.outcome.kind === "expired") {
-      return svmConfirmExpiredCopy();
+      return writeConfirmExpiredCopy();
     }
     if (err.outcome.kind === "status_unknown") {
-      return svmConfirmStatusUnknownCopy();
+      return writeConfirmStatusUnknownCopy();
     }
     return landedWithErrorCopy(err.outcome.landed);
+  }
+
+  if (isEvmConfirmRefusal(err)) {
+    switch (err.outcome.kind) {
+      case "reverted":
+        return writeConfirmRevertedCopy();
+      case "superseded":
+        return writeConfirmSupersededCopy();
+      case "status_unknown":
+        return writeConfirmStatusUnknownCopy();
+      default: {
+        const _never: never = err.outcome;
+        return _never;
+      }
+    }
   }
 
   if (isTxWriteGuardRefusal(err)) {
