@@ -59,6 +59,10 @@ import {
   type SvmSignAndSendPort,
   type SvmWriteAccountMeta,
 } from "@/lib/web3/svm-write-adapter";
+import {
+  SvmWriteOwnerRefusal,
+  throwSvmWriteSendRefusal,
+} from "@/lib/web3/svm-write-owner-refusal";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import type { WriteSubmission } from "@/lib/web3/write-outcome";
 import {
@@ -654,11 +658,12 @@ export async function executeOpenFixedPriceConsignment(input: {
     fetchAccountData: input.fetchAccountData,
   });
   if (!planned.ok) {
-    throw new Error(
-      planned.detail.length > 0
-        ? planned.detail
-        : `openFixedPriceConsignment refused: ${planned.cause}`,
-    );
+    throw new SvmWriteOwnerRefusal({
+      owner: "openFixedPriceConsignment",
+      cause: planned.cause,
+      detail: planned.detail,
+      wanted: planned.wanted,
+    });
   }
 
   if (planned.vm === "evm") {
@@ -666,12 +671,18 @@ export async function executeOpenFixedPriceConsignment(input: {
   }
 
   if (input.svmPort == null) {
-    throw new Error("openFixedPriceConsignment refused: no_connected_account");
+    throw new SvmWriteOwnerRefusal({
+      owner: "openFixedPriceConsignment",
+      cause: "no_connected_account",
+    });
   }
 
   const stack = commercialActive(input.chainId, input.registry);
   if (stack == null || stack.vm !== "svm") {
-    throw new Error("openFixedPriceConsignment refused: unresolved_namespace");
+    throw new SvmWriteOwnerRefusal({
+      owner: "openFixedPriceConsignment",
+      cause: "unresolved_namespace",
+    });
   }
 
   const sent = await sendSvmInstruction({
@@ -684,9 +695,7 @@ export async function executeOpenFixedPriceConsignment(input: {
     fetchBlockhash: input.fetchBlockhash,
   });
   if (!sent.ok) {
-    throw new Error(
-      `openFixedPriceConsignment refused: ${sent.cause}:${sent.detail}`,
-    );
+    throwSvmWriteSendRefusal("openFixedPriceConsignment", sent);
   }
   return sent.submission;
 }

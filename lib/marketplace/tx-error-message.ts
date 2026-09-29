@@ -31,6 +31,10 @@ import {
   isWalletRejection,
   walletRejectionCopy,
 } from "@/lib/web3/wallet-rejection";
+import {
+  isSvmWriteOwnerRefusal,
+  svmWriteOwnerRefusalCopy,
+} from "@/lib/web3/svm-write-owner-refusal";
 
 /**
  * Exact error-name → user copy. Every production custom error must appear here with a
@@ -437,6 +441,10 @@ function landedWithErrorCopy(
 }
 
 export function txErrorMessage(err: unknown): string {
+  if (isSvmWriteOwnerRefusal(err)) {
+    return svmWriteOwnerRefusalCopy(err);
+  }
+
   if (isWalletRejection(err)) {
     return walletRejectionCopy();
   }

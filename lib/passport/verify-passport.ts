@@ -32,6 +32,10 @@ import {
   type SvmSignAndSendPort,
   type SvmWriteAccountMeta,
 } from "@/lib/web3/svm-write-adapter";
+import {
+  SvmWriteOwnerRefusal,
+  throwSvmWriteSendRefusal,
+} from "@/lib/web3/svm-write-owner-refusal";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import type { WriteSubmission } from "@/lib/web3/write-outcome";
 import {
@@ -316,11 +320,12 @@ export async function executeVerifyPassport(input: {
     registry: input.registry,
   });
   if (!planned.ok) {
-    throw new Error(
-      planned.detail.length > 0
-        ? planned.detail
-        : `verifyPassport refused: ${planned.cause}`,
-    );
+    throw new SvmWriteOwnerRefusal({
+      owner: "verifyPassport",
+      cause: planned.cause,
+      detail: planned.detail,
+      wanted: planned.wanted,
+    });
   }
 
   if (planned.vm === "evm") {
@@ -328,12 +333,18 @@ export async function executeVerifyPassport(input: {
   }
 
   if (input.svmPort == null) {
-    throw new Error("verifyPassport refused: no_connected_account");
+    throw new SvmWriteOwnerRefusal({
+      owner: "verifyPassport",
+      cause: "no_connected_account",
+    });
   }
 
   const stack = commercialActive(input.chainId, input.registry);
   if (stack == null || stack.vm !== "svm") {
-    throw new Error("verifyPassport refused: unresolved_namespace");
+    throw new SvmWriteOwnerRefusal({
+      owner: "verifyPassport",
+      cause: "unresolved_namespace",
+    });
   }
 
   const sent = await sendSvmInstruction({
@@ -346,7 +357,7 @@ export async function executeVerifyPassport(input: {
     fetchBlockhash: input.fetchBlockhash,
   });
   if (!sent.ok) {
-    throw new Error(`verifyPassport refused: ${sent.cause}:${sent.detail}`);
+    throwSvmWriteSendRefusal("verifyPassport", sent);
   }
   return sent.submission;
 }

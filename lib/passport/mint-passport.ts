@@ -207,6 +207,7 @@ const MINT_PASSPORT_CAUSE_COPY: Record<MintPassportCause, string> = {
   no_connected_account: "Connect a Solana wallet to mint a passport.",
   wallet_rejected:
     "You cancelled the wallet request. Nothing was submitted.",
+  wallet_send_failed: "The wallet could not send this transaction. Try again.",
   send_failed: "Mint failed. Please try again.",
   write_guard_refused: "Mint could not start. Check your wallet and network.",
   mint_sequence_advanced:
@@ -729,6 +730,20 @@ export async function sendMintPassport(input: {
   }
 
   if (!sent.ok) {
+    if (sent.cause === "wallet_rejected") {
+      return {
+        ok: false,
+        cause: "wallet_rejected",
+        detail: "wallet_rejected",
+      };
+    }
+    if (sent.cause === "wallet_send_failed") {
+      return {
+        ok: false,
+        cause: "send_failed",
+        detail: "send_failed",
+      };
+    }
     return {
       ok: false,
       cause: sent.cause,

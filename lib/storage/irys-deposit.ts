@@ -35,6 +35,7 @@ import {
 } from "@/lib/web3/commercial-active";
 import type { EvmDepositConfirmOutcome } from "@/lib/web3/evm-tx-confirm";
 import { createProductSvmFundingTxConfirmPort } from "@/lib/web3/svm-rpc";
+import type { FetchSvmLatestBlockhashResult } from "@/lib/web3/svm-rpc";
 import {
   sendSvmNativeTransfer,
   type SvmSignAndSendPort,
@@ -143,6 +144,8 @@ export type IrysDepositPorts = {
   ) => Promise<WalletAccountKind>;
   /** Injectable SVM funding confirm (defaults to product finalized port). */
   confirmSvmFunding?: SvmTxConfirmPort;
+  /** Injectable latest-blockhash fetch for SVM deposit send (defaults to product RPC). */
+  fetchSvmBlockhash?: () => Promise<FetchSvmLatestBlockhashResult>;
   /**
    * EVM confirmations wait — wraps {@link confirmEvmTransactionConfirmations}.
    * Required for EVM resolve; no default in product (hook injects).
@@ -450,8 +453,15 @@ async function sendNewDeposit(args: {
         to: bundlerAddress,
         lamports: amountBase,
         port,
+        fetchBlockhash: args.ports.fetchSvmBlockhash,
       });
       if (!sent.ok) {
+        if (sent.cause === "wallet_rejected") {
+          return refuse("wallet_rejected");
+        }
+        if (sent.cause === "wallet_send_failed") {
+          return refuse("deposit_send_failed", { detail: "wallet_send_failed" });
+        }
         return refuse("deposit_send_failed", { detail: sent.cause });
       }
       record = {

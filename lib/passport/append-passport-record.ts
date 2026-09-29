@@ -38,6 +38,10 @@ import {
   type SvmSignAndSendPort,
   type SvmWriteAccountMeta,
 } from "@/lib/web3/svm-write-adapter";
+import {
+  SvmWriteOwnerRefusal,
+  throwSvmWriteSendRefusal,
+} from "@/lib/web3/svm-write-owner-refusal";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import type { WriteSubmission } from "@/lib/web3/write-outcome";
 import {
@@ -392,11 +396,12 @@ export async function executeAppendPassportRecord(input: {
     fetchAccountData: input.fetchAccountData,
   });
   if (!planned.ok) {
-    throw new Error(
-      planned.detail.length > 0
-        ? planned.detail
-        : `appendPassportRecord refused: ${planned.cause}`,
-    );
+    throw new SvmWriteOwnerRefusal({
+      owner: "appendPassportRecord",
+      cause: planned.cause,
+      detail: planned.detail,
+      wanted: planned.wanted,
+    });
   }
 
   if (planned.vm === "evm") {
@@ -404,12 +409,18 @@ export async function executeAppendPassportRecord(input: {
   }
 
   if (input.svmPort == null) {
-    throw new Error("appendPassportRecord refused: no_connected_account");
+    throw new SvmWriteOwnerRefusal({
+      owner: "appendPassportRecord",
+      cause: "no_connected_account",
+    });
   }
 
   const stack = commercialActive(input.chainId, input.registry);
   if (stack == null || stack.vm !== "svm") {
-    throw new Error("appendPassportRecord refused: unresolved_namespace");
+    throw new SvmWriteOwnerRefusal({
+      owner: "appendPassportRecord",
+      cause: "unresolved_namespace",
+    });
   }
 
   const sent = await sendSvmInstruction({
@@ -422,9 +433,7 @@ export async function executeAppendPassportRecord(input: {
     fetchBlockhash: input.fetchBlockhash,
   });
   if (!sent.ok) {
-    throw new Error(
-      `appendPassportRecord refused: ${sent.cause}:${sent.detail}`,
-    );
+    throwSvmWriteSendRefusal("appendPassportRecord", sent);
   }
   return sent.submission;
 }

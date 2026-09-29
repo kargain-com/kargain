@@ -1,7 +1,12 @@
 import type { Hex } from "viem";
 
 import type { SvmLandedInstructionError } from "@/lib/web3/svm-landed-error";
-import type { TxWriteGuardPayload } from "@/lib/web3/tx-write-availability";
+import { isSvmWriteOwnerRefusal } from "@/lib/web3/svm-write-owner-refusal";
+import {
+  isTxWriteGuardRefusal,
+  type TxWriteGuardPayload,
+} from "@/lib/web3/tx-write-availability";
+import { isWalletRejection } from "@/lib/web3/wallet-rejection";
 import type { WriteOutcome } from "@/lib/web3/write-outcome";
 
 /**
@@ -45,3 +50,20 @@ export type TxRefusal =
 export type RunTxResult =
   | { ok: true; outcome: WriteOutcome }
   | { ok: false; refusal: TxRefusal };
+
+/**
+ * Map a writeFn throw (after confirm refusals) to {@link TxRefusal}.
+ * Sole owner of SvmWriteOwnerRefusal → wallet_rejected / write_refused.
+ */
+export function txRefusalFromWriteFnError(err: unknown): TxRefusal {
+  if (isTxWriteGuardRefusal(err)) {
+    return { kind: "guard_refused", refusal: err.refusal };
+  }
+  if (isSvmWriteOwnerRefusal(err) && err.cause === "wallet_rejected") {
+    return { kind: "wallet_rejected" };
+  }
+  if (isWalletRejection(err)) {
+    return { kind: "wallet_rejected" };
+  }
+  return { kind: "write_refused", error: err };
+}

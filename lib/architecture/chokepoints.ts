@@ -92,10 +92,11 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "svm-write-adapter",
     owner:
-      "lib/web3/svm-write-adapter.ts · lib/web3/svm-sign-and-send-port.ts · lib/web3/svm-rpc.ts · lib/web3/commercial-active.ts",
-    rule: "SVM write: kit-assemble instruction + svmKargainProgramIds gate + svm-rpc blockhash + solana:signAndSendTransaction port only (no signTransaction, no product submitter); sibling sendSvmNativeTransfer for System Transfer (not through Kargain gate; System on sendSvmInstruction → unregistered_program); Wallet Standard signature bytes → base58 solely via walletStandardSignatureBase58 (kit decoder; empty → wallet_returned_no_signature; length≠64 → signature_not_64_bytes); Irys Solana adapter consumes the same owner — never a hand-rolled alphabet",
+      "lib/web3/svm-write-adapter.ts · lib/web3/svm-sign-and-send-port.ts · lib/web3/svm-rpc.ts · lib/web3/commercial-active.ts · lib/web3/svm-write-owner-refusal.ts · lib/web3/tx-refusal.ts",
+    rule: "SVM write: kit-assemble instruction + svmKargainProgramIds gate + svm-rpc blockhash + solana:signAndSendTransaction port only (no signTransaction, no product submitter); sibling sendSvmNativeTransfer for System Transfer (not through Kargain gate; System on sendSvmInstruction → unregistered_program); Wallet Standard signature bytes → base58 solely via walletStandardSignatureBase58 (kit decoder; empty → wallet_returned_no_signature; length≠64 → signature_not_64_bytes); Irys Solana adapter consumes the same owner — never a hand-rolled alphabet; port throw: isWalletRejection → wallet_rejected else wallet_send_failed+error (never messageText.includes); eleven product owners throw SvmWriteOwnerRefusal (never Error refused:); runTx maps via txRefusalFromWriteFnError",
     guardTests: [
       "svm-write-adapter-policy.test.ts",
+      "svm-write-owner-refusal-policy.test.ts",
       "wallet-standard-signature-base58-policy.test.ts",
       "base58-handroll-policy.test.ts",
     ],

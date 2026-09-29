@@ -33,6 +33,7 @@ import {
   fetchProductSvmLatestBlockhash,
   type FetchSvmLatestBlockhashResult,
 } from "@/lib/web3/svm-rpc";
+import { isWalletRejection } from "@/lib/web3/wallet-rejection";
 import type { WalletStandardChain } from "@/lib/web3/wallet-standard-chain";
 import type { SvmWriteSubmission } from "@/lib/web3/write-outcome";
 
@@ -48,6 +49,8 @@ export type SvmSignAndSendPort = {
 export type SendSvmInstructionCause =
   | "wallet_cannot_sign_and_send"
   | "no_connected_account"
+  | "wallet_rejected"
+  | "wallet_send_failed"
   | "wallet_returned_no_signature"
   | "signature_not_64_bytes"
   | "blockhash_unavailable"
@@ -60,8 +63,13 @@ export type SendSvmInstructionResult =
   | { ok: true; submission: SvmWriteSubmission }
   | {
       ok: false;
-      cause: SendSvmInstructionCause;
+      cause: Exclude<SendSvmInstructionCause, "wallet_send_failed">;
       detail: string;
+    }
+  | {
+      ok: false;
+      cause: "wallet_send_failed";
+      error: unknown;
     };
 
 /** Ed25519 signature length returned by Wallet Standard `signAndSendTransaction`. */
@@ -121,7 +129,7 @@ function isRegisteredProgramOnStack(
 }
 
 function refuse(
-  cause: SendSvmInstructionCause,
+  cause: Exclude<SendSvmInstructionCause, "wallet_send_failed">,
   detail: string,
 ): SendSvmInstructionResult {
   return { ok: false, cause, detail };
@@ -228,20 +236,10 @@ async function assembleSignAndSendSvmInstruction(args: {
       chain: chainResult.chain,
     });
   } catch (err) {
-    const messageText = err instanceof Error ? err.message : String(err);
-    if (
-      messageText.includes("solana:signAndSendTransaction") ||
-      messageText.includes("wallet_cannot_sign_and_send")
-    ) {
-      return refuse("wallet_cannot_sign_and_send", messageText);
+    if (isWalletRejection(err)) {
+      return refuse("wallet_rejected", "wallet_rejected");
     }
-    if (
-      messageText.includes("no connected account") ||
-      messageText.includes("no_connected_account")
-    ) {
-      return refuse("no_connected_account", messageText);
-    }
-    return refuse("wallet_cannot_sign_and_send", messageText);
+    return { ok: false, cause: "wallet_send_failed", error: err };
   }
 
   const decoded = walletStandardSignatureBase58(signatureBytes);
@@ -291,8 +289,13 @@ export type SendSvmNativeTransferResult =
   | { ok: true; submission: SvmWriteSubmission }
   | {
       ok: false;
-      cause: SendSvmNativeTransferCause;
+      cause: Exclude<SendSvmNativeTransferCause, "wallet_send_failed">;
       detail: string;
+    }
+  | {
+      ok: false;
+      cause: "wallet_send_failed";
+      error: unknown;
     };
 
 /**

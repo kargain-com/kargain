@@ -23,13 +23,10 @@ import {
 } from "@/lib/web3/write-lifecycle";
 import { invalidateIndexerQueries } from "@/lib/web3/indexer-query-keys";
 import { TX_SYNC_LAG_ADVISORY } from "@/lib/web3/tx-sync";
-import { type RunTxResult, type TxRefusal } from "@/lib/web3/tx-refusal";
-import {
-  isTxWriteGuardRefusal,
-  txWriteGuardRefusalCopy,
-} from "@/lib/web3/tx-write-availability";
+import { type RunTxResult, type TxRefusal, txRefusalFromWriteFnError } from "@/lib/web3/tx-refusal";
+import { txWriteGuardRefusalCopy } from "@/lib/web3/tx-write-availability";
 import { type WriteOutcome, type WriteSubmission } from "@/lib/web3/write-outcome";
-import { isWalletRejection, walletRejectionCopy } from "@/lib/web3/wallet-rejection";
+import { walletRejectionCopy } from "@/lib/web3/wallet-rejection";
 
 export type { RunTxResult, TxRefusal };
 
@@ -220,21 +217,19 @@ export function useTxSync(chainId: number) {
           setError((options?.mapError ?? txErrorMessage)(err));
           return { ok: false, refusal };
         }
-        if (isTxWriteGuardRefusal(err)) {
-          setError(txWriteGuardRefusalCopy(err.refusal));
-          return {
-            ok: false,
-            refusal: { kind: "guard_refused", refusal: err.refusal },
-          };
-        }
-        if (isWalletRejection(err)) {
+        const refusal = txRefusalFromWriteFnError(err);
+        if (refusal.kind === "wallet_rejected") {
           setError(walletRejectionCopy());
-          return { ok: false, refusal: { kind: "wallet_rejected" } };
+          return { ok: false, refusal };
+        }
+        if (refusal.kind === "guard_refused") {
+          setError(txWriteGuardRefusalCopy(refusal.refusal));
+          return { ok: false, refusal };
         }
         // Preserve the thrown value; display via mapError only — never
         // encode cause tokens into TxRefusal.message.
         setError((options?.mapError ?? txErrorMessage)(err));
-        return { ok: false, refusal: { kind: "write_refused", error: err } };
+        return { ok: false, refusal };
       } finally {
         activeRunDepthRef.current -= 1;
         setPhase("idle");

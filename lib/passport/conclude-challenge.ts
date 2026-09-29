@@ -41,6 +41,10 @@ import {
   type SvmSignAndSendPort,
   type SvmWriteAccountMeta,
 } from "@/lib/web3/svm-write-adapter";
+import {
+  SvmWriteOwnerRefusal,
+  throwSvmWriteSendRefusal,
+} from "@/lib/web3/svm-write-owner-refusal";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import type { WriteSubmission } from "@/lib/web3/write-outcome";
 import {
@@ -388,11 +392,12 @@ export async function executeConcludeChallenge(input: {
     fetchAccountData: input.fetchAccountData,
   });
   if (!planned.ok) {
-    throw new Error(
-      planned.detail.length > 0
-        ? planned.detail
-        : `concludeChallenge refused: ${planned.cause}`,
-    );
+    throw new SvmWriteOwnerRefusal({
+      owner: "concludeChallenge",
+      cause: planned.cause,
+      detail: planned.detail,
+      wanted: planned.wanted,
+    });
   }
 
   if (planned.vm === "evm") {
@@ -400,12 +405,18 @@ export async function executeConcludeChallenge(input: {
   }
 
   if (input.svmPort == null) {
-    throw new Error("concludeChallenge refused: no_connected_account");
+    throw new SvmWriteOwnerRefusal({
+      owner: "concludeChallenge",
+      cause: "no_connected_account",
+    });
   }
 
   const stack = commercialActive(input.chainId, input.registry);
   if (stack == null || stack.vm !== "svm") {
-    throw new Error("concludeChallenge refused: unresolved_namespace");
+    throw new SvmWriteOwnerRefusal({
+      owner: "concludeChallenge",
+      cause: "unresolved_namespace",
+    });
   }
 
   const sent = await sendSvmInstruction({
@@ -418,7 +429,7 @@ export async function executeConcludeChallenge(input: {
     fetchBlockhash: input.fetchBlockhash,
   });
   if (!sent.ok) {
-    throw new Error(`concludeChallenge refused: ${sent.cause}:${sent.detail}`);
+    throwSvmWriteSendRefusal("concludeChallenge", sent);
   }
   return sent.submission;
 }

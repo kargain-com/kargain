@@ -33,6 +33,10 @@ import {
   type SvmSignAndSendPort,
   type SvmWriteAccountMeta,
 } from "@/lib/web3/svm-write-adapter";
+import {
+  SvmWriteOwnerRefusal,
+  throwSvmWriteSendRefusal,
+} from "@/lib/web3/svm-write-owner-refusal";
 import type { WriteSubmission } from "@/lib/web3/write-outcome";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
@@ -316,11 +320,12 @@ export async function executeSetPassportUri(input: {
     registry: input.registry,
   });
   if (!planned.ok) {
-    throw new Error(
-      planned.detail.length > 0
-        ? planned.detail
-        : `setPassportUri refused: ${planned.cause}`,
-    );
+    throw new SvmWriteOwnerRefusal({
+      owner: "setPassportUri",
+      cause: planned.cause,
+      detail: planned.detail,
+      wanted: planned.wanted,
+    });
   }
 
   if (planned.vm === "evm") {
@@ -328,12 +333,18 @@ export async function executeSetPassportUri(input: {
   }
 
   if (input.svmPort == null) {
-    throw new Error("setPassportUri refused: no_connected_account");
+    throw new SvmWriteOwnerRefusal({
+      owner: "setPassportUri",
+      cause: "no_connected_account",
+    });
   }
 
   const stack = commercialActive(input.chainId, input.registry);
   if (stack == null || stack.vm !== "svm") {
-    throw new Error("setPassportUri refused: unresolved_namespace");
+    throw new SvmWriteOwnerRefusal({
+      owner: "setPassportUri",
+      cause: "unresolved_namespace",
+    });
   }
 
   const sent = await sendSvmInstruction({
@@ -346,7 +357,7 @@ export async function executeSetPassportUri(input: {
     fetchBlockhash: input.fetchBlockhash,
   });
   if (!sent.ok) {
-    throw new Error(`setPassportUri refused: ${sent.cause}:${sent.detail}`);
+    throwSvmWriteSendRefusal("setPassportUri", sent);
   }
   return sent.submission;
 }

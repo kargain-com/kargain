@@ -24,6 +24,7 @@ import { createSvmSignAndSendPort } from "../lib/web3/svm-sign-and-send-port.ts"
 import { runSvmWriteLifecycle } from "../lib/web3/svm-write-lifecycle.ts";
 import {
   sendSvmInstruction,
+  sendSvmNativeTransfer,
   type SendSvmInstructionCause,
   type SvmSignAndSendPort,
 } from "../lib/web3/svm-write-adapter.ts";
@@ -48,6 +49,8 @@ const MOCK_BLOCKHASH = getBase58Decoder().decode(new Uint8Array(32).fill(7));
 const ALL_CAUSES: readonly SendSvmInstructionCause[] = [
   "wallet_cannot_sign_and_send",
   "no_connected_account",
+  "wallet_rejected",
+  "wallet_send_failed",
   "wallet_returned_no_signature",
   "signature_not_64_bytes",
   "blockhash_unavailable",
@@ -56,6 +59,10 @@ const ALL_CAUSES: readonly SendSvmInstructionCause[] = [
   "empty_instruction_data",
   "missing_wallet_standard_chain",
 ];
+
+/** Causes {@link sendSvmInstruction} can return — port construction owns wallet_cannot_sign_and_send. */
+const SEND_REACHABLE_CAUSES: readonly SendSvmInstructionCause[] =
+  ALL_CAUSES.filter((c) => c !== "wallet_cannot_sign_and_send");
 
 function encodeSetBridgeGateway(): Uint8Array {
   const encoded = encodeSvmInstruction({
@@ -339,7 +346,7 @@ describe("svm-write-adapter named refusals", () => {
       }),
     );
 
-    await mark("wallet_cannot_sign_and_send", () =>
+    await mark("wallet_send_failed", () =>
       sendSvmInstruction({
         stack: FIXTURE_SVM_STACK,
         programId: FIXTURE_SVM_STACK.karPassport,
@@ -357,11 +364,103 @@ describe("svm-write-adapter named refusals", () => {
       }),
     );
 
-    assert.deepEqual([...seen].sort(), [...ALL_CAUSES].sort());
+    await mark("wallet_rejected", () =>
+      sendSvmInstruction({
+        stack: FIXTURE_SVM_STACK,
+        programId: FIXTURE_SVM_STACK.karPassport,
+        data,
+        accounts: [],
+        feePayer: FEE_PAYER,
+        port: {
+          async signAndSendTransaction() {
+            throw {
+              name: "WalletSignAndInjectionRejectedError",
+              error: "rejected",
+            };
+          },
+        },
+        fetchBlockhash: mockBlockhashOk(),
+      }),
+    );
+
+    assert.deepEqual([...seen].sort(), [...SEND_REACHABLE_CAUSES].sort());
+    assert.ok(ALL_CAUSES.includes("wallet_cannot_sign_and_send"));
   });
 });
 
 describe("svm-write-adapter negative controls", () => {
+  it("Wallet Standard rejection from port → sendSvmInstruction returns wallet_rejected", async () => {
+    const data = encodeSetBridgeGateway();
+    const result = await sendSvmInstruction({
+      stack: FIXTURE_SVM_STACK,
+      programId: FIXTURE_SVM_STACK.karPassport,
+      data,
+      accounts: [],
+      feePayer: FEE_PAYER,
+      port: {
+        async signAndSendTransaction() {
+          throw {
+            name: "WalletSignAndInjectionRejectedError",
+            error: "rejected",
+          };
+        },
+      },
+      fetchBlockhash: mockBlockhashOk(),
+    });
+    assert.equal(result.ok, false);
+    if (result.ok) throw new Error("expected refusal");
+    assert.equal(
+      result.cause,
+      "wallet_rejected",
+      "Phantom reject must not become wallet_cannot_sign_and_send",
+    );
+  });
+
+  it("Wallet Standard rejection from port → sendSvmNativeTransfer returns wallet_rejected", async () => {
+    const from = "So11111111111111111111111111111111111111112";
+    const result = await sendSvmNativeTransfer({
+      stack: FIXTURE_SVM_STACK,
+      from,
+      to: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      lamports: 1n,
+      port: {
+        async signAndSendTransaction() {
+          throw {
+            name: "WalletSignAndInjectionRejectedError",
+            error: "rejected",
+          };
+        },
+      },
+      fetchBlockhash: mockBlockhashOk(),
+    });
+    assert.equal(result.ok, false);
+    if (result.ok) throw new Error("expected refusal");
+    assert.equal(result.cause, "wallet_rejected");
+  });
+
+  it("non-rejection port throw → wallet_send_failed with error preserved (never messageText)", async () => {
+    const planted = new Error("rpc blew up");
+    const data = encodeSetBridgeGateway();
+    const result = await sendSvmInstruction({
+      stack: FIXTURE_SVM_STACK,
+      programId: FIXTURE_SVM_STACK.karPassport,
+      data,
+      accounts: [],
+      feePayer: FEE_PAYER,
+      port: {
+        async signAndSendTransaction() {
+          throw planted;
+        },
+      },
+      fetchBlockhash: mockBlockhashOk(),
+    });
+    assert.equal(result.ok, false);
+    if (result.ok) throw new Error("expected refusal");
+    assert.equal(result.cause, "wallet_send_failed");
+    if (result.cause !== "wallet_send_failed") throw new Error("narrow");
+    assert.equal(result.error, planted);
+  });
+
   it("wallet without solana:signAndSendTransaction refuses by name and never sends", () => {
     let sent = 0;
     const wallet = mockWallet({
