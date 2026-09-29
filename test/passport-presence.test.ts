@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { CUSTODY_UNRESOLVED_CAUSES } from "../lib/custody/normalized-event.ts";
@@ -12,7 +14,72 @@ import {
   locationUnresolvedCauseCopyTable,
   passportAwayActionCopy,
   presenceBlocksWrites,
+  type BlockingPassportPresence,
+  type PassportPresence,
 } from "../lib/passport/presence.ts";
+
+const ROOT = process.cwd();
+const HERE_FIXTURE = join(
+  ROOT,
+  "test/fixtures/passport-away-action-copy-here.ts",
+);
+
+function requireBlocking(p: PassportPresence): BlockingPassportPresence {
+  assert.equal(presenceBlocksWrites(p), true);
+  if (!presenceBlocksWrites(p)) {
+    throw new Error("expected blocking presence");
+  }
+  return p;
+}
+
+function runTscOnFixture(source: string): {
+  status: number | null;
+  out: string;
+} {
+  const tmp = mkdtempSync(join(tmpdir(), "kargain-presence-here-"));
+  const probe = join(tmp, "probe.ts");
+  const tsconfigPath = join(tmp, "tsconfig.json");
+  try {
+    writeFileSync(
+      tsconfigPath,
+      `${JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            lib: ["ES2022"],
+            skipLibCheck: true,
+            strict: true,
+            noEmit: true,
+            esModuleInterop: true,
+            module: "ESNext",
+            moduleResolution: "bundler",
+            resolveJsonModule: true,
+            isolatedModules: true,
+            allowImportingTsExtensions: true,
+            typeRoots: [join(ROOT, "node_modules/@types")],
+            paths: { "@/*": [join(ROOT, "*")] },
+            baseUrl: ROOT,
+          },
+          files: [probe],
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    writeFileSync(probe, source);
+    const result = spawnSync(
+      "pnpm",
+      ["exec", "tsc", "--noEmit", "-p", tsconfigPath],
+      { cwd: ROOT, encoding: "utf8" },
+    );
+    return {
+      status: result.status,
+      out: `${result.stdout}\n${result.stderr}`,
+    };
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
 
 describe("derivePassportPresence", () => {
   it("here when unlocked and custody matches view", () => {
@@ -69,23 +136,27 @@ describe("derivePassportPresence", () => {
     });
     assert.equal(p.status, "location_pending");
     assert.equal(presenceBlocksWrites(p), true);
-    const copy = passportAwayActionCopy(p);
+    const copy = passportAwayActionCopy(requireBlocking(p));
     assert.match(copy, /chain to answer/i);
     assert.doesNotMatch(copy, /Waiting for chain custody/);
   });
 
   it("location_pending and rpc_unavailable refused never share a sentence", () => {
     const pending = passportAwayActionCopy(
-      derivePassportPresence({
-        viewChainId: 84532,
-        custodyLock: { status: "pending" },
-      }),
+      requireBlocking(
+        derivePassportPresence({
+          viewChainId: 84532,
+          custodyLock: { status: "pending" },
+        }),
+      ),
     );
     const refused = passportAwayActionCopy(
-      derivePassportPresence({
-        viewChainId: 84532,
-        custodyLock: { status: "refused", cause: "rpc_unavailable" },
-      }),
+      requireBlocking(
+        derivePassportPresence({
+          viewChainId: 84532,
+          custodyLock: { status: "refused", cause: "rpc_unavailable" },
+        }),
+      ),
     );
     assert.match(pending, /Waiting for the chain to answer/i);
     assert.match(refused, /network did not answer/i);
@@ -101,10 +172,12 @@ describe("derivePassportPresence", () => {
 
   it("location_unresolved carries each fold cause and never shares unread copy", () => {
     const unread = passportAwayActionCopy(
-      derivePassportPresence({
-        viewChainId: 84532,
-        custodyLock: { status: "pending" },
-      }),
+      requireBlocking(
+        derivePassportPresence({
+          viewChainId: 84532,
+          custodyLock: { status: "pending" },
+        }),
+      ),
     );
     for (const cause of CUSTODY_UNRESOLVED_CAUSES) {
       const p = derivePassportPresence({
@@ -116,7 +189,7 @@ describe("derivePassportPresence", () => {
       if (p.status === "location_unresolved") {
         assert.equal(p.cause, cause);
       }
-      const copy = passportAwayActionCopy(p);
+      const copy = passportAwayActionCopy(requireBlocking(p));
       assert.notEqual(copy, unread);
       assert.equal(copy, locationUnresolvedCauseCopy(cause));
     }
@@ -138,9 +211,56 @@ describe("derivePassportPresence", () => {
       custodyLock: { status: "known", locked: true },
       ponderCustodyChain: 11155111,
     });
-    const copy = passportAwayActionCopy(p);
+    const copy = passportAwayActionCopy(requireBlocking(p));
     assert.match(copy, /Sepolia|another chain/i);
     assert.match(copy, /Return/);
+  });
+
+  it("passportAwayActionCopy does not accept here (@ts-expect-error plant)", () => {
+    const live = readFileSync(HERE_FIXTURE, "utf8");
+    assert.match(live, /\/\/\s*@ts-expect-error/);
+    assert.match(live, /status:\s*"here"/);
+
+    const withoutDirective = live.replace(
+      /^\s*\/\/\s*@ts-expect-error[^\n]*\n/m,
+      "",
+    );
+    assert.doesNotMatch(withoutDirective, /\/\/\s*@ts-expect-error/);
+
+    const red = runTscOnFixture(withoutDirective);
+    assert.notEqual(red.status, 0, `expected tsc red, got:\n${red.out}`);
+    assert.match(red.out, /here|BlockingPassportPresence|passportAwayActionCopy/);
+
+    const green = runTscOnFixture(live);
+    assert.equal(green.status, 0, `expected tsc green, got:\n${green.out}`);
+  });
+
+  it("here yields null presenceCopy path; blocking yields prior sentences", () => {
+    const here: PassportPresence = { status: "here" };
+    assert.equal(presenceBlocksWrites(here), false);
+    assert.equal(
+      presenceBlocksWrites(here) ? passportAwayActionCopy(here) : null,
+      null,
+    );
+
+    const pending = requireBlocking({ status: "location_pending" });
+    assert.equal(
+      passportAwayActionCopy(pending),
+      "Waiting for the chain to answer where this passport is.",
+    );
+    const awayNamed = requireBlocking({
+      status: "away",
+      locationChainId: 11155111,
+    });
+    assert.match(passportAwayActionCopy(awayNamed), /Return it to this chain/);
+    const awayGeneric = requireBlocking({
+      status: "away",
+      locationChainId: null,
+    });
+    assert.equal(
+      passportAwayActionCopy(awayGeneric),
+      "This passport is on another chain. Return it here to restore this action.",
+    );
   });
 });
 
@@ -278,6 +398,77 @@ describe("profile tile presence policy", () => {
     assert.doesNotMatch(src, /derivePassportPresence/);
     assert.doesNotMatch(src, /location unread/);
     assert.doesNotMatch(src, /status === ["']VERIFIED["']\s*\n\s*\? ["']border-accent-warm/);
+  });
+
+  it("seven callers narrow before passportAwayActionCopy; here is null not empty string", () => {
+    const hook = readFileSync(
+      join(ROOT, "hooks/use-passport-presence.ts"),
+      "utf8",
+    );
+    assert.match(hook, /presenceBlocksWrites\(presence\)/);
+    assert.match(hook, /presenceCopy:\s*string\s*\|\s*null/);
+    assert.match(
+      hook,
+      /presenceCopy:\s*presenceBlocksWrites\(presence\)\s*\?\s*passportAwayActionCopy\(presence\)\s*:\s*null/,
+    );
+
+    const bridge = readFileSync(
+      join(ROOT, "lib/passport/bridge-surface.ts"),
+      "utf8",
+    );
+    assert.match(bridge, /if\s*\(\s*!presenceBlocksWrites\(presence\)\s*\)/);
+    assert.match(bridge, /locationCopy:\s*passportAwayActionCopy\(presence\)/);
+
+    const action = readFileSync(
+      join(ROOT, "lib/passport/action-surface.ts"),
+      "utf8",
+    );
+    assert.match(action, /presenceCopy:\s*string\s*\|\s*null/);
+    assert.match(
+      action,
+      /presenceBlocksWrites\(presence\)\s*\?\s*passportAwayActionCopy\(presence\)\s*:\s*null/,
+    );
+    assert.match(
+      action,
+      /if\s*\(\s*presenceBlocksWrites\(presence\)\s*\)\s*\{\s*\n\s*return passportAwayActionCopy\(presence\);/,
+    );
+    // location refusal arms call copy only after status narrows to location_*
+    assert.match(
+      action,
+      /presence\.status === "location_pending"[\s\S]*passportAwayActionCopy\(presence\)/,
+    );
+    assert.match(
+      action,
+      /presence\.status === "location_unresolved"[\s\S]*passportAwayActionCopy\(presence\)/,
+    );
+
+    const card = readFileSync(
+      join(ROOT, "components/profile/profile-passport-card.tsx"),
+      "utf8",
+    );
+    assert.match(
+      card,
+      /location_pending[\s\S]*passportAwayActionCopy\(presence\)/,
+    );
+    assert.doesNotMatch(card, /passportAwayActionCopy\(\s*\{\s*status:\s*"here"/);
+
+    const presenceOwner = readFileSync(
+      join(ROOT, "lib/passport/presence.ts"),
+      "utf8",
+    );
+    assert.match(presenceOwner, /BlockingPassportPresence/);
+    assert.match(
+      presenceOwner,
+      /presence is BlockingPassportPresence/,
+    );
+    assert.doesNotMatch(
+      presenceOwner,
+      /case "here"/,
+    );
+    assert.doesNotMatch(
+      presenceOwner,
+      /return "";/,
+    );
   });
 });
 

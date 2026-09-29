@@ -25,6 +25,7 @@ import {
   writeConfirmStatusUnknownCopy,
   writeConfirmSupersededCopy,
 } from "@/lib/web3/write-confirm-copy";
+import { walletRejectionCopy } from "@/lib/web3/wallet-rejection";
 import {
   evmLandedRevertCopy,
   REVERT_COPY,
@@ -259,10 +260,15 @@ describe("classifyMintLandedError", () => {
     assert.ok(!/automatic|retrying/i.test(copy));
   });
 
-  it("wallet_rejected has a cause sentence (not send_failed)", () => {
-    const copy = mintPassportCauseCopy("wallet_rejected");
-    assert.match(copy, /cancelled/i);
-    assert.notEqual(copy, mintPassportCauseCopy("send_failed"));
+  it("wallet_rejected uses the sole walletRejectionCopy sentence", () => {
+    assert.equal(
+      mintPassportCauseCopy("wallet_rejected"),
+      walletRejectionCopy(),
+    );
+    assert.notEqual(
+      mintPassportCauseCopy("wallet_rejected"),
+      mintPassportCauseCopy("send_failed"),
+    );
   });
 });
 

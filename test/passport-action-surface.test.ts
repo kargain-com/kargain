@@ -124,6 +124,7 @@ describe("derivePassportActionSurface — presence", () => {
       }),
     );
     assert.equal(surface.presence.status, "away");
+    assert.ok(surface.presenceCopy != null);
     assert.match(surface.presenceCopy, /Return/);
     for (const key of WRITE_KEYS) {
       const gate = surface[key];
@@ -173,6 +174,7 @@ describe("derivePassportActionSurface — presence", () => {
       }),
     );
     assert.equal(surface.presence.status, "location_unresolved");
+    assert.ok(surface.presenceCopy != null);
     assert.match(surface.presenceCopy, /one side only/);
     for (const key of WRITE_KEYS) {
       const gate = surface[key];
@@ -304,7 +306,7 @@ void render;
       }),
     );
     assert.equal(writeSurface.presence.status, "here");
-    assert.equal(writeSurface.presenceCopy, "");
+    assert.equal(writeSurface.presenceCopy, null);
     assert.equal(writeSurface.open.status, "blocked");
     if (writeSurface.open.status === "blocked") {
       assert.equal(writeSurface.open.blockedBy, "write");

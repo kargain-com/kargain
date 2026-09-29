@@ -18,6 +18,7 @@ import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { categoryIndexToLabel } from "@/lib/kar-pro/kar-pro-metadata";
 import {
   KAR_PRO_PER_NETWORK_JOIN_DISCLOSURE,
+  karProAlreadyActiveElsewhere,
   karProAlreadyActiveElsewhereCopy,
 } from "@/lib/kar-pro/membership-roster";
 import { SLUG_PATTERN } from "@/lib/kar-pro/kar-pro-slug-rules";
@@ -49,7 +50,7 @@ function JoinNetworkContext({
   otherActiveChainIds: readonly number[];
 }) {
   const named = commercialNetworkLabel(chainId);
-  const alreadyElsewhere = karProAlreadyActiveElsewhereCopy(otherActiveChainIds);
+  const already = karProAlreadyActiveElsewhere(otherActiveChainIds);
   return (
     <div className="space-y-2">
       <p className="font-mono text-xs tabular-nums text-text-tertiary">
@@ -62,8 +63,10 @@ function JoinNetworkContext({
           commercialNetworkLabelCauseCopy(named.cause)
         )}
       </p>
-      {alreadyElsewhere ? (
-        <p className="font-sans text-xs text-text-tertiary">{alreadyElsewhere}</p>
+      {already.kind === "elsewhere" ? (
+        <p className="font-sans text-xs text-text-tertiary">
+          {karProAlreadyActiveElsewhereCopy(already)}
+        </p>
       ) : null}
       <p className="font-sans text-fluid-sm text-text-secondary">
         {KAR_PRO_PER_NETWORK_JOIN_DISCLOSURE}

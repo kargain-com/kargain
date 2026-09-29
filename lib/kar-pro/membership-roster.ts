@@ -67,16 +67,55 @@ export function karProNetworkInstrumentLine(chainId: number): string {
   return commercialNetworkLabelCauseCopy(named.cause);
 }
 
-export function karProAlreadyActiveElsewhereCopy(chainIds: readonly number[]): string {
-  const unique = [...new Set(chainIds)].filter((id) => Number.isFinite(id) && id > 0);
-  if (unique.length === 0) return "";
-  const names = unique
-    .sort((a, b) => a - b)
-    .map((id) => commercialNetworkLabel(id))
-    .filter((r): r is { ok: true; label: string } => r.ok)
-    .map((r) => r.label);
-  if (names.length === 0) return "";
-  return `Already KarPro on ${names.join(", ")}.`;
+export type KarProAlreadyActiveElsewhere =
+  | { readonly kind: "none" }
+  | {
+      readonly kind: "elsewhere";
+      readonly named: readonly string[];
+      readonly unresolvedCount: number;
+    };
+
+/**
+ * Named fact: active on other commercial networks (resolved labels + unresolved count).
+ * Never collapses unresolved into “no membership.”
+ */
+export function karProAlreadyActiveElsewhere(
+  chainIds: readonly number[],
+): KarProAlreadyActiveElsewhere {
+  const unique = [...new Set(chainIds)]
+    .filter((id) => Number.isFinite(id) && id > 0)
+    .sort((a, b) => a - b);
+  if (unique.length === 0) return { kind: "none" };
+
+  const named: string[] = [];
+  let unresolvedCount = 0;
+  for (const id of unique) {
+    const label = commercialNetworkLabel(id);
+    if (label.ok) named.push(label.label);
+    else unresolvedCount += 1;
+  }
+  if (named.length === 0 && unresolvedCount === 0) return { kind: "none" };
+  return { kind: "elsewhere", named, unresolvedCount };
+}
+
+/** Sole sentence for {@link KarProAlreadyActiveElsewhere} `elsewhere` — never `""`. */
+export function karProAlreadyActiveElsewhereCopy(
+  elsewhere: Extract<KarProAlreadyActiveElsewhere, { kind: "elsewhere" }>,
+): string {
+  const { named, unresolvedCount } = elsewhere;
+  if (named.length === 0) {
+    return unresolvedCount === 1
+      ? "Already KarPro on another network."
+      : "Already KarPro on other networks.";
+  }
+  if (unresolvedCount === 0) {
+    return `Already KarPro on ${named.join(", ")}.`;
+  }
+  const other =
+    unresolvedCount === 1
+      ? "1 other network"
+      : `${unresolvedCount} other networks`;
+  return `Already KarPro on ${named.join(", ")} and ${other}.`;
 }
 
 export function otherActiveChainIdsFromRoster(

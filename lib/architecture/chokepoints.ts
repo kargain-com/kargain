@@ -133,7 +133,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "wallet-rejection",
     owner: "lib/web3/wallet-rejection.ts",
-    rule: "Sole typed wallet-rejection classifier (viem UserRejectedRequestError / EIP-1193 4001 / Wallet Standard rejection discriminants) + sole sentence; product roots must not message.includes User rejected/denied",
+    rule: "Sole typed wallet-rejection classifier (viem UserRejectedRequestError / EIP-1193 4001 / Wallet Standard rejection discriminants) + sole sentence (walletRejectionCopy); product roots must not message.includes User rejected/denied; cause tables must not define a second wallet_rejected string literal containing cancel outside wallet-rejection.ts",
     guardTests: ["wallet-rejection-policy.test.ts"],
   },
   {
@@ -422,8 +422,8 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "peer-identity-kar-pro",
     owner: "hooks/use-peer-identity.ts · lib/kar-pro/membership-roster.ts",
-    rule: "KarPro anyActive has one owner; no address-OR loops",
-    guardTests: ["peer-identity-policy.test.ts"],
+    rule: "KarPro anyActive has one owner; no address-OR loops; karProAlreadyActiveElsewhere is a named Result (none | elsewhere with named labels + unresolvedCount); elsewhere sentence never collapses unresolved into empty string",
+    guardTests: ["peer-identity-policy.test.ts", "kar-pro-membership-roster.test.ts"],
   },
   {
     id: "live-policy-subscription",
@@ -879,11 +879,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "passport-presence-deriver",
     owner:
       "lib/passport/presence.ts · lib/passport/action-surface.ts · lib/passport/bridge-surface.ts · hooks/use-passport-presence.ts · lib/passport/passport-commerce-facts.ts",
-    rule: "derivePassportPresence only in named owners; components/routes consume answers; custodyLock on SVM from PassportState decode via commerce-facts — never invent unlocked or treat missing EVM address as pending; location_pending and location_refused never share a sentence",
+    rule: "derivePassportPresence only in named owners; components/routes consume answers; custodyLock on SVM from PassportState decode via commerce-facts — never invent unlocked or treat missing EVM address as pending; location_pending and location_refused never share a sentence; presenceBlocksWrites is a type guard to BlockingPassportPresence; passportAwayActionCopy accepts only BlockingPassportPresence (no empty-string arm for here)",
     guardTests: [
       "passport-presence-owner-policy.test.ts",
       "passport-action-surface.test.ts",
       "passport-detail-svm-chrome-policy.test.ts",
+      "passport-presence.test.ts",
     ],
   },
   {

@@ -168,35 +168,47 @@ export function isPassportHere(presence: PassportPresence): boolean {
   return presence.status === "here";
 }
 
-/** Writes must not be offered when away, pending, refused, or fold-unresolved. */
-export function presenceBlocksWrites(presence: PassportPresence): boolean {
+/** Presence states that block writes — every status except `here`. */
+export type BlockingPassportPresence = Exclude<
+  PassportPresence,
+  { status: "here" }
+>;
+
+/**
+ * Writes must not be offered when away, pending, refused, or fold-unresolved.
+ * Type guard so callers may pass the narrowed value to {@link passportAwayActionCopy}.
+ */
+export function presenceBlocksWrites(
+  presence: PassportPresence,
+): presence is BlockingPassportPresence {
   return presence.status !== "here";
 }
 
 /**
  * Factual body copy when presence blocks an action (§4.21).
  * Pending, refused, and unresolved never share a sentence.
+ * Callers must narrow with {@link presenceBlocksWrites} (or an equivalent status check).
  */
-export function passportAwayActionCopy(presence: PassportPresence): string {
-  if (presence.status === "location_pending") {
-    return LOCATION_PENDING_COPY;
-  }
-  if (presence.status === "location_refused") {
-    return locationRefusedCauseCopy(presence.cause);
-  }
-  if (presence.status === "location_unresolved") {
-    return locationUnresolvedCauseCopy(presence.cause);
-  }
-  if (presence.status !== "away") {
-    return "";
-  }
-  if (presence.locationChainId != null) {
-    const named = commercialNetworkLabel(presence.locationChainId);
-    if (named.ok) {
-      return `This passport is on ${named.label}. Return it to this chain to restore this action.`;
+export function passportAwayActionCopy(
+  presence: BlockingPassportPresence,
+): string {
+  switch (presence.status) {
+    case "location_pending":
+      return LOCATION_PENDING_COPY;
+    case "location_refused":
+      return locationRefusedCauseCopy(presence.cause);
+    case "location_unresolved":
+      return locationUnresolvedCauseCopy(presence.cause);
+    case "away": {
+      if (presence.locationChainId != null) {
+        const named = commercialNetworkLabel(presence.locationChainId);
+        if (named.ok) {
+          return `This passport is on ${named.label}. Return it to this chain to restore this action.`;
+        }
+      }
+      return "This passport is on another chain. Return it here to restore this action.";
     }
   }
-  return "This passport is on another chain. Return it here to restore this action.";
 }
 
 /**

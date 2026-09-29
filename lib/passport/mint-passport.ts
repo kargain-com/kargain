@@ -44,7 +44,7 @@ import {
   type SvmLandedInstructionError,
 } from "@/lib/web3/svm-landed-error";
 import type { TxRefusal } from "@/lib/web3/tx-refusal";
-import { isWalletRejection } from "@/lib/web3/wallet-rejection";
+import { isWalletRejection, walletRejectionCopy } from "@/lib/web3/wallet-rejection";
 import {
   fetchProductSvmAccountData,
   type FetchSvmAccountDataResult,
@@ -205,8 +205,7 @@ const MINT_PASSPORT_CAUSE_COPY: Record<MintPassportCause, string> = {
   pda_failed: "Could not derive mint accounts.",
   wallet_cannot_sign_and_send: "This wallet cannot sign and send on Solana.",
   no_connected_account: "Connect a Solana wallet to mint a passport.",
-  wallet_rejected:
-    "You cancelled the wallet request. Nothing was submitted.",
+  wallet_rejected: walletRejectionCopy(),
   wallet_send_failed: "The wallet could not send this transaction. Try again.",
   send_failed: "Mint failed. Please try again.",
   write_guard_refused: "Mint could not start. Check your wallet and network.",

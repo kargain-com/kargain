@@ -5,6 +5,7 @@ import {
   activeMembershipChainIds,
   deriveKarProMembershipRoster,
   foldAnyActiveByAddress,
+  karProAlreadyActiveElsewhere,
   karProAlreadyActiveElsewhereCopy,
   karProAnyActive,
   karProLeaveNetworkScopeCopy,
@@ -69,10 +70,66 @@ describe("deriveKarProMembershipRoster", () => {
 });
 
 describe("membership roster copy", () => {
-  it("formats already-active list", () => {
-    assert.equal(karProAlreadyActiveElsewhereCopy([]), "");
-    assert.match(karProAlreadyActiveElsewhereCopy([HUB]), /Already KarPro on /);
-    assert.match(karProAlreadyActiveElsewhereCopy([SPOKE, HUB]), /,/);
+  const UNREGISTERED = 999_999_001;
+
+  it("none when no other chains", () => {
+    assert.deepEqual(karProAlreadyActiveElsewhere([]), { kind: "none" });
+    assert.deepEqual(karProAlreadyActiveElsewhere([0, -1, NaN]), {
+      kind: "none",
+    });
+  });
+
+  it("elsewhere with resolved names only", () => {
+    const one = karProAlreadyActiveElsewhere([HUB]);
+    assert.equal(one.kind, "elsewhere");
+    if (one.kind === "elsewhere") {
+      assert.equal(one.unresolvedCount, 0);
+      assert.equal(one.named.length, 1);
+      assert.equal(
+        karProAlreadyActiveElsewhereCopy(one),
+        `Already KarPro on ${one.named[0]}.`,
+      );
+    }
+    const both = karProAlreadyActiveElsewhere([SPOKE, HUB]);
+    assert.equal(both.kind, "elsewhere");
+    if (both.kind === "elsewhere") {
+      assert.equal(both.unresolvedCount, 0);
+      assert.equal(both.named.length, 2);
+      assert.match(karProAlreadyActiveElsewhereCopy(both), /,/);
+    }
+  });
+
+  it("elsewhere with one resolved and one unregistered — both represented", () => {
+    const fact = karProAlreadyActiveElsewhere([HUB, UNREGISTERED]);
+    assert.equal(fact.kind, "elsewhere");
+    if (fact.kind !== "elsewhere") return;
+    assert.equal(fact.named.length, 1);
+    assert.equal(fact.unresolvedCount, 1);
+    const sentence = karProAlreadyActiveElsewhereCopy(fact);
+    assert.match(sentence, new RegExp(fact.named[0]!));
+    assert.match(sentence, /1 other network/);
+  });
+
+  it("only unregistered → another/other network sentence", () => {
+    const one = karProAlreadyActiveElsewhere([UNREGISTERED]);
+    assert.equal(one.kind, "elsewhere");
+    if (one.kind === "elsewhere") {
+      assert.deepEqual(one.named, []);
+      assert.equal(one.unresolvedCount, 1);
+      assert.equal(
+        karProAlreadyActiveElsewhereCopy(one),
+        "Already KarPro on another network.",
+      );
+    }
+    const two = karProAlreadyActiveElsewhere([UNREGISTERED, UNREGISTERED + 1]);
+    assert.equal(two.kind, "elsewhere");
+    if (two.kind === "elsewhere") {
+      assert.equal(two.unresolvedCount, 2);
+      assert.equal(
+        karProAlreadyActiveElsewhereCopy(two),
+        "Already KarPro on other networks.",
+      );
+    }
   });
 
   it("formats network instrument and leave scope", () => {

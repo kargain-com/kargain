@@ -8,6 +8,7 @@ import {
   type PassportPresence,
   type PassportTrustDisplay,
   passportAwayActionCopy,
+  presenceBlocksWrites,
 } from "@/lib/passport/presence";
 import type { PassportStatus } from "@/lib/types/ponder";
 
@@ -31,7 +32,7 @@ export type UsePassportPresenceInput = {
  */
 export function usePassportPresence(input: UsePassportPresenceInput): {
   readonly presence: PassportPresence;
-  readonly presenceCopy: string;
+  readonly presenceCopy: string | null;
   trustDisplay: (recordedStatus: PassportStatus) => PassportTrustDisplay;
 } {
   const foldPresent = Boolean(input.custodyUnresolved);
@@ -58,7 +59,9 @@ export function usePassportPresence(input: UsePassportPresenceInput): {
 
   return {
     presence,
-    presenceCopy: passportAwayActionCopy(presence),
+    presenceCopy: presenceBlocksWrites(presence)
+      ? passportAwayActionCopy(presence)
+      : null,
     trustDisplay: (recordedStatus) =>
       derivePassportTrustDisplay(presence, recordedStatus),
   };

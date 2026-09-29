@@ -8,6 +8,7 @@ import type {
   ChallengeSurface,
 } from "@/lib/challenge/surface";
 import {
+  type BlockingPassportPresence,
   type DerivePassportPresenceInput,
   type PassportPresence,
   derivePassportPresence,
@@ -57,7 +58,7 @@ export type PassportPresenceBlockedGate = {
   readonly status: "blocked";
   readonly blockedBy: "presence";
   readonly cause: PassportPresenceBlockCause;
-  readonly presence: PassportPresence;
+  readonly presence: BlockingPassportPresence;
 };
 
 export type PassportWriteBlockedGate = {
@@ -112,8 +113,8 @@ export type PassportLocationRefusal =
 
 export type PassportActionSurface = {
   readonly presence: PassportPresence;
-  /** Factual copy when presence blocks writes; empty when here. */
-  readonly presenceCopy: string;
+  /** Factual copy when presence blocks writes; null when here. */
+  readonly presenceCopy: string | null;
   readonly editMetadata: PassportWriteGate;
   readonly verify: PassportWriteGate;
   readonly appendRecord: PassportWriteGate;
@@ -257,7 +258,9 @@ export function editMetadataRefusalCopy(
     cause === "reads_unresolved" ||
     cause === "custody_unresolved"
   ) {
-    return passportAwayActionCopy(presence);
+    if (presenceBlocksWrites(presence)) {
+      return passportAwayActionCopy(presence);
+    }
   }
   if (cause === "disputed") {
     return "This passport is under challenge. Metadata can be edited after the challenge ends.";
@@ -308,7 +311,7 @@ export function derivePassportActionSurface(
   const presenceBlock = presenceGate(presence);
   const presenceCopy = presenceBlocksWrites(presence)
     ? passportAwayActionCopy(presence)
-    : "";
+    : null;
 
   if (presenceBlock != null) {
     return {
