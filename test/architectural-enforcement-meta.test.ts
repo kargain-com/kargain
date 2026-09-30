@@ -5,8 +5,8 @@
  *
  * Failures:
  * - New `*policy*` / `*invariant*` / `*coverage*` / `*contract*` test under
- *   `test/` not listed in any `test:*` script (Hardhat-native suites may use
- *   the `test` / hardhat runner instead).
+ *   `test/` not listed in any `test:*` script (declared Hardhat-native suites
+ *   may use the partitioned `test` / Hardhat runner instead).
  * - New entry in ARCHITECTURAL_CHOKEPOINTS without a guarding test file, or
  *   whose guard is unreachable from a gate.
  */
@@ -18,6 +18,10 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { ARCHITECTURAL_CHOKEPOINTS } from "@/lib/architecture/chokepoints";
+import {
+  HARDHAT_NATIVE_SUITES,
+  isHardhatTestScriptPartitioned,
+} from "@/lib/architecture/hardhat-test-suites";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TEST_DIR = path.join(ROOT, "test");
@@ -42,28 +46,18 @@ function gateScripts(): Array<{ name: string; body: string }> {
     .map(([name, body]) => ({ name, body: String(body) }));
 }
 
-function isHardhatNativeSuite(absPath: string): boolean {
-  const text = fs.readFileSync(absPath, "utf8");
-  return (
-    /\bfrom\s+["']hardhat["']/.test(text) ||
-    /\bimport\s+hardhat\b/.test(text) ||
-    /@nomicfoundation\/hardhat/.test(text)
-  );
-}
-
 /**
  * A suite is reachable when a targeted `test:*` script names its file, or
- * (Hardhat-native only) the bare `test` script is `hardhat test`.
+ * (declared Hardhat-native only) bare `test` is the partitioned Hardhat runner.
  */
 function reachableGates(basename: string): string[] {
-  const abs = path.join(TEST_DIR, basename);
+  const rel = `test/${basename}`;
   const gates: string[] = [];
   for (const { name, body } of gateScripts()) {
     if (name === "test") {
       if (
-        /hardhat\s+test/.test(body) &&
-        fs.existsSync(abs) &&
-        isHardhatNativeSuite(abs)
+        isHardhatTestScriptPartitioned(body) &&
+        (HARDHAT_NATIVE_SUITES as readonly string[]).includes(rel)
       ) {
         gates.push(name);
       }

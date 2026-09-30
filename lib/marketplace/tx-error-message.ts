@@ -350,11 +350,6 @@ export function formatBidTooLowMessage(
   return `Bid at least ${minNextBidLabel} — the minimum step is ${pct}% above the current bid.`;
 }
 
-/** Bridge-context override for LeaveChainRefused when a challenge is open. */
-export function formatPassportBridgeBlockedMessage(): string {
-  return "Resolve the open challenge before bridging.";
-}
-
 function landedWithErrorCopy(
   landed: SvmLandedInstructionError | null,
 ): string {

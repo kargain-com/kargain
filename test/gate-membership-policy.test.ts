@@ -37,6 +37,7 @@ export const TARGETED_GATE_SCRIPTS = [
   "test:vin-insight",
   "test:vin-assist",
   "test:vincent",
+  "test:unit",
   "test:e2e",
 ] as const;
 

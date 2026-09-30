@@ -1012,6 +1012,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["typecheck-project-membership-policy.test.ts"],
   },
   {
+    id: "hardhat-test-suites",
+    owner:
+      "lib/architecture/hardhat-test-suites.ts · scripts/run-hardhat-test.ts",
+    rule: "pnpm test runs exactly HARDHAT_NATIVE_SUITES (explicit Hardhat testFiles); never recursive discover-all under test/; Hardhat-importing suites ≡ declared list ∪ e2e-local (test:e2e only); every other test/*.test.ts is named in a test:* gate (test:unit for helper units)",
+    guardTests: ["hardhat-test-suites-policy.test.ts"],
+  },
+  {
     id: "ts-nocheck",
     owner: "lib/architecture/ts-nocheck.ts",
     rule: "No tracked TypeScript file carries a file-wide @ts-nocheck pragma outside the named exception list",
