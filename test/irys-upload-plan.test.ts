@@ -20,18 +20,21 @@ import { FIXTURE_SVM_STACK } from "./fixtures/commercial-svm-stack.ts";
 
 const SOLANA = namespaceFromLayerZeroEid(40168);
 
-/** Frozen EVM plans — П-8 must keep these byte-identical. */
+/**
+ * Frozen EVM plans — П-8 must keep these byte-identical.
+ * rpcUrl follows product `rpcUrlForChain` (env override is legal input).
+ */
 const FROZEN_BASE_SEPOLIA = {
   paymentToken: "base-eth",
   bundlerUrl: IRYS_DEVNET_BUNDLER_URL,
-  rpcUrl: "https://sepolia.base.org",
+  rpcUrl: rpcUrlForChain(84532),
   devnet: true,
 } as const;
 
 const FROZEN_ETH_SEPOLIA = {
   paymentToken: "ethereum",
   bundlerUrl: IRYS_DEVNET_BUNDLER_URL,
-  rpcUrl: "https://ethereum-sepolia-rpc.publicnode.com",
+  rpcUrl: rpcUrlForChain(11155111),
   devnet: true,
 } as const;
 

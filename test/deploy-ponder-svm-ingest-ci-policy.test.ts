@@ -8,11 +8,14 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  CI_GATE_SCRIPTS,
   DEPLOY_MACHINE_VERIFY_SUITES,
+  TOOLCHAIN_GATES,
   ciRunnableVacuousDeploymentsViolation,
   ciVerifyMembers,
   findVerifyPartitionHoles,
   isVacuousGreenOnAbsentDeploymentsSource,
+  missingCiYamlGateSteps,
   parseVerifyMembers,
 } from "../lib/architecture/ci-verify-partition.ts";
 
@@ -148,8 +151,32 @@ deploy:
     assert.match(yaml, /pnpm compile/);
     assert.match(yaml, /pnpm typecheck/);
     assert.match(yaml, /pnpm lint/);
-    assert.match(yaml, /pnpm test:ci/);
+    assert.deepEqual(
+      missingCiYamlGateSteps(yaml),
+      [],
+      `ci.yml missing CI_GATE_SCRIPTS steps: ${missingCiYamlGateSteps(yaml).join(", ")}`,
+    );
     assert.match(yaml, /pnpm build/);
+    // Order: lint → first CI gate → … → last CI gate → build.
+    const lintIdx = yaml.search(/^\s*run:\s*pnpm\s+lint\s*$/m);
+    const firstGate = CI_GATE_SCRIPTS[0]!;
+    const lastGate = CI_GATE_SCRIPTS[CI_GATE_SCRIPTS.length - 1]!;
+    const firstGateIdx = yaml.search(
+      new RegExp(
+        `^\\s*run:\\s*pnpm\\s+${firstGate.replace(":", "\\:")}\\s*$`,
+        "m",
+      ),
+    );
+    const lastGateIdx = yaml.search(
+      new RegExp(
+        `^\\s*run:\\s*pnpm\\s+${lastGate.replace(":", "\\:")}\\s*$`,
+        "m",
+      ),
+    );
+    const buildIdx = yaml.search(/^\s*run:\s*pnpm\s+build\s*$/m);
+    assert.ok(lintIdx >= 0 && firstGateIdx > lintIdx, "CI gates after lint");
+    assert.ok(lastGateIdx > firstGateIdx, "CI gates ordered");
+    assert.ok(buildIdx > lastGateIdx, "build after CI gates");
     assert.doesNotMatch(yaml, /appleboy\/ssh-action/);
     assert.doesNotMatch(yaml, /secrets\./);
     // Per-caller group — shared ci-${{ github.ref }} dropped Deploy svm-ingest runs.
@@ -242,6 +269,37 @@ jobs:
       PKG.scripts["test:ci"],
       "node --import tsx scripts/run-test-ci.ts",
     );
+  });
+
+  it("constructed: omitting a CI_GATE_SCRIPTS step is red", () => {
+    const live = readFileSync(CI_WF, "utf8");
+    assert.deepEqual(missingCiYamlGateSteps(live), []);
+    const planted = live.replace(
+      /^\s*- name: test:unit\n\s*run: pnpm test:unit\n/m,
+      "",
+    );
+    assert.ok(
+      missingCiYamlGateSteps(planted).includes("test:unit"),
+      "planted yaml without test:unit must fail missingCiYamlGateSteps",
+    );
+  });
+
+  it("TOOLCHAIN_GATES are named exclusions, never CI_GATE_SCRIPTS members", () => {
+    for (const gate of Object.keys(TOOLCHAIN_GATES) as (keyof typeof TOOLCHAIN_GATES)[]) {
+      assert.equal(
+        (CI_GATE_SCRIPTS as readonly string[]).includes(gate),
+        false,
+        `${gate} must not be a trunk CI gate`,
+      );
+      assert.ok(
+        TOOLCHAIN_GATES[gate].length > 0,
+        `${gate} must carry a reason`,
+      );
+      assert.ok(
+        PKG.scripts[gate],
+        `${gate} must exist in package.json scripts`,
+      );
+    }
   });
 
   it("both deploy workflows need gates that call ci.yml before SSH", () => {

@@ -58,8 +58,69 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      # CI_GATE_SCRIPTS sole owner: lib/architecture/ci-verify-partition.ts
       - name: test:ci
         run: pnpm test:ci
+
+      - name: test:unit
+        run: pnpm test:unit
+
+      - name: test
+        run: pnpm test
+
+      - name: test:commerce-ui
+        run: pnpm test:commerce-ui
+
+      - name: test:passport-ui
+        run: pnpm test:passport-ui
+
+      - name: test:bridge
+        run: pnpm test:bridge
+
+      - name: test:listing
+        run: pnpm test:listing
+
+      - name: test:metadata
+        run: pnpm test:metadata
+
+      - name: test:messaging
+        run: pnpm test:messaging
+
+      - name: test:nostr
+        run: pnpm test:nostr
+
+      - name: test:notifications
+        run: pnpm test:notifications
+
+      - name: test:trust
+        run: pnpm test:trust
+
+      - name: test:records
+        run: pnpm test:records
+
+      - name: test:geo
+        run: pnpm test:geo
+
+      - name: test:vincent-commons
+        run: pnpm test:vincent-commons
+
+      - name: test:verifier
+        run: pnpm test:verifier
+
+      - name: test:confirm-status
+        run: pnpm test:confirm-status
+
+      - name: test:vin-insight
+        run: pnpm test:vin-insight
+
+      - name: test:vin-assist
+        run: pnpm test:vin-assist
+
+      - name: test:vincent
+        run: pnpm test:vincent
+
+      - name: test:ponder
+        run: pnpm test:ponder
 
       - name: Build
         run: pnpm build

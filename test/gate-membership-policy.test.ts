@@ -1,6 +1,8 @@
 /**
  * Gate map: each test file belongs to exactly one targeted test:* group.
- * Opt-in gates (test:vincent:live) and Hardhat `test` are outside this invariant.
+ * Opt-in gates (test:vincent:live) and Hardhat∩verify dual-home are named.
+ *
+ * Unit G2: every suite under test/ is CI-reachable ∪ TOOLCHAIN ∪ deploy-machine.
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -8,7 +10,16 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import {
+  CI_GATE_SCRIPTS,
+  DEPLOY_MACHINE_VERIFY_SUITES,
+  TOOLCHAIN_GATES,
+  findCiReachabilityHoles,
+} from "../lib/architecture/ci-verify-partition.ts";
+import { listTestSuiteFiles } from "../lib/architecture/hardhat-test-suites.ts";
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const TEST_DIR = path.join(ROOT, "test");
 const PKG = JSON.parse(
   fs.readFileSync(path.join(ROOT, "package.json"), "utf8"),
 ) as { scripts: Record<string, string> };
@@ -104,6 +115,7 @@ describe("gate membership policy", () => {
     assert.deepEqual(liveFiles, ["test/vincent-integration.test.ts"]);
     const targetedGates = targeted.get("test/vincent-integration.test.ts");
     assert.ok(targetedGates?.has("test:vincent"));
+    void OPT_IN_GATE_SCRIPTS;
   });
 
   it("constructed violation: dual membership is detected", () => {
@@ -122,4 +134,68 @@ describe("gate membership policy", () => {
     ]);
     assert.deepEqual(findDualTargetedMembership(membership), []);
   });
+
+  it("every suite is CI-reachable ∪ TOOLCHAIN ∪ deploy-machine", () => {
+    const all = listTestSuiteFiles(TEST_DIR);
+    const holes = findCiReachabilityHoles({
+      allTestFiles: all,
+      scripts: PKG.scripts,
+    });
+    assert.deepEqual(
+      holes,
+      [],
+      holes.length
+        ? `CI reachability holes:\n${holes.map((h) => h.file).join("\n")}`
+        : undefined,
+    );
+    // Owner enumerators stay wired.
+    assert.ok(CI_GATE_SCRIPTS.includes("test:ci"));
+    assert.ok(CI_GATE_SCRIPTS.includes("test:unit"));
+    assert.ok(CI_GATE_SCRIPTS.includes("test"));
+    assert.ok("test:svm-ingest" in TOOLCHAIN_GATES);
+    assert.ok("test:e2e" in TOOLCHAIN_GATES);
+    assert.equal(DEPLOY_MACHINE_VERIFY_SUITES.length, 1);
+  });
+
+  it("constructed: file in neither CI nor TOOLCHAIN nor deploy-machine is red", () => {
+    const scripts: Record<string, string> = {
+      "test:verify":
+        "node --import tsx --test test/commercial-active-manifest-policy.test.ts",
+    };
+    for (const gate of CI_GATE_SCRIPTS) {
+      if (gate === "test") {
+        scripts[gate] = "node --import tsx scripts/run-hardhat-test.ts";
+      } else if (gate === "test:ci") {
+        scripts[gate] = "node --import tsx scripts/run-test-ci.ts";
+      } else {
+        scripts[gate] = "node --import tsx --test";
+      }
+    }
+    for (const gate of Object.keys(TOOLCHAIN_GATES)) {
+      scripts[gate] = "node --import tsx --test";
+    }
+    const holes = findCiReachabilityHoles({
+      allTestFiles: [
+        "test/commercial-active-manifest-policy.test.ts",
+        "test/orphan-unreachable.test.ts",
+      ],
+      scripts,
+    });
+    assert.ok(
+      holes.some(
+        (h) =>
+          h.file === "test/orphan-unreachable.test.ts" &&
+          h.reason === "unreachable",
+      ),
+      `expected orphan unreachable; got ${JSON.stringify(holes)}`,
+    );
+    assert.equal(
+      holes.some(
+        (h) => h.file === "test/commercial-active-manifest-policy.test.ts",
+      ),
+      false,
+      "deploy-machine member must not be a hole",
+    );
+  });
 });
+
