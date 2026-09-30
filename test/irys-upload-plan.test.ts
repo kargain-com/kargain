@@ -15,44 +15,95 @@ import {
   planIrysUpload,
 } from "../lib/storage/irys-upload-plan.ts";
 import { productSvmRpcUrl } from "../lib/web3/svm-rpc.ts";
-import { rpcUrlForChain } from "../lib/web3/supported-chains.ts";
 import { FIXTURE_SVM_STACK } from "./fixtures/commercial-svm-stack.ts";
 
 const SOLANA = namespaceFromLayerZeroEid(40168);
 
-/**
- * Frozen EVM plans — П-8 must keep these byte-identical.
- * rpcUrl follows product `rpcUrlForChain` (env override is legal input).
- */
+/** Literal defaults from FALLBACK_RPC — freeze must not call rpcUrlForChain. */
 const FROZEN_BASE_SEPOLIA = {
   paymentToken: "base-eth",
   bundlerUrl: IRYS_DEVNET_BUNDLER_URL,
-  rpcUrl: rpcUrlForChain(84532),
+  rpcUrl: "https://sepolia.base.org",
   devnet: true,
 } as const;
 
 const FROZEN_ETH_SEPOLIA = {
   paymentToken: "ethereum",
   bundlerUrl: IRYS_DEVNET_BUNDLER_URL,
-  rpcUrl: rpcUrlForChain(11155111),
+  rpcUrl: "https://ethereum-sepolia-rpc.publicnode.com",
   devnet: true,
 } as const;
 
+const EVM_RPC_OVERRIDE_KEYS = [
+  "NEXT_PUBLIC_RPC_BY_CHAIN",
+  "NEXT_PUBLIC_RPC_84532",
+  "NEXT_PUBLIC_RPC_11155111",
+] as const;
+
+function withClearedEvmRpcOverrides<T>(fn: () => T): T {
+  const saved = new Map<string, string | undefined>();
+  for (const key of EVM_RPC_OVERRIDE_KEYS) {
+    saved.set(key, process.env[key]);
+    delete process.env[key];
+  }
+  try {
+    return fn();
+  } finally {
+    for (const key of EVM_RPC_OVERRIDE_KEYS) {
+      const prev = saved.get(key);
+      if (prev === undefined) delete process.env[key];
+      else process.env[key] = prev;
+    }
+  }
+}
+
 describe("planIrysUpload", () => {
   it("plans Base Sepolia as base-eth + Irys devnet (EVM identity freeze)", () => {
-    const result = planIrysUpload(requireCommercialActive(84532));
-    assert.equal(result.ok, true);
-    if (!result.ok) return;
-    assert.deepEqual(result.plan, FROZEN_BASE_SEPOLIA);
-    assert.equal(result.plan.rpcUrl, rpcUrlForChain(84532));
+    withClearedEvmRpcOverrides(() => {
+      const result = planIrysUpload(requireCommercialActive(84532));
+      assert.equal(result.ok, true);
+      if (!result.ok) return;
+      assert.deepEqual(result.plan, FROZEN_BASE_SEPOLIA);
+    });
   });
 
   it("plans Ethereum Sepolia as ethereum + Irys devnet (EVM identity freeze)", () => {
-    const result = planIrysUpload(requireCommercialActive(11155111));
-    assert.equal(result.ok, true);
-    if (!result.ok) return;
-    assert.deepEqual(result.plan, FROZEN_ETH_SEPOLIA);
-    assert.equal(result.plan.rpcUrl, rpcUrlForChain(11155111));
+    withClearedEvmRpcOverrides(() => {
+      const result = planIrysUpload(requireCommercialActive(11155111));
+      assert.equal(result.ok, true);
+      if (!result.ok) return;
+      assert.deepEqual(result.plan, FROZEN_ETH_SEPOLIA);
+    });
+  });
+
+  it("constructed: wrong frozen rpcUrl is red against default plan", () => {
+    withClearedEvmRpcOverrides(() => {
+      const result = planIrysUpload(requireCommercialActive(84532));
+      assert.equal(result.ok, true);
+      if (!result.ok) return;
+      const planted = {
+        ...FROZEN_BASE_SEPOLIA,
+        rpcUrl: "https://planted-wrong.example",
+      };
+      assert.notDeepEqual(result.plan, planted);
+      assert.throws(() => {
+        assert.deepEqual(result.plan, planted);
+      }, /planted-wrong|deepEqual|Expected/i);
+    });
+  });
+
+  it("NEXT_PUBLIC_RPC_84532 override is legal plan input", () => {
+    withClearedEvmRpcOverrides(() => {
+      const sentinel = "https://rpc-override-sentinel.example/84532";
+      process.env.NEXT_PUBLIC_RPC_84532 = sentinel;
+      const result = planIrysUpload(requireCommercialActive(84532));
+      assert.equal(result.ok, true);
+      if (!result.ok) return;
+      assert.equal(result.plan.rpcUrl, sentinel);
+      assert.equal(result.plan.paymentToken, "base-eth");
+      assert.equal(result.plan.bundlerUrl, IRYS_DEVNET_BUNDLER_URL);
+      assert.equal(result.plan.devnet, true);
+    });
   });
 
   it("unregistered SVM namespace is wrong_vm without throwing", () => {

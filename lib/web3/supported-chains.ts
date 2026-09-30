@@ -66,10 +66,9 @@ function parseRpcMap(): Record<string, string> {
   }
 }
 
-const rpcMap = parseRpcMap();
-
+/** Call-time env — both BY_CHAIN map and per-chain single override. */
 export function rpcUrlForChain(chainId: number): string {
-  const fromMap = rpcMap[String(chainId)];
+  const fromMap = parseRpcMap()[String(chainId)];
   if (fromMap) return fromMap;
   const single = process.env[`NEXT_PUBLIC_RPC_${chainId}` as keyof NodeJS.ProcessEnv] as string | undefined;
   if (single) return single;
