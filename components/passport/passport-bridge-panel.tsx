@@ -1,18 +1,16 @@
 "use client";
 
-import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import { useActiveAccount } from "@/hooks/use-active-account";
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useReadContract } from "wagmi";
 
-import { EvmSessionRefusal } from "@/components/shell/evm-session-refusal";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { InstrumentLink } from "@/components/ui/instrument-link";
 import { useBridge } from "@/hooks/use-bridge";
 import { useBridgeTransit } from "@/hooks/use-bridge-transit";
-import { KarPassportAbi } from "@/lib/contracts/abis.generated";
+import { usePassportHolder } from "@/hooks/use-passport-holder";
 import type { CommerceFact } from "@/lib/passport/commerce-fact";
 import type { CommerceMode } from "@/lib/commerce/mode";
 import type { EncumbrancePermissionGate } from "@/lib/passport/encumbrance-permission";
@@ -27,10 +25,7 @@ import {
   deriveBridgeDirectionMode,
   deriveBridgeSurface,
 } from "@/lib/passport/bridge-surface";
-import {
-  isOnChainNftOwner,
-  resolveEffectiveOnChainOwner,
-} from "@/lib/passport/passport-owner";
+import { isSessionHolder } from "@/lib/passport/passport-holder";
 import { parsePassportTokenId } from "@/lib/passport/passport-token-id";
 import type { PassportStatus } from "@/lib/types/ponder";
 import {
@@ -42,9 +37,7 @@ import {
   commercialActive,
   nativeUnitOf,
 } from "@/lib/web3/commercial-active";
-import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { formatNativeAmountLabeled } from "@/lib/web3/native-amount";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
 import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 import { cn } from "@/lib/utils";
@@ -102,9 +95,6 @@ export function PassportBridgePanel({
   const handedOffRef = useRef(false);
   const [crossingAcked, setCrossingAcked] = useState(false);
   const { account } = useActiveAccount();
-  const evm = requireEvmSession(account);
-  const address = evm.ok ? evm.address : undefined;
-  const passport = karPassportAddress(chainId);
   const tid = BigInt(tokenId);
   const dstChainId = bridgeCounterpartChainId(chainId);
   const dstNamed =
@@ -127,28 +117,16 @@ export function PassportBridgePanel({
       ponderCustodyChain: chainId,
     });
 
-  const wc = eip155WagmiChainId(chainId);
-  const { data: onChainOwner, status: ownerStatus } = useReadContract({
-    address: passport,
-    abi: KarPassportAbi,
-    functionName: "ownerOf",
-    args: [tid],
-    chainId: wc,
-    query: {
-      enabled: Boolean(passport && wc != null) && !transitActive,
-    },
+  const { holder } = usePassportHolder({
+    namespace: chainId,
+    tokenId,
+    projectionOwner: passportOwner,
+    transitActive,
   });
-
-  const effectiveOwner = resolveEffectiveOnChainOwner(
-    ownerStatus === "success" ? (onChainOwner as string) : undefined,
-    passportOwner,
-  );
-  const isOwner =
-    ownerStatus === "success" &&
-    isOnChainNftOwner(address, effectiveOwner, chainId);
+  const isOwner = isSessionHolder(account, holder, chainId);
 
   const surface = deriveBridgeSurface({
-    isOwner: Boolean(isOwner),
+    isOwner,
     chainId,
     leaveChainPermission,
     liveConsignmentMode,
@@ -412,31 +390,24 @@ export function PassportBridgePanel({
         </p>
       )}
 
-      {evm.ok ? (
-        <Button
-          type="button"
-          variant="secondary"
-          className="w-full"
-          disabled={
-            transitActive ||
-            !surface.canBridge ||
-            Boolean(disabledReason) ||
-            Boolean(nextHopWrongVmCopyText) ||
-            busy ||
-            (crossingConsent.requiresAck && !crossingAcked)
-          }
-          onClick={() => {
-            void bridge(tid);
-          }}
-        >
-          {buttonLabel}
-        </Button>
-      ) : (
-        <EvmSessionRefusal
-          cause={evm.cause}
-          disconnectedTitle="Connect your wallet to move this passport."
-        />
-      )}
+      <Button
+        type="button"
+        variant="secondary"
+        className="w-full"
+        disabled={
+          transitActive ||
+          !surface.canBridge ||
+          Boolean(disabledReason) ||
+          Boolean(nextHopWrongVmCopyText) ||
+          busy ||
+          (crossingConsent.requiresAck && !crossingAcked)
+        }
+        onClick={() => {
+          void bridge(tid);
+        }}
+      >
+        {buttonLabel}
+      </Button>
     </section>
   );
 }

@@ -257,7 +257,7 @@ describe("reportPassportDiscrepancy SVM freshness", () => {
     let fetchCount = 0;
     const fetchAccountData = async () => {
       fetchCount += 1;
-      return { ok: true as const, value: stateBytesWithRecordCount(7) };
+      return { ok: true as const, value: { data: stateBytesWithRecordCount(7), owner: "11111111111111111111111111111111" } };
     };
 
     const first = await planReportPassportDiscrepancy({
@@ -310,7 +310,7 @@ describe("reportPassportDiscrepancy SVM freshness", () => {
       evidenceCid: "",
       fetchAccountData: async () => ({
         ok: true,
-        value: stateBytesWithRecordCount(freshCount),
+        value: { data: stateBytesWithRecordCount(freshCount), owner: "11111111111111111111111111111111" },
       }),
     });
     assert.equal(planned.ok, true);
@@ -364,7 +364,7 @@ describe("reportPassportDiscrepancy SVM metas order", () => {
       evidenceCid: "ar://x",
       fetchAccountData: async () => ({
         ok: true,
-        value: stateBytesWithRecordCount(recordCount),
+        value: { data: stateBytesWithRecordCount(recordCount), owner: "11111111111111111111111111111111" },
       }),
     });
     assert.equal(planned.ok, true);
@@ -455,7 +455,7 @@ describe("reportPassportDiscrepancy SVM metas order", () => {
       svmPort: port,
       fetchAccountData: async () => ({
         ok: true,
-        value: stateBytesWithRecordCount(0),
+        value: { data: stateBytesWithRecordCount(0), owner: "11111111111111111111111111111111" },
       }),
       fetchBlockhash: async () =>
         ({

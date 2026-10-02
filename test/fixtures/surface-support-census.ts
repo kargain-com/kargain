@@ -936,22 +936,10 @@ export const SURFACE_CENSUS_PAIRS: SurfaceCensusPair[] = [
     "capability": "fixed_price_confirm_external_payment"
   },
   {
-    "file": "components/passport/passport-bridge-panel.tsx",
-    "primitive": "useReadContract",
-    "functionName": "ownerOf",
-    "capability": "passport_owner"
-  },
-  {
     "file": "components/passport/passport-sell-panel.tsx",
     "primitive": "useReadContract",
     "functionName": "isActiveVerifier",
     "capability": "active_verifier"
-  },
-  {
-    "file": "components/passport/passport-sell-panel.tsx",
-    "primitive": "useReadContract",
-    "functionName": "ownerOf",
-    "capability": "passport_owner"
   },
   {
     "file": "components/profile/consigned-vehicles-tab.tsx",
@@ -1174,12 +1162,6 @@ export const SURFACE_CENSUS_PAIRS: SurfaceCensusPair[] = [
     "primitive": "useKeyedReadContracts",
     "functionName": "mandateAsset",
     "capability": "mandate_snapshot"
-  },
-  {
-    "file": "hooks/use-auction-chain-reads.ts",
-    "primitive": "useKeyedReadContracts",
-    "functionName": "ownerOf",
-    "capability": "passport_owner"
   },
   {
     "file": "hooks/use-auction-chain-reads.ts",
@@ -1494,12 +1476,6 @@ export const SURFACE_CENSUS_PAIRS: SurfaceCensusPair[] = [
     "capability": "passport_status"
   },
   {
-    "file": "hooks/use-passport-on-chain-owner.ts",
-    "primitive": "useReadContract",
-    "functionName": "ownerOf",
-    "capability": "passport_owner"
-  },
-  {
     "file": "hooks/use-peer-identity.ts",
     "primitive": "useReadContract",
     "functionName": "isActiveVerifier",
@@ -1807,8 +1783,8 @@ export const SURFACE_CENSUS_CAPABILITY_META: SurfaceCensusCapabilityMeta[] = [
         "field": "owner"
       }
     },
-    "svmReader": "owed",
-    "observedSvmBehaviour": "silent_undefined"
+    "svmReader": "present",
+    "observedSvmBehaviour": "known"
   },
   {
     "id": "passport_status",

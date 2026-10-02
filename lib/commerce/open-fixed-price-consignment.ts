@@ -608,7 +608,7 @@ async function loadEncumbranceSeedPrefix(args: {
       detail: `${fetched.cause}:${fetched.detail}`,
     };
   }
-  const decoded = decodePassportConfig(fetched.value);
+  const decoded = decodePassportConfig(fetched.value.data);
   if (!decoded.ok) {
     return {
       ok: false,

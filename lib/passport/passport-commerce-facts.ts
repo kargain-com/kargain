@@ -62,6 +62,7 @@ import type {
   KeyedContract,
   KeyedEntry,
 } from "@/lib/web3/keyed-multicall";
+import { isSvmAccountData } from "@/lib/web3/svm-rpc";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { toHex } from "viem";
 
@@ -518,10 +519,10 @@ function liveFactFromConsignmentEntry(
       }
       return commerceFactRefused(entry.cause);
     case "success": {
-      if (!(entry.result instanceof Uint8Array)) {
+      if (!isSvmAccountData(entry.result)) {
         return commerceFactRefused("malformed_response");
       }
-      const decoded = decodeConsignmentRecord(entry.result);
+      const decoded = decodeConsignmentRecord(entry.result.data);
       if (!decoded.ok) {
         return commerceFactRefused("malformed_response");
       }
@@ -560,10 +561,10 @@ function mandateFactFromMandateEntry(
       }
       return commerceFactRefused(entry.cause);
     case "success": {
-      if (!(entry.result instanceof Uint8Array)) {
+      if (!isSvmAccountData(entry.result)) {
         return commerceFactRefused("malformed_response");
       }
-      const decoded = decodeMandateRecord(entry.result);
+      const decoded = decodeMandateRecord(entry.result.data);
       if (!decoded.ok) {
         return commerceFactRefused("malformed_response");
       }
@@ -604,10 +605,10 @@ function challengeOpenFromEntry(
       }
       return commerceFactRefused(entry.cause);
     case "success": {
-      if (!(entry.result instanceof Uint8Array)) {
+      if (!isSvmAccountData(entry.result)) {
         return commerceFactRefused("malformed_response");
       }
-      const decoded = decodeChallengeAccount(entry.result);
+      const decoded = decodeChallengeAccount(entry.result.data);
       if (!decoded.ok) {
         return commerceFactRefused("malformed_response");
       }
@@ -635,10 +636,10 @@ function registryFromConfigEntry(
       // Absent config is anomalous — refuse by name; never invent [].
       return commerceFactRefused(entry.cause);
     case "success": {
-      if (!(entry.result instanceof Uint8Array)) {
+      if (!isSvmAccountData(entry.result)) {
         return commerceFactRefused("malformed_response");
       }
-      const decoded = decodePassportConfig(entry.result);
+      const decoded = decodePassportConfig(entry.result.data);
       if (!decoded.ok) {
         return commerceFactRefused("malformed_response");
       }
@@ -666,8 +667,8 @@ export function encumbranceSourcesFromConfigEntry(
   if (opts?.batchPending || entry == null) return null;
   if (entry.status === "pending") return null;
   if (entry.status === "refused") return null;
-  if (!(entry.result instanceof Uint8Array)) return null;
-  const decoded = decodePassportConfig(entry.result);
+  if (!isSvmAccountData(entry.result)) return null;
+  const decoded = decodePassportConfig(entry.result.data);
   if (!decoded.ok) return null;
   return decoded.value.encumbranceSources;
 }
@@ -827,8 +828,8 @@ export function custodyLockFromKeyedEntry(
     case "refused":
       return { status: "refused", cause: entry.cause };
     case "success": {
-      if (entry.result instanceof Uint8Array) {
-        const decoded = decodePassportState(entry.result);
+      if (isSvmAccountData(entry.result)) {
+        const decoded = decodePassportState(entry.result.data);
         if (!decoded.ok) {
           return { status: "refused", cause: "malformed_response" };
         }

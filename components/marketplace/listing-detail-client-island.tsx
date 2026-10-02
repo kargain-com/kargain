@@ -23,7 +23,6 @@ import {
   commerceConfirmedLabel,
   commerceConfirmedPanel,
 } from "@/lib/design/instrument-classes";
-import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import { DENOMINATION_KIND } from "@/lib/commerce/denomination";
 import { floorDisplayUnits } from "@/lib/commerce/floor-display";
 import { hasCommerceMode } from "@/lib/commerce/mode";
@@ -34,12 +33,13 @@ import { resolveEffectiveListing } from "@/lib/marketplace/effective-listing";
 import { hasListingAgent } from "@/lib/marketplace/listing-agent";
 import { attestedPubkeyForAddress } from "@/lib/nostr/resolve-attested-profile";
 import { getNostrPool } from "@/lib/nostr/nostr-client";
+import { usePassportHolder } from "@/hooks/use-passport-holder";
 import {
-  isEvmHexAddress,
   isOnChainNftOwner,
-  isPassportHolder,
-  resolveEffectiveOnChainOwner,
-} from "@/lib/passport/passport-owner";
+  isPassportHolderFromFact,
+  passportHolderOwnerAddress,
+} from "@/lib/passport/passport-holder";
+import { isEvmHexAddress } from "@/lib/passport/passport-owner";
 import { presenceBlocksWrites } from "@/lib/passport/presence";
 import {
   commercialActive,
@@ -48,8 +48,6 @@ import {
 import type { PassportStatus } from "@/lib/types/ponder";
 import { DELIST_BEFORE_AUCTION_HINT } from "@/lib/auction/sale-form-copy";
 import type { FixedPriceListingDetailProp } from "@/lib/passport/fetch-passport-detail";
-import { karPassportAddress } from "@/lib/web3/deployment-addresses";
-import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 
@@ -89,7 +87,10 @@ export function ListingDetailClientIsland({
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
-  const [sellerNostrPubkey, setSellerNostrPubkey] = useState<string | null>(null);
+  const [sellerNostrState, setSellerNostrState] = useState<{
+    seller: string;
+    pubkey: string | null;
+  } | null>(null);
 
   const { presence, presenceCopy } = usePassportPresence({
     chainId,
@@ -99,42 +100,26 @@ export function ListingDetailClientIsland({
   });
   const locationBlocksWrites = presenceBlocksWrites(presence);
 
-  const passport = karPassportAddress(chainId);
-  const wc = eip155WagmiChainId(chainId);
-  const tid = BigInt(tokenId);
-
-  const ownerReads = useKeyedReadContracts({
-    contracts:
-      passport && wc != null
-        ? [
-            {
-              key: "ownerOf" as const,
-              address: passport,
-              abi: KarPassportAbi,
-              functionName: "ownerOf",
-              args: [tid],
-              chainId: wc,
-            },
-          ]
-        : [],
+  const { holder: passportHolder, refetch: refetchHolder } = usePassportHolder({
+    namespace: chainId,
+    tokenId,
+    projectionOwner: passportOwner,
   });
-  const refetchOwner = ownerReads.refetch;
+  const effectiveOwner = passportHolderOwnerAddress(passportHolder);
 
   const commerce = useListingChainReads({ chainId, tokenId });
   const market = commerce.market;
 
-  const onChainOwner = ownerReads.get("ownerOf") as `0x${string}` | undefined;
   const directPaymentNote = commerce.settlementNote;
   const hasDirectPayment = directPaymentNote.length > 0;
-  const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, passportOwner);
 
   const chainAgent =
     commerce.agent && !isZeroAddress(commerce.agent) ? commerce.agent : undefined;
 
   const refetchChainReads = useCallback(() => {
-    void refetchOwner();
+    refetchHolder();
     void commerce.refetch();
-  }, [refetchOwner, commerce]);
+  }, [refetchHolder, commerce]);
 
   const effectiveListing = useMemo(
     () =>
@@ -148,6 +133,12 @@ export function ListingDetailClientIsland({
 
   const listingActive = Boolean(effectiveListing?.active);
   const listingSeller = effectiveListing?.seller;
+  const sellerNostrPubkey =
+    listingSeller == null
+      ? null
+      : sellerNostrState?.seller === listingSeller
+        ? sellerNostrState.pubkey
+        : null;
 
   const externalPaymentConfirmed = Boolean(
     listing?.externalPaymentConfirmedAt != null &&
@@ -179,26 +170,23 @@ export function ListingDetailClientIsland({
   const isOwner = isOnChainNftOwner(address, effectiveOwner, chainId);
 
   useEffect(() => {
-    if (!listingSeller) {
-      setSellerNostrPubkey(null);
-      return;
-    }
+    if (!listingSeller) return;
+    const seller = listingSeller;
     let cancelled = false;
-    void attestedPubkeyForAddress(listingSeller, { pool: getNostrPool() }).then((pubkey) => {
-      if (!cancelled) setSellerNostrPubkey(pubkey);
+    void attestedPubkeyForAddress(seller, { pool: getNostrPool() }).then((pubkey) => {
+      if (!cancelled) setSellerNostrState({ seller, pubkey });
     });
     return () => {
       cancelled = true;
     };
   }, [listingSeller]);
 
-  const holder = isPassportHolder({
-    address,
-    onChainOwner,
-    ponderOwner: passportOwner,
+  const holder = isPassportHolderFromFact({
+    account,
+    holder: passportHolder,
+    namespace: chainId,
     listingActive,
     listingSeller,
-    namespace: chainId,
   });
 
   const canManageListing = Boolean(

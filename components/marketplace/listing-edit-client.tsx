@@ -34,22 +34,20 @@ import {
 } from "@/lib/auction/sale-form-copy";
 import {
   FixedPriceConsignmentAbi,
-  KarPassportAbi,
 } from "@/lib/contracts/abis.generated";
+import { usePassportHolder } from "@/hooks/use-passport-holder";
 import {
   isOnChainNftOwner,
-  resolveEffectiveOnChainOwner,
-} from "@/lib/passport/passport-owner";
+  passportHolderOwnerAddress,
+} from "@/lib/passport/passport-holder";
 import type { PassportStatus } from "@/lib/types/ponder";
 import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 import {
   ascendingConsignmentAddress,
-  karPassportAddress,
 } from "@/lib/web3/deployment-addresses";
 import { commercialActive } from "@/lib/web3/commercial-active";
 import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
-import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 import { txWriteAvailability } from "@/lib/web3/tx-write-availability";
 
@@ -106,7 +104,6 @@ export function ListingEditClient({
   const market = commerce.market;
   const evmListingPath = market != null;
 
-  const passport = karPassportAddress(chainId);
   const tid = BigInt(tokenId);
   const wrongChain =
     writeAvail.available &&
@@ -144,21 +141,12 @@ export function ListingEditClient({
     }
   }, [openOptions.assets, settlementAsset, denominationKind]);
 
-  const ownershipReads = useKeyedReadContracts({
-    contracts:
-      passport && wc != null
-        ? [
-            {
-              key: "ownerOf" as const,
-              address: passport,
-              abi: KarPassportAbi,
-              functionName: "ownerOf",
-              args: [tid],
-              chainId: wc,
-            },
-          ]
-        : [],
+  const { holder: passportHolder, refetch: refetchHolder } = usePassportHolder({
+    namespace: chainId,
+    tokenId,
+    projectionOwner: passportOwner,
   });
+  const effectiveOwner = passportHolderOwnerAddress(passportHolder);
 
   const {
     isApproved,
@@ -172,16 +160,13 @@ export function ListingEditClient({
     enabled: Boolean(market && address),
   });
 
-  const ownerOf = ownershipReads.get("ownerOf") as `0x${string}` | undefined;
-  const effectiveOwner = resolveEffectiveOnChainOwner(ownerOf, passportOwner);
-
   const refetchListing = useCallback(async () => {
     await Promise.all([
-      ownershipReads.refetch(),
+      Promise.resolve(refetchHolder()),
       commerce.refetch(),
       refetchApproval(),
     ]);
-  }, [ownershipReads, commerce, refetchApproval]);
+  }, [refetchHolder, commerce, refetchApproval]);
 
   const row = commerce.listing;
   const active = row?.active ?? false;

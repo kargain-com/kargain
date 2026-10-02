@@ -313,7 +313,7 @@ async function readFreshNextTokenId(input: {
   if (!fetched.ok) {
     return { ok: false, cause: "config_unavailable" };
   }
-  const decoded = decodePassportConfig(fetched.value);
+  const decoded = decodePassportConfig(fetched.value.data);
   if (!decoded.ok) {
     return { ok: false, cause: "config_decode_failed" };
   }
@@ -553,7 +553,7 @@ async function planSvmMintPassport(args: {
     );
   }
 
-  const decoded = decodePassportConfig(fetched.value);
+  const decoded = decodePassportConfig(fetched.value.data);
   if (!decoded.ok) {
     return refusePlan(
       "config_decode_failed",

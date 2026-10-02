@@ -156,8 +156,37 @@ export type FetchSvmAccountDataCause =
   | "account_not_found"
   | "malformed_response";
 
+/**
+ * One Solana account from product RPC — data bytes plus the program that owns
+ * the account (wire `owner`). Required for Core AssetV1 refuse-by-program.
+ */
+export type SvmAccountData = {
+  data: Uint8Array;
+  owner: string;
+};
+
+/** Bytes from a fetch / keyed success value (never invents empty). */
+export function svmAccountDataBytes(account: SvmAccountData): Uint8Array {
+  return account.data;
+}
+
+/** Type guard for keyed-multicall SVM success payloads. */
+export function isSvmAccountData(value: unknown): value is SvmAccountData {
+  if (value == null || typeof value !== "object") return false;
+  const v = value as { data?: unknown; owner?: unknown };
+  return v.data instanceof Uint8Array && typeof v.owner === "string";
+}
+
+/** Wrap raw account bytes with a program owner (tests / injects). */
+export function svmAccountData(
+  data: Uint8Array,
+  owner: string,
+): SvmAccountData {
+  return { data, owner };
+}
+
 export type FetchSvmAccountDataResult =
-  | { ok: true; value: Uint8Array }
+  | { ok: true; value: SvmAccountData }
   | {
       ok: false;
       cause: FetchSvmAccountDataCause;
@@ -184,6 +213,17 @@ function decodeAccountInfoValue(
       detail: `account read returned null for ${accountLabel}`,
     };
   }
+  const owner =
+    typeof value.owner === "string" && value.owner.length > 0
+      ? value.owner
+      : null;
+  if (owner == null) {
+    return {
+      ok: false,
+      cause: "malformed_response",
+      detail: `account owner missing for ${accountLabel}`,
+    };
+  }
   const data = value.data;
   if (!Array.isArray(data) || data.length < 2) {
     return {
@@ -205,7 +245,7 @@ function decodeAccountInfoValue(
       typeof atob === "function"
         ? Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
         : Uint8Array.from(Buffer.from(b64, "base64"));
-    return { ok: true, value: binary };
+    return { ok: true, value: { data: binary, owner } };
   } catch (err) {
     return {
       ok: false,
@@ -317,7 +357,7 @@ export function createProductSvmKeyedAccountSource(): SvmKeyedAccountSource {
       if (!batch.ok) {
         return { ok: false, cause: batch.cause, detail: batch.detail };
       }
-      const values: (Uint8Array | null)[] = [];
+      const values: (SvmAccountData | null)[] = [];
       for (const result of batch.values) {
         if (result.ok) {
           values.push(result.value);

@@ -313,7 +313,7 @@ export const SURFACE_SUPPORT_TABLE: Readonly<
   challenge_bond_amount: dualVmOwner(),
   verification_fee: productOwnerOwed(),
   active_verifier: dualVmOwner(),
-  passport_owner: productOwnerOwed(),
+  passport_owner: dualVmOwner(),
   passport_status: productOwnerOwed(),
   dispute_window: productOwnerOwed(),
   settlement_notes: productOwnerOwed(),

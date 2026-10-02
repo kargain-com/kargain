@@ -20,10 +20,10 @@ export function isSameWallet(
 }
 
 /**
- * Prefer a live EIP-155 `ownerOf` when present; otherwise the entity/ponder
+ * Prefer a live chain owner when present; otherwise the entity/ponder
  * owner (hex or base58). Never invent an address.
  */
-export function resolveEffectiveOnChainOwner(
+function resolveEffectiveOwner(
   onChainOwner?: string | null,
   ponderOwner?: ProtocolOwner | string | null,
 ): string | undefined {
@@ -62,7 +62,7 @@ export function isPassportHolder({
     return isSameWallet(address, listingSeller, namespace);
   }
 
-  const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, ponderOwner);
+  const effectiveOwner = resolveEffectiveOwner(onChainOwner, ponderOwner);
   return isOnChainNftOwner(address, effectiveOwner, namespace);
 }
 

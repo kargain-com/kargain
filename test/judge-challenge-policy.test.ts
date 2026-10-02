@@ -141,10 +141,10 @@ function makeRecipientFetcher(args: {
 }): (account: string) => Promise<FetchSvmAccountDataResult> {
   return async (account) => {
     if (account === args.challengeAddress) {
-      return { ok: true, value: args.challengeData };
+      return { ok: true, value: { data: args.challengeData , owner: "11111111111111111111111111111111" } };
     }
     if (account === args.configAddress) {
-      return { ok: true, value: args.configData };
+      return { ok: true, value: { data: args.configData , owner: "11111111111111111111111111111111" } };
     }
     return {
       ok: false,
@@ -398,7 +398,7 @@ describe("judgeChallenge SVM recipient resolution", () => {
       outcome: JUDGE_OUTCOME_UPHELD,
       fetchAccountData: async () => ({
         ok: true,
-        value: new Uint8Array(8).fill(0xff),
+        value: { data: new Uint8Array(8).fill(0xff), owner: "11111111111111111111111111111111" },
       }),
     });
     assert.equal(badDecode.ok, false);
@@ -439,10 +439,10 @@ describe("judgeChallenge SVM recipient resolution", () => {
     ): Promise<FetchSvmAccountDataResult> => {
       reads.push(account);
       if (account === challengePda.address) {
-        return { ok: true, value: challengeData };
+        return { ok: true, value: { data: challengeData , owner: "11111111111111111111111111111111" } };
       }
       if (account === configPda.address) {
-        return { ok: true, value: configData };
+        return { ok: true, value: { data: configData , owner: "11111111111111111111111111111111" } };
       }
       return { ok: false, cause: "account_not_found", detail: account };
     };

@@ -140,7 +140,7 @@ function makeConfigFetcher(args: {
 }): (account: string) => Promise<FetchSvmAccountDataResult> {
   return async (account) => {
     if (account === args.configAddress) {
-      return { ok: true, value: args.configData };
+      return { ok: true, value: { data: args.configData , owner: "11111111111111111111111111111111" } };
     }
     return {
       ok: false,
@@ -266,10 +266,10 @@ describe("concludeChallenge SVM recipient resolution", () => {
       fetchAccountData: async (addr) => {
         reads.push(addr);
         if (addr === configPda.address) {
-          return { ok: true, value: configData };
+          return { ok: true, value: { data: configData , owner: "11111111111111111111111111111111" } };
         }
         if (addr === challengePda.address) {
-          return { ok: true, value: challengeData };
+          return { ok: true, value: { data: challengeData , owner: "11111111111111111111111111111111" } };
         }
         return { ok: false, cause: "account_not_found", detail: addr };
       },
@@ -302,7 +302,7 @@ describe("concludeChallenge SVM recipient resolution", () => {
       tokenId,
       fetchAccountData: async () => ({
         ok: true,
-        value: new Uint8Array(8).fill(0xff),
+        value: { data: new Uint8Array(8).fill(0xff), owner: "11111111111111111111111111111111" },
       }),
     });
     assert.equal(badDecode.ok, false);

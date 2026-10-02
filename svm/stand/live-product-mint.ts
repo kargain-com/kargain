@@ -158,9 +158,11 @@ async function fetchAccountData(conn: Conn, account: string) {
       detail: account,
     };
   }
+  const data = new Uint8Array(info.data);
+  const owner = info.owner.toBase58();
   return {
     ok: true as const,
-    value: new Uint8Array(info.data),
+    value: { data, owner },
   };
 }
 

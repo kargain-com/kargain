@@ -16,15 +16,13 @@ import { TxWriteRefusal } from "@/components/shell/tx-write-refusal";
 import { Button } from "@/components/ui/button";
 import type { PassportCommerceFactsResult } from "@/hooks/use-passport-commerce-facts";
 import { useCommerceModePaused } from "@/hooks/use-commerce-mode-paused";
+import { usePassportHolder } from "@/hooks/use-passport-holder";
 import { usePassportPresence } from "@/hooks/use-passport-presence";
 import {
   AUCTION_REQUIRES_VERIFICATION_HINT,
 } from "@/lib/auction/sale-form-copy";
 import type { AuctionAgentAuth } from "@/lib/auction/auction-agent";
-import {
-  KarPassportAbi,
-  KarProStakingAbi,
-} from "@/lib/contracts/abis.generated";
+import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import {
   mandateHasAgent,
   type MandateSnapshot,
@@ -46,18 +44,12 @@ import {
   deriveSellSurface,
   sellSurfaceClosedCopy,
 } from "@/lib/passport/sell-surface";
-import {
-  isOnChainNftOwner,
-  resolveEffectiveOnChainOwner,
-} from "@/lib/passport/passport-owner";
+import { isSessionHolder } from "@/lib/passport/passport-holder";
+import { isEvmHexAddress } from "@/lib/passport/passport-owner";
 import type { PassportStatus } from "@/lib/types/ponder";
-import {
-  karPassportAddress,
-  karProStakingAddress,
-} from "@/lib/web3/deployment-addresses";
+import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import type { ProtocolOwner } from "@/lib/web3/protocol-address";
-import { isEvmHexAddress } from "@/lib/passport/passport-owner";
 import { txWriteAvailability } from "@/lib/web3/tx-write-availability";
 
 /** EVM-only AuctionAgentAuth shape — refuse to invent hex from SVM base58. */
@@ -113,7 +105,6 @@ export function PassportSellPanel({
   const [fixedPriceDialogOpen, setFixedPriceDialogOpen] = useState(false);
   const [ascendingDialogOpen, setAscendingDialogOpen] = useState(false);
 
-  const passport = karPassportAddress(chainId);
   const staking = karProStakingAddress(chainId);
   const wc = eip155WagmiChainId(chainId);
   const tid = BigInt(tokenId);
@@ -126,14 +117,12 @@ export function PassportSellPanel({
     chainId,
   });
 
-  const { data: onChainOwner, refetch: refetchOwner } = useReadContract({
-    address: passport,
-    abi: KarPassportAbi,
-    functionName: "ownerOf",
-    args: [tid],
-    chainId: wc,
-    query: { enabled: Boolean(passport && wc != null) },
+  const { holder, refetch: refetchHolder } = usePassportHolder({
+    namespace: chainId,
+    tokenId,
+    projectionOwner: passportOwner,
   });
+  const isOwner = isSessionHolder(account, holder, chainId);
 
   const { data: isActiveVerifier, refetch: refetchVerifier } = useReadContract({
     address: staking,
@@ -149,13 +138,6 @@ export function PassportSellPanel({
     },
   });
 
-  const effectiveOwner = resolveEffectiveOnChainOwner(
-    onChainOwner as string | undefined,
-    passportOwner,
-  );
-  const isOwner =
-    address != null && isOnChainNftOwner(address, effectiveOwner, chainId);
-
   const { presence, presenceCopy } = usePassportPresence({
     chainId,
     tokenId,
@@ -165,7 +147,7 @@ export function PassportSellPanel({
   const locationBlocksWrites = presenceBlocksWrites(presence);
 
   const surface = deriveSellSurface({
-    isOwner: Boolean(isOwner),
+    isOwner,
     hasLiveConsignment: facts.hasLiveConsignment,
     fixedPriceConfigured: facts.fixedPrice.configured,
     ascendingConfigured: facts.ascending.configured,
@@ -180,7 +162,7 @@ export function PassportSellPanel({
 
   const refetch = () => {
     facts.refetch();
-    void refetchOwner();
+    refetchHolder();
     void refetchVerifier();
   };
 

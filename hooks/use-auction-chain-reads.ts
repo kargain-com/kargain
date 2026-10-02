@@ -21,11 +21,9 @@ import {
   parseAscendingHold,
   type AscendingHoldSnapshot,
 } from "@/lib/commerce/parse-ascending";
-import {
-  AscendingConsignmentAbi,
-  KarPassportAbi,
-} from "@/lib/contracts/abis.generated";
-import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
+import { usePassportHolder } from "@/hooks/use-passport-holder";
+import { passportHolderOwnerAddress } from "@/lib/passport/passport-holder";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
@@ -80,7 +78,6 @@ export function useAuctionChainReads({
   enabled = true,
 }: UseAuctionChainReadsArgs) {
   const mode = commerceModeEvmAddress("ascending", chainId);
-  const passport = karPassportAddress(chainId);
   const wc = eip155WagmiChainId(chainId);
   const tokenIdBig = useMemo(() => {
     try {
@@ -94,7 +91,7 @@ export function useAuctionChainReads({
 
   const contracts = useMemo(() => {
     if (!readsEnabled || !mode || wc == null) return [];
-    const modeReads = [
+    return [
       ...PER_TOKEN.map((functionName) => ({
         key: functionName,
         address: mode,
@@ -121,19 +118,7 @@ export function useAuctionChainReads({
         chainId: wc,
       },
     ];
-    if (!passport) return modeReads;
-    return [
-      ...modeReads,
-      {
-        key: "passportOwnerOf" as const,
-        address: passport,
-        abi: KarPassportAbi,
-        functionName: "ownerOf",
-        args: [tokenIdBig] as const,
-        chainId: wc,
-      },
-    ];
-  }, [readsEnabled, mode, passport, tokenIdBig, wc]);
+  }, [readsEnabled, mode, tokenIdBig, wc]);
 
   const reads = useKeyedReadContracts({
     contracts,
@@ -144,6 +129,12 @@ export function useAuctionChainReads({
       // still shares a 30s staleTime for the live bid fields.
       gcTime: CONFIG_STALE_MS,
     },
+  });
+
+  const { holder: passportHolder } = usePassportHolder({
+    namespace: chainId,
+    tokenId,
+    enabled,
   });
 
   const auction: OnChainAuction | null = buildOnChainAuction({
@@ -198,17 +189,13 @@ export function useAuctionChainReads({
       ? undefined
       : (parseCompensationForm(Number(formRaw)) ?? undefined);
 
-  const passportOwnerEntry = reads.entry("passportOwnerOf");
   /** Current NFT holder; `undefined` unread, `null` failed/missing. */
   const passportTokenOwner: string | null | undefined =
-    !passport || !readsEnabled
+    passportHolder.status === "pending" || passportHolder.status === "in_transit"
       ? undefined
-      : passportOwnerEntry == null || passportOwnerEntry.status === "pending"
-        ? undefined
-        : passportOwnerEntry.status === "success" &&
-            typeof passportOwnerEntry.result === "string"
-          ? passportOwnerEntry.result
-          : null;
+      : passportHolder.status === "known" || passportHolder.status === "projection"
+        ? passportHolderOwnerAddress(passportHolder) ?? null
+        : null;
 
   return {
     /** Ascending mode contract; `undefined` disables every write. */
@@ -219,7 +206,7 @@ export function useAuctionChainReads({
     holdSnapshot,
     /** BondedChallenge opened against this lot, when any. */
     challenge,
-    /** Live `ownerOf` on the passport for this token (reversal holder check). */
+    /** Live holder on the passport for this token (reversal holder check). */
     passportTokenOwner,
     minIncrementBps: reads.asNumber("auctionMinIncrementBps"),
     extensionWindow: reads.asBigint("auctionExtensionWindow"),
@@ -247,8 +234,8 @@ export function useAuctionChainReads({
     /** Pre-open BondedChallenge config window (Ascending `windowDuration()`). */
     challengeConfigWindow: reads.asBigint("windowDuration"),
     commerceReadResolved,
-    isPending: readsEnabled && reads.isPending,
-    isFetching: reads.isFetching,
     refetch: reads.refetch,
+    isFetching: reads.isFetching,
+    isPending: reads.isPending,
   };
 }

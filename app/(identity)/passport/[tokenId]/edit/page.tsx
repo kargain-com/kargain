@@ -10,8 +10,13 @@ import {
 import { fetchPassportDetail } from "@/lib/passport/fetch-passport-detail";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import type { CustodyLockRead, PassportPresence } from "@/lib/passport/presence";
+import {
+  passportHeldByModeCustody,
+  passportHolderOwnerAddress,
+  readPassportHolderLive,
+} from "@/lib/passport/passport-holder";
 import { parsePassportTokenId } from "@/lib/passport/passport-token-id";
-import { commerceModeAddresses } from "@/lib/commerce/mode";
+import { commercialActive } from "@/lib/web3/commercial-active";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { parseOptionalChainParam } from "@/lib/web3/chain-context";
 import { getPublicClient } from "@/lib/web3/public-client";
@@ -214,11 +219,9 @@ export default async function EditPassportPage({
   }
 
   const passportAddr = karPassportAddress(chainId);
-  const modeCustodians = Object.values(commerceModeAddresses(chainId)).map(
-    (address) => address.toLowerCase(),
-  );
+  const stack = commercialActive(chainId);
 
-  if (!passportAddr) {
+  if (stack == null) {
     const access = resolvePassportEditAccess({
       presenceFacts: {
         viewChainId: chainId,
@@ -256,31 +259,41 @@ export default async function EditPassportPage({
   };
 
   try {
-    const client = getPublicClient(chainId);
-    const [owner, custodyLocked] = await Promise.all([
-      client.readContract({
-        address: passportAddr!,
-        abi: KarPassportAbi,
-        functionName: "ownerOf",
-        args: [BigInt(tokenId)],
-      }),
-      client.readContract({
-        address: passportAddr!,
+    const holder = await readPassportHolderLive({
+      namespace: chainId,
+      tokenId,
+    });
+    const holderOwner = passportHolderOwnerAddress(holder);
+    listingActive = await passportHeldByModeCustody({
+      namespace: chainId,
+      holderOwner,
+    });
+
+    // EVM: karPassportAddress present → custodyLocked on chain.
+    // SVM / no EVM address: lock unread until Unit L wires PassportState;
+    // listingActive already from holder ↔ mode custody PDA.
+    if (passportAddr != null) {
+      const client = getPublicClient(chainId);
+      const custodyLocked = await client.readContract({
+        address: passportAddr,
         abi: KarPassportAbi,
         functionName: "custodyLocked",
         args: [BigInt(tokenId)],
-      }),
-    ]);
-
-    presenceFacts = {
-      viewChainId: chainId,
-      custodyLock: { status: "known", locked: Boolean(custodyLocked) },
-      ponderCustodyChain: passport.custodyChain,
-      custodyUnresolved: passport.custodyUnresolved,
-    };
-    listingActive =
-      modeCustodians.length > 0 &&
-      modeCustodians.includes(owner.toLowerCase());
+      });
+      presenceFacts = {
+        viewChainId: chainId,
+        custodyLock: { status: "known", locked: Boolean(custodyLocked) },
+        ponderCustodyChain: passport.custodyChain,
+        custodyUnresolved: passport.custodyUnresolved,
+      };
+    } else {
+      presenceFacts = {
+        viewChainId: chainId,
+        custodyLock: { status: "pending" },
+        ponderCustodyChain: passport.custodyChain,
+        custodyUnresolved: passport.custodyUnresolved,
+      };
+    }
   } catch {
     // Fail closed: setPassportURI is gated by custody lock — unread → no edit.
     presenceFacts = {

@@ -12,6 +12,7 @@
 
 import { decodePassportConfig } from "@/lib/svm/decode-account-state";
 import { deriveSvmPda } from "@/lib/svm/derive-pda";
+import { isSvmAccountData } from "@/lib/web3/svm-rpc";
 import {
   commercialActive,
   type CommercialRegistry,
@@ -224,10 +225,10 @@ export function resolveChallengeBondAmount(args: {
     return { amount: BigInt(entry.result as bigint | number | string), loading: false };
   }
 
-  if (!(entry.result instanceof Uint8Array)) {
+  if (!isSvmAccountData(entry.result)) {
     return { amount: undefined, loading: false };
   }
-  const decoded = decodePassportConfig(entry.result);
+  const decoded = decodePassportConfig(entry.result.data);
   if (!decoded.ok) {
     return { amount: undefined, loading: false };
   }

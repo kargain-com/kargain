@@ -1,16 +1,13 @@
 "use client";
 
-import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import { useActiveAccount } from "@/hooks/use-active-account";
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
 import type { PassportStatus } from "@/components/ui/passport-status-badge";
-import { usePassportOnChainOwner } from "@/hooks/use-passport-on-chain-owner";
-import {
-  isOnChainNftOwner,
-  resolveEffectiveOnChainOwner,
-} from "@/lib/passport/passport-owner";
+import { usePassportHolder } from "@/hooks/use-passport-holder";
+import { isSessionHolder } from "@/lib/passport/passport-holder";
 import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 import {
   PASSPORT_TAB_CHANGE_EVENT,
@@ -49,11 +46,12 @@ export function PassportDetailTabs({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { account } = useActiveAccount();
-  const evm = requireEvmSession(account);
-  const address = evm.ok ? evm.address : undefined;
-  const { onChainOwner } = usePassportOnChainOwner(chainId, tokenId);
-  const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, passportOwner);
-  const isOwner = isOnChainNftOwner(address, effectiveOwner, chainId);
+  const { holder } = usePassportHolder({
+    namespace: chainId,
+    tokenId,
+    projectionOwner: passportOwner,
+  });
+  const isOwner = isSessionHolder(account, holder, chainId);
   const isDisputed = status === "DISPUTED";
   const showActionsDot = isDisputed && isOwner;
 

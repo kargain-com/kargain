@@ -566,8 +566,6 @@ export const KNOWN_SESSION_GATES_WITHOUT_WRITES: readonly string[] = [
   "components/passport/create-passport-wizard.tsx",
   "components/passport/edit-passport-wizard.tsx",
   "components/passport/passport-actions-panel.tsx",
-  "components/passport/passport-bridge-panel.tsx",
-  "components/passport/passport-detail-tabs.tsx",
   "components/passport/passport-sell-panel.tsx",
   "components/profile/karpro-status-widget.tsx",
   "components/profile/lightning-wallet-section.tsx",

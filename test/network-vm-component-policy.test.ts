@@ -82,6 +82,8 @@ export const VM_BRANCH_ALLOWLIST = [
   "lib/web3/wallet-rejection.ts",
   // S8-D4 surface admission — census then session; chrome stays blind to .family/.vm.
   "lib/web3/surface-admission.ts",
+  // Unit O dual-VM passport holder — EVM ownerOf / SVM Core AssetV1; chrome stays blind.
+  "lib/passport/passport-holder.ts",
 ] as const;
 
 /**

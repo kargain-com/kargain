@@ -7,7 +7,10 @@
  * Causes are typed — never encoded in Error.message.
  */
 
-import type { FetchSvmAccountDataCause } from "@/lib/web3/svm-rpc";
+import type {
+  FetchSvmAccountDataCause,
+  SvmAccountData,
+} from "@/lib/web3/svm-rpc";
 
 export type SvmKeyedReadRequest = {
   key: string;
@@ -20,7 +23,7 @@ export type SvmKeyedReadCause =
   | "unresolved_namespace";
 
 export type SvmKeyedReadEntry =
-  | { status: "success"; result: Uint8Array }
+  | { status: "success"; result: SvmAccountData }
   | { status: "refused"; cause: SvmKeyedReadCause; detail?: string };
 
 /**
@@ -37,8 +40,11 @@ export type SvmKeyedAccountSource = {
 export type SvmKeyedAccountSourceBatch =
   | {
       ok: true;
-      /** Per-account: bytes, or null when the RPC answered and the account is absent. */
-      values: readonly (Uint8Array | null)[];
+      /**
+       * Per-account: data+program-owner, or null when the RPC answered and the
+       * account is absent.
+       */
+      values: readonly (SvmAccountData | null)[];
     }
   | {
       ok: false;

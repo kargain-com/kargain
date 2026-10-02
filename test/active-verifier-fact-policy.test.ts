@@ -129,9 +129,13 @@ describe("activeVerifierFact tri-state", () => {
 
   it("SVM active golden → active; undecodable → inactive; pending → unresolved", () => {
     const golden = hexToBytes(stakeAccountLayout().goldenHex);
+    const stakeOwner = "Stake11111111111111111111111111111111111111";
     assert.deepEqual(
       resolveActiveVerifierFact({
-        entry: { status: "success", result: golden },
+        entry: {
+          status: "success",
+          result: { data: golden, owner: stakeOwner },
+        },
         sessionBound: true,
         vm: "svm",
       }),
@@ -143,7 +147,10 @@ describe("activeVerifierFact tri-state", () => {
     inactiveGolden[56] = 0;
     assert.deepEqual(
       resolveActiveVerifierFact({
-        entry: { status: "success", result: inactiveGolden },
+        entry: {
+          status: "success",
+          result: { data: inactiveGolden, owner: stakeOwner },
+        },
         sessionBound: true,
         vm: "svm",
       }),
@@ -175,7 +182,13 @@ describe("activeVerifierFact tri-state", () => {
 
     assert.deepEqual(
       resolveActiveVerifierFact({
-        entry: { status: "success", result: new Uint8Array([1, 2, 3]) },
+        entry: {
+          status: "success",
+          result: {
+            data: new Uint8Array([1, 2, 3]),
+            owner: stakeOwner,
+          },
+        },
         sessionBound: true,
         vm: "svm",
       }),

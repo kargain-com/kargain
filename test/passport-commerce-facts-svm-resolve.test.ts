@@ -32,7 +32,10 @@ const SVM_NS = 2000040168;
 type SvmOkPlan = Extract<PassportCommerceReadPlan, { ok: true; vm: "svm" }>;
 
 function success(data: Uint8Array): KeyedEntry {
-  return { status: "success", result: data };
+  return {
+    status: "success",
+    result: { data, owner: "11111111111111111111111111111111" },
+  };
 }
 
 function refused(cause: KeyedReadCause): KeyedEntry {

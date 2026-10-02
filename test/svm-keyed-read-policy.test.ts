@@ -71,7 +71,11 @@ describe("svm keyed-read policy", () => {
       return {
         ok: true as const,
         values: accounts.map((a) =>
-          a === "acctA" ? bytesA : a === "acctB" ? bytesB : null,
+          a === "acctA"
+            ? { data: bytesA, owner: "11111111111111111111111111111111" }
+            : a === "acctB"
+              ? { data: bytesB, owner: "11111111111111111111111111111111" }
+              : null,
         ),
       };
     });
@@ -90,7 +94,7 @@ describe("svm keyed-read policy", () => {
     assert.deepEqual([...lastAccounts], ["acctA", "missing", "acctB"]);
     assert.equal(entries[0]!.status, "success");
     if (entries[0]!.status === "success") {
-      assert.deepEqual(entries[0]!.result, bytesA);
+      assert.deepEqual(entries[0]!.result, { data: bytesA, owner: "11111111111111111111111111111111" });
     }
     assert.equal(entries[1]!.status, "refused");
     if (entries[1]!.status === "refused") {
@@ -98,11 +102,11 @@ describe("svm keyed-read policy", () => {
     }
     assert.equal(entries[2]!.status, "success");
     if (entries[2]!.status === "success") {
-      assert.deepEqual(entries[2]!.result, bytesA);
+      assert.deepEqual(entries[2]!.result, { data: bytesA, owner: "11111111111111111111111111111111" });
     }
     assert.equal(entries[3]!.status, "success");
     if (entries[3]!.status === "success") {
-      assert.deepEqual(entries[3]!.result, bytesB);
+      assert.deepEqual(entries[3]!.result, { data: bytesB, owner: "11111111111111111111111111111111" });
     }
   });
 

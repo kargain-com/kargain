@@ -325,7 +325,7 @@ async function planSvmWithdrawChallenge(args: {
     };
   }
 
-  const decoded = decodePassportState(fetched.value);
+  const decoded = decodePassportState(fetched.value.data);
   if (!decoded.ok) {
     return {
       ok: false,

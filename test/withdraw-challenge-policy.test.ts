@@ -245,7 +245,7 @@ describe("withdrawChallenge SVM freshness", () => {
     let fetchCount = 0;
     const fetchAccountData = async () => {
       fetchCount += 1;
-      return { ok: true as const, value: stateBytesWithRecordCount(7) };
+      return { ok: true as const, value: { data: stateBytesWithRecordCount(7), owner: "11111111111111111111111111111111" } };
     };
 
     const first = await planWithdrawChallenge({
@@ -279,7 +279,7 @@ describe("withdrawChallenge SVM freshness", () => {
     const fetchAccountData = async () => {
       call += 1;
       const count = call === 1 ? 3 : 11;
-      return { ok: true as const, value: stateBytesWithRecordCount(count) };
+      return { ok: true as const, value: { data: stateBytesWithRecordCount(count), owner: "11111111111111111111111111111111" } };
     };
 
     const first = await planWithdrawChallenge({
@@ -384,7 +384,7 @@ describe("withdrawChallenge SVM metas order", () => {
       tokenId,
       fetchAccountData: async () => ({
         ok: true,
-        value: stateBytesWithRecordCount(recordCount),
+        value: { data: stateBytesWithRecordCount(recordCount), owner: "11111111111111111111111111111111" },
       }),
     });
     assert.equal(planned.ok, true);
@@ -526,7 +526,7 @@ describe("withdrawChallenge SVM metas order", () => {
       svmPort: port,
       fetchAccountData: async () => ({
         ok: true,
-        value: stateBytesWithRecordCount(0),
+        value: { data: stateBytesWithRecordCount(0), owner: "11111111111111111111111111111111" },
       }),
       fetchBlockhash: async () =>
         ({

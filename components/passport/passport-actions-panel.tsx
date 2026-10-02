@@ -32,12 +32,11 @@ import {
 } from "@/lib/design/instrument-classes";
 import { formatReturnCountdown } from "@/lib/marketplace/return-cooldown";
 import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
-import { usePassportOnChainOwner } from "@/hooks/use-passport-on-chain-owner";
+import { usePassportHolder } from "@/hooks/use-passport-holder";
 import {
-  isOnChainNftOwner,
-  isPassportHolder,
-  resolveEffectiveOnChainOwner,
-} from "@/lib/passport/passport-owner";
+  isPassportHolderFromFact,
+  isSessionHolder,
+} from "@/lib/passport/passport-holder";
 import {
   VERIFICATION_INSTANCE,
   deriveChallengeSurface,
@@ -211,17 +210,19 @@ export function PassportActionsPanel({
     enabled: bondDisclosure.configured,
   });
 
-  const { onChainOwner } = usePassportOnChainOwner(chainId, tokenId);
-  const effectiveOwner = resolveEffectiveOnChainOwner(onChainOwner, passportOwner);
+  const { holder: passportHolder } = usePassportHolder({
+    namespace: chainId,
+    tokenId,
+    projectionOwner: passportOwner,
+  });
 
-  const isOwner = isOnChainNftOwner(sessionAddress, effectiveOwner, chainId);
-  const holder = isPassportHolder({
-    address: sessionAddress,
-    onChainOwner,
-    ponderOwner: passportOwner,
+  const isOwner = isSessionHolder(account, passportHolder, chainId);
+  const holder = isPassportHolderFromFact({
+    account,
+    holder: passportHolder,
+    namespace: chainId,
     listingActive,
     listingSeller,
-    namespace: chainId,
   });
 
   const disputeWindowEntry = disputeReads.entry("disputeWindow");

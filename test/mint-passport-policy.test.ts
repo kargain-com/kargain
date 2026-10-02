@@ -203,7 +203,7 @@ describe("mintPassport SVM metas order", () => {
       account: svmActiveAccountFromAddress(payer),
       chainId: ns,
       uri: "ar://mint",
-      fetchAccountData: async () => ({ ok: true, value: encoded }),
+      fetchAccountData: async () => ({ ok: true, value: { data: encoded , owner: "11111111111111111111111111111111" } }),
     });
     assert.equal(planned.ok, false);
     if (planned.ok) return;

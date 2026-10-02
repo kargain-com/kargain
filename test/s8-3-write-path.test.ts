@@ -136,17 +136,21 @@ describe("resolveSvmKeyedReads", () => {
 
   it("returns injected account bytes when a source is provided", async () => {
     const bytes = new Uint8Array([1, 2, 3]);
+    const account = {
+      data: bytes,
+      owner: "11111111111111111111111111111111",
+    };
     const { entries, cause } = await resolveSvmKeyedReads(
       [{ key: "a", account: "acct" }],
       {
         getAccountsData: async (accounts) => ({
           ok: true,
-          values: accounts.map((a) => (a === "acct" ? bytes : null)),
+          values: accounts.map((a) => (a === "acct" ? account : null)),
         }),
       },
     );
     assert.equal(cause, null);
-    assert.deepEqual(entries[0], { status: "success", result: bytes });
+    assert.deepEqual(entries[0], { status: "success", result: account });
   });
 });
 

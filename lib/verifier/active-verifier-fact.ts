@@ -16,6 +16,7 @@
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { decodeStakeAccount } from "@/lib/svm/decode-account-state";
 import { deriveSvmPda } from "@/lib/svm/derive-pda";
+import { isSvmAccountData } from "@/lib/web3/svm-rpc";
 import {
   type ActiveAccount,
 } from "@/lib/web3/active-account";
@@ -224,10 +225,10 @@ export function resolveActiveVerifierFact(args: {
   }
 
   if (args.vm === "svm") {
-    if (!(entry.result instanceof Uint8Array)) {
+    if (!isSvmAccountData(entry.result)) {
       return { kind: "inactive" };
     }
-    const decoded = decodeStakeAccount(entry.result);
+    const decoded = decodeStakeAccount(entry.result.data);
     if (!decoded.ok) {
       return { kind: "inactive" };
     }

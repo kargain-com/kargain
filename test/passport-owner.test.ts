@@ -5,7 +5,6 @@ import {
   isOnChainNftOwner,
   isPassportHolder,
   isSameWallet,
-  resolveEffectiveOnChainOwner,
 } from "../lib/passport/passport-owner.ts";
 import { SEPOLIA_ACTIVE } from "../lib/web3/sepolia-addresses.ts";
 
@@ -20,15 +19,6 @@ describe("passport-owner helpers", () => {
     assert.equal(isSameWallet(OWNER, OWNER.toLowerCase()), true);
     assert.equal(isSameWallet(OWNER, OTHER), false);
     assert.equal(isSameWallet(null, OWNER), false);
-  });
-
-  it("resolveEffectiveOnChainOwner prefers chain over ponder", () => {
-    assert.equal(
-      resolveEffectiveOnChainOwner(OWNER, SELLER),
-      OWNER,
-    );
-    assert.equal(resolveEffectiveOnChainOwner(undefined, SELLER), SELLER);
-    assert.equal(resolveEffectiveOnChainOwner(undefined, undefined), undefined);
   });
 
   it("isOnChainNftOwner matches wallet to on-chain owner", () => {

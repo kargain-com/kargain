@@ -33,6 +33,7 @@ import {
   type Kp,
   type Pk,
 } from "./stand-passport-commerce.ts";
+import { decodeCoreAssetOwner } from "../../lib/svm/decode-core-asset.ts";
 
 const require = createRequire(
   path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../lab/package.json"),
@@ -135,6 +136,20 @@ export async function runLivePermissionlessMint(): Promise<LivePermissionlessMin
     owner.publicKey.toBase58(),
     "Core owner = fresh owner",
   );
+  // Product Unit O decoder must agree with stand coreOwner on live bytes.
+  const productDecoded = decodeCoreAssetOwner({
+    data: new Uint8Array(assetData),
+    accountOwner: assetInfo!.owner.toBase58(),
+    namespace: 2000040168,
+  });
+  assert.equal(productDecoded.ok, true, "product Core decode must succeed");
+  if (productDecoded.ok) {
+    assert.equal(
+      productDecoded.owner,
+      owner.publicKey.toBase58(),
+      "product holder path owner = minting wallet",
+    );
+  }
   const freezePlugin = permanentFreezePlugin(assetData);
   assert.ok(freezePlugin.authority, "PermanentFreeze Address authority required");
   assert.equal(

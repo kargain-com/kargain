@@ -291,7 +291,7 @@ async function resolveBondRecipient(args: {
         detail: `challenge:${fetched.cause}:${fetched.detail}`,
       };
     }
-    const decoded = decodeChallengeAccount(fetched.value);
+    const decoded = decodeChallengeAccount(fetched.value.data);
     if (!decoded.ok) {
       return {
         ok: false,
@@ -310,7 +310,7 @@ async function resolveBondRecipient(args: {
       detail: `config:${fetched.cause}:${fetched.detail}`,
     };
   }
-  const decoded = decodePassportConfig(fetched.value);
+  const decoded = decodePassportConfig(fetched.value.data);
   if (!decoded.ok) {
     return {
       ok: false,
