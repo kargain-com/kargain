@@ -1,6 +1,8 @@
 "use client";
 
 import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
+import { eip155WhenWagmiOk, wagmiWriteUnionId } from "@/lib/web3/evm-wagmi-chrome";
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
@@ -16,7 +18,6 @@ import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { commerceConfirmedLabel } from "@/lib/design/instrument-classes";
 import type { ListingOffer } from "@/lib/nostr/listing-offers";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { shortAddress } from "@/lib/web3/wallet-display";
 import { formatRelativeTime } from "@/lib/format/relative-time";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
@@ -140,7 +141,9 @@ export function ListingOffersPanel({
   const walletChain = evm.ok ? evm.chainId : undefined;
   const switchAvail = evmSwitchChainAvailability(account);
 
-  const wc = eip155WagmiChainId(chainId);
+  const wagmi = evmWagmiChain(chainId);
+  const wc = wagmiWriteUnionId(wagmi);
+  const eip155 = eip155WhenWagmiOk(wagmi);
       const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
@@ -161,7 +164,8 @@ export function ListingOffersPanel({
       if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
         if (wc == null) throw new Error('switchChain unavailable: unresolved_namespace');
-        await switchChain(wc);
+        if (eip155 == null) return;
+        await switchChain(eip155);
       }
       setTxError(null);
       try {
@@ -189,7 +193,7 @@ export function ListingOffersPanel({
       wc,
       writeContractAsync,
       tid,
-      runTx, switchAvail],
+      runTx, switchAvail, eip155],
   );
 
   return (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useActiveAccount } from "@/hooks/use-active-account";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 import { KarProCommonsSection } from "@/components/kar-pro/kar-pro-commons-section";
 import { KarProMembershipSection } from "@/components/kar-pro/kar-pro-membership-section";
@@ -26,7 +27,6 @@ import { messagingReadyForChecklist, needsMessagingSetupCard } from "@/lib/messa
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 export function KarProClient({
   embedded = false,
@@ -43,7 +43,8 @@ export function KarProClient({
   const chainId = resolveKarProTargetChainId(walletChainId);
 
   const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
-  const wc = chainId != null ? wagmiChainId(chainId) : undefined;
+  const wagmiChain = evmWagmiChain(chainId);
+  const wc = chainId != null ? wagmiChain.ok ? wagmiChain.chainId : undefined : undefined;
 
   // Full-hub multicall only — never invent inactive on fee_only admission.
   const stakingReads = useKeyedReadContracts({

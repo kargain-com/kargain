@@ -4,6 +4,8 @@ import {
   isAccountConnected,
   useActiveAccount,
 } from "@/hooks/use-active-account";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
+import { eip155WhenWagmiOk, wagmiWriteUnionId } from "@/lib/web3/evm-wagmi-chrome";
 import { useSetPassportUri } from "@/hooks/use-set-passport-uri";
 
 import Link from "next/link";
@@ -76,7 +78,6 @@ import { processPassportPhotoFiles } from "@/lib/passport/process-passport-photo
 import { reorderArrayItem } from "@/lib/reorder-array";
 import { resetIrysUploaderCache } from "@/lib/storage/irys-client";
 import { resolveUri } from "@/lib/storage/resolve-uri";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
 import { txWriteAvailability } from "@/lib/web3/tx-write-availability";
 
@@ -123,7 +124,10 @@ export function EditPassportWizard({
     error: txError,
     syncLagged,
   } = useTxSync(chainId);
-  const wc = wagmiChainId(chainId);
+  const wagmiChain = evmWagmiChain(chainId);
+  const wc = wagmiWriteUnionId(wagmiChain);
+  const eip155 = eip155WhenWagmiOk(wagmiChain);
+;
   const { kind: accountKind, isLoading: isLoadingAccountKind } = useWalletAccountKind(
     evmAddress,
     connector,
@@ -454,7 +458,7 @@ export function EditPassportWizard({
             className="link-underline"
             onClick={() => {
               if (!switchPrompt.switchAvail.available) return;
-              void switchChain(wc);
+              if (eip155 != null) void switchChain(eip155);
             }}
           >
             Switch network

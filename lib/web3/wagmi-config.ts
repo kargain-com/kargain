@@ -3,14 +3,14 @@ import { createConfig, http, type Config, type CreateConnectorFn } from "wagmi";
 import { injected } from "wagmi/connectors";
 
 import { appUrl } from "@/lib/config/app-url";
-import { kargainChains, rpcUrlForChain } from "@/lib/web3/supported-chains";
+import { kargainChains, rpcUrlForWriteUnionChain } from "@/lib/web3/supported-chains";
 import { walletConnectProjectId } from "@/lib/web3/wallet-connect";
 
 const wagmiChains = [...kargainChains, mainnet] as const;
 
 const transports = {
   ...Object.fromEntries(
-    kargainChains.map((c) => [c.id, http(rpcUrlForChain(c.id))]),
+    kargainChains.map((c) => [c.id, http(rpcUrlForWriteUnionChain(c))]),
   ),
   [mainnet.id]: http(process.env.NEXT_PUBLIC_RPC_1 ?? "https://ethereum.publicnode.com"),
 } as Record<(typeof wagmiChains)[number]["id"], ReturnType<typeof http>>;

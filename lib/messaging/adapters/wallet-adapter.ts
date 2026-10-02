@@ -40,19 +40,22 @@ export function createWalletAdapter(input: CreateWalletAdapterInput): WalletPort
   let kindProbed = false;
   let kindProbePromise: Promise<void> | null = null;
 
-  async function refreshKind(address: Address): Promise<MessagingWalletKind> {
+  async function refreshKind(address: Address): Promise<MessagingWalletKind | null> {
     const key = address.toLowerCase();
     if (kindAddress === key && cachedKind) return cachedKind;
     const chainId = input.getChainId?.() ?? null;
-    const kind = mapWalletKind(
+    const result =
       chainId != null
         ? await readAccountKind(chainId, address)
-        : await readAccountKindOnCommercialChains(address),
-    );
+        : await readAccountKindOnCommercialChains(address);
     kindAddress = key;
-    cachedKind = kind;
     kindProbed = true;
-    return kind;
+    if (!result.ok) {
+      cachedKind = null;
+      return null;
+    }
+    cachedKind = mapWalletKind(result.kind);
+    return cachedKind;
   }
 
   async function ensureAccountKindProbed(): Promise<void> {
@@ -96,7 +99,7 @@ export function createWalletAdapter(input: CreateWalletAdapterInput): WalletPort
         const address = input.getAddress();
         if (client && address) {
           const kind = await refreshKind(address);
-          if (!supportsPersonalSignIdentity(kind)) {
+          if (kind == null || !supportsPersonalSignIdentity(kind)) {
             throw new Error("Contract wallet cannot initialize messaging");
           }
           return;

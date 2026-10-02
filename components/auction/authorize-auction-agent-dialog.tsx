@@ -1,6 +1,8 @@
 "use client";
 
 import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
+import { eip155WhenWagmiOk, wagmiWriteUnionId } from "@/lib/web3/evm-wagmi-chrome";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatUnits, parseUnits, zeroAddress } from "viem";
@@ -50,7 +52,6 @@ import {
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 import { cn } from "@/lib/utils";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Step = "approval" | "agent" | "terms";
@@ -113,7 +114,9 @@ export function AuthorizeAuctionAgentDialog({
   const walletChain = evm.ok ? evm.chainId : undefined;
   const switchAvail = evmSwitchChainAvailability(account);
 
-  const wc = eip155WagmiChainId(chainId);
+  const wagmi = evmWagmiChain(chainId);
+  const wc = wagmiWriteUnionId(wagmi);
+  const eip155 = eip155WhenWagmiOk(wagmi);
         const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
 
@@ -272,7 +275,8 @@ export function AuthorizeAuctionAgentDialog({
     if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
         if (wc == null) throw new Error('switchChain unavailable: unresolved_namespace');
-        await switchChain(wc);
+        if (eip155 == null) return;
+        await switchChain(eip155);
       }
     setTxError(null);
     try {
@@ -281,14 +285,15 @@ export function AuthorizeAuctionAgentDialog({
     } catch (err) {
       setTxError(txErrorMessage(err));
     }
-  }, [mode, wrongChain, switchChain, wc, approveForAll, awaitReceipt, switchAvail]);
+  }, [mode, wrongChain, switchChain, wc, approveForAll, awaitReceipt, switchAvail, eip155]);
 
   const runApproveToken = useCallback(async () => {
     if (!mode) return;
     if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
         if (wc == null) throw new Error('switchChain unavailable: unresolved_namespace');
-        await switchChain(wc);
+        if (eip155 == null) return;
+        await switchChain(eip155);
       }
     setTxError(null);
     try {
@@ -297,7 +302,7 @@ export function AuthorizeAuctionAgentDialog({
     } catch (err) {
       setTxError(txErrorMessage(err));
     }
-  }, [mode, wrongChain, switchChain, wc, approveToken, awaitReceipt, switchAvail]);
+  }, [mode, wrongChain, switchChain, wc, approveToken, awaitReceipt, switchAvail, eip155]);
 
   const runRevoke = useCallback(async () => {
     if (!mode || hasActiveAuction) return;

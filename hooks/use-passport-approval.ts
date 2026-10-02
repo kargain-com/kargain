@@ -2,6 +2,7 @@
 
 import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 /**
  * Sole owner of ERC-721 passport approval reads/writes for any spender
@@ -18,7 +19,6 @@ import { addressesMatch } from "@/lib/commerce/consignment";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 export type PassportApprovalStep = "idle" | "approving" | "ready";
 
@@ -45,7 +45,8 @@ export function usePassportApproval({
   const [approvalBusy, setApprovalBusy] = useState(false);
 
   const passport = karPassportAddress(chainId);
-  const wc = eip155WagmiChainId(chainId);
+  const wagmi = evmWagmiChain(chainId);
+  const wc = wagmi.ok ? wagmi.chainId : undefined
   const tokenIdBig = useMemo(() => {
     try {
       return BigInt(tokenId);

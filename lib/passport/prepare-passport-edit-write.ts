@@ -13,15 +13,14 @@ import {
   type ActiveAccount,
   type WalletFamilyWanted,
 } from "@/lib/web3/active-account";
+import { unresolvedNamespaceCopy, type CommercialRegistry, type Eip155ChainId } from "@/lib/web3/commercial-active";
 import {
-  unresolvedNamespaceCopy,
-  type CommercialRegistry,
-} from "@/lib/web3/commercial-active";
+  evmWagmiChain,
+} from "@/lib/web3/supported-chains";
 import {
   txWriteAvailabilityForCapability,
   type TxWriteUnavailable,
 } from "@/lib/web3/tx-write-availability";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 export type PassportEditWritePrep =
   | { ok: true; prep: "evm_prepared" }
@@ -66,7 +65,7 @@ type EnsureSiwe = typeof defaultEnsureSiweSession;
 export async function preparePassportEditWrite(args: {
   account: ActiveAccount;
   targetChainId: number;
-  switchChain: (chainId: number) => Promise<void>;
+  switchChain: (chainId: Eip155ChainId) => Promise<void>;
   signMessageAsync: (args: { message: string }) => Promise<`0x${string}`>;
   ensureSiweSession?: EnsureSiwe;
   registry?: CommercialRegistry;
@@ -102,7 +101,14 @@ export async function preparePassportEditWrite(args: {
         switchCause: switchAvail.cause,
       };
     }
-    await args.switchChain(wagmiChainId(args.targetChainId));
+    const wagmi = evmWagmiChain(args.targetChainId);
+    if (!wagmi.ok) {
+      if (wagmi.cause === "not_evm") {
+        return { ok: false, cause: "wrong_vm", wanted: "evm" };
+      }
+      return { ok: false, cause: "unresolved_namespace" };
+    }
+    await args.switchChain(wagmi.eip155);
   }
 
   const ensureSiwe = args.ensureSiweSession ?? defaultEnsureSiweSession;

@@ -40,12 +40,9 @@ import {
 import { acceptedPaymentMethods } from "@/lib/verifier/payment-methods";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
-import {
-  commercialActive,
-  nativeUnitOf,
-} from "@/lib/web3/commercial-active";
+import { commercialActive, nativeUnitOf } from "@/lib/web3/commercial-active";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 import { karProStakingAddress, usdcAddress } from "@/lib/web3/deployment-addresses";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 import { useEvmWriteContract, useEvmSendTransaction } from "@/lib/web3/evm-write-adapter";
 
@@ -141,7 +138,8 @@ function VerificationPaymentModalReady({
   const { sendTransactionAsync, isPending: isEthPending } = useEvmSendTransaction();
   const { writeContractAsync, isPending: isWritePending } = useEvmWriteContract();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
-  const wc = eip155WagmiChainId(chainId);
+  const wagmi = evmWagmiChain(chainId);
+  const wc = wagmi.ok ? wagmi.chainId : undefined
   const { ethUsd, btcUsd, isLoading: ratesLoading } = useMarketRates({ enabled: open });
   const { profile: verifierProfile } = useNostrProfile(verifierAddress, undefined, {
     enabled: open,

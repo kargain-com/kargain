@@ -7,8 +7,8 @@ import { getAddress } from "viem";
 
 import {
   commercialEip155Ids,
-  isCommercialEip155Id,
-  type CommercialChainId,
+  resolveEvmChain,
+  type Eip155ChainId,
 } from "../../lib/web3/commercial-active.js";
 import {
   CHAINLINK_FEEDS,
@@ -53,7 +53,7 @@ export const NUCLEAR_DEPLOY_STEPS = [
 export type NuclearDeployStep = (typeof NUCLEAR_DEPLOY_STEPS)[number];
 
 export type NuclearDeployPlan = {
-  chainId: CommercialChainId;
+  chainId: Eip155ChainId;
   tokenIdOffset: bigint;
   registry: NuclearRegistryPolicy;
   steps: readonly NuclearDeployStep[];
@@ -86,21 +86,23 @@ export function buildNuclearDeployPlan(
   chainId: number,
   roles: NuclearRoleParams,
 ): NuclearDeployPlan {
-  if (!isCommercialEip155Id(chainId)) {
+  const resolved = resolveEvmChain(chainId);
+  if (!resolved.ok) {
     throw new Error(
       `Nuclear deploy only supports commercial EIP-155 ids (${commercialEip155Ids().join("|")}), got ${chainId}`,
     );
   }
+  const brand = resolved.chainId;
 
-  const feedConfig = getChainFeedConfig(chainId);
-  const table = CHAINLINK_FEEDS[chainId];
+  const feedConfig = getChainFeedConfig(brand);
+  const table = CHAINLINK_FEEDS[brand];
   if (!table) {
-    throw new Error(`CHAINLINK_FEEDS missing chainId ${chainId}`);
+    throw new Error(`CHAINLINK_FEEDS missing chainId ${brand}`);
   }
 
   return {
-    chainId,
-    tokenIdOffset: BigInt(chainId) << 128n,
+    chainId: brand,
+    tokenIdOffset: BigInt(brand) << 128n,
     registry: "usd-only",
     steps: NUCLEAR_DEPLOY_STEPS,
     params: {
@@ -117,7 +119,7 @@ export function buildNuclearDeployPlan(
       usdcUsdStalenessTolerance: feedConfig.usdcUsdStalenessTolerance,
       nativeUsdFeed: getAddress(feedConfig.nativeUsdFeed),
       nativeUsdStalenessTolerance: feedConfig.nativeUsdStalenessTolerance,
-      layerZeroEndpoint: lzEndpointForChain(chainId),
+      layerZeroEndpoint: lzEndpointForChain(brand),
     },
   };
 }

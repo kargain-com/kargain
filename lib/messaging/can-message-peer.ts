@@ -43,7 +43,10 @@ export async function resolvePeerReachability(
   }
 
   const kind = await peerAccountKind(peerAddress, chainId);
-  if (messagingWalletError(kind)) {
+  if (!kind.ok) {
+    return { reachable: false, reason: "unknown" };
+  }
+  if (messagingWalletError(kind.kind)) {
     return { reachable: false, reason: "contract" };
   }
 
@@ -82,7 +85,10 @@ export async function resolvePeerReachabilityFromProvider(
   }
 
   const kind = await readAccountKindFromProvider(provider, peerAddress);
-  if (messagingWalletError(kind)) {
+  if (!kind.ok) {
+    return { reachable: false, reason: "unknown" };
+  }
+  if (messagingWalletError(kind.kind)) {
     return { reachable: false, reason: "contract" };
   }
 

@@ -23,14 +23,10 @@ import {
 import { deriveSvmPda } from "@/lib/svm/derive-pda";
 import { tokenIdToBytes32 } from "@/lib/svm/event-payload-decode";
 import { systemProgramId } from "@/lib/svm/foreign-programs";
-import {
-  commercialSvmNamespaceIds,
-  requireSvmCommercialActive,
-} from "@/lib/web3/commercial-active";
+import { commercialSvmNamespaceIds, requireSvmCommercialActive } from "@/lib/web3/commercial-active";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import type { SvmSignAndSendPort } from "@/lib/web3/svm-write-adapter";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
   vmBranchViolationInSource,
   VM_BRANCH_ALLOWLIST,
@@ -101,7 +97,7 @@ function assertEvmOpenPin(
   assert.equal(call.args[0], BigInt(expectedTokenId));
   assert.equal(call.value, expectedValue);
   if (call.chainId != null) {
-    assert.equal(call.chainId, wagmiChainId(84532));
+    assert.equal(call.chainId, 84532);
   }
 }
 

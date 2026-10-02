@@ -24,6 +24,7 @@ import {
   isReservedNonEvmNamespace,
   mintKargainNamespace,
   namespaceFromLayerZeroEid,
+  NON_EVM_NAMESPACE_MIN,
   type KargainNamespace,
 } from "@/lib/web3/kargain-namespace";
 import {
@@ -312,10 +313,57 @@ const SOLANA_DEVNET_40168 = {
   },
 } as const satisfies SvmCommercialActiveStack;
 
-/** EIP-155 ids of committed commercial EVM stacks — sole allowlist for tooling. */
-export type CommercialChainId =
-  | typeof BASE_SEPOLIA_84532.chainId
-  | typeof ETHEREUM_SEPOLIA_11155111.chainId;
+/**
+ * Branded EIP-155 chain id for commercial EVM doors.
+ * Sole constructors: {@link evmChainOf}, {@link resolveEvmChain}.
+ * Do not cast outside this module. `KargainNamespace` stays a number in
+ * general public signatures (S1).
+ */
+declare const eip155ChainIdBrand: unique symbol;
+
+export type Eip155ChainId = number & {
+  readonly [eip155ChainIdBrand]: void;
+};
+
+function mintEip155ChainId(value: number): Eip155ChainId {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`Invalid Eip155ChainId: ${value}`);
+  }
+  return value as Eip155ChainId;
+}
+
+/**
+ * Brand the EIP-155 id of a known EVM commercial stack.
+ * Stack field stays `number` so registry literals are not a third constructor.
+ */
+export function evmChainOf(stack: EvmCommercialActiveStack): Eip155ChainId {
+  return mintEip155ChainId(stack.chainId);
+}
+
+export type ResolveEvmChainCause = "unresolved_namespace" | "not_evm";
+
+export type ResolveEvmChainResult =
+  | { ok: true; chainId: Eip155ChainId }
+  | { ok: false; cause: ResolveEvmChainCause };
+
+/**
+ * Sole resolver from a commercial namespace (or unknown number) to a branded
+ * EIP-155 id. SVM namespaces → `not_evm`; unknown → `unresolved_namespace`.
+ * Absorbs former `eip155Of` (throw) and the dual wagmi doors (undefined/throw).
+ */
+export function resolveEvmChain(
+  namespace: number,
+  registry: CommercialRegistry = COMMERCIAL_ACTIVE,
+): ResolveEvmChainResult {
+  const stack = commercialActive(namespace, registry);
+  if (stack == null) {
+    return { ok: false, cause: "unresolved_namespace" };
+  }
+  if (stack.vm !== "evm") {
+    return { ok: false, cause: "not_evm" };
+  }
+  return { ok: true, chainId: evmChainOf(stack) };
+}
 
 /**
  * Active commercial protocol stacks. Key = namespace (EIP-155 for EVM rows).
@@ -331,20 +379,106 @@ export const COMMERCIAL_ACTIVE: CommercialRegistry = {
 /**
  * Sorted commercial EIP-155 ids (nuclear / feeds / UI OR-loops).
  * Filters `vm === "evm"` — reserved-band SVM namespace keys must never appear here.
- * Live map (no arg) → {@link CommercialChainId}. Injected registry → `number[]`
- * (arbitrary rows are not the live literal union).
+ * Brands via {@link evmChainOf} for every registry (live or injected).
  */
-export function commercialEip155Ids(): readonly CommercialChainId[];
-export function commercialEip155Ids(
-  registry: CommercialRegistry,
-): readonly number[];
 export function commercialEip155Ids(
   registry: CommercialRegistry = COMMERCIAL_ACTIVE,
-): readonly number[] {
+): readonly Eip155ChainId[] {
   return Object.values(registry)
     .filter((s): s is EvmCommercialActiveStack => s.vm === "evm")
-    .map((s) => s.chainId)
+    .map((s) => evmChainOf(s))
     .sort((a, b) => a - b);
+}
+
+export type RegistryDisjointnessViolation =
+  | { kind: "evm_in_reserved_band"; namespace: number }
+  | { kind: "non_evm_outside_reserved_band"; namespace: number }
+  | { kind: "duplicate_eip155"; chainId: number; namespaces: number[] }
+  | {
+      kind: "duplicate_wallet_standard_chain";
+      chain: string;
+      namespaces: number[];
+    }
+  | { kind: "duplicate_layerzero_eid"; eid: number; namespaces: number[] };
+
+/**
+ * Registry band / identity disjointness (SPEC §13.1).
+ * Live {@link COMMERCIAL_ACTIVE} has none. Plants inject a registry.
+ *
+ * `eidByEvmChain` is required — maps EVM EIP-155 → LayerZero EID
+ * (product: bridge-config `EID_BY_CHAIN`). SVM EID is derived as
+ * `namespace - NON_EVM_NAMESPACE_MIN`.
+ */
+export function registryDisjointnessViolations(
+  registry: CommercialRegistry,
+  eidByEvmChain: Readonly<Record<number, number>>,
+): RegistryDisjointnessViolation[] {
+  const violations: RegistryDisjointnessViolation[] = [];
+  const eip155Owners = new Map<number, number[]>();
+  const walletOwners = new Map<string, number[]>();
+  const eidOwners = new Map<number, number[]>();
+
+  for (const [key, stack] of Object.entries(registry)) {
+    const namespace = Number(key);
+    if (stack.vm === "evm") {
+      if (isReservedNonEvmNamespace(Number(stack.namespace))) {
+        violations.push({
+          kind: "evm_in_reserved_band",
+          namespace: Number(stack.namespace),
+        });
+      }
+      const cid = stack.chainId;
+      const owners = eip155Owners.get(cid) ?? [];
+      owners.push(namespace);
+      eip155Owners.set(cid, owners);
+      const eid = eidByEvmChain[cid];
+      if (eid != null) {
+        const eidList = eidOwners.get(eid) ?? [];
+        eidList.push(namespace);
+        eidOwners.set(eid, eidList);
+      }
+    } else {
+      if (!isReservedNonEvmNamespace(Number(stack.namespace))) {
+        violations.push({
+          kind: "non_evm_outside_reserved_band",
+          namespace: Number(stack.namespace),
+        });
+      }
+      const ws = stack.walletStandardChain;
+      if (ws != null && typeof ws === "string") {
+        const owners = walletOwners.get(ws) ?? [];
+        owners.push(namespace);
+        walletOwners.set(ws, owners);
+      }
+      const eid = Number(stack.namespace) - NON_EVM_NAMESPACE_MIN;
+      if (Number.isInteger(eid) && eid > 0) {
+        const eidList = eidOwners.get(eid) ?? [];
+        eidList.push(namespace);
+        eidOwners.set(eid, eidList);
+      }
+    }
+  }
+
+  for (const [chainId, namespaces] of eip155Owners) {
+    if (namespaces.length > 1) {
+      violations.push({ kind: "duplicate_eip155", chainId, namespaces });
+    }
+  }
+  for (const [chain, namespaces] of walletOwners) {
+    if (namespaces.length > 1) {
+      violations.push({
+        kind: "duplicate_wallet_standard_chain",
+        chain,
+        namespaces,
+      });
+    }
+  }
+  for (const [eid, namespaces] of eidOwners) {
+    if (namespaces.length > 1) {
+      violations.push({ kind: "duplicate_layerzero_eid", eid, namespaces });
+    }
+  }
+  return violations;
 }
 
 /**
@@ -391,14 +525,9 @@ export function unresolvedNamespaceCopy(): string {
 /**
  * True when `id` is a committed **EVM** commercial EIP-155 chain id.
  * Never true for reserved-band SVM namespaces — use {@link isCommercialNamespace}.
- * Live map (no registry arg) narrows to {@link CommercialChainId}; injected
- * registry returns plain `boolean` (not the live literal union).
+ * Boolean only — not a type predicate to {@link Eip155ChainId} (that would be a
+ * third constructor). Brand via {@link resolveEvmChain} / {@link evmChainOf}.
  */
-export function isCommercialEip155Id(id: number): id is CommercialChainId;
-export function isCommercialEip155Id(
-  id: number,
-  registry: CommercialRegistry,
-): boolean;
 export function isCommercialEip155Id(
   id: number,
   registry: CommercialRegistry = COMMERCIAL_ACTIVE,
@@ -475,25 +604,8 @@ export function requireSvmCommercialActive(
   return stack;
 }
 
-/**
- * EIP-155 id for a commercial namespace. Fails by name when the stack is not EVM.
- * For current stacks, namespace number equals EIP-155.
- */
-export function eip155Of(namespace: KargainNamespace | number): number {
-  const stack = commercialActive(Number(namespace));
-  if (!stack) {
-    throw new Error(commercialActiveMissingMessage(Number(namespace)));
-  }
-  if (stack.vm !== "evm") {
-    throw new Error(
-      `eip155Of: namespace ${namespace} is not an EVM commercial stack (vm=${stack.vm})`,
-    );
-  }
-  return stack.chainId;
-}
-
 /** Namespace brand for a known commercial EIP-155 / registry key. */
-export function namespaceOfCommercial(chainId: CommercialChainId): KargainNamespace {
+export function namespaceOfCommercial(chainId: Eip155ChainId): KargainNamespace {
   return requireCommercialActive(chainId).namespace;
 }
 

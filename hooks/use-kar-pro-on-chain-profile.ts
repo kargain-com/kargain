@@ -1,6 +1,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
+import {
+  karProOnChainReadsEnabled,
+  wagmiWriteUnionId,
+} from "@/lib/web3/evm-wagmi-chrome";
 
 import type { KarProVerifierProfile } from "@/lib/verifier/verifier-profile-types";
 import {
@@ -16,19 +21,24 @@ import {
 } from "@/lib/web3/deployment-addresses";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { indexerQueryKey } from "@/lib/web3/indexer-query-keys";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 export function useKarProOnChainProfile(
   address: `0x${string}` | undefined,
   enabled: boolean,
   chainId: number | undefined,
 ): { profile: KarProVerifierProfile | null; isLoading: boolean } {
-  const wc = chainId != null ? eip155WagmiChainId(chainId) : undefined;
+  const wagmiChain = evmWagmiChain(chainId);
+  const wc = chainId != null ? wagmiWriteUnionId(wagmiChain) : undefined;
   const proPass = chainId != null ? karProPassAddress(chainId) : undefined;
   const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
-  const readsEnabled = Boolean(
-    enabled && address && chainId != null && proPass && staking && wc != null,
-  );
+  const readsEnabled = karProOnChainReadsEnabled({
+    enabled,
+    address,
+    chainId,
+    proPassConfigured: Boolean(proPass),
+    stakingConfigured: Boolean(staking),
+    wagmi: wagmiChain,
+  });
 
   const passTokenId = address ? proPassTokenIdFromAddress(address) : 0n;
 

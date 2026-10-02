@@ -32,9 +32,11 @@ export function useWalletAccountKind(
       try {
         const provider = await connector?.getProvider?.();
         const resolved = await readAccountKindFromProvider(provider, address);
-        if (!cancelled) setKind(resolved);
+        if (!cancelled) {
+          setKind(resolved.ok ? resolved.kind : null);
+        }
       } catch {
-        if (!cancelled) setKind("eoa");
+        if (!cancelled) setKind(null);
       } finally {
         if (!cancelled) setIsLoading(false);
       }

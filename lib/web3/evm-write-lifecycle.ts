@@ -13,13 +13,13 @@ import {
   evmSwitchChainAvailability,
   type ActiveAccount,
 } from "@/lib/web3/active-account";
+import { requireEvmCommercialActive, evmChainOf, type Eip155ChainId } from "@/lib/web3/commercial-active";
 import { onftSentGuidFromLogs } from "@/lib/web3/bridge/bridge-guid";
 import {
   confirmEvmTransaction,
   EvmConfirmRefusal,
   type EvmConfirmOutcome,
 } from "@/lib/web3/evm-tx-confirm";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
   waitForIndexerBlock,
   type IndexerBlockNumberResult,
@@ -58,13 +58,12 @@ type RunEvmWriteLifecycleOptions = {
   account: ActiveAccount;
   chainId: number;
   config: Config;
-  switchChain: (chainId: number) => Promise<void>;
+  switchChain: (chainId: Eip155ChainId) => Promise<void>;
   writeFn: () => Promise<WriteSubmission>;
   fetchIndexerStatus: () => Promise<IndexerBlockNumberResult>;
   wait: (ms: number) => Promise<void>;
   onPhase?: (phase: EvmWriteLifecyclePhase) => void;
   confirmTransaction?: ConfirmEvmTransactionFn;
-  resolveTargetChainId?: (chainId: number) => number;
 };
 
 function assertEvmWriteSubmission(submission: WriteSubmission): `0x${string}` {
@@ -133,8 +132,16 @@ export async function awaitEvmWriteReceipt({
       refusal: avail,
     });
   }
+  if (avail.vm !== "evm") {
+    throw new TxWriteGuardRefusal({
+      guard: "write_availability",
+      refusal: { available: false, cause: "wrong_vm", wanted: "evm" },
+    });
+  }
   onPhase?.("confirming");
-  return requireLandedOk(await confirmTransaction(config, hash, chainId));
+  return requireLandedOk(
+    await confirmTransaction(config, hash, avail.targetChainId),
+  );
 }
 
 export async function runEvmWriteLifecycle({
@@ -147,7 +154,6 @@ export async function runEvmWriteLifecycle({
   wait,
   onPhase,
   confirmTransaction = confirmEvmTransaction,
-  resolveTargetChainId = wagmiChainId,
 }: RunEvmWriteLifecycleOptions): Promise<WriteOutcome> {
   const avail = txWriteAvailability(account, chainId);
   if (!avail.available) {
@@ -158,7 +164,6 @@ export async function runEvmWriteLifecycle({
   }
 
   onPhase?.("wallet");
-  const targetChainId = resolveTargetChainId(chainId);
   if (avail.vm !== "evm") {
     // EVM lifecycle always targets an EVM stack — name the family explicitly.
     throw new TxWriteGuardRefusal({
@@ -166,6 +171,7 @@ export async function runEvmWriteLifecycle({
       refusal: { available: false, cause: "wrong_vm", wanted: "evm" },
     });
   }
+  const targetChainId = avail.targetChainId;
   if (avail.walletChainId !== targetChainId) {
     const switchAvail = evmSwitchChainAvailability(account);
     if (!switchAvail.available) {
@@ -174,7 +180,8 @@ export async function runEvmWriteLifecycle({
         refusal: switchAvail,
       });
     }
-    await switchChain(chainId);
+    // EVM-by-construction after avail.vm === "evm" — branded Eip155 for ActiveAccount.
+    await switchChain(evmChainOf(requireEvmCommercialActive(targetChainId)));
   }
 
   const txHash = assertEvmWriteSubmission(await writeFn());

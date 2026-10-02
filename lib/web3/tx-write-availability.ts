@@ -9,8 +9,10 @@
 
 import {
   commercialActive,
+  evmChainOf,
   unresolvedNamespaceCopy,
   type CommercialRegistry,
+  type Eip155ChainId,
 } from "@/lib/web3/commercial-active";
 import {
   evmSessionRefusalCopy,
@@ -87,7 +89,13 @@ export function txWriteGuardRefusalCopy(
 }
 
 export type TxWriteAvailability =
-  | { available: true; vm: "evm"; walletChainId: number }
+  | {
+      available: true;
+      vm: "evm";
+      walletChainId: number;
+      /** Branded target from the commercial EVM stack — sole lifecycle id. */
+      targetChainId: Eip155ChainId;
+    }
   | { available: true; vm: "svm"; namespace: number }
   | TxWriteUnavailable;
 
@@ -113,7 +121,12 @@ export function txWriteAvailability(
     if (account.vm !== "evm") {
       return { available: false, cause: "wrong_vm", wanted: stack.vm };
     }
-    return { available: true, vm: "evm", walletChainId: account.chainId };
+    return {
+      available: true,
+      vm: "evm",
+      walletChainId: account.chainId,
+      targetChainId: evmChainOf(stack),
+    };
   }
   if (account.vm !== "svm") {
     return { available: false, cause: "wrong_vm", wanted: stack.vm };
@@ -152,10 +165,15 @@ export function txWriteAvailabilityForCapability(
       return { available: false, cause: "wrong_vm", wanted: admission.wanted };
     case "available":
       if (admission.family === "evm") {
+        const stack = commercialActive(namespace, registry);
+        if (stack == null || stack.vm !== "evm") {
+          return { available: false, cause: "unresolved_namespace" };
+        }
         return {
           available: true,
           vm: "evm",
           walletChainId: admission.chainId,
+          targetChainId: evmChainOf(stack),
         };
       }
       return {

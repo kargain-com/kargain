@@ -1,6 +1,7 @@
 "use client";
 
 import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -23,7 +24,6 @@ import {
   type KeyedContract,
 } from "@/lib/web3/keyed-multicall";
 import { shortAddress } from "@/lib/web3/wallet-display";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
   commercialNetworkLabel,
   commercialNetworkLabelCauseCopy,
@@ -147,27 +147,32 @@ export function useCommerceRevokeOps() {
   }, [ponderQuery.data, modeByKey]);
 
   const contracts = useMemo((): KeyedContract[] => {
-    return candidates.map((c) => {
-      const wc = wagmiChainId(c.chainId);
+    return candidates.flatMap((c) => {
+      const wagmi = evmWagmiChain(c.chainId);
+      if (!wagmi.ok) return [];
       const abi = commerceModeAbi(c.mode);
       if (c.mode === "fixedPrice") {
-        return {
-          key: `${c.chainId}:${c.mode}:${c.token}:paymentTokens`,
+        return [
+          {
+            key: `${c.chainId}:${c.mode}:${c.token}:paymentTokens`,
+            address: c.modeAddress,
+            abi,
+            functionName: "paymentTokens",
+            args: [c.token] as const,
+            chainId: wagmi.chainId,
+          },
+        ];
+      }
+      return [
+        {
+          key: `${c.chainId}:${c.mode}:${c.token}:paymentTokenEnabled`,
           address: c.modeAddress,
           abi,
-          functionName: "paymentTokens",
+          functionName: "paymentTokenEnabled",
           args: [c.token] as const,
-          chainId: wc,
-        };
-      }
-      return {
-        key: `${c.chainId}:${c.mode}:${c.token}:paymentTokenEnabled`,
-        address: c.modeAddress,
-        abi,
-        functionName: "paymentTokenEnabled",
-        args: [c.token] as const,
-        chainId: wc,
-      };
+          chainId: wagmi.chainId,
+        },
+      ];
     });
   }, [candidates]);
 

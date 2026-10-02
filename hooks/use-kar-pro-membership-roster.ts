@@ -5,10 +5,10 @@ import {
   deriveKarProMembershipRoster,
   type KarProMembershipRow,
 } from "@/lib/kar-pro/membership-roster";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 import { commercialChainIds } from "@/lib/web3/chain-context";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 /**
  * Live per-chain `isActiveVerifier` roster for the connected wallet.
@@ -24,7 +24,8 @@ export function useKarProMembershipRoster(
   const contracts = enabled
     ? chainIds.flatMap((chainId) => {
         const staking = karProStakingAddress(chainId);
-        const wc = eip155WagmiChainId(chainId);
+        const wagmi = evmWagmiChain(chainId);
+  const wc = wagmi.ok ? wagmi.chainId : undefined
         if (!staking || address == null || wc == null) return [];
         return [
           {

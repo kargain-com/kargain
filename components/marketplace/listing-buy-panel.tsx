@@ -1,6 +1,8 @@
 "use client";
 
 import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
+import { eip155WhenWagmiOk, wagmiWriteUnionId } from "@/lib/web3/evm-wagmi-chrome";
 
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
@@ -30,7 +32,6 @@ import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { needsBuyRiskAck } from "@/lib/passport/trust-signals";
 import type { PassportStatus } from "@/lib/types/ponder";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { cn } from "@/lib/utils";
@@ -97,7 +98,9 @@ export function ListingBuyPanel({
   const { runTx, awaitReceipt, phase, error, syncLagged } = useTxSync(chainId);
 
   const market = commerceModeEvmAddress("fixedPrice", chainId);
-  const wc = eip155WagmiChainId(chainId);
+  const wagmi = evmWagmiChain(chainId);
+  const wc = wagmiWriteUnionId(wagmi);
+  const eip155 = eip155WhenWagmiOk(wagmi);
   const wrongChain = evm.ok && walletChain !== chainId;
   const tid = BigInt(tokenId);
   const requiresRiskAck = needsBuyRiskAck({ passportStatus, duplicateVin });
@@ -268,7 +271,8 @@ export function ListingBuyPanel({
       if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
         if (wc == null) throw new Error('switchChain unavailable: unresolved_namespace');
-        await switchChain(wc);
+        if (eip155 == null) return;
+        await switchChain(eip155);
       }
 
       if (!isNative && asset && (allowance ?? 0n) < quote) {
@@ -320,7 +324,7 @@ export function ListingBuyPanel({
     tid,
     router,
     tokenId,
-    chainId, switchAvail]);
+    chainId, switchAvail, eip155]);
 
   const handleBuyClick = () => {
     if (requiresRiskAck) {
@@ -435,7 +439,7 @@ export function ListingBuyPanel({
             onClick={() => {
               if (!switchAvail.available) return;
               if (wc == null) return;
-              void switchChain(wc);
+              if (eip155 != null) void switchChain(eip155);
             }}
           >
             Switch network

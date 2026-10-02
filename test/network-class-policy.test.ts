@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import {
   COMMERCIAL_ACTIVE,
   commercialEip155Ids,
-  eip155Of,
+  resolveEvmChain,
   isCommercialEip155Id,
 } from "../lib/web3/commercial-active.ts";
 import {
@@ -108,7 +108,7 @@ describe("commercial stack registry policy", () => {
     assert.match(feeds, /isCommercialEip155Id/);
     assert.doesNotMatch(
       feeds,
-      /export\s+(?:type\s+)?\{[^}]*(?:CommercialChainId|isCommercialEip155Id|commercialEip155Ids)/,
+      /export\s+(?:type\s+)?\{[^}]*(?:Eip155ChainId|isCommercialEip155Id|commercialEip155Ids)/,
     );
     assert.ok(!/chainId === 84532 \|\| chainId === 11155111/.test(feeds));
   });
@@ -117,7 +117,7 @@ describe("commercial stack registry policy", () => {
     const violations: string[] = [];
     /** Re-export of registry predicate / type / id list from a non-owner module. */
     const REEXPORT =
-      /export\s+(?:type\s+)?\{[^}]*(?:\bisCommercialEip155Id\b|\bCommercialChainId\b|\bcommercialEip155Ids\b)[^}]*\}\s*from\s*["'][^"']+["']/;
+      /export\s+(?:type\s+)?\{[^}]*(?:\bisCommercialEip155Id\b|\bEip155ChainId\b|\bcommercialEip155Ids\b)[^}]*\}\s*from\s*["'][^"']+["']/;
     const REEXPORT_VALUE =
       /export\s*\{[^}]*(?:\bisCommercialEip155Id\b|\bcommercialEip155Ids\b)[^}]*\}/;
     const ALIAS_LIST = /export\s+const\s+COMMERCIAL_CHAIN_IDS\b/;
@@ -154,26 +154,30 @@ describe("commercial stack registry policy", () => {
     assert.equal(isCommercialEip155Id(84532), true);
     assert.equal(isCommercialEip155Id(11155111), true);
     assert.equal(isCommercialEip155Id(1), false);
-    assert.deepEqual(commercialEip155Ids(), [84532, 11155111]);
+    assert.deepEqual([...commercialEip155Ids()], [84532, 11155111]);
     for (const id of commercialEip155Ids()) {
       const stack = COMMERCIAL_ACTIVE[id];
       assert.equal(stack.vm, "evm");
       assert.equal(stack.nativeUnit.symbol, "ETH");
       assert.equal(stack.nativeUnit.decimals, 18);
-      assert.equal(eip155Of(id), id);
+      const resolved = resolveEvmChain(id);
+      assert.equal(resolved.ok, true);
+      if (resolved.ok) assert.equal(resolved.chainId, id);
       assert.equal(Number(stack.namespace), stack.chainId);
     }
   });
 });
 
 describe("eip155 accessor policy", () => {
-  it("wagmiChainId consumes eip155Of for commercial ids", () => {
+  it("supported-chains doors take Eip155ChainId; resolveEvmChain owns namespace→brand", () => {
     const text = fs.readFileSync(WAGMI_OWNER, "utf8");
-    assert.match(text, /eip155Of/);
-    assert.match(text, /isCommercialEip155Id/);
+    assert.match(text, /Eip155ChainId/);
+    assert.doesNotMatch(text, /\beip155Of\b/);
+    assert.doesNotMatch(text, /\bwagmiChainId\b/);
+    assert.doesNotMatch(text, /\beip155WagmiChainId\b/);
     assert.ok(
-      !/return chainId as KargainChainId/.test(text),
-      "blind cast removed",
+      !/as Eip155ChainId/.test(text),
+      "no cast to Eip155ChainId outside commercial-active",
     );
   });
 });
@@ -251,18 +255,23 @@ describe("namespace ∩ EIP-155 non-collision (SPEC §13.1)", () => {
       const stack = COMMERCIAL_ACTIVE[id];
       assert.equal(stack.vm, "evm");
       assert.equal(Number(stack.namespace), stack.chainId);
-      assert.equal(eip155Of(stack.namespace), stack.chainId);
+      const resolved = resolveEvmChain(Number(stack.namespace));
+      assert.equal(resolved.ok, true);
+      if (resolved.ok) assert.equal(resolved.chainId, stack.chainId);
       assert.ok(eip155Set.has(stack.chainId));
     }
     for (const key of Object.keys(COMMERCIAL_ACTIVE).map(Number)) {
       const stack = COMMERCIAL_ACTIVE[key]!;
       if (stack.vm === "evm") {
         assert.ok(eip155Set.has(key), `registry key ${key} is not a commercial EIP-155`);
-        assert.equal(eip155Of(key), key);
+        const resolved = resolveEvmChain(key);
+        assert.equal(resolved.ok, true);
+        if (resolved.ok) assert.equal(resolved.chainId, key);
         continue;
       }
       assert.equal(key, Number(stack.namespace));
       assert.equal(eip155Set.has(key), false);
+      assert.deepEqual(resolveEvmChain(key), { ok: false, cause: "not_evm" });
     }
   });
 });

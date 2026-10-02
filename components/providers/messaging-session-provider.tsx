@@ -1,6 +1,8 @@
 "use client";
 
 import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
+import { wagmiChainIdOpts } from "@/lib/web3/evm-wagmi-chrome";
 
 import {
   createContext,
@@ -35,7 +37,6 @@ import { shouldIdleWarmXmtp } from "@/lib/messaging/snapshot-ui";
 import { getMessagingXmtpEnv } from "@/lib/messaging/xmtp-env";
 import { useNostrKey } from "@/hooks/use-nostr-key";
 import { resolveWalletCommercialChainId } from "@/lib/web3/chain-context";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 type SessionRefs = {
   address: Address;
@@ -203,9 +204,10 @@ export function MessagingSessionProvider({ children }: { children: ReactNode }) 
   const isConnected = evm.ok;
   const walletChainId = evm.ok ? evm.chainId : undefined;
 
-      const commercialChainId = resolveWalletCommercialChainId(walletChainId);
+  const commercialChainId = resolveWalletCommercialChainId(walletChainId);
+  const wagmiChain = evmWagmiChain(commercialChainId);
   const { data: walletClient } = useWalletClient(
-    commercialChainId != null ? { chainId: eip155WagmiChainId(commercialChainId) } : {},
+    commercialChainId != null ? wagmiChainIdOpts(wagmiChain) : {},
   );
   const {
     nostrPrivateKey,

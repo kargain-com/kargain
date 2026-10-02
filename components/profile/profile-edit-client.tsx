@@ -43,11 +43,8 @@ import { publishNostrProfile } from "@/lib/nostr/profile";
 import { LightningAddressField, isLightningAddressInvalid } from "@/components/profile/lightning-address-field";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import {
-  nativeUnitOf,
-  commercialActive,
-} from "@/lib/web3/commercial-active";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { nativeUnitOf, commercialActive } from "@/lib/web3/commercial-active";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 const ABOUT_MAX = 280;
 
@@ -128,7 +125,8 @@ export function ProfileEditClient() {
 
   const chainId = resolveKarProTargetChainId(walletChainId);
   const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
-  const wc = chainId != null ? wagmiChainId(chainId) : undefined;
+  const wagmiChain = evmWagmiChain(chainId);
+  const wc = chainId != null ? wagmiChain.ok ? wagmiChain.chainId : undefined : undefined;
   const verifierStatusEnabled = Boolean(staking && address && chainId != null);
 
   const { data: isActiveVerifier, isPending: verifierReadPending } = useReadContract({

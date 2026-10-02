@@ -3,6 +3,7 @@ import type { PassportMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import { fetchArweaveMetadata } from "@/lib/passport/fetch-arweave-metadata";
 import { passportStatusFromChainIndex } from "@/lib/passport/passport-status-chain";
 import type { PassportStatus, PonderPassportDetail } from "@/lib/types/ponder";
+import { resolveEvmChain } from "@/lib/web3/commercial-active";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import {
   mintProtocolOwner,
@@ -69,9 +70,11 @@ export async function readTokenUriOnChain(
 ): Promise<string | null> {
   const address = karPassportAddress(chainId);
   if (!address) return null;
+  const resolved = resolveEvmChain(chainId);
+  if (!resolved.ok) return null;
 
   try {
-    const client = getPublicClient(chainId);
+    const client = getPublicClient(resolved.chainId);
     const uri = await client.readContract({
       address,
       abi: KarPassportAbi,
@@ -90,8 +93,10 @@ export async function fetchChainPassportDetail(
 ): Promise<ChainPassportDetailResult> {
   const address = karPassportAddress(chainId);
   if (!address) return { ok: false };
+  const resolved = resolveEvmChain(chainId);
+  if (!resolved.ok) return { ok: false };
 
-  const client = getPublicClient(chainId);
+  const client = getPublicClient(resolved.chainId);
   const tokenIdBigInt = BigInt(tokenId);
 
   let ownerRaw: string;

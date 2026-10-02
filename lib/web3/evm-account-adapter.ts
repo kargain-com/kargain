@@ -21,8 +21,8 @@ import {
   type KargainNamespace,
 } from "@/lib/web3/kargain-namespace";
 import { commercialActive } from "@/lib/web3/commercial-active";
+import type { KargainWriteUnionChainId } from "@/lib/web3/supported-chains";
 import type { ActiveAccountEvm } from "@/lib/web3/active-account";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 export type EvmAccountAdapterSnapshot = {
   connected: ActiveAccountEvm | null;
@@ -33,7 +33,11 @@ export type EvmAccountAdapterSnapshot = {
   connectError: Error | null;
   connect: (connector: Connector) => Promise<void>;
   disconnect: () => Promise<void>;
-  switchChain: (chainId: number) => Promise<void>;
+  /**
+   * Switch wallet to a write-union id (incl. Hardhat when local). Product
+   * ActiveAccount.switchChain takes branded {@link Eip155ChainId} and narrows here.
+   */
+  switchChain: (chainId: KargainWriteUnionChainId) => Promise<void>;
 };
 
 function namespaceForEvmChain(chainId: number): KargainNamespace {
@@ -82,11 +86,11 @@ export function useEvmAccountAdapter(): EvmAccountAdapterSnapshot {
   }, [disconnectAsync]);
 
   const switchChain = useCallback(
-    async (targetChainId: number) => {
+    async (targetChainId: KargainWriteUnionChainId) => {
       if (!switchChainAsync) {
         throw new Error("EVM chain switch is unavailable");
       }
-      await switchChainAsync({ chainId: wagmiChainId(targetChainId) });
+      await switchChainAsync({ chainId: targetChainId });
     },
     [switchChainAsync],
   );

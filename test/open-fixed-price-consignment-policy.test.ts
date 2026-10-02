@@ -39,14 +39,8 @@ import {
   svmActiveAccountFromAddress,
   wrongVmActionCopy,
 } from "@/lib/web3/active-account";
-import {
-  commercialSvmNamespaceIds,
-  requireSvmCommercialActive,
-  type CommercialRegistry,
-  type SvmCommercialActiveStack,
-} from "@/lib/web3/commercial-active";
+import { commercialSvmNamespaceIds, requireSvmCommercialActive, type CommercialRegistry, type SvmCommercialActiveStack } from "@/lib/web3/commercial-active";
 import type { SvmSignAndSendPort } from "@/lib/web3/svm-write-adapter";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
   txWriteAvailabilityForCapability,
   txWriteRefusalMessage,
@@ -139,7 +133,7 @@ describe("open-fixed-price-consignment policy", () => {
       ZERO_ADDRESS,
       1_000_000n,
     );
-    assert.equal(call.chainId, wagmiChainId(84532));
+    assert.equal(call.chainId, 84532);
     assert.equal(call.abi.length > 0, true);
   });
 

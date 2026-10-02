@@ -1,6 +1,7 @@
 import {
   COMMERCIAL_ACTIVE,
   commercialActive,
+  evmChainOf,
   type CommercialActiveStack,
   type CommercialRegistry,
 } from "@/lib/web3/commercial-active";
@@ -81,7 +82,7 @@ function rpcUrlForStack(stack: CommercialActiveStack): string | null {
     return productSvmRpcUrl();
   }
   try {
-    return rpcUrlForChain(Number(stack.namespace));
+    return rpcUrlForChain(evmChainOf(stack));
   } catch {
     return null;
   }

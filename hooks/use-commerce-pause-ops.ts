@@ -1,6 +1,7 @@
 "use client";
 
 import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 import { useMemo } from "react";
 
@@ -23,7 +24,6 @@ import {
   useKeyedReadContracts,
   type KeyedContract,
 } from "@/lib/web3/keyed-multicall";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
   commercialNetworkLabel,
   commercialNetworkLabelCauseCopy,
@@ -72,14 +72,15 @@ export function useCommercePauseOps() {
 
   const contracts = useMemo((): KeyedContract[] => {
     return targets.flatMap(({ chainId, mode, address }) => {
-      const wc = wagmiChainId(chainId);
+      const wagmi = evmWagmiChain(chainId);
+      if (!wagmi.ok) return [];
       const abi = commerceModeAbi(mode);
       return (["paused", "guardian", "owner"] as const).map((functionName) => ({
         key: `${chainId}:${mode}:${functionName}`,
         address,
         abi,
         functionName,
-        chainId: wc,
+        chainId: wagmi.chainId,
       }));
     });
   }, [targets]);

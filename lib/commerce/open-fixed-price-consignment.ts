@@ -44,11 +44,9 @@ import {
   type ActiveAccount,
   type WalletFamilyWanted,
 } from "@/lib/web3/active-account";
-import {
-  commercialActive,
-  type CommercialRegistry,
-  type SvmCommercialActiveStack,
-} from "@/lib/web3/commercial-active";
+import { commercialActive, type CommercialRegistry, type SvmCommercialActiveStack } from "@/lib/web3/commercial-active";
+import type { KargainWriteUnionChainId } from "@/lib/web3/supported-chains";
+import { wagmiChainOfStack } from "@/lib/web3/supported-chains";
 import {
   fetchProductSvmAccountData,
   type FetchSvmAccountDataResult,
@@ -63,7 +61,6 @@ import {
   SvmWriteOwnerRefusal,
   throwSvmWriteSendRefusal,
 } from "@/lib/web3/svm-write-owner-refusal";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import type { WriteSubmission } from "@/lib/web3/write-outcome";
 import {
   txWriteAvailabilityForCapability,
@@ -168,7 +165,7 @@ export function buildEvmOpenFixedPriceConsignmentCall(args: {
   currencyCode: `0x${string}`;
   settlementAsset: `0x${string}`;
   price: bigint;
-  chainId: number;
+  chainId: KargainWriteUnionChainId;
 }): OpenFixedPriceConsignmentEvmCall {
   return {
     address: args.address,
@@ -180,7 +177,7 @@ export function buildEvmOpenFixedPriceConsignmentCall(args: {
       args.settlementAsset,
       args.price,
     ],
-    chainId: wagmiChainId(args.chainId),
+    chainId: args.chainId,
   };
 }
 
@@ -227,7 +224,7 @@ export function assembleOpenFixedPriceConsignmentAccounts(args: {
 
 export async function planOpenFixedPriceConsignment(input: {
   account: ActiveAccount;
-  chainId: number;
+  chainId: KargainWriteUnionChainId;
   tokenId: string;
   denominationKind: DenominationKind;
   currencyCode: `0x${string}`;
@@ -317,7 +314,7 @@ export async function planOpenFixedPriceConsignment(input: {
         currencyCode: input.currencyCode,
         settlementAsset: input.settlementAsset,
         price: input.price,
-        chainId: input.chainId,
+        chainId: wagmiChainOfStack(stack),
       });
       return { ok: true, vm: "evm", call };
     } catch (err) {

@@ -87,8 +87,8 @@ describe("commercial enumerators (S9 Unit1)", () => {
     assert.ok(naiveKeys.includes(SOLANA_NS), "fixture: naive keys include SVM ns");
 
     const productEip155 = commercialEip155Ids(mixed);
-    assert.deepEqual([...productEip155], [84532]);
-    assert.ok(!productEip155.includes(SOLANA_NS));
+    assert.deepEqual([...productEip155].map(Number), [84532]);
+    assert.ok(!productEip155.some((id) => Number(id) === SOLANA_NS));
 
     assert.deepEqual([...commercialSvmNamespaceIds(mixed)], [SOLANA_NS]);
     assert.deepEqual(
@@ -100,15 +100,15 @@ describe("commercial enumerators (S9 Unit1)", () => {
     assert.equal(isCommercialNamespace(SOLANA_NS, mixed), true);
   });
 
-  it("injectable commercialEip155Ids is number[]; live no-arg path lists CommercialChainId", () => {
+  it("injectable and live commercialEip155Ids return branded EVM ids only", () => {
     const mixed: CommercialRegistry = {
       84532: COMMERCIAL_ACTIVE[84532]!,
       [SOLANA_NS]: FIXTURE_SVM_STACK,
     };
     const injected = commercialEip155Ids(mixed);
-    assert.deepEqual([...injected], [84532]);
-    assert.ok(!injected.includes(SOLANA_NS));
-    assert.deepEqual([...commercialEip155Ids()], [84532, 11155111]);
+    assert.deepEqual([...injected].map(Number), [84532]);
+    assert.ok(!injected.some((id) => Number(id) === SOLANA_NS));
+    assert.deepEqual([...commercialEip155Ids()].map(Number), [84532, 11155111]);
   });
 
   it("planted (c): custody/origin wrong predicate is red; live chain-context is green", () => {

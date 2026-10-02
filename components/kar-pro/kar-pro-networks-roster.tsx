@@ -11,6 +11,7 @@ import {
   commercialNetworkLabel,
   commercialNetworkLabelCauseCopy,
 } from "@/lib/web3/chain-selector-state";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 function statusLabel(status: KarProMembershipRow["status"]): string {
   switch (status) {
@@ -56,7 +57,9 @@ export function KarProNetworksRoster({ rows }: KarProNetworksRosterProps) {
               label: "Switch to manage",
               onClick: () => {
                 if (!switchAvail.available) return;
-                void switchChain(row.chainId);
+                const wagmi = evmWagmiChain(row.chainId);
+                if (!wagmi.ok) return;
+                void switchChain(wagmi.eip155);
               },
             };
           } else if (!showManaging && row.status === "not_joined") {
@@ -64,7 +67,9 @@ export function KarProNetworksRoster({ rows }: KarProNetworksRosterProps) {
               label: "Switch to join",
               onClick: () => {
                 if (!switchAvail.available) return;
-                void switchChain(row.chainId);
+                const wagmi = evmWagmiChain(row.chainId);
+                if (!wagmi.ok) return;
+                void switchChain(wagmi.eip155);
               },
             };
           }

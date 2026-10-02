@@ -4,6 +4,7 @@ import type { Config } from "wagmi";
 import type { ActiveAccount } from "@/lib/web3/active-account";
 import type {
   CommercialRegistry,
+  Eip155ChainId,
   SvmCommercialActiveStack,
 } from "@/lib/web3/commercial-active";
 import type { EvmConfirmOutcome } from "@/lib/web3/evm-tx-confirm";
@@ -50,14 +51,13 @@ type RunWriteLifecycleOptions = {
   account: ActiveAccount;
   chainId: number;
   config: WriteLifecycleConfig;
-  switchChain: (chainId: number) => Promise<void>;
+  switchChain: (chainId: Eip155ChainId) => Promise<void>;
   writeFn: () => Promise<WriteSubmission>;
   fetchIndexerStatus: () => Promise<IndexerBlockNumberResult>;
   wait: (ms: number) => Promise<void>;
   onPhase?: (phase: WriteLifecyclePhase) => void;
   registry?: CommercialRegistry;
   confirmTransaction?: ConfirmEvmTransactionFn;
-  resolveTargetChainId?: (chainId: number) => number;
   createConfirmPort?: (stack: SvmCommercialActiveStack) => SvmTxConfirmPort;
   fetchStructuredPayloads?: FetchSvmStructuredPayloads;
 };
@@ -109,7 +109,6 @@ export async function runWriteLifecycle({
   onPhase,
   registry,
   confirmTransaction,
-  resolveTargetChainId,
   createConfirmPort,
   fetchStructuredPayloads,
 }: RunWriteLifecycleOptions): Promise<WriteOutcome> {
@@ -131,7 +130,6 @@ export async function runWriteLifecycle({
       wait,
       onPhase: onPhase as ((phase: EvmWriteLifecyclePhase) => void) | undefined,
       confirmTransaction,
-      resolveTargetChainId,
     });
   }
   return runSvmWriteLifecycle({

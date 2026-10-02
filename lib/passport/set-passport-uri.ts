@@ -21,11 +21,9 @@ import {
   type ActiveAccount,
   type WalletFamilyWanted,
 } from "@/lib/web3/active-account";
-import {
-  commercialActive,
-  type CommercialRegistry,
-  type SvmCommercialActiveStack,
-} from "@/lib/web3/commercial-active";
+import { commercialActive, type CommercialRegistry, type SvmCommercialActiveStack } from "@/lib/web3/commercial-active";
+import type { KargainWriteUnionChainId } from "@/lib/web3/supported-chains";
+import { wagmiChainOfStack } from "@/lib/web3/supported-chains";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import {
   AccountRole,
@@ -38,7 +36,6 @@ import {
   throwSvmWriteSendRefusal,
 } from "@/lib/web3/svm-write-owner-refusal";
 import type { WriteSubmission } from "@/lib/web3/write-outcome";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
   txWriteAvailabilityForCapability,
   txWriteRefusalMessage,
@@ -96,14 +93,14 @@ export function buildEvmSetPassportUriCall(args: {
   address: `0x${string}`;
   tokenId: string;
   uri: string;
-  chainId: number;
+  chainId: KargainWriteUnionChainId;
 }): SetPassportUriEvmCall {
   return {
     address: args.address,
     abi: KarPassportAbi,
     functionName: "setPassportURI",
     args: [BigInt(args.tokenId), args.uri],
-    chainId: wagmiChainId(args.chainId),
+    chainId: args.chainId,
   };
 }
 
@@ -179,7 +176,7 @@ export async function planSetPassportUri(input: {
         address,
         tokenId: input.tokenId,
         uri: input.uri,
-        chainId: input.chainId,
+        chainId: wagmiChainOfStack(stack),
       });
       return { ok: true, vm: "evm", call };
     } catch (err) {

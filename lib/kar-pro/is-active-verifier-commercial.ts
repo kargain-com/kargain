@@ -1,5 +1,6 @@
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
+import { resolveEvmChain } from "@/lib/web3/commercial-active";
 import { getPublicClient } from "@/lib/web3/public-client";
 
 /**
@@ -34,8 +35,12 @@ async function readChainActiveMulticall(
   if (!staking) {
     return addresses.map(() => false);
   }
+  const resolved = resolveEvmChain(chainId);
+  if (!resolved.ok) {
+    return addresses.map(() => false);
+  }
   try {
-    const client = getPublicClient(chainId);
+    const client = getPublicClient(resolved.chainId);
     const results = await client.multicall({
       allowFailure: true,
       contracts: addresses.map((wallet) => ({

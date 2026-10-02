@@ -16,7 +16,14 @@ describe("peer identity KarPro policy", () => {
     );
     assert.match(src, /useKarProMembershipRoster/);
     assert.match(src, /karProAnyActive/);
-    assert.match(src, /isCommercialEip155Id/);
+    // Membership/staking chain decision lives in chrome seams (N1) — not inline EIP-155.
+    assert.match(src, /peerIdentityMembershipChainId/);
+    assert.match(src, /peerIdentityStakingChainId/);
+    assert.equal(
+      src.includes("isCommercialEip155Id"),
+      false,
+      "hook must not re-state isCommercialEip155Id; seam owns it",
+    );
   });
 
   it("agent authorization passes mandate chainId into usePeerIdentity", () => {

@@ -8,16 +8,17 @@ import {
   type CommercialRegistry,
   COMMERCIAL_ACTIVE,
   commercialActive,
+  evmChainOf,
   registeredCommercialNamespaceIds,
   unresolvedNamespaceCopy,
   walletStandardChainOf,
 } from "@/lib/web3/commercial-active";
-import { getViemChain, kargainChains } from "@/lib/web3/supported-chains";
+import { getViemChain, isWriteUnionChainId, kargainChains } from "@/lib/web3/supported-chains";
 import type { WalletStandardChain } from "@/lib/web3/wallet-standard-chain";
 
 /** True when `chainId` is in the wagmi write-union (`kargainChains`). EVM-only. */
 export function isKargainWriteChain(chainId: number): boolean {
-  return getViemChain(chainId) != null;
+  return isWriteUnionChainId(chainId);
 }
 
 export type ChainSelectorState = "ok" | "wrong_network" | "wrong_vm";
@@ -51,8 +52,13 @@ export function commercialNetworkLabel(
     return { ok: false, cause: "unresolved_namespace" };
   }
   if (stack.vm === "evm") {
-    const name = getViemChain(stack.chainId)?.name;
-    if (name == null || name.length === 0) {
+    const brand = evmChainOf(stack);
+    // Injected / non-write-union EVM ids have no viem display name — unnamed.
+    if (!isWriteUnionChainId(brand)) {
+      return { ok: false, cause: "evm_chain_unnamed" };
+    }
+    const name = getViemChain(brand).name;
+    if (name.length === 0) {
       return { ok: false, cause: "evm_chain_unnamed" };
     }
     return { ok: true, label: name };

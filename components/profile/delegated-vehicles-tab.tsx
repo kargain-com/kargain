@@ -23,12 +23,9 @@ import type {
 import { resolveSettlementAssetMeta } from "@/lib/commerce/settlement-asset-meta";
 import { categoryLabel } from "@/lib/design/instrument-classes";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
-import {
-  commercialActive,
-  nativeUnitOf,
-} from "@/lib/web3/commercial-active";
+import { commercialActive, nativeUnitOf } from "@/lib/web3/commercial-active";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 import { indexerQueryKey } from "@/lib/web3/indexer-query-keys";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
   commercialNetworkLabel,
   commercialNetworkLabelCauseCopy,
@@ -64,11 +61,12 @@ function useFloorUnits(row: MoneyRow) {
     row.denominationKind === DENOMINATION_KIND.Asset &&
     Boolean(row.asset) &&
     !isZeroAddress(row.asset);
+  const wagmiRow = evmWagmiChain(row.chainId);
   const { data: erc20Decimals } = useReadContract({
     address: row.asset,
     abi: erc20Abi,
     functionName: "decimals",
-    chainId: wagmiChainId(row.chainId),
+    chainId: wagmiRow.ok ? wagmiRow.chainId : undefined,
     query: { enabled: needsErc20 },
   });
   const stack = commercialActive(row.chainId);

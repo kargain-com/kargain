@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useReadContract } from "wagmi";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,7 +29,6 @@ import {
 import { parseSvmFeeMarginNative } from "@/lib/verifier/verification-fee-composition";
 import { verificationFeeSurface } from "@/lib/verifier/verification-fee-surface";
 import { formatNativeAmountLabeled } from "@/lib/web3/native-amount";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { txWriteAvailability } from "@/lib/web3/tx-write-availability";
 
 type KarProFeeSectionProps = {
@@ -81,7 +81,8 @@ export function KarProFeeSection({ chainId }: KarProFeeSectionProps) {
       : undefined;
 
   const staking = feeReadable?.stakingAddress;
-  const wc = feeReadable ? wagmiChainId(chainId) : undefined;
+  const wagmiChain = evmWagmiChain(chainId);
+  const wc = feeReadable ? wagmiChain.ok ? wagmiChain.chainId : undefined : undefined;
 
   const { data: onChainFee } = useReadContract({
     address: staking,

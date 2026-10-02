@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import type { Address } from "viem";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import {
@@ -14,7 +15,6 @@ import {
   useKeyedReadContracts,
   type KeyedContract,
 } from "@/lib/web3/keyed-multicall";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 /**
  * Sole client owner of multi-address “KarPro somewhere” (anyActive) reads.
@@ -54,6 +54,8 @@ export function useKarProMembershipActive(
     for (const cid of chainIds) {
       const staking = karProStakingAddress(cid);
       if (!staking) continue;
+      const wagmi = evmWagmiChain(cid);
+      if (!wagmi.ok) continue;
       for (const attester of attesters) {
         out.push({
           key: karProMembershipActiveKey(cid, attester.toLowerCase()),
@@ -61,7 +63,7 @@ export function useKarProMembershipActive(
           abi: KarProStakingAbi,
           functionName: "isActiveVerifier",
           args: [attester],
-          chainId: wagmiChainId(cid),
+          chainId: wagmi.chainId,
         });
       }
     }

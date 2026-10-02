@@ -1,6 +1,8 @@
 "use client";
 
 import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
+import { eip155WhenWagmiOk, wagmiWriteUnionId } from "@/lib/web3/evm-wagmi-chrome";
 
 import { useCallback, useState } from "react";
 
@@ -10,7 +12,6 @@ import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
@@ -28,7 +29,10 @@ export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props
   const walletChain = evm.ok ? evm.chainId : undefined;
   const switchAvail = evmSwitchChainAvailability(account);
 
-  const wc = wagmiChainId(chainId);
+  const wagmiChain = evmWagmiChain(chainId);
+  const wc = wagmiWriteUnionId(wagmiChain);
+  const eip155 = eip155WhenWagmiOk(wagmiChain);
+;
         const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
@@ -45,7 +49,8 @@ export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props
     if (!market || !isAgentWallet) return;
     if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
-        await switchChain(wc );
+        if (eip155 == null) return;
+        await switchChain(eip155);
       }
     setTxError(null);
     try {
@@ -67,11 +72,10 @@ export function AgentDelistButton({ chainId, tokenId, wallet, onSuccess }: Props
     isAgentWallet,
     wrongChain,
     switchChain,
-    wc,
     writeContractAsync,
     tid,
     onSuccess,
-    runTx, switchAvail]);
+    runTx, switchAvail, eip155]);
 
   return (
     <div className="mt-3 border-t border-border-default pt-3">

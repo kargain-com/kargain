@@ -29,11 +29,9 @@ import { formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 import type { ListingCurrencyCode } from "@/lib/marketplace/currency-code";
 import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
-import {
-  commercialActive,
-  nativeUnitOf,
-} from "@/lib/web3/commercial-active";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import { commercialActive, nativeUnitOf } from "@/lib/web3/commercial-active";
+import { eip155WhenWagmiOk, wagmiWriteUnionId } from "@/lib/web3/evm-wagmi-chrome";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 /** Native-only stub so the settlement-note chrome can render without open pairings. */
@@ -94,7 +92,10 @@ export function AgentUpdateListingPanel({
   const walletChain = evm.ok ? evm.chainId : undefined;
   const switchAvail = evmSwitchChainAvailability(account);
 
-  const wc = wagmiChainId(chainId);
+  const wagmiChain = evmWagmiChain(chainId);
+  const wc = wagmiWriteUnionId(wagmiChain);
+  const eip155 = eip155WhenWagmiOk(wagmiChain);
+;
         const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
@@ -158,7 +159,8 @@ export function AgentUpdateListingPanel({
     if (!market || !meetsFloor || price1e8 == null) return;
     if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
-        await switchChain(wc );
+        if (eip155 == null) return;
+        await switchChain(eip155);
       }
     setTxError(null);
     try {
@@ -181,11 +183,10 @@ export function AgentUpdateListingPanel({
     price1e8,
     wrongChain,
     switchChain,
-    wc,
     writeContractAsync,
     tid,
     onSuccess,
-    runTx, switchAvail]);
+    runTx, switchAvail, eip155]);
 
   return (
     <div className="mt-3 space-y-3 border-t border-border-default pt-3">

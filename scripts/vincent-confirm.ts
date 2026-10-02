@@ -46,6 +46,7 @@ import {
 } from "../lib/vincent-commons/confirmation.js";
 import { verifyEpochRebuild } from "../lib/vincent-commons/confirm-epoch.js";
 import { VINCENT_REGISTRY } from "../lib/vincent-commons/registry-config.js";
+import { resolveEvmChain } from "../lib/web3/commercial-active.js";
 import { getViemChain } from "../lib/web3/supported-chains.js";
 import { SEPOLIA_PUBLIC_RPC } from "../lib/web3/sepolia-addresses.js";
 
@@ -124,10 +125,11 @@ async function main(): Promise<void> {
     ? values.relays.split(",").map((r) => r.trim()).filter(Boolean)
     : [...NOSTR_RELAYS];
 
-  const chain = getViemChain(VINCENT_REGISTRY.chainId);
-  if (!chain) {
-    throw new Error(`Unsupported chain: ${VINCENT_REGISTRY.chainId}`);
+  const resolved = resolveEvmChain(VINCENT_REGISTRY.chainId);
+  if (!resolved.ok) {
+    throw new Error(`Vincent confirm: resolveEvmChain ${resolved.cause}`);
   }
+  const chain = getViemChain(resolved.chainId);
 
   console.log(
     `Reading epoch ${index} for publisher ${publisher} from ${VINCENT_REGISTRY.registryAddress} (chain ${VINCENT_REGISTRY.chainId}) …`,

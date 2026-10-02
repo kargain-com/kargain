@@ -47,12 +47,10 @@ import {
 } from "@/lib/design/instrument-classes";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
-import {
-  commercialActive,
-  nativeUnitOf,
-} from "@/lib/web3/commercial-active";
+import { commercialActive, nativeUnitOf } from "@/lib/web3/commercial-active";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
+import { wrongChainFromWagmi, eip155WhenWagmiOk, wagmiWriteUnionId } from "@/lib/web3/evm-wagmi-chrome";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
@@ -106,10 +104,12 @@ export function AuctionSettlementPanel({
   const [txError, setTxError] = useState<string | null>(null);
 
   const mode = commerceModeEvmAddress("ascending", chainId);
-  const wrongChain = evm.ok && (() => { const _wc = eip155WagmiChainId(chainId); return _wc != null && walletChainId !== _wc; })();
+  const wagmiChain = evmWagmiChain(chainId);
+  const wrongChain = wrongChainFromWagmi(evm.ok, walletChainId, wagmiChain);
   const tid = BigInt(tokenId);
   const staking = karProStakingAddress(chainId);
-  const wc = eip155WagmiChainId(chainId);
+  const wc = wagmiWriteUnionId(wagmiChain);
+  const eip155 = eip155WhenWagmiOk(wagmiChain);
 
   const verifierReads = useKeyedReadContracts({
     contracts:
@@ -197,7 +197,8 @@ export function AuctionSettlementPanel({
     try {
       if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
-        await switchChain(chainId);
+        if (!wagmiChain.ok) return;
+        await switchChain(wagmiChain.eip155);
       }
       await runTx(() =>
         writeContractAsync({
@@ -205,7 +206,7 @@ export function AuctionSettlementPanel({
           abi: AscendingConsignmentAbi,
           functionName,
           args: [tid],
-          chainId: eip155WagmiChainId(chainId),
+          chainId: wagmiChain.ok ? wagmiChain.chainId : undefined,
         }),
       );
     } catch (err) {
@@ -219,7 +220,8 @@ export function AuctionSettlementPanel({
     try {
       if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
-        await switchChain(chainId);
+        if (!wagmiChain.ok) return;
+        await switchChain(wagmiChain.eip155);
       }
       await runTx(async () => {
         await ensureApproved(awaitReceipt);
@@ -228,7 +230,7 @@ export function AuctionSettlementPanel({
           abi: AscendingConsignmentAbi,
           functionName: "completeReversal",
           args: [tid],
-          chainId: eip155WagmiChainId(chainId),
+          chainId: wagmiChain.ok ? wagmiChain.chainId : undefined,
         });
       });
     } catch (err) {
@@ -245,7 +247,8 @@ export function AuctionSettlementPanel({
     try {
       if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
-        await switchChain(chainId);
+        if (!wagmiChain.ok) return;
+        await switchChain(wagmiChain.eip155);
       }
       await runTx(() =>
         writeContractAsync({
@@ -254,7 +257,7 @@ export function AuctionSettlementPanel({
           functionName: "open",
           args: [tid],
           value: challengeBond,
-          chainId: eip155WagmiChainId(chainId),
+          chainId: wagmiChain.ok ? wagmiChain.chainId : undefined,
         }),
       );
     } catch (err) {
@@ -268,7 +271,8 @@ export function AuctionSettlementPanel({
     try {
       if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
-        await switchChain(chainId);
+        if (!wagmiChain.ok) return;
+        await switchChain(wagmiChain.eip155);
       }
       await runTx(() =>
         writeContractAsync({
@@ -276,7 +280,7 @@ export function AuctionSettlementPanel({
           abi: AscendingConsignmentAbi,
           functionName: "judge",
           args: [tid, outcome],
-          chainId: eip155WagmiChainId(chainId),
+          chainId: wagmiChain.ok ? wagmiChain.chainId : undefined,
         }),
       );
     } catch (err) {

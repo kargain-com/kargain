@@ -1,6 +1,7 @@
 "use client";
 
 import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 import { useCallback, useRef, useState } from "react";
 import {
@@ -26,25 +27,21 @@ import {
 import { upsertBridgeTransit } from "@/lib/passport/bridge-transit-store";
 import { parsePassportTokenId } from "@/lib/passport/passport-token-id";
 import {
-  BRIDGE_DELIVERY_POLL_MS,
-  BRIDGE_DELIVERY_TIMEOUT_MS,
   BRIDGE_HUB_CHAIN_ID,
   BRIDGE_SPOKE_CHAIN_ID,
   BridgeUriTooLongError,
   bridgeAdapterAddress,
   bridgeCounterpartChainId,
   bridgeDstEid,
-  bridgeTokenAddress,
   bridgeUriTooLongCopy,
   buildSendParam,
-  getBridgeReadClient,
   layerZeroScanTxUrl,
+  pollDstOwner,
   quoteMessagingFee,
   sendArgs,
   type BridgeSendParam,
 } from "@/lib/web3/bridge";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
@@ -63,41 +60,6 @@ function mapBridgeError(err: unknown): string {
   return txErrorMessage(err);
 }
 
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function pollDstOwner(
-  tokenId: bigint,
-  recipient: Address,
-  dstChainId: number,
-  signal: AbortSignal,
-): Promise<boolean> {
-  const client = getBridgeReadClient(dstChainId);
-  const token = bridgeTokenAddress(dstChainId);
-  if (!token) return false;
-  const deadline = Date.now() + BRIDGE_DELIVERY_TIMEOUT_MS;
-
-  while (Date.now() < deadline) {
-    if (signal.aborted) return false;
-    try {
-      const owner = getAddress(
-        (await client.readContract({
-          address: token,
-          abi: KarPassportAbi,
-          functionName: "ownerOf",
-          args: [tokenId],
-        })) as Address,
-      );
-      if (owner === recipient) return true;
-    } catch {
-      // Token not yet minted on destination / transient RPC
-    }
-    await wait(BRIDGE_DELIVERY_POLL_MS);
-  }
-  return false;
-}
-
 /**
  * Directional bridge hook. Defaults to hub→spoke so existing callers stay valid.
  * Spoke→hub: `useBridge(BRIDGE_SPOKE_CHAIN_ID, counterpart, tokenId)`.
@@ -111,11 +73,9 @@ export function useBridge(
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const address = evm.ok ? evm.address : undefined;
+  const wagmi = evmWagmiChain(srcChainId);
   const publicClient = usePublicClient(
-    (() => {
-      const wc = eip155WagmiChainId(srcChainId);
-      return wc != null ? { chainId: wc } : {};
-    })(),
+    wagmi.ok ? { chainId: wagmi.chainId } : {},
   );
   const { writeContractAsync } = useEvmWriteContract();
   const { runTx, awaitReceipt, runFlow, busy: syncBusy, error: syncError } =
@@ -239,6 +199,16 @@ export function useBridge(
           setFeeWei(fee.nativeFee);
 
           setPhase("sending");
+          const wagmi = evmWagmiChain(srcChainId);
+          if (!wagmi.ok) {
+            setLocalError(
+              wagmi.cause === "not_evm"
+                ? "Bridge send needs an Ethereum network."
+                : "Bridge send network is not configured.",
+            );
+            setPhase("error");
+            return;
+          }
           const result = await runTx(
             () =>
               writeContractAsync({
@@ -247,7 +217,7 @@ export function useBridge(
                 functionName: "send",
                 args: [...sendArgs(sendParam, fee, recipient)],
                 value: fee.nativeFee,
-                chainId: eip155WagmiChainId(srcChainId),
+                chainId: wagmi.chainId,
               }),
             { mapError: mapBridgeError },
           );
@@ -299,19 +269,39 @@ export function useBridge(
             phase: "in_flight",
           });
 
-          const delivered = await pollDstOwner(
+          const delivery = await pollDstOwner(
             tokenId,
             recipient,
             dstChainId,
             controller.signal,
           );
 
-          if (controller.signal.aborted) {
+          if (controller.signal.aborted || delivery.status === "aborted") {
             setPhase("idle");
             return false;
           }
 
-          if (!delivered) {
+          if (delivery.status === "refused") {
+            upsertBridgeTransit(address, {
+              tokenId: tokenIdStr,
+              srcChainId,
+              dstChainId,
+              recipient,
+              guid: sentGuid,
+              sentAt,
+              mode,
+              phase: "timed_out",
+            });
+            setLocalError(
+              delivery.cause === "not_evm"
+                ? "Bridge destination is not an Ethereum network. Delivery cannot be confirmed here."
+                : "Bridge destination network is not configured. Delivery cannot be confirmed.",
+            );
+            setPhase("error");
+            return false;
+          }
+
+          if (delivery.status === "timeout") {
             upsertBridgeTransit(address, {
               tokenId: tokenIdStr,
               srcChainId,

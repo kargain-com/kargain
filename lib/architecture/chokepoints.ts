@@ -456,13 +456,25 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "commercial-stack-registry",
     owner: "lib/web3/commercial-active.ts · lib/web3/kargain-namespace.ts",
-    rule: "Sole commercial-network set; isCommercialEip155Id ≠ isCommercialNamespace; injectable vm-filtered enumerators; eip155Of; unresolved-namespace chrome sentence sole in unresolvedNamespaceCopy (no re-inline in product); SvmKargainProgramIds + SVM_KARGAIN_PROGRAM_FIELDS (satisfies Record<keyof, true>) + svmKargainProgramIds(stack) sole Kargain program-id owner (no hand-list in landed-error)",
+    rule: "Sole commercial-network set; Eip155ChainId via sole constructors evmChainOf + resolveEvmChain (deleted: CommercialChainId, KargainChainId, eip155Of, wagmiChainId, eip155WagmiChainId); isCommercialEip155Id ≠ isCommercialNamespace (boolean, not a brand predicate); registryDisjointnessViolations; injectable vm-filtered enumerators; unresolved-namespace chrome sentence sole in unresolvedNamespaceCopy (no re-inline in product); SvmKargainProgramIds + SVM_KARGAIN_PROGRAM_FIELDS (satisfies Record<keyof, true>) + svmKargainProgramIds(stack) sole Kargain program-id owner (no hand-list in landed-error). Address doors and ingress owners remain on number until N2/N3",
     guardTests: [
       "network-class-policy.test.ts",
       "commercial-enumerators-policy.test.ts",
       "commercial-active.test.ts",
       "commercial-active-svm-shape.test.ts",
       "svm-kargain-program-ids-policy.test.ts",
+      "eip155-chain-door-policy.test.ts",
+    ],
+  },
+  {
+    id: "eip155-chain-doors",
+    owner:
+      "lib/web3/supported-chains.ts · lib/web3/public-client.ts · lib/web3/bridge/bridge-read-client.ts",
+    rule: "Branded Eip155ChainId doors only: getViemChain / rpcUrlForChain / getPublicClient / getBridgeReadClient; private writeUnionChainId + rpcUrlForWriteUnionChain keep Hardhat 31337; Result wagmi door evmWagmiChain (namespace → soft + eip155 for ActiveAccount.switchChain) and wagmiChainOfStack (EVM stack); AST ban: ThrowStatement under resolveEvmChain/evmWagmiChain !ok (not TxWriteGuardRefusal after switchAvail); ActiveAccount.switchChain takes Eip155ChainId only (WriteUnion collapses to number under viem — cannot invent-ban alone; adapter keeps WriteUnion for Hardhat); call sites resolve via evmWagmiChain and must not call on !ok (never silent success); Vincent registry via requireEvmCommercialActive→evmChainOf; eleven soft-door sites bind named chrome seams (n1-site-seam-binding-policy); callers: chrome soft-disable on !ok, write owners refuse by name, EVM-by-construction uses evmChainOf / wagmiChainOfStack only; brand cast to Eip155ChainId banned outside commercial-active.ts; address doors stay on number until N2",
+    guardTests: [
+      "eip155-chain-door-policy.test.ts",
+      "n1-corrective-behaviour.test.ts",
+      "n1-site-seam-binding-policy.test.ts",
     ],
   },
   {
@@ -877,7 +889,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "passport-commerce-facts",
     owner:
       "lib/passport/passport-commerce-facts.ts · lib/passport/commerce-fact.ts · lib/passport/passport-commerce-rail.ts · hooks/use-passport-commerce-facts.ts · lib/web3/supported-chains.ts · lib/passport/simulate-passport-may.ts",
-    rule: "Dual-VM passport commerce chrome: EVM batched may/custodyLocked/encumbrance/modes; SVM mode/challenge/registry facts + may_* from simulatePassportMay inject (never invent hasLiveConsignment false or configured false); CommerceFact = known|pending|refused(KeyedReadCause|SurfaceSupportCause); wagmiChainId only inside the EVM plan arm; eip155WagmiChainId returns undefined for commercial SVM; readPassportCustodyLockLive is the sole RSC custody-lock door (product custodyLocked banned outside this module; never eternal SVM pending; state-PDA derive fail → pda_failed not malformed_response)",
+    rule: "Dual-VM passport commerce chrome: EVM batched may/custodyLocked/encumbrance/modes; SVM mode/challenge/registry facts + may_* from simulatePassportMay inject (never invent hasLiveConsignment false or configured false); CommerceFact = known|pending|refused(KeyedReadCause|SurfaceSupportCause); EVM plan arm brands via wagmiChainOfStack / evmChainOf (N1 corrective); SVM namespaces stay out of branded doors; readPassportCustodyLockLive is the sole RSC custody-lock door (product custodyLocked banned outside this module; never eternal SVM pending; state-PDA derive fail → pda_failed not malformed_response)",
     guardTests: [
       "passport-detail-svm-chrome-policy.test.ts",
       "commerce-fact-status-policy.test.ts",
@@ -892,7 +904,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "passport-detail-svm-chrome",
     owner:
       "components/passport/passport-detail-view.tsx · components/passport/passport-actions-panel.tsx · lib/marketplace/passport-custody.ts · lib/passport/passport-owner.ts · lib/web3/protocol-address.ts · lib/web3/supported-chains.ts · lib/passport/passport-commerce-facts.ts",
-    rule: "Marketplace passport detail route: no wagmiChainId in the import-graph components/hooks; entity owner is ProtocolOwner (type wall — not text scanners for as 0x / getAddress); escrow custody is namespace-scoped via protocol-address; actions session chrome is txWriteAvailability + TxWriteRefusal only",
+    rule: "Marketplace passport detail route: no deleted wagmiChainId / eip155WagmiChainId in the import-graph components/hooks (N1: evmWagmiChain soft chrome + branded doors); entity owner is ProtocolOwner (type wall — not text scanners for as 0x / getAddress); escrow custody is namespace-scoped via protocol-address; actions session chrome is txWriteAvailability + TxWriteRefusal only",
     guardTests: [
       "passport-detail-svm-chrome-policy.test.ts",
       "protocol-owner-policy.test.ts",

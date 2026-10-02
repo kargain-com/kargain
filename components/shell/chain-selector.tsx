@@ -26,6 +26,7 @@ import {
   deriveChainSelectorState,
 } from "@/lib/web3/chain-selector-state";
 import { unresolvedNamespaceCopy } from "@/lib/web3/commercial-active";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -95,7 +96,10 @@ export function ChainSelector({
     (id: number) => {
       if (!chainSelectorMaySwitchChain(account, id)) return;
       if (!switchAvail.available) return;
-      void switchChain(id).catch(() => {
+      const wagmi = evmWagmiChain(id);
+      // !ok → leave selector chrome (wrong_vm / unresolved); never invent switch success
+      if (!wagmi.ok) return;
+      void switchChain(wagmi.eip155).catch(() => {
         /* user rejected */
       });
     },
@@ -115,8 +119,10 @@ export function ChainSelector({
         sessionNamespace != null &&
         id !== sessionNamespace
       ) {
+        const wagmi = evmWagmiChain(id);
+        if (!wagmi.ok) return;
         try {
-          await switchChain(id);
+          await switchChain(wagmi.eip155);
         } catch {
           /* user rejected */
         }

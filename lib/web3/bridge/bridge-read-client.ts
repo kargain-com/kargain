@@ -1,15 +1,15 @@
 import { createPublicClient, http, type PublicClient } from "viem";
 
+import type { Eip155ChainId } from "@/lib/web3/commercial-active";
 import { getViemChain, rpcUrlForChain } from "@/lib/web3/supported-chains";
 
 const cache = new Map<number, PublicClient>();
 
 /** Read-only viem client for a bridge chain — never used for writes. */
-export function getBridgeReadClient(chainId: number): PublicClient {
+export function getBridgeReadClient(chainId: Eip155ChainId): PublicClient {
   let client = cache.get(chainId);
   if (client) return client;
   const chain = getViemChain(chainId);
-  if (!chain) throw new Error(`Unsupported chain: ${chainId}`);
   client = createPublicClient({
     chain,
     transport: http(rpcUrlForChain(chainId)),

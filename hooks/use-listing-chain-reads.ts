@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 import {
   parseCompensationForm,
@@ -17,7 +18,6 @@ import {
 } from "@/lib/marketplace/parse-on-chain-listing";
 import { decodeSettlementNote } from "@/lib/marketplace/settlement-note";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 const STALE_MS = 15_000;
 
@@ -33,7 +33,8 @@ export function useListingChainReads(input: {
 }) {
   const { chainId, tokenId, enabled = true } = input;
   const market = commerceModeEvmAddress("fixedPrice", chainId);
-  const wc = eip155WagmiChainId(chainId);
+  const wagmi = evmWagmiChain(chainId);
+  const wc = wagmi.ok ? wagmi.chainId : undefined
 
   const tid = useMemo(() => {
     try {

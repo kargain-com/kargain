@@ -1,6 +1,7 @@
 "use client";
 
 import { useReadContract } from "wagmi";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import {
@@ -9,7 +10,6 @@ import {
   type AuctionRulesTuple,
 } from "@/lib/commerce/parse-ascending";
 import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 const STALE_MS = 300_000;
 
@@ -26,7 +26,8 @@ export function useAscendingAuctionRules(args: {
 } {
   const { chainId, enabled = true } = args;
   const mode = commerceModeEvmAddress("ascending", chainId);
-  const wc = eip155WagmiChainId(chainId);
+  const wagmi = evmWagmiChain(chainId);
+  const wc = wagmi.ok ? wagmi.chainId : undefined
 
   const { data, isPending } = useReadContract({
     address: mode,

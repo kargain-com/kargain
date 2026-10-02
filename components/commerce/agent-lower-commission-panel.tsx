@@ -1,6 +1,8 @@
 "use client";
 
 import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
+import { eip155WhenWagmiOk, wagmiWriteUnionId } from "@/lib/web3/evm-wagmi-chrome";
 
 import { useCallback, useMemo, useState } from "react";
 
@@ -20,7 +22,6 @@ import {
   type CommerceMode,
 } from "@/lib/commerce/mode";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
@@ -64,7 +65,10 @@ export function AgentLowerCommissionPanel({
   const walletChain = evm.ok ? evm.chainId : undefined;
   const switchAvail = evmSwitchChainAvailability(account);
 
-  const wc = wagmiChainId(chainId);
+  const wagmiChain = evmWagmiChain(chainId);
+  const wc = wagmiWriteUnionId(wagmiChain);
+  const eip155 = eip155WhenWagmiOk(wagmiChain);
+;
       const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
@@ -94,7 +98,8 @@ export function AgentLowerCommissionPanel({
     if (!market || !canSubmit || nextBps == null) return;
     if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
-        await switchChain(wc );
+        if (eip155 == null) return;
+        await switchChain(eip155);
       }
     setTxError(null);
     try {
@@ -118,12 +123,11 @@ export function AgentLowerCommissionPanel({
     nextBps,
     wrongChain,
     switchChain,
-    wc,
     writeContractAsync,
     abi,
     tid,
     onChanged,
-    runTx, switchAvail]);
+    runTx, switchAvail, eip155]);
 
   if (!isConcessionAvailable(gate) || !market) return null;
 

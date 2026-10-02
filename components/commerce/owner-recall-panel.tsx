@@ -1,6 +1,8 @@
 "use client";
 
 import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
+import { eip155WhenWagmiOk, wagmiWriteUnionId } from "@/lib/web3/evm-wagmi-chrome";
 
 import { useCallback, useMemo, useState } from "react";
 import { useReadContract } from "wagmi";
@@ -15,7 +17,6 @@ import { formatWindowDurationLabel } from "@/lib/commerce/format-window-duration
 import { commerceModeAbi, commerceModeEvmAddress } from "@/lib/commerce/mode";
 import type { CommerceMode } from "@/lib/commerce/mode";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
@@ -60,7 +61,9 @@ export function OwnerRecallPanel({
   const walletChain = evm.ok ? evm.chainId : undefined;
   const switchAvail = evmSwitchChainAvailability(account);
 
-  const wc = eip155WagmiChainId(chainId);
+  const wagmi = evmWagmiChain(chainId);
+  const wc = wagmiWriteUnionId(wagmi);
+  const eip155 = eip155WhenWagmiOk(wagmi);
       const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const [txError, setTxError] = useState<string | null>(null);
@@ -98,7 +101,8 @@ export function OwnerRecallPanel({
         if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
         if (wc == null) throw new Error('switchChain unavailable: unresolved_namespace');
-        await switchChain(wc);
+        if (eip155 == null) return;
+        await switchChain(eip155);
       }
         const result = await runTx(() =>
           writeContractAsync({
@@ -122,7 +126,7 @@ export function OwnerRecallPanel({
       writeContractAsync,
       tid,
       onChanged,
-      runTx, switchAvail],
+      runTx, switchAvail, eip155],
   );
 
   if (!market || !hasAgent) return null;

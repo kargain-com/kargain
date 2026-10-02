@@ -41,14 +41,12 @@ import {
 } from "@/lib/passport/passport-holder";
 import { isEvmHexAddress } from "@/lib/passport/passport-owner";
 import { presenceBlocksWrites } from "@/lib/passport/presence";
-import {
-  commercialActive,
-  nativeUnitOf,
-} from "@/lib/web3/commercial-active";
+import { commercialActive, nativeUnitOf } from "@/lib/web3/commercial-active";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
+import { erc20DecimalsQueryEnabled } from "@/lib/web3/evm-wagmi-chrome";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { DELIST_BEFORE_AUCTION_HINT } from "@/lib/auction/sale-form-copy";
 import type { FixedPriceListingDetailProp } from "@/lib/passport/fetch-passport-detail";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 
 type Props = {
@@ -204,12 +202,15 @@ export function ListingDetailClientIsland({
     commerce.denominationKind === DENOMINATION_KIND.Asset &&
     Boolean(commerce.asset) &&
     !isZeroAddress(commerce.asset);
+  const wagmiChain = evmWagmiChain(chainId);
   const { data: erc20Decimals } = useReadContract({
     address: commerce.asset,
     abi: erc20Abi,
     functionName: "decimals",
-    chainId: eip155WagmiChainId(chainId),
-    query: { enabled: needsErc20Decimals },
+    chainId: wagmiChain.ok ? wagmiChain.chainId : undefined,
+    query: {
+      enabled: erc20DecimalsQueryEnabled(needsErc20Decimals, wagmiChain),
+    },
   });
   const stack = commercialActive(chainId);
   const floorUnits = floorDisplayUnits({

@@ -376,11 +376,12 @@ describe("admitSurface — census before session", () => {
       "set_passport_uri",
       84532,
     );
-    assert.deepEqual(write, {
-      available: true,
-      vm: "evm",
-      walletChainId: 84532,
-    });
+    assert.equal(write.available, true);
+    if (write.available) {
+      assert.equal(write.vm, "evm");
+      assert.equal(write.walletChainId, 84532);
+      assert.equal(write.targetChainId, 84532);
+    }
   });
 
   it("admitCreatePassport and ForCapability adapt admitSurface (no second composer)", () => {

@@ -13,17 +13,13 @@
 import { decodePassportConfig } from "@/lib/svm/decode-account-state";
 import { deriveSvmPda } from "@/lib/svm/derive-pda";
 import { isSvmAccountData } from "@/lib/web3/svm-rpc";
-import {
-  commercialActive,
-  type CommercialRegistry,
-} from "@/lib/web3/commercial-active";
+import { commercialActive, type CommercialRegistry } from "@/lib/web3/commercial-active";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import type {
   KeyedContract,
   KeyedEntry,
 } from "@/lib/web3/keyed-multicall";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 export const CHALLENGE_BOND_EVM_CLAIM_SUCCESS =
   "Challenge withdrawn. Your deposit could not be delivered and is waiting under Claims.";
@@ -158,7 +154,7 @@ export async function planChallengeBondAmountRead(args: {
           address: passport,
           abi: KarPassportAbi,
           functionName: "disputeDeposit",
-          chainId: wagmiChainId(args.chainId),
+          chainId: args.chainId,
         },
       ],
     };

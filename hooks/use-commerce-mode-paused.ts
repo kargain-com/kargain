@@ -2,13 +2,13 @@
 
 import { useMemo } from "react";
 import { useReadContract } from "wagmi";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 import {
   commerceModeAbi,
   commerceModeEvmAddress,
   type CommerceMode,
 } from "@/lib/commerce/mode";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 const STALE_MS = 15_000;
 
@@ -27,7 +27,8 @@ export function useCommerceModePaused(input: {
 } {
   const { mode, chainId, enabled = true } = input;
   const address = commerceModeEvmAddress(mode, chainId);
-  const wc = eip155WagmiChainId(chainId);
+  const wagmi = evmWagmiChain(chainId);
+  const wc = wagmi.ok ? wagmi.chainId : undefined
   const readsEnabled = Boolean(enabled && address && wc != null);
 
   const { data, isPending, refetch } = useReadContract({

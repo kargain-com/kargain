@@ -31,6 +31,7 @@ import {
   getBridgeReadClient,
   layerZeroScanTxUrl,
 } from "@/lib/web3/bridge";
+import { resolveEvmChain } from "@/lib/web3/commercial-active";
 import {
   commercialNetworkLabel,
   commercialNetworkLabelCauseCopy,
@@ -49,7 +50,9 @@ async function readDstOwner(
   tokenId: bigint,
   dstChainId: number,
 ): Promise<string | null> {
-  const client = getBridgeReadClient(dstChainId);
+  const resolved = resolveEvmChain(dstChainId);
+  if (!resolved.ok) return null;
+  const client = getBridgeReadClient(resolved.chainId);
   const token = bridgeTokenAddress(dstChainId);
   if (!token) return null;
   try {

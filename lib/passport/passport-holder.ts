@@ -22,10 +22,8 @@ import {
 } from "@/lib/passport/passport-owner";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import type { ActiveAccount } from "@/lib/web3/active-account";
-import {
-  commercialActive,
-  type CommercialRegistry,
-} from "@/lib/web3/commercial-active";
+import { commercialActive, type CommercialRegistry, evmChainOf } from "@/lib/web3/commercial-active";
+import { wagmiChainOfStack } from "@/lib/web3/supported-chains";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import type {
   KeyedContract,
@@ -42,7 +40,6 @@ import {
   isSvmAccountData,
   type SvmAccountData,
 } from "@/lib/web3/svm-rpc";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 export const PASSPORT_HOLDER_EVM_KEY = "passportHolderOwnerOf" as const;
 export const PASSPORT_HOLDER_SVM_KEY = "passportHolderCoreAsset" as const;
@@ -322,7 +319,7 @@ export async function planPassportHolderRead(args: {
 
   if (stack.vm === "evm") {
     const passport = karPassportAddress(args.namespace);
-    const wc = wagmiChainId(args.namespace);
+    const wc = wagmiChainOfStack(stack);
     if (passport == null) {
       return {
         ok: false,
@@ -465,11 +462,15 @@ export async function readPassportHolderLive(args: {
     if (passport == null) {
       return { status: "refused", cause: "unresolved_namespace", detail: "passport missing" };
     }
+    const stack = commercialActive(args.namespace, args.registry);
+    if (stack == null || stack.vm !== "evm") {
+      return { status: "refused", cause: "unresolved_namespace" };
+    }
     try {
       const read =
         args.readEvmOwnerOf ??
         (async (addr, tid) => {
-          const client = getPublicClient(args.namespace);
+          const client = getPublicClient(evmChainOf(stack));
           return client.readContract({
             address: addr,
             abi: KarPassportAbi,

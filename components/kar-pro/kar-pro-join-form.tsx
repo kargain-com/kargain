@@ -1,6 +1,7 @@
 "use client";
 
 import { useActiveAccount } from "@/hooks/use-active-account";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 import { useState } from "react";
 
@@ -29,7 +30,6 @@ import {
   isSurfaceAdmissionAvailable,
 } from "@/lib/web3/surface-admission";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
   commercialNetworkLabel,
   commercialNetworkLabelCauseCopy,
@@ -88,7 +88,8 @@ export function KarProJoinForm({
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const { writeContractAsync } = useEvmWriteContract();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
-  const wc = wagmiChainId(chainId);
+  const wagmiChain = evmWagmiChain(chainId);
+  const wc = wagmiChain.ok ? wagmiChain.chainId : undefined;
 
   const [step, setStep] = useState<1 | 2>(1);
   const [fields, setFields] = useState<KarProProfileFieldValues>({

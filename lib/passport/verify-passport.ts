@@ -20,11 +20,9 @@ import {
   type ActiveAccount,
   type WalletFamilyWanted,
 } from "@/lib/web3/active-account";
-import {
-  commercialActive,
-  type CommercialRegistry,
-  type SvmCommercialActiveStack,
-} from "@/lib/web3/commercial-active";
+import { commercialActive, type CommercialRegistry, type SvmCommercialActiveStack } from "@/lib/web3/commercial-active";
+import type { KargainWriteUnionChainId } from "@/lib/web3/supported-chains";
+import { wagmiChainOfStack } from "@/lib/web3/supported-chains";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import {
   AccountRole,
@@ -36,7 +34,6 @@ import {
   SvmWriteOwnerRefusal,
   throwSvmWriteSendRefusal,
 } from "@/lib/web3/svm-write-owner-refusal";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import type { WriteSubmission } from "@/lib/web3/write-outcome";
 import {
   txWriteAvailabilityForCapability,
@@ -95,14 +92,14 @@ export type WriteEvmContractFn = (
 export function buildEvmVerifyPassportCall(args: {
   address: `0x${string}`;
   tokenId: string;
-  chainId: number;
+  chainId: KargainWriteUnionChainId;
 }): VerifyPassportEvmCall {
   return {
     address: args.address,
     abi: KarPassportAbi,
     functionName: "verifyPassport",
     args: [BigInt(args.tokenId)],
-    chainId: wagmiChainId(args.chainId),
+    chainId: args.chainId,
   };
 }
 
@@ -175,7 +172,7 @@ export async function planVerifyPassport(input: {
       const call = buildEvmVerifyPassportCall({
         address,
         tokenId: input.tokenId,
-        chainId: input.chainId,
+        chainId: wagmiChainOfStack(stack),
       });
       return { ok: true, vm: "evm", call };
     } catch (err) {

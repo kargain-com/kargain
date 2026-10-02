@@ -7,12 +7,9 @@ import { useReadContract } from "wagmi";
 import { formatStakeNative } from "@/lib/kar-pro/stake-format";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
-import {
-  commercialActive,
-  nativeUnitOf,
-} from "@/lib/web3/commercial-active";
+import { commercialActive, nativeUnitOf } from "@/lib/web3/commercial-active";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 export function KarProHeroSubtitle() {
   const { account } = useActiveAccount();
@@ -20,7 +17,8 @@ export function KarProHeroSubtitle() {
   const walletChainId = evm.ok ? evm.chainId : undefined;
   const chainId = resolveKarProTargetChainId(walletChainId);
   const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
-  const wc = chainId != null ? wagmiChainId(chainId) : undefined;
+  const wagmiChain = evmWagmiChain(chainId);
+  const wc = chainId != null ? wagmiChain.ok ? wagmiChain.chainId : undefined : undefined;
 
   const { data: minStake, isPending: minStakePending } = useReadContract({
     address: staking,

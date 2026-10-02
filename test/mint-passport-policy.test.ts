@@ -32,13 +32,9 @@ import {
 } from "@/lib/marketplace/tx-error-message";
 import { encodeErrorResult, type Hex } from "viem";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
-import {
-  commercialSvmNamespaceIds,
-  requireSvmCommercialActive,
-} from "@/lib/web3/commercial-active";
+import { commercialSvmNamespaceIds, requireSvmCommercialActive } from "@/lib/web3/commercial-active";
 import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { svmActiveAccountFromAddress } from "@/lib/web3/active-account";
 import {
   mplCoreProgramId,
@@ -80,7 +76,7 @@ describe("mintPassport EVM behavioural pin", () => {
       chainId: 84532,
     });
     assertEvmCallPin(call, to, uri);
-    assert.equal(call.chainId, wagmiChainId(84532));
+    assert.equal(call.chainId, 84532);
   });
 
   it("planMintPassport EVM arm matches today's call for live hub", async () => {

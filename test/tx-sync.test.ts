@@ -712,7 +712,6 @@ describe("runEvmWriteLifecycle equivalence", () => {
         events.push(`confirm:${confirmedHash}`);
         return receipt;
       },
-      resolveTargetChainId: (value: number) => value,
     } satisfies LegacyLifecycleOptions;
 
     const legacyEvents: string[] = [];
@@ -770,7 +769,6 @@ describe("runEvmWriteLifecycle equivalence", () => {
         events.push(`confirm:${confirmedHash}`);
         return landedOk(receipt);
       },
-      resolveTargetChainId: (value: number) => value,
     });
 
     assert.deepEqual(actual.indexerBarrier, { status: "observed" });
@@ -833,7 +831,6 @@ describe("runEvmWriteLifecycle equivalence", () => {
         actualEvents.push(`confirm:${confirmedHash}`);
         return landedOk(receipt);
       },
-      resolveTargetChainId: (value) => value,
     });
 
     assert.deepEqual(actual.indexerBarrier, { status: "observed" });
@@ -941,7 +938,6 @@ describe("runEvmWriteLifecycle equivalence", () => {
       fetchIndexerStatus: async () => ({ ok: true, blockNumber: 88 }),
       wait: async () => {},
       confirmTransaction: async () => landedOk(receipt),
-      resolveTargetChainId: (value) => value,
     });
     assert.equal(
       mintedRouteForWriteOutcome(outcome, 84532),
@@ -962,7 +958,6 @@ describe("runEvmWriteLifecycle equivalence", () => {
       fetchIndexerStatus: async () => ({ ok: true, blockNumber: 89 }),
       wait: async () => {},
       confirmTransaction: async () => landedOk(receipt),
-      resolveTargetChainId: (value) => value,
     });
     assert.equal(legacyClaimRecordedForAccount(receipt, account), true);
     assert.equal(claimRecordedForOutcome(outcome, account), true);
@@ -987,7 +982,6 @@ describe("runEvmWriteLifecycle equivalence", () => {
       fetchIndexerStatus: async () => ({ ok: true, blockNumber: 90 }),
       wait: async () => {},
       confirmTransaction: async () => landedOk(receipt),
-      resolveTargetChainId: (value) => value,
     });
     const actualGuid = outcome.bridgeSendGuid;
     assert.equal(actualGuid.ok, true);
@@ -1007,7 +1001,6 @@ describe("runEvmWriteLifecycle equivalence", () => {
       fetchIndexerStatus: async () => ({ ok: true, blockNumber: 91 }),
       wait: async () => {},
       confirmTransaction: async () => landedOk(fakeReceipt(hash, 91n)),
-      resolveTargetChainId: (value) => value,
     });
     assert.deepEqual(outcome.mintedPassportTokenId, {
       ok: false,
@@ -1150,7 +1143,6 @@ describe("runWriteLifecycle dispatcher", () => {
       fetchIndexerStatus: async () => ({ ok: true, blockNumber: 10 }),
       wait: async () => undefined,
       confirmTransaction: async () => landedOk(fakeReceipt(evmHash, 11n)),
-      resolveTargetChainId: (chainId) => chainId,
     });
 
     const svmOutcome = await runWriteLifecycle({
@@ -1242,7 +1234,6 @@ describe("Unit T — EVM confirm Outcome honesty", () => {
             blockNumber: 42n,
             revertData: null,
           }),
-          resolveTargetChainId: (v) => v,
         }),
       (err: unknown) => {
         assert.ok(err instanceof EvmConfirmRefusal);
@@ -1280,7 +1271,6 @@ describe("Unit T — EVM confirm Outcome honesty", () => {
             blockNumber: 7n,
             revertData: sameUriData,
           }),
-          resolveTargetChainId: (v) => v,
         }),
       (err: unknown) => {
         assert.ok(err instanceof EvmConfirmRefusal);
@@ -1311,7 +1301,6 @@ describe("Unit T — EVM confirm Outcome honesty", () => {
         seen.push(chainId);
         return landedOk(fakeReceipt(hash, 3n));
       },
-      resolveTargetChainId: (v) => v,
     });
     await awaitWriteReceipt({
       account: fixtureEvmAccount(11155111),
@@ -1342,7 +1331,6 @@ describe("Unit T — EVM confirm Outcome honesty", () => {
             kind: "status_unknown",
             hash,
           }),
-          resolveTargetChainId: (v) => v,
         }),
       (err: unknown) => {
         assert.ok(err instanceof EvmConfirmRefusal);
@@ -1372,7 +1360,6 @@ describe("Unit T — EVM confirm Outcome honesty", () => {
               replacementHash: replacement,
               reason,
             }),
-            resolveTargetChainId: (v) => v,
           }),
         (err: unknown) => {
           assert.ok(err instanceof EvmConfirmRefusal);
@@ -1400,7 +1387,6 @@ describe("Unit T — EVM confirm Outcome honesty", () => {
       wait: async () => {},
       confirmTransaction: async () =>
         landedOk(fakeReceipt(replacement, 10n)),
-      resolveTargetChainId: (v) => v,
     });
     assert.equal(outcome.writeReference, replacement);
   });
@@ -1424,7 +1410,6 @@ describe("Unit T — EVM confirm Outcome honesty", () => {
             blockNumber: 9n,
             revertData: null,
           }),
-          resolveTargetChainId: (v) => v,
         }),
       (err: unknown) => {
         assert.ok(err instanceof EvmConfirmRefusal);

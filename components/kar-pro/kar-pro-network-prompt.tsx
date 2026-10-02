@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { commercialChainIds } from "@/lib/web3/chain-context";
 import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 type Props = {
   title?: string;
@@ -37,7 +38,10 @@ export function KarProNetworkPrompt({
               disabled={isPending || !switchAvail.available}
               onClick={() => {
                 if (!switchAvail.available) return;
-                void switchChain(id);
+                const wagmi = evmWagmiChain(id);
+                // !ok → keep EmptyState / label chrome; never invent switch success
+                if (!wagmi.ok) return;
+                void switchChain(wagmi.eip155);
               }}
             >
               {(() => {

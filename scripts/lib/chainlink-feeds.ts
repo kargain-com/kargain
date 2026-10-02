@@ -2,7 +2,7 @@ import { type PublicClient, getAddress, type Hex, type Abi } from "viem";
 
 import {
   isCommercialEip155Id,
-  type CommercialChainId,
+  resolveEvmChain,
 } from "../../lib/web3/commercial-active.js";
 
 export type CurrencyFeedEntry = {
@@ -226,18 +226,21 @@ export const CHAINLINK_FEEDS: Record<number, ChainFeedConfig> = {
 };
 
 /** LayerZero EndpointV2 — EVM hex per commercial EIP-155 (values follow VM; map is not the commercial definition). */
-export const LZ_ENDPOINT_V2_BY_CHAIN: {
-  readonly [K in CommercialChainId]: `0x${string}`;
-} = {
+export const LZ_ENDPOINT_V2_BY_CHAIN: Readonly<Record<number, `0x${string}`>> = {
   84532: "0x6EDCE65403992e310A62460808c4b910D972f10f",
   11155111: "0x6EDCE65403992e310A62460808c4b910D972f10f",
 };
 
 export function lzEndpointForChain(chainId: number): `0x${string}` {
-  if (!isCommercialEip155Id(chainId)) {
+  const resolved = resolveEvmChain(chainId);
+  if (!resolved.ok) {
     throw new Error(`No LayerZero EndpointV2 map for chainId ${chainId}`);
   }
-  return getAddress(LZ_ENDPOINT_V2_BY_CHAIN[chainId]);
+  const endpoint = LZ_ENDPOINT_V2_BY_CHAIN[resolved.chainId];
+  if (endpoint == null) {
+    throw new Error(`No LayerZero EndpointV2 map for chainId ${chainId}`);
+  }
+  return getAddress(endpoint);
 }
 
 export function currencyCodeBytes32(code: string): Hex {

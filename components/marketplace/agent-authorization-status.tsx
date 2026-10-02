@@ -1,6 +1,8 @@
 "use client";
 
 import { useActiveAccount, requireEvmSession, evmSwitchChainAvailability } from "@/hooks/use-active-account";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
+import { eip155WhenWagmiOk, wagmiWriteUnionId } from "@/lib/web3/evm-wagmi-chrome";
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
@@ -17,7 +19,6 @@ import { formatFiat1e8 } from "@/lib/marketplace/fiat-format";
 import type { ListingCurrencyCode } from "@/lib/marketplace/currency-code";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { isEvmHexAddress } from "@/lib/passport/passport-owner";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
@@ -52,7 +53,9 @@ export function AgentAuthorizationStatus({
   const walletChain = evm.ok ? evm.chainId : undefined;
   const switchAvail = evmSwitchChainAvailability(account);
 
-  const wc = eip155WagmiChainId(chainId);
+  const wagmi = evmWagmiChain(chainId);
+  const wc = wagmiWriteUnionId(wagmi);
+  const eip155 = eip155WhenWagmiOk(wagmi);
       const { writeContractAsync, isPending } = useEvmWriteContract();
   const { runTx, phase, error, syncLagged } = useTxSync(chainId);
   const busy = isPending || phase !== "idle";
@@ -74,7 +77,8 @@ export function AgentAuthorizationStatus({
     if (wrongChain) {
         if (!switchAvail.available) throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
         if (wc == null) throw new Error('switchChain unavailable: unresolved_namespace');
-        await switchChain(wc);
+        if (eip155 == null) return;
+        await switchChain(eip155);
       }
     setTxError(null);
     try {
@@ -100,7 +104,7 @@ export function AgentAuthorizationStatus({
     writeContractAsync,
     tid,
     onChanged,
-    runTx, switchAvail]);
+    runTx, switchAvail, eip155]);
 
   return (
     <div className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">

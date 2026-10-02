@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useWalletClient } from "wagmi";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 import { LightningAddressField, isLightningAddressInvalid } from "@/components/profile/lightning-address-field";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,6 @@ import { KAR_PRO_PAYMENTS_NETWORK_SCOPE } from "@/lib/kar-pro/membership-roster"
 import type { PaymentMethodId } from "@/lib/nostr/payment-method-id";
 import { publishNostrProfile } from "@/lib/nostr/profile";
 import { acceptedPaymentMethods, paymentMethodIdsToArray } from "@/lib/verifier/payment-methods";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 type KarProPaymentsSectionProps = {
   chainId: number;
@@ -30,7 +30,8 @@ const PAYMENT_METHOD_LABELS: Record<PaymentMethodId, string> = {
 export function KarProPaymentsSection({ chainId, address }: KarProPaymentsSectionProps) {
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
-  const wc = wagmiChainId(chainId);
+  const wagmiChain = evmWagmiChain(chainId);
+  const wc = wagmiChain.ok ? wagmiChain.chainId : undefined;
   const { data: walletClient } = useWalletClient({ chainId: wc });
 
   const { profile: ownProfile, loading: ownProfileLoading, refetch: refetchProfile } = useNostrProfile(address);

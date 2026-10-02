@@ -20,16 +20,12 @@ import { isSvmAccountData } from "@/lib/web3/svm-rpc";
 import {
   type ActiveAccount,
 } from "@/lib/web3/active-account";
-import {
-  commercialActive,
-  type CommercialRegistry,
-} from "@/lib/web3/commercial-active";
+import { commercialActive, type CommercialRegistry } from "@/lib/web3/commercial-active";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import type {
   KeyedContract,
   KeyedEntry,
 } from "@/lib/web3/keyed-multicall";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 export const ACTIVE_VERIFIER_FACT_KEY = "isActiveVerifier" as const;
 
@@ -124,7 +120,7 @@ export async function planActiveVerifierRead(args: {
           abi: KarProStakingAbi,
           functionName: "isActiveVerifier",
           args: [sessionAddress],
-          chainId: wagmiChainId(args.chainId),
+          chainId: args.chainId,
         },
       ],
     };

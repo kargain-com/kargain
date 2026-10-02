@@ -25,15 +25,11 @@ import {
   parseSvmFeeMarginNative,
 } from "@/lib/verifier/verification-fee-composition";
 import { verificationFeeSurface } from "@/lib/verifier/verification-fee-surface";
-import {
-  commercialSvmNamespaceIds,
-  requireSvmCommercialActive,
-} from "@/lib/web3/commercial-active";
+import { commercialSvmNamespaceIds, requireSvmCommercialActive } from "@/lib/web3/commercial-active";
 import { mintCommercialNativeUnit } from "@/lib/web3/commercial-native-unit";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import type { SvmSignAndSendPort } from "@/lib/web3/svm-write-adapter";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
   vmBranchViolationInSource,
   VM_BRANCH_ALLOWLIST,
@@ -71,7 +67,7 @@ describe("U6.2 pin 1 — EVM setVerificationFee behaviour", () => {
     assert.equal(call.functionName, "setVerificationFee");
     assert.deepEqual(call.args, [feeWei]);
     assert.equal(call.address, address);
-    assert.equal(call.chainId, wagmiChainId(84532));
+    assert.equal(call.chainId, 84532);
   });
 
   it("plan + execute compose margin+gas and pass pinned call", async () => {

@@ -28,7 +28,9 @@ import {
 } from "../lib/passport/passport-commerce-facts.ts";
 import { derivePassportPresence } from "../lib/passport/presence.ts";
 import { karPassportAddress } from "../lib/web3/deployment-addresses.ts";
-import { commercialSvmNamespaceIds } from "../lib/web3/commercial-active.ts";
+import {
+  commercialSvmNamespaceIds,
+} from "../lib/web3/commercial-active.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DETAIL_ENTRY =

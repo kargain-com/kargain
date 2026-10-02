@@ -1,6 +1,7 @@
 "use client";
 
 import { useActiveAccount } from "@/hooks/use-active-account";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -18,7 +19,6 @@ import { proShowroomHref } from "@/lib/kar-pro/pro-showroom-href";
 import { uploadKarProMetadata } from "@/lib/kar-pro/upload-kar-pro-metadata";
 import { arUriToHttp } from "@/lib/storage/ar-gateway";
 import { karProPassAddress } from "@/lib/web3/deployment-addresses";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 
@@ -70,7 +70,8 @@ export function KarProProfileSection({
   const connector = signingBinding.ok ? signingBinding.connector : undefined;
   const { writeContractAsync } = useEvmWriteContract();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
-  const wc = wagmiChainId(chainId);
+  const wagmiChain = evmWagmiChain(chainId);
+  const wc = wagmiChain.ok ? wagmiChain.chainId : undefined;
 
   const [editing, setEditing] = useState(false);
   const [fields, setFields] = useState<KarProProfileFieldValues>({

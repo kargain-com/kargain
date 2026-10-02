@@ -10,11 +10,9 @@ import type { AuctionRow } from "@/lib/auction/map-ponder-auction";
 import { formatWindowDurationLabel } from "@/lib/commerce/format-window-duration";
 import { commerceModeEvmAddress } from "@/lib/commerce/mode";
 import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
-import {
-  commercialActive,
-  nativeUnitOf,
-} from "@/lib/web3/commercial-active";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
+import { commercialActive, nativeUnitOf } from "@/lib/web3/commercial-active";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
+import { evmWagmiWriteAdmitted } from "@/lib/web3/evm-wagmi-chrome";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
 type Props = {
@@ -46,6 +44,8 @@ export function AuctionFinalizePanel({
   const busy = phase !== "idle";
 
   const mode = commerceModeEvmAddress("ascending", chainId);
+  const wagmi = evmWagmiChain(chainId);
+  const writeAdmitted = evmWagmiWriteAdmitted(wagmi);
   const nativeUnit = nativeUnitOf(commercialActive(chainId)!);
   const finalBid =
     auction.highestBid > 0n
@@ -54,14 +54,14 @@ export function AuctionFinalizePanel({
   const lead = finalizeProtectionCopy(protectionWindowSec);
 
   async function onFinalize() {
-    if (!mode) return;
+    if (!mode || !wagmi.ok) return;
     await runTx(() =>
       writeContractAsync({
         address: mode,
         abi: AscendingConsignmentAbi,
         functionName: "settle",
         args: [BigInt(tokenId)],
-        chainId: eip155WagmiChainId(chainId),
+        chainId: wagmi.chainId,
       }),
     );
   }
@@ -103,7 +103,7 @@ export function AuctionFinalizePanel({
       <Button
         type="button"
         className="w-full"
-        disabled={busy || isPending}
+        disabled={busy || isPending || !writeAdmitted}
         onClick={() => void onFinalize()}
       >
         {busy || isPending ? "Finalizing…" : "Finalize auction"}

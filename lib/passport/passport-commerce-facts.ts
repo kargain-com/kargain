@@ -52,11 +52,8 @@ import {
 } from "@/lib/svm/decode-account-state";
 import { deriveSvmPda } from "@/lib/svm/derive-pda";
 import { tokenIdToBytes32 } from "@/lib/svm/event-payload-decode";
-import {
-  commercialActive,
-  type CommercialRegistry,
-  type SvmCommercialActiveStack,
-} from "@/lib/web3/commercial-active";
+import { commercialActive, type CommercialRegistry, type SvmCommercialActiveStack, evmChainOf } from "@/lib/web3/commercial-active";
+import { wagmiChainOfStack } from "@/lib/web3/supported-chains";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import type {
   KeyedContract,
@@ -68,7 +65,6 @@ import {
   isSvmAccountData,
   type FetchSvmAccountDataResult,
 } from "@/lib/web3/svm-rpc";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { toHex } from "viem";
 
 export const PASSPORT_STATE_KEY = "passportState" as const;
@@ -300,7 +296,7 @@ export async function planPassportCommerceReads(args: {
       resolveCommerceMode("ascending", args.chainId).status === "configured";
     const fixedPrice = commerceModeEvmAddress("fixedPrice", args.chainId);
     const ascending = commerceModeEvmAddress("ascending", args.chainId);
-    const wc = wagmiChainId(args.chainId);
+    const wc = wagmiChainOfStack(stack);
     return {
       ok: true,
       vm: "evm",
@@ -429,7 +425,7 @@ export function planPassportDisputeReads(args: {
   } catch {
     return [];
   }
-  const wc = wagmiChainId(args.chainId);
+  const wc = wagmiChainOfStack(stack);
   return [
     {
       key: "disputeWindow",
@@ -890,7 +886,7 @@ export async function readPassportCustodyLockLive(args: {
       const read =
         args.readEvmCustodyLocked ??
         (async (addr, tokenId) => {
-          const client = getPublicClient(args.namespace);
+          const client = getPublicClient(evmChainOf(stack));
           return client.readContract({
             address: addr,
             abi: KarPassportAbi,

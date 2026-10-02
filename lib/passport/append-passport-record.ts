@@ -22,11 +22,9 @@ import {
   type ActiveAccount,
   type WalletFamilyWanted,
 } from "@/lib/web3/active-account";
-import {
-  commercialActive,
-  type CommercialRegistry,
-  type SvmCommercialActiveStack,
-} from "@/lib/web3/commercial-active";
+import { commercialActive, type CommercialRegistry, type SvmCommercialActiveStack } from "@/lib/web3/commercial-active";
+import type { KargainWriteUnionChainId } from "@/lib/web3/supported-chains";
+import { wagmiChainOfStack } from "@/lib/web3/supported-chains";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import {
   fetchProductSvmAccountData,
@@ -42,7 +40,6 @@ import {
   SvmWriteOwnerRefusal,
   throwSvmWriteSendRefusal,
 } from "@/lib/web3/svm-write-owner-refusal";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import type { WriteSubmission } from "@/lib/web3/write-outcome";
 import {
   txWriteAvailabilityForCapability,
@@ -113,7 +110,7 @@ export function buildEvmAppendPassportRecordCall(args: {
   recordType: string;
   description: string;
   evidenceCid: string;
-  chainId: number;
+  chainId: KargainWriteUnionChainId;
 }): AppendPassportRecordEvmCall {
   return {
     address: args.address,
@@ -125,7 +122,7 @@ export function buildEvmAppendPassportRecordCall(args: {
       args.description,
       args.evidenceCid,
     ],
-    chainId: wagmiChainId(args.chainId),
+    chainId: args.chainId,
   };
 }
 
@@ -208,7 +205,7 @@ export async function planAppendPassportRecord(input: {
         recordType: input.recordType,
         description: input.description,
         evidenceCid: input.evidenceCid,
-        chainId: input.chainId,
+        chainId: wagmiChainOfStack(stack),
       });
       return { ok: true, vm: "evm", call };
     } catch (err) {

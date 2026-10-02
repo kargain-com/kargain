@@ -31,6 +31,7 @@ import {
 } from "@/lib/web3/active-account";
 import {
   type CommercialActiveStack,
+  type Eip155ChainId,
   type SvmCommercialActiveStack,
 } from "@/lib/web3/commercial-active";
 import type { EvmDepositConfirmOutcome } from "@/lib/web3/evm-tx-confirm";
@@ -47,13 +48,14 @@ import {
   txWriteGuardRefusalCopy,
   type TxWriteGuardPayload,
 } from "@/lib/web3/tx-write-availability";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 import {
   isWalletRejection,
   walletRejectionCopy,
 } from "@/lib/web3/wallet-rejection";
 import {
   readAccountKind,
-  type WalletAccountKind,
+  type ReadAccountKindResult,
 } from "@/lib/web3/wallet-account";
 import { shortAddress } from "@/lib/web3/wallet-display";
 
@@ -135,13 +137,13 @@ export type IrysDepositPorts = {
   svmSignAndSend?: SvmSignAndSendPort;
   /** EVM native send — required for EVM; built from useEvmSendTransaction only. */
   sendEvmTransaction?: IrysEvmDepositSendPort;
-  /** EVM chain switch — required when wallet chain ≠ stack. */
-  switchChain?: (chainId: number) => Promise<void>;
+  /** EVM chain switch — branded Eip155 only (resolve via evmWagmiChain before call). */
+  switchChain?: (chainId: Eip155ChainId) => Promise<void>;
   /** Override account-kind reader (defaults to {@link readAccountKind}). */
   readEvmAccountKind?: (
     chainId: number,
     address: `0x${string}`,
-  ) => Promise<WalletAccountKind>;
+  ) => Promise<ReadAccountKindResult>;
   /** Injectable SVM funding confirm (defaults to product finalized port). */
   confirmSvmFunding?: SvmTxConfirmPort;
   /** Injectable latest-blockhash fetch for SVM deposit send (defaults to product RPC). */
@@ -493,12 +495,27 @@ async function sendNewDeposit(args: {
             detail: "missing_switch_chain_port",
           });
         }
-        await switchFn(ns);
+        const wagmi = evmWagmiChain(ns);
+        if (!wagmi.ok) {
+          return refuse("deposit_write_unavailable", {
+            guard: {
+              guard: "write_availability",
+              refusal:
+                wagmi.cause === "not_evm"
+                  ? { available: false, cause: "wrong_vm", wanted: "evm" }
+                  : { available: false, cause: "unresolved_namespace" },
+            },
+          });
+        }
+        await switchFn(wagmi.eip155);
       }
 
       const kindReader = args.ports.readEvmAccountKind ?? readAccountKind;
       const kind = await kindReader(ns, args.account.address);
-      if (kind === "contract") {
+      if (!kind.ok) {
+        return refuse("deposit_send_failed", { detail: kind.cause });
+      }
+      if (kind.kind === "contract") {
         return refuse("deposit_contract_wallet");
       }
       if (readIrysEvmMinConfirm(args.uploader) == null) {

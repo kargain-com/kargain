@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { Address } from "viem";
 import { useReadContract } from "wagmi";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 import { getConsignments } from "@/app/actions/commerce-consignments";
 import { getAgentMandates } from "@/app/actions/commerce-mandates";
@@ -23,7 +24,6 @@ import { FixedPriceConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { categoryLabel } from "@/lib/design/instrument-classes";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { indexerQueryKey } from "@/lib/web3/indexer-query-keys";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import {
   commercialNetworkLabel,
   commercialNetworkLabelCauseCopy,
@@ -67,11 +67,12 @@ export function ConsignedVehiclesTab({ wallet, chainId }: Props) {
   const ascending = commerceModeEvmAddress("ascending", targetChain);
   const modesReady = Boolean(fixedPrice || ascending);
 
+  const wagmiChain = evmWagmiChain(targetChain);
   const { data: platformFeeBps } = useReadContract({
     address: fixedPrice,
     abi: FixedPriceConsignmentAbi,
     functionName: "platformFeeBps",
-    chainId: wagmiChainId(targetChain),
+    chainId: wagmiChain.ok ? wagmiChain.chainId : undefined,
     query: { enabled: Boolean(fixedPrice) },
   });
 

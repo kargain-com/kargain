@@ -3,7 +3,7 @@
  *
  * Allowlisted product ownerOf sites (named reasons):
  * - fetch/build-chain passport detail → Unit L (entity stub; queued)
- * - use-bridge / use-bridge-transit → destination delivery poll (EVM star)
+ * - poll-dst-owner / use-bridge-transit → destination delivery poll (EVM star)
  *
  * Holder owner may plan EVM ownerOf; chrome must not.
  */
@@ -47,7 +47,7 @@ const OWNER_OF_ALLOWLIST: Readonly<Record<string, string>> = {
     "Unit L — entity stub builder; reuses Core decode later",
   "lib/passport/build-chain-passport-detail.ts":
     "Unit L — entity stub builder; reuses Core decode later",
-  "hooks/use-bridge.ts":
+  "lib/web3/bridge/poll-dst-owner.ts":
     "Destination delivery poll — EVM star only until Solana ∈ EID_BY_CHAIN",
   "hooks/use-bridge-transit.ts":
     "Destination delivery poll — EVM star only until Solana ∈ EID_BY_CHAIN",

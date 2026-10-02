@@ -150,7 +150,7 @@ async function observedNeededAmount(
     bundlerUrl: "https://devnet.irys.xyz",
     ports: {
       store,
-      readEvmAccountKind: async () => "eoa",
+      readEvmAccountKind: async () => ({ ok: true, kind: "eoa" }),
       sendEvmTransaction: {
         sendTransaction: async ({ value }) => {
           observed = value;
@@ -184,7 +184,7 @@ describe("irys deposit — pending record no double-pay", () => {
           return HASH_A;
         },
       },
-      readEvmAccountKind: async () => "eoa",
+      readEvmAccountKind: async () => ({ ok: true, kind: "eoa" }),
       waitEvmConfirmations: async ({ txHash }) => ({
         kind: "confirmed",
         hash: txHash,
@@ -549,7 +549,7 @@ describe("irys deposit — pending record no double-pay", () => {
             return HASH_A;
           },
         },
-        readEvmAccountKind: async () => "eoa",
+        readEvmAccountKind: async () => ({ ok: true, kind: "eoa" }),
       },
     });
     assert.equal(r.ok, false);
@@ -569,7 +569,7 @@ describe("irys deposit — pending record no double-pay", () => {
       bundlerUrl: "https://devnet.irys.xyz",
       ports: {
         store: createMemoryIrysDepositRecordStore(),
-        readEvmAccountKind: async () => "contract",
+        readEvmAccountKind: async () => ({ ok: true, kind: "contract" }),
         sendEvmTransaction: {
           sendTransaction: async () => {
             sent = true;
@@ -641,7 +641,7 @@ describe("irys deposit — pending record no double-pay", () => {
       bundlerUrl: "https://devnet.irys.xyz",
       ports: {
         store,
-        readEvmAccountKind: async () => "eoa",
+        readEvmAccountKind: async () => ({ ok: true, kind: "eoa" }),
         switchChain: async (chainId) => {
           switchedTo = chainId;
         },
@@ -683,7 +683,7 @@ describe("irys deposit — pending record no double-pay", () => {
       bundlerUrl: "https://devnet.irys.xyz",
       ports: {
         store: createMemoryIrysDepositRecordStore(),
-        readEvmAccountKind: async () => "eoa",
+        readEvmAccountKind: async () => ({ ok: true, kind: "eoa" }),
         sendEvmTransaction: {
           sendTransaction: async () => {
             sent = true;
@@ -716,7 +716,7 @@ describe("irys deposit — pending record no double-pay", () => {
       bundlerUrl: "https://devnet.irys.xyz",
       ports: {
         store: createMemoryIrysDepositRecordStore(),
-        readEvmAccountKind: async () => "eoa",
+        readEvmAccountKind: async () => ({ ok: true, kind: "eoa" }),
         sendEvmTransaction: {
           sendTransaction: async () => {
             sent = true;
@@ -764,7 +764,7 @@ describe("irys deposit B2 — three-state reader + EVM replacement", () => {
       bundlerUrl: "https://devnet.irys.xyz",
       ports: {
         store,
-        readEvmAccountKind: async () => "eoa",
+        readEvmAccountKind: async () => ({ ok: true, kind: "eoa" }),
         sendEvmTransaction: {
           sendTransaction: async () => {
             sends += 1;
@@ -801,7 +801,7 @@ describe("irys deposit B2 — three-state reader + EVM replacement", () => {
           setItem: () => undefined,
           removeItem: () => undefined,
         },
-        readEvmAccountKind: async () => "eoa",
+        readEvmAccountKind: async () => ({ ok: true, kind: "eoa" }),
         sendEvmTransaction: {
           sendTransaction: async () => {
             sends += 1;
@@ -848,7 +848,7 @@ describe("irys deposit B2 — three-state reader + EVM replacement", () => {
       bundlerUrl: "https://devnet.irys.xyz",
       ports: {
         store,
-        readEvmAccountKind: async () => "eoa",
+        readEvmAccountKind: async () => ({ ok: true, kind: "eoa" }),
         sendEvmTransaction: {
           sendTransaction: async () => {
             sends += 1;
@@ -1037,7 +1037,7 @@ describe("irys deposit B2 — three-state reader + EVM replacement", () => {
       bundlerUrl: "https://devnet.irys.xyz",
       ports: {
         store,
-        readEvmAccountKind: async () => "eoa",
+        readEvmAccountKind: async () => ({ ok: true, kind: "eoa" }),
         sendEvmTransaction: {
           sendTransaction: async () => {
             sends += 1;
@@ -1162,7 +1162,7 @@ describe("irys deposit B2 — three-state reader + EVM replacement", () => {
       bundlerUrl: "https://devnet.irys.xyz",
       ports: {
         store,
-        readEvmAccountKind: async () => "eoa",
+        readEvmAccountKind: async () => ({ ok: true, kind: "eoa" }),
         sendEvmTransaction: {
           sendTransaction: async () => {
             sends += 1;
@@ -1242,7 +1242,7 @@ describe("irys deposit B2 — three-state reader + EVM replacement", () => {
       bundlerUrl: "https://devnet.irys.xyz",
       ports: {
         store,
-        readEvmAccountKind: async () => "eoa",
+        readEvmAccountKind: async () => ({ ok: true, kind: "eoa" }),
         sendEvmTransaction: {
           sendTransaction: async () => {
             sends += 1;

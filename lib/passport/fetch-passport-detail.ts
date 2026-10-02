@@ -26,6 +26,7 @@ import type {
   PonderPassportDetail,
   PonderUriHistoryEntry,
 } from "@/lib/types/ponder";
+import { resolveEvmChain } from "@/lib/web3/commercial-active";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import {
   mintProtocolOwner,
@@ -250,9 +251,11 @@ async function confirmStatusOnChain(
 ): Promise<PassportStatus> {
   const address = karPassportAddress(chainId);
   if (!address) return ponderStatus;
+  const resolved = resolveEvmChain(chainId);
+  if (!resolved.ok) return ponderStatus;
 
   try {
-    const client = getPublicClient(chainId);
+    const client = getPublicClient(resolved.chainId);
     const result = await client.readContract({
       address,
       abi: KarPassportAbi,
@@ -278,9 +281,11 @@ async function confirmOwnerOnChain(
 ): Promise<ProtocolOwner> {
   const address = karPassportAddress(chainId);
   if (!address) return ponderOwner;
+  const resolved = resolveEvmChain(chainId);
+  if (!resolved.ok) return ponderOwner;
 
   try {
-    const client = getPublicClient(chainId);
+    const client = getPublicClient(resolved.chainId);
     const chainOwner = await client.readContract({
       address,
       abi: KarPassportAbi,

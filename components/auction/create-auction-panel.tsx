@@ -1,6 +1,8 @@
 "use client";
 
 import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
+import { wrongChainFromWagmi } from "@/lib/web3/evm-wagmi-chrome";
 
 import { useEffect, useMemo, useState } from "react";
 import { parseUnits, zeroAddress } from "viem";
@@ -40,7 +42,6 @@ import {
   elevatedAdvisoryText,
   monoTimestamp,
 } from "@/lib/design/instrument-classes";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
@@ -78,7 +79,8 @@ export function CreateAuctionPanel({
   const [formError, setFormError] = useState<string | null>(null);
 
   const mode = commerceModeEvmAddress("ascending", chainId);
-  const wrongChain = evm.ok && (() => { const _wc = eip155WagmiChainId(chainId); return _wc != null && walletChainId !== _wc; })();
+  const wagmiChain = evmWagmiChain(chainId);
+  const wrongChain = wrongChainFromWagmi(evm.ok, walletChainId, wagmiChain);
   const busy = phase !== "idle";
   const { paused: modePaused } = useCommerceModePaused({
     mode: "ascending",
@@ -137,7 +139,7 @@ export function CreateAuctionPanel({
     abi: AscendingConsignmentAbi,
     functionName: "hasUnresolvedSettlement",
     args: [BigInt(tokenId)],
-    chainId: eip155WagmiChainId(chainId),
+    chainId: wagmiChain.ok ? wagmiChain.chainId : undefined,
     query: { enabled: Boolean(mode && tokenId) },
   });
 
@@ -146,7 +148,7 @@ export function CreateAuctionPanel({
     abi: AscendingConsignmentAbi,
     functionName: "holdProtectionEndsAt",
     args: [BigInt(tokenId)],
-    chainId: eip155WagmiChainId(chainId),
+    chainId: wagmiChain.ok ? wagmiChain.chainId : undefined,
     query: { enabled: Boolean(mode && unresolvedSettlement === true) },
   });
 
@@ -267,7 +269,7 @@ export function CreateAuctionPanel({
           durationSec,
           protectionSec,
         ],
-        chainId: eip155WagmiChainId(chainId),
+        chainId: wagmiChain.ok ? wagmiChain.chainId : undefined,
       });
     });
   }

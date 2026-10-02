@@ -1,4 +1,4 @@
-import { commercialEip155Ids } from "@/lib/web3/commercial-active";
+import { commercialEip155Ids, resolveEvmChain } from "@/lib/web3/commercial-active";
 import {
   chainlinkEurUsdFeed,
   chainlinkNativeUsdFeed,
@@ -90,40 +90,68 @@ export function isMessageablePeerOnCommercialChains(address: string): boolean {
   return !isProtocolAddressOnCommercialChains(address);
 }
 
+export type ReadAccountKindCause =
+  | "not_evm"
+  | "unresolved_namespace"
+  | "read_failed";
+
+export type ReadAccountKindResult =
+  | { ok: true; kind: WalletAccountKind }
+  | { ok: false; cause: ReadAccountKindCause };
+
 export async function readAccountKind(
   chainId: number,
   address: `0x${string}`,
-): Promise<WalletAccountKind> {
+): Promise<ReadAccountKindResult> {
+  const resolved = resolveEvmChain(chainId);
+  if (!resolved.ok) {
+    return { ok: false, cause: resolved.cause };
+  }
   try {
-    const bytecode = await getPublicClient(chainId).getBytecode({ address });
-    return classifyBytecode(bytecode);
+    const bytecode = await getPublicClient(resolved.chainId).getBytecode({
+      address,
+    });
+    return { ok: true, kind: classifyBytecode(bytecode) };
   } catch {
-    return "eoa";
+    return { ok: false, cause: "read_failed" };
   }
 }
 
 /**
  * Account kind across commercial chains — contract if any chain reports contract.
- * Used when no single wallet commercial chain is available (messaging identity).
+ * `eoa` only when every chain answered ok+eoa (never invent on unread/refusal).
  */
 export async function readAccountKindOnCommercialChains(
   address: `0x${string}`,
-): Promise<WalletAccountKind> {
+): Promise<ReadAccountKindResult> {
   const chainIds = commercialEip155Ids();
+  if (chainIds.length === 0) {
+    return { ok: false, cause: "unresolved_namespace" };
+  }
   const kinds = await Promise.all(
     chainIds.map((id) => readAccountKind(id, address)),
   );
-  if (kinds.some((k) => k === "contract")) return "contract";
-  if (kinds.some((k) => k === "eip7702")) return "eip7702";
-  return "eoa";
+  if (kinds.some((k) => k.ok && k.kind === "contract")) {
+    return { ok: true, kind: "contract" };
+  }
+  if (kinds.some((k) => k.ok && k.kind === "eip7702")) {
+    return { ok: true, kind: "eip7702" };
+  }
+  if (kinds.every((k) => k.ok && k.kind === "eoa")) {
+    return { ok: true, kind: "eoa" };
+  }
+  const firstRefuse = kinds.find((k) => !k.ok);
+  return firstRefuse && !firstRefuse.ok
+    ? firstRefuse
+    : { ok: false, cause: "read_failed" };
 }
 
 export async function readAccountKindFromProvider(
   provider: unknown,
   address: string,
-): Promise<WalletAccountKind> {
+): Promise<ReadAccountKindResult> {
   if (!provider || typeof provider !== "object" || !("request" in provider)) {
-    return "eoa";
+    return { ok: false, cause: "read_failed" };
   }
   try {
     const eip1193 = provider as Eip1193Provider;
@@ -131,9 +159,9 @@ export async function readAccountKindFromProvider(
       method: "eth_getCode",
       params: [address, "latest"],
     })) as string;
-    return classifyBytecode(code);
+    return { ok: true, kind: classifyBytecode(code) };
   } catch {
-    return "eoa";
+    return { ok: false, cause: "read_failed" };
   }
 }
 

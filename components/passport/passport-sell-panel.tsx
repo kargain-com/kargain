@@ -1,6 +1,7 @@
 "use client";
 
 import { useActiveAccount, connectedAddress } from "@/hooks/use-active-account";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -48,7 +49,6 @@ import { isSessionHolder } from "@/lib/passport/passport-holder";
 import { isEvmHexAddress } from "@/lib/passport/passport-owner";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 import { txWriteAvailability } from "@/lib/web3/tx-write-availability";
 
@@ -106,7 +106,8 @@ export function PassportSellPanel({
   const [ascendingDialogOpen, setAscendingDialogOpen] = useState(false);
 
   const staking = karProStakingAddress(chainId);
-  const wc = eip155WagmiChainId(chainId);
+  const wagmi = evmWagmiChain(chainId);
+  const wc = wagmi.ok ? wagmi.chainId : undefined
   const tid = BigInt(tokenId);
   const { paused: fixedPricePaused } = useCommerceModePaused({
     mode: "fixedPrice",

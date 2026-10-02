@@ -31,11 +31,9 @@ import {
   resolveCommerceMode,
 } from "@/lib/commerce/mode";
 import { presenceBlocksWrites } from "@/lib/passport/presence";
-import {
-  commercialActive,
-  nativeUnitOf,
-} from "@/lib/web3/commercial-active";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
+import { commercialActive, nativeUnitOf } from "@/lib/web3/commercial-active";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
+import { erc20DecimalsQueryEnabled } from "@/lib/web3/evm-wagmi-chrome";
 import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 
 type AuctionDetailController = ReturnType<typeof useAuctionDetail>;
@@ -159,13 +157,14 @@ export function AuctionDetailClientIsland({
     liveOfferedOrBidding &&
     Boolean(assetAddr) &&
     !isZeroAddress(assetAddr);
+  const wagmiChain = evmWagmiChain(chainId);
   const { data: erc20Decimals } = useReadContract({
     address: assetAddr as `0x${string}`,
     abi: erc20Abi,
     functionName: "decimals",
-    chainId: eip155WagmiChainId(chainId),
+    chainId: wagmiChain.ok ? wagmiChain.chainId : undefined,
     query: {
-      enabled: Boolean(needsErc20Decimals && eip155WagmiChainId(chainId) != null),
+      enabled: erc20DecimalsQueryEnabled(needsErc20Decimals, wagmiChain),
     },
   });
   const stack = commercialActive(chainId);

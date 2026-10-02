@@ -38,6 +38,9 @@ import {
 } from "@/lib/web3/active-account";
 import { useEvmAccountAdapter } from "@/lib/web3/evm-account-adapter";
 import { useSvmAccountAdapter } from "@/lib/web3/svm-account-adapter";
+import type { ActiveAccountSwitchChain } from "@/lib/web3/active-account-switch";
+import type { Eip155ChainId } from "@/lib/web3/commercial-active";
+import type { KargainWriteUnionChainId } from "@/lib/web3/supported-chains";
 import {
   listDiscoveredSvmWallets,
   subscribeSvmWalletDiscovery,
@@ -57,10 +60,12 @@ export type UseActiveAccountResult = {
   disconnect: () => Promise<void>;
   connect: (target: ConnectTarget) => Promise<void>;
   /**
-   * Switch the EVM wallet chain. Call sites must gate with
-   * {@link evmSwitchChainAvailability} first — never treat absence as silence.
+   * Switch the EVM wallet chain. Accepts branded {@link Eip155ChainId} only —
+   * callers resolve via {@link evmWagmiChain} / {@link resolveEvmChain} and must
+   * not call on `!ok` (never invent switch success). Gate session with
+   * {@link evmSwitchChainAvailability} first.
    */
-  switchChain: (chainId: number) => Promise<void>;
+  switchChain: ActiveAccountSwitchChain;
   /** Discriminated EVM + SVM connect rows for the connect dialog. */
   connectOptions: readonly ConnectOption[];
   /**
@@ -154,12 +159,13 @@ export function ActiveAccountProvider({ children }: { children: ReactNode }) {
     }
   }, [svmConnected, evmConnected, svmDisconnect, evmDisconnect]);
 
-  const switchChain = useCallback(
-    async (chainId: number) => {
+  const switchChain = useCallback<ActiveAccountSwitchChain>(
+    async (chainId: Eip155ChainId) => {
       if (!evmConnected) {
         throw new Error("switchChain: no EVM session");
       }
-      await evmSwitchChain(chainId);
+      // Commercial Eip155 ⊆ write-union; adapter keeps WriteUnion for Hardhat local.
+      await evmSwitchChain(chainId as KargainWriteUnionChainId);
     },
     [evmConnected, evmSwitchChain],
   );

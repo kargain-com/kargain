@@ -1,5 +1,9 @@
 import type { Chain, PublicClient } from "viem";
 
+import {
+  evmChainOf,
+  requireEvmCommercialActive,
+} from "@/lib/web3/commercial-active";
 import { getViemChain, rpcUrlForChain } from "@/lib/web3/supported-chains";
 import { VINCENT_REGISTRY } from "@/lib/vincent-commons/registry-config";
 import type { PublisherEpochsInput } from "@/lib/vincent-commons/registry-panel";
@@ -17,14 +21,13 @@ async function getRegistryClient(): Promise<{
 }> {
   if (registryClient) return registryClient;
   const { createPublicClient, http } = await import("viem");
-  const chain = getViemChain(VINCENT_REGISTRY.chainId);
-  if (!chain) {
-    throw new Error(`Unsupported chain: ${VINCENT_REGISTRY.chainId}`);
-  }
+  const stack = requireEvmCommercialActive(VINCENT_REGISTRY.chainId);
+  const chainId = evmChainOf(stack);
+  const chain = getViemChain(chainId);
   registryClient = {
     publicClient: createPublicClient({
       chain,
-      transport: http(rpcUrlForChain(VINCENT_REGISTRY.chainId)),
+      transport: http(rpcUrlForChain(chainId)),
       batch: { multicall: true },
     }),
     chain,
@@ -36,7 +39,8 @@ async function getRegistryClient(): Promise<{
  * Read per-publisher epoch chains from VincentAnchorRegistry for the given
  * verifier addresses. `@kargain/vincent/anchor` loads via dynamic import —
  * never in the `/kar-pro` bundle. Throws on RPC failure (callers map that to
- * the fail-silent "Registry unreachable" state).
+ * the fail-silent "Registry unreachable" state). Registry misconfiguration
+ * fails via {@link requireEvmCommercialActive}'s named error.
  */
 export async function fetchRegistryPublishers(
   addresses: `0x${string}`[],

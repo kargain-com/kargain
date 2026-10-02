@@ -55,7 +55,7 @@ export default async function PublicProfilePage({
   // Contract accounts are not profiles (EVM bytecode OR across commercial EIP-155).
   if (isEvmHexAddress(owner)) {
     const accountKind = await readAccountKindOnCommercialChains(owner);
-    if (accountKind === "contract") notFound();
+    if (accountKind.ok && accountKind.kind === "contract") notFound();
   }
 
   const karProAvailable = sections.kar_pro.available;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 import {
   chainlinkEurUsdFeed,
@@ -11,7 +12,6 @@ import {
   useKeyedReadContracts,
   type KeyedContract,
 } from "@/lib/web3/keyed-multicall";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
@@ -52,12 +52,13 @@ export function useChainlinkRates(options?: { enabled?: boolean }): {
   const enabled = options?.enabled ?? true;
   // Always read feeds on the FX reference pin — not the wallet's active chain.
   const fxChain = hubFxRateChainId();
-  const chainId = wagmiChainId(fxChain);
+  const wagmiChain = evmWagmiChain(fxChain);
   const nativeFeed = chainlinkNativeUsdFeed(fxChain);
   const eurFeed = chainlinkEurUsdFeed(fxChain);
 
   const contracts = useMemo((): KeyedContract[] => {
     const reads: KeyedContract[] = [];
+    if (!wagmiChain.ok) return reads;
 
     if (isValidFeedAddress(nativeFeed)) {
       reads.push({
@@ -65,7 +66,7 @@ export function useChainlinkRates(options?: { enabled?: boolean }): {
         address: nativeFeed,
         abi: AGGREGATOR_V3_ABI,
         functionName: "latestRoundData",
-        chainId,
+        chainId: wagmiChain.chainId,
       });
     }
     if (isValidFeedAddress(eurFeed)) {
@@ -74,12 +75,12 @@ export function useChainlinkRates(options?: { enabled?: boolean }): {
         address: eurFeed,
         abi: AGGREGATOR_V3_ABI,
         functionName: "latestRoundData",
-        chainId,
+        chainId: wagmiChain.chainId,
       });
     }
 
     return reads;
-  }, [chainId, nativeFeed, eurFeed]);
+  }, [wagmiChain, nativeFeed, eurFeed]);
 
   const reads = useKeyedReadContracts({
     contracts,

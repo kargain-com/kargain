@@ -42,11 +42,12 @@ import {
 } from "@/lib/passport/passport-holder";
 import type { PassportStatus } from "@/lib/types/ponder";
 import type { ProtocolOwner } from "@/lib/web3/protocol-address";
+import { eip155WhenWagmiOk, wagmiWriteUnionId } from "@/lib/web3/evm-wagmi-chrome";
 import {
   ascendingConsignmentAddress,
 } from "@/lib/web3/deployment-addresses";
 import { commercialActive } from "@/lib/web3/commercial-active";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 import { txWriteAvailability } from "@/lib/web3/tx-write-availability";
@@ -74,7 +75,9 @@ export function ListingEditClient({
   const address = connectedAddress(account);
   const switchAvail = evmSwitchChainAvailability(account);
 
-  const wc = eip155WagmiChainId(chainId);
+  const wagmi = evmWagmiChain(chainId);
+  const wc = wagmiWriteUnionId(wagmi);
+  const eip155 = eip155WhenWagmiOk(wagmi);
   const { writeContractAsync, isPending } = useEvmWriteContract();
   const {
     openFixedPriceConsignment,
@@ -240,8 +243,8 @@ export function ListingEditClient({
       if (!switchAvail.available) {
         throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
       }
-      if (wc == null) return;
-      await switchChain(wc);
+      if (eip155 == null) return;
+        await switchChain(eip155);
     }
     setLog("Approving marketplace…");
     try {
@@ -254,7 +257,7 @@ export function ListingEditClient({
     address,
     wrongChain,
     market,
-    wc,
+    eip155,
     switchChain,
     approveToken,
     awaitReceipt,
@@ -286,8 +289,8 @@ export function ListingEditClient({
         if (!switchAvail.available) {
           throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
         }
-        if (wc == null) return;
-        await switchChain(wc);
+        if (eip155 == null) return;
+        await switchChain(eip155);
       }
       const decimals =
         denominationKind === DENOMINATION_KIND.Asset ? asset.decimals : 8;
@@ -361,7 +364,7 @@ export function ListingEditClient({
     runTx,
     runFlow,
     switchAvail,
-    wc,
+    eip155,
   ]);
 
   const runUpdatePrice = useCallback(async () => {
@@ -372,8 +375,8 @@ export function ListingEditClient({
         if (!switchAvail.available) {
           throw new Error(`switchChain unavailable: ${switchAvail.cause}`);
         }
-        if (wc == null) return;
-        await switchChain(wc);
+        if (eip155 == null) return;
+        await switchChain(eip155);
       }
       const amount = parseUnits(priceInput || "0", priceDecimals);
       if (amount <= 0n) {
@@ -409,7 +412,6 @@ export function ListingEditClient({
     priceDecimals,
     settlementNote,
     tid,
-    wc,
     refetchListing,
     saveSettlementNote,
     switchChain,
@@ -417,6 +419,7 @@ export function ListingEditClient({
     runTx,
     runFlow,
     switchAvail,
+    eip155,
   ]);
 
   const runSaveSettlementNote = useCallback(async () => {
@@ -454,8 +457,8 @@ export function ListingEditClient({
         <Button
           type="button"
           onClick={() => {
-            if (!switchAvail.available || wc == null) return;
-            void switchChain(wc);
+            if (!switchAvail.available) return;
+            if (eip155 != null) void switchChain(eip155);
           }}
         >
           {switchCopy}

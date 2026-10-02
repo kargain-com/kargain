@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 import {
   buildOnChainAuction,
@@ -25,7 +26,6 @@ import { AscendingConsignmentAbi } from "@/lib/contracts/abis.generated";
 import { usePassportHolder } from "@/hooks/use-passport-holder";
 import { passportHolderOwnerAddress } from "@/lib/passport/passport-holder";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 const STALE_MS = 30_000;
 const CONFIG_STALE_MS = 300_000;
@@ -78,7 +78,8 @@ export function useAuctionChainReads({
   enabled = true,
 }: UseAuctionChainReadsArgs) {
   const mode = commerceModeEvmAddress("ascending", chainId);
-  const wc = eip155WagmiChainId(chainId);
+  const wagmi = evmWagmiChain(chainId);
+  const wc = wagmi.ok ? wagmi.chainId : undefined
   const tokenIdBig = useMemo(() => {
     try {
       return BigInt(tokenId);

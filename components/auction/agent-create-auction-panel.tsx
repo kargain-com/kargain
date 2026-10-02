@@ -36,12 +36,10 @@ import {
   KarPassportAbi,
 } from "@/lib/contracts/abis.generated";
 import { REVERT_COPY } from "@/lib/marketplace/tx-error-message";
-import {
-  commercialActive,
-  nativeUnitOf,
-} from "@/lib/web3/commercial-active";
+import { commercialActive, nativeUnitOf } from "@/lib/web3/commercial-active";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
+import { wrongChainFromWagmi } from "@/lib/web3/evm-wagmi-chrome";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { cn } from "@/lib/utils";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 
@@ -77,7 +75,8 @@ export function AgentCreateAuctionPanel({
 
   const mode = commerceModeEvmAddress("ascending", chainId);
   const passport = karPassportAddress(chainId);
-  const wrongChain = evm.ok && (() => { const _wc = eip155WagmiChainId(chainId); return _wc != null && walletChainId !== _wc; })();
+  const wagmiChain = evmWagmiChain(chainId);
+  const wrongChain = wrongChainFromWagmi(evm.ok, walletChainId, wagmiChain);
   const { paused: modePaused } = useCommerceModePaused({
     mode: "ascending",
     chainId,
@@ -94,7 +93,7 @@ export function AgentCreateAuctionPanel({
     abi: KarPassportAbi,
     functionName: "passportStatus",
     args: [tid],
-    chainId: eip155WagmiChainId(chainId),
+    chainId: wagmiChain.ok ? wagmiChain.chainId : undefined,
     query: { enabled: Boolean(passport) && tid > 0n },
   });
   /** KarPassport.Status.VERIFIED === 1 — ascending open refuses otherwise. */
@@ -242,7 +241,7 @@ export function AgentCreateAuctionPanel({
         abi: AscendingConsignmentAbi,
         functionName: "openAscendingFromMandate",
         args: [tid, reserve, durationSec, protectionSec],
-        chainId: eip155WagmiChainId(chainId),
+        chainId: wagmiChain.ok ? wagmiChain.chainId : undefined,
       }),
     );
     if (result.ok) onSuccess?.();

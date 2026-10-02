@@ -7,13 +7,20 @@ import { describe, it } from "node:test";
 import {
   COMMERCIAL_ACTIVE,
   commercialActive,
+  registryDisjointnessViolations,
   requireCommercialActive,
   requireEvmCommercialActive,
   requireSvmCommercialActive,
+  type CommercialRegistry,
 } from "../lib/web3/commercial-active.ts";
-import { namespaceFromLayerZeroEid } from "../lib/web3/kargain-namespace.ts";
+import {
+  namespaceFromLayerZeroEid,
+  NON_EVM_NAMESPACE_MIN,
+  mintKargainNamespace,
+} from "../lib/web3/kargain-namespace.ts";
 import { kargainContractDenylist } from "../lib/web3/deployment-addresses.ts";
 import { ETHEREUM_SEPOLIA_SPOKE, SEPOLIA_ACTIVE, SEPOLIA_HISTORICAL_DENYLIST, ETHEREUM_SEPOLIA_HISTORICAL_DENYLIST } from "../lib/web3/sepolia-addresses.ts";
+import { EID_BY_CHAIN } from "../lib/web3/bridge/bridge-config.ts";
 import {
   ponderAddressesFromStack,
   resolveCommercialStack,
@@ -227,5 +234,92 @@ describe("resolveCommercialStack committed fallback", () => {
 
   it("throws for unknown commercial chainId", () => {
     assert.throws(() => resolveCommercialStack(999), /No COMMERCIAL_ACTIVE entry/);
+  });
+});
+
+describe("registryDisjointnessViolations", () => {
+  const base = COMMERCIAL_ACTIVE[84532];
+  const eth = COMMERCIAL_ACTIVE[11155111];
+  const svm = COMMERCIAL_ACTIVE[2000040168];
+
+  it("live COMMERCIAL_ACTIVE has no violations (product EID_BY_CHAIN)", () => {
+    assert.deepEqual(
+      registryDisjointnessViolations(COMMERCIAL_ACTIVE, EID_BY_CHAIN),
+      [],
+    );
+  });
+
+  it("plants EVM row with namespace in reserved non-EVM band", () => {
+    // Deliberately malformed — brand mint would refuse; plant bypasses for the checker.
+    const planted = {
+      [NON_EVM_NAMESPACE_MIN]: {
+        ...base,
+        namespace: NON_EVM_NAMESPACE_MIN,
+        chainId: 84532,
+      },
+    } as unknown as CommercialRegistry;
+    const v = registryDisjointnessViolations(planted, EID_BY_CHAIN);
+    assert.ok(
+      v.some((x) => x.kind === "evm_in_reserved_band"),
+      `expected band plant, got ${JSON.stringify(v)}`,
+    );
+  });
+
+  it("plants non-EVM row outside reserved band", () => {
+    const planted = {
+      84532: {
+        ...svm,
+        namespace: mintKargainNamespace(84532),
+      },
+    } as CommercialRegistry;
+    const v = registryDisjointnessViolations(planted, EID_BY_CHAIN);
+    assert.ok(
+      v.some((x) => x.kind === "non_evm_outside_reserved_band"),
+      `expected non-EVM band plant, got ${JSON.stringify(v)}`,
+    );
+  });
+
+  it("plants two rows with the same EIP-155 id", () => {
+    const planted = {
+      84532: base,
+      11155111: { ...eth, chainId: 84532 },
+    } as CommercialRegistry;
+    const v = registryDisjointnessViolations(planted, EID_BY_CHAIN);
+    assert.ok(
+      v.some((x) => x.kind === "duplicate_eip155"),
+      `expected duplicate eip155, got ${JSON.stringify(v)}`,
+    );
+  });
+
+  it("plants two rows with the same Wallet Standard chain", () => {
+    const planted: CommercialRegistry = {
+      2000040168: svm,
+      2000040169: {
+        ...svm,
+        namespace: mintKargainNamespace(2000040169),
+      },
+    };
+    const v = registryDisjointnessViolations(planted, EID_BY_CHAIN);
+    assert.ok(
+      v.some((x) => x.kind === "duplicate_wallet_standard_chain"),
+      `expected duplicate walletStandardChain, got ${JSON.stringify(v)}`,
+    );
+  });
+
+  it("plants two rows with the same LayerZero EID", () => {
+    // Hub EID 40245 → SVM reserved namespace 2_000_000_000 + 40245.
+    const collidingNs = NON_EVM_NAMESPACE_MIN + 40245;
+    const planted: CommercialRegistry = {
+      84532: base,
+      [collidingNs]: {
+        ...svm,
+        namespace: mintKargainNamespace(collidingNs),
+      },
+    };
+    const v = registryDisjointnessViolations(planted, EID_BY_CHAIN);
+    assert.ok(
+      v.some((x) => x.kind === "duplicate_layerzero_eid"),
+      `expected duplicate EID, got ${JSON.stringify(v)}`,
+    );
   });
 });

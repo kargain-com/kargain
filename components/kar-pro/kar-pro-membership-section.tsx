@@ -13,8 +13,8 @@ import { formatKarProPassTitle, proPassTokenIdFromAddress } from "@/lib/kar-pro/
 import { karProLeaveNetworkScopeCopy } from "@/lib/kar-pro/membership-roster";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { writeOutcomeHasClaimRecipient } from "@/lib/web3/write-outcome";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { requireCommercialActive } from "@/lib/web3/commercial-active";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 import { explorerAddressUrl } from "@/lib/web3/network-explorer";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
@@ -39,7 +39,8 @@ export function KarProMembershipSection({
   const { writeContractAsync } = useEvmWriteContract();
   const { runTx, phase: txPhase, error: txSyncError, syncLagged } = useTxSync(chainId);
   const { stakeLabel } = useMinStakeNative(chainId);
-  const wc = wagmiChainId(chainId);
+  const wagmiChain = evmWagmiChain(chainId);
+  const wc = wagmiChain.ok ? wagmiChain.chainId : undefined;
 
   const [leaveConfirm, setLeaveConfirm] = useState(false);
   const [claimMessage, setClaimMessage] = useState<string | null>(null);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 import { useMemo } from "react";
 
@@ -13,8 +14,10 @@ import {
 } from "@/lib/commerce/mode";
 import { normalizeAddress } from "@/lib/commerce/pause-surface";
 import { commercialChainIds } from "@/lib/web3/chain-context";
-import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
+import {
+  useKeyedReadContracts,
+  type KeyedContract,
+} from "@/lib/web3/keyed-multicall";
 
 const STALE_MS = 30_000;
 
@@ -47,13 +50,19 @@ export function useIsCommerceGuardian(enabled = true): {
 
   const contracts = useMemo(
     () =>
-      targets.map(({ chainId, mode, address }) => ({
-        key: `${chainId}:${mode}:guardian`,
-        address,
-        abi: commerceModeAbi(mode),
-        functionName: "guardian" as const,
-        chainId: wagmiChainId(chainId),
-      })),
+      targets.flatMap(({ chainId, mode, address }) => {
+        const wagmi = evmWagmiChain(chainId);
+        if (!wagmi.ok) return [];
+        return [
+          {
+            key: `${chainId}:${mode}:guardian`,
+            address,
+            abi: commerceModeAbi(mode),
+            functionName: "guardian" as const,
+            chainId: wagmi.chainId,
+          },
+        ];
+      }),
     [targets],
   );
 

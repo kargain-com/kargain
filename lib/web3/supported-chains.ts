@@ -1,7 +1,14 @@
 import type { Chain } from "viem/chains";
 import { baseSepolia, hardhat, sepolia } from "viem/chains";
 
-import { eip155Of, isCommercialEip155Id, isCommercialNamespace } from "@/lib/web3/commercial-active";
+import {
+  evmChainOf,
+  resolveEvmChain,
+  type CommercialRegistry,
+  type Eip155ChainId,
+  type EvmCommercialActiveStack,
+  type ResolveEvmChainCause,
+} from "@/lib/web3/commercial-active";
 
 const enableLocalChain = process.env.NEXT_PUBLIC_ENABLE_LOCAL_CHAIN === "1";
 
@@ -9,43 +16,81 @@ export const kargainChains: readonly [Chain, ...Chain[]] = enableLocalChain
   ? [hardhat, baseSepolia, sepolia]
   : [baseSepolia, sepolia];
 
-export type KargainChainId = (typeof kargainChains)[number]["id"];
-
 const byId = new Map<number, Chain>();
 for (const c of kargainChains) byId.set(c.id, c);
 
+/** Wagmi write-union id — members of {@link kargainChains} only. */
+export type KargainWriteUnionChainId = (typeof kargainChains)[number]["id"];
+
 /**
- * Use where `chainId` is parsed from URL/query but wagmi expects the configured chain union.
- * Commercial namespaces resolve EIP-155 via `eip155Of` (never a blind cast).
+ * Narrow a commercial {@link Eip155ChainId} to the wagmi write-union.
+ * Module-private — callers use {@link evmWagmiChain} / {@link wagmiChainOfStack}.
  */
-export function wagmiChainId(chainId: number): KargainChainId {
-  // Commercial but not EVM EIP-155 ⇒ reserved-band / SVM namespace — never a wagmi chain.
-  if (isCommercialNamespace(chainId) && !isCommercialEip155Id(chainId)) {
-    throw new Error(
-      `wagmiChainId: namespace ${chainId} is SVM — not an EIP-155 wagmi chain`,
-    );
+function writeUnionChainId(chainId: Eip155ChainId): KargainWriteUnionChainId {
+  if (!byId.has(chainId)) {
+    throw new Error(`writeUnionChainId: ${chainId} is not in the Kargain write-union`);
   }
-  const eip155 = isCommercialEip155Id(chainId) ? eip155Of(chainId) : chainId;
-  if (!byId.has(eip155)) {
-    throw new Error(`wagmiChainId: ${chainId} is not in the Kargain write-union`);
+  return chainId as KargainWriteUnionChainId;
+}
+
+export type EvmWagmiChainResult =
+  | { ok: true; chainId: KargainWriteUnionChainId; eip155: Eip155ChainId }
+  | { ok: false; cause: ResolveEvmChainCause };
+
+/**
+ * Sole namespace → wagmi write-union door. Soft Result — never throw for SVM /
+ * unresolved. Compose {@link resolveEvmChain} + write-union narrow.
+ * `eip155` is the branded identity for ActiveAccount.switchChain (WriteUnion
+ * collapses to `number` under viem and cannot invent-ban alone).
+ */
+export function evmWagmiChain(
+  namespace: number | null | undefined,
+  registry?: CommercialRegistry,
+): EvmWagmiChainResult {
+  if (namespace == null || !Number.isFinite(namespace)) {
+    return { ok: false, cause: "unresolved_namespace" };
   }
-  return eip155 as KargainChainId;
+  const resolved = resolveEvmChain(namespace, registry);
+  if (!resolved.ok) {
+    return resolved;
+  }
+  return {
+    ok: true,
+    chainId: writeUnionChainId(resolved.chainId),
+    eip155: resolved.chainId,
+  };
 }
 
 /**
- * Product chrome door for EIP-155 wagmi reads. Commercial SVM namespaces
- * return `undefined` (never throw). Call sites skip enabled reads when absent —
- * no invented chain id. Throwing {@link wagmiChainId} remains for EVM write owners.
+ * Wagmi write-union id from an EVM stack already in hand.
+ * Throws only when the commercial EVM id is absent from {@link kargainChains}
+ * (registry ↔ write-union invariant — plant covers that).
  */
-export function eip155WagmiChainId(chainId: number): KargainChainId | undefined {
-  if (isCommercialNamespace(chainId) && !isCommercialEip155Id(chainId)) {
-    return undefined;
-  }
-  return wagmiChainId(chainId);
+export function wagmiChainOfStack(
+  stack: EvmCommercialActiveStack,
+): KargainWriteUnionChainId {
+  return writeUnionChainId(evmChainOf(stack));
 }
 
-export function getViemChain(chainId: number): Chain | undefined {
-  return byId.get(chainId);
+/**
+ * Write-union RPC / transport for a {@link Chain} already taken from
+ * {@link kargainChains} (includes Hardhat 31337 when local is enabled).
+ * Not a namespace door — never called with a raw commercial namespace.
+ */
+export function rpcUrlForWriteUnionChain(chain: Chain): string {
+  return rpcUrlForNumericId(chain.id);
+}
+
+/**
+ * Viem {@link Chain} for a branded commercial EIP-155 id.
+ * Commercial EVM ids are members of {@link kargainChains} — never `undefined`.
+ */
+export function getViemChain(chainId: Eip155ChainId): Chain {
+  const chain = byId.get(chainId);
+  if (chain == null) {
+    throw new Error(`getViemChain: ${chainId} is not in the Kargain write-union`);
+  }
+  return chain;
 }
 
 /** Public RPC fallbacks — override with NEXT_PUBLIC_RPC_<chainId> or NEXT_PUBLIC_RPC_BY_CHAIN JSON. */
@@ -66,13 +111,24 @@ function parseRpcMap(): Record<string, string> {
   }
 }
 
-/** Call-time env — both BY_CHAIN map and per-chain single override. */
-export function rpcUrlForChain(chainId: number): string {
+function rpcUrlForNumericId(chainId: number): string {
   const fromMap = parseRpcMap()[String(chainId)];
   if (fromMap) return fromMap;
-  const single = process.env[`NEXT_PUBLIC_RPC_${chainId}` as keyof NodeJS.ProcessEnv] as string | undefined;
+  const single = process.env[`NEXT_PUBLIC_RPC_${chainId}` as keyof NodeJS.ProcessEnv] as
+    | string
+    | undefined;
   if (single) return single;
   const fb = FALLBACK_RPC[chainId];
   if (fb) return fb;
   throw new Error(`No RPC configured for chain ${chainId}`);
+}
+
+/** Call-time env — both BY_CHAIN map and per-chain single override. */
+export function rpcUrlForChain(chainId: Eip155ChainId): string {
+  return rpcUrlForNumericId(chainId);
+}
+
+/** True when `chainId` is in the wagmi write-union table (incl. local Hardhat). */
+export function isWriteUnionChainId(chainId: number): boolean {
+  return byId.has(chainId);
 }

@@ -9,10 +9,13 @@ import {
   karProAnyActive,
   preferActiveMembershipChainId,
 } from "@/lib/kar-pro/membership-roster";
-import { isCommercialEip155Id } from "@/lib/web3/commercial-active";
+import {
+  peerIdentityMembershipChainId,
+  peerIdentityStakingChainId,
+} from "@/lib/web3/evm-wagmi-chrome";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 import { navShortAddress } from "@/lib/web3/wallet-display";
 
 export type PeerIdentity = {
@@ -38,12 +41,7 @@ export function usePeerIdentity(
   peerAddress: `0x${string}` | undefined,
   options?: { chainId?: number | null },
 ): PeerIdentity {
-  const membershipChainId =
-    options?.chainId != null &&
-    Number.isFinite(options.chainId) &&
-    isCommercialEip155Id(options.chainId)
-      ? options.chainId
-      : null;
+  const membershipChainId = peerIdentityMembershipChainId(options?.chainId);
 
   const useAnyActive = membershipChainId == null && Boolean(peerAddress);
 
@@ -57,8 +55,8 @@ export function usePeerIdentity(
     membershipChainId != null
       ? karProStakingAddress(membershipChainId)
       : undefined;
-  const wc =
-    membershipChainId != null ? eip155WagmiChainId(membershipChainId) : undefined;
+  const wagmiChain = evmWagmiChain(membershipChainId);
+  const wc = peerIdentityStakingChainId(membershipChainId, wagmiChain);
 
   const { data: chainActive, isPending: chainActivePending } = useReadContract({
     address: staking,

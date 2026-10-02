@@ -2,12 +2,12 @@
 
 import { useEffect } from "react";
 import { useReadContract } from "wagmi";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import { chainStatusFromGetPassportStatusResult } from "@/lib/passport/confirm-listing-status";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 export function usePassportChainStatus(
   chainId: number,
@@ -15,7 +15,8 @@ export function usePassportChainStatus(
   ponderStatus: PassportStatus,
 ) {
   const address = karPassportAddress(chainId);
-  const wc = eip155WagmiChainId(chainId);
+  const wagmi = evmWagmiChain(chainId);
+  const wc = wagmi.ok ? wagmi.chainId : undefined
 
   const { data, isLoading, isFetching, isError, refetch } = useReadContract({
     address,

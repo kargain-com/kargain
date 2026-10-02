@@ -25,6 +25,8 @@ export type {
   BridgeRouteResult,
 } from "./bridge-config";
 export { getBridgeReadClient } from "./bridge-read-client";
+export { pollDstOwner } from "./poll-dst-owner";
+export type { PollDstOwnerResult } from "./poll-dst-owner";
 export { onftSentGuidFromLogs } from "./bridge-guid";
 export {
   SEND_TO_OFFSET,

@@ -20,12 +20,9 @@ import {
   type ActiveAccount,
   type WalletFamilyWanted,
 } from "@/lib/web3/active-account";
-import {
-  commercialActive,
-  nativeUnitOf,
-  type CommercialRegistry,
-  type SvmCommercialActiveStack,
-} from "@/lib/web3/commercial-active";
+import { commercialActive, nativeUnitOf, type CommercialRegistry, type SvmCommercialActiveStack } from "@/lib/web3/commercial-active";
+import type { KargainWriteUnionChainId } from "@/lib/web3/supported-chains";
+import { wagmiChainOfStack } from "@/lib/web3/supported-chains";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import {
   AccountRole,
@@ -37,7 +34,6 @@ import {
   SvmWriteOwnerRefusal,
   throwSvmWriteSendRefusal,
 } from "@/lib/web3/svm-write-owner-refusal";
-import { wagmiChainId } from "@/lib/web3/supported-chains";
 import type { WriteSubmission } from "@/lib/web3/write-outcome";
 import {
   txWriteAvailabilityForCapability,
@@ -96,14 +92,14 @@ export type WriteEvmContractFn = (
 export function buildEvmSetVerificationFeeCall(args: {
   address: `0x${string}`;
   feeWei: bigint;
-  chainId: number;
+  chainId: KargainWriteUnionChainId;
 }): SetVerificationFeeEvmCall {
   return {
     address: args.address,
     abi: KarProStakingAbi,
     functionName: "setVerificationFee",
     args: [args.feeWei],
-    chainId: wagmiChainId(args.chainId),
+    chainId: args.chainId,
   };
 }
 
@@ -190,7 +186,7 @@ export async function planSetVerificationFee(
     const call = buildEvmSetVerificationFeeCall({
       address,
       feeWei: fee,
-      chainId: input.chainId,
+      chainId: wagmiChainOfStack(stack),
     });
     return { ok: true, vm: "evm", call, fee };
   }

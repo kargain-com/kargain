@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 import { parseMandate, type MandateSnapshot } from "@/lib/commerce/mandate";
 import {
@@ -9,7 +10,6 @@ import {
   type CommerceMode,
 } from "@/lib/commerce/mode";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
-import { eip155WagmiChainId } from "@/lib/web3/supported-chains";
 
 const MANDATE_FUNCTIONS = [
   "mandateActive",
@@ -41,7 +41,8 @@ export function useMandate(input: {
   const { mode, chainId, tokenId, enabled = true } = input;
   const address = commerceModeEvmAddress(mode, chainId);
   const abi = commerceModeAbi(mode);
-  const wc = eip155WagmiChainId(chainId);
+  const wagmi = evmWagmiChain(chainId);
+  const wc = wagmi.ok ? wagmi.chainId : undefined
 
   const tid = useMemo(() => {
     try {
