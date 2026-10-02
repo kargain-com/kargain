@@ -556,10 +556,12 @@ export async function passportHeldByModeCustody(args: {
   if (stack == null) return { status: "refused", cause: "unresolved_namespace" };
 
   if (stack.vm === "evm") {
-    const custodians = Object.values(modes).map((a) => a.toLowerCase());
-    return custodians.includes(owner.toLowerCase())
-      ? { status: "held" }
-      : { status: "not_held" };
+    for (const custodian of Object.values(modes)) {
+      if (protocolAddressesEqual(args.namespace, owner, custodian)) {
+        return { status: "held" };
+      }
+    }
+    return { status: "not_held" };
   }
 
   const derive = args.derivePda ?? deriveSvmPda;

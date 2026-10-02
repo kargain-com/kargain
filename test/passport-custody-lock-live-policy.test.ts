@@ -105,8 +105,11 @@ function plantedDeriveOk(address = "StatePda1111111111111111111111111111111") {
     }) as Awaited<ReturnType<typeof import("@/lib/svm/derive-pda").deriveSvmPda>>;
 }
 
-function knownHolder(ownerAddress: string): PassportHolder {
-  const owner = mintProtocolOwner(FIXTURE_SVM_NAMESPACE, ownerAddress);
+function knownHolder(
+  ownerAddress: string,
+  namespace: number = FIXTURE_SVM_NAMESPACE,
+): PassportHolder {
+  const owner = mintProtocolOwner(namespace, ownerAddress);
   assert.ok(owner != null);
   return { status: "known", owner, source: "chain" };
 }
@@ -316,6 +319,40 @@ describe("passport-custody-lock-live-policy", () => {
     assert.match(owner, /status:\s*["']unknown["']/);
     assert.match(owner, /cause:\s*["']pda_failed["']/);
     assert.match(owner, /pdaCause:/);
+  });
+
+  it("EVM mode-custody uses protocolAddressesEqual (no parallel toLowerCase arm)", () => {
+    const owner = readFileSync(path.join(ROOT, HOLDER_REL), "utf8");
+    const evmArm = owner.slice(
+      owner.indexOf('if (stack.vm === "evm")'),
+      owner.indexOf("const derive = args.derivePda"),
+    );
+    assert.match(evmArm, /protocolAddressesEqual/);
+    assert.doesNotMatch(
+      evmArm,
+      /\.toLowerCase\s*\(/,
+      "EVM mode-custody must not case-fold beside protocol-address",
+    );
+  });
+
+  it("EVM known mixed-case mode address → held", async () => {
+    const modeChecksum = "0xEc97fC815055CBD51746F7D6966340a1318Ac6F8";
+    const hold = await passportHeldByModeCustody({
+      namespace: 84532,
+      holder: knownHolder(modeChecksum.toLowerCase(), 84532),
+    });
+    assert.equal(hold.status, "held");
+  });
+
+  it("EVM known stranger → not_held", async () => {
+    const hold = await passportHeldByModeCustody({
+      namespace: 84532,
+      holder: knownHolder(
+        "0x0000000000000000000000000000000000000001",
+        84532,
+      ),
+    });
+    assert.equal(hold.status, "not_held");
   });
 
   it("HEAD skip→false defect class: silent continue would be not_held", () => {

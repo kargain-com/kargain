@@ -105,7 +105,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "passport-holder",
     owner:
       "passport-holder + use-passport-holder + decode-core-asset (Unit O dual-VM holder fact)",
-    rule: "Sole dual-VM passport holder fact (known/projection/pending/in_transit/absent/refused): EVM keyed ownerOf / SVM kar-passport/asset + Core AssetV1 owner via decode-core-asset; SVM account fetch returns {data,owner}; chain beats projection; listing-seller arm stays in isPassportHolder; chrome uses isSessionHolder / isPassportHolderFromFact; product ownerOf banned outside holder + Unit L builders + bridge delivery polls; mode-custody takes PassportHolder → held|not_held|unknown(unread)|refused(typed pda_failed+pdaCause|unresolved_namespace); edit fails closed on unknown+refused",
+    rule: "Sole dual-VM passport holder fact (known/projection/pending/in_transit/absent/refused): EVM keyed ownerOf / SVM kar-passport/asset + Core AssetV1 owner via decode-core-asset; SVM account fetch returns {data,owner}; chain beats projection; listing-seller arm stays in isPassportHolder; chrome uses isSessionHolder / isPassportHolderFromFact; product ownerOf banned outside holder + Unit L builders + bridge delivery polls; mode-custody takes PassportHolder → held|not_held|unknown(unread)|refused(typed pda_failed+pdaCause|unresolved_namespace); EVM mode compare only via protocolAddressesEqual (no parallel toLowerCase); edit fails closed on unknown+refused",
     guardTests: [
       "passport-holder-policy.test.ts",
       "decode-core-asset-policy.test.ts",
