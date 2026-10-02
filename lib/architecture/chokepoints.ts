@@ -105,7 +105,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "passport-holder",
     owner:
       "passport-holder + use-passport-holder + decode-core-asset (Unit O dual-VM holder fact)",
-    rule: "Sole dual-VM passport holder fact (known/projection/pending/in_transit/absent/refused): EVM keyed ownerOf / SVM kar-passport/asset + Core AssetV1 owner via decode-core-asset; SVM account fetch returns {data,owner}; chain beats projection; listing-seller arm stays in isPassportHolder; chrome uses isSessionHolder / isPassportHolderFromFact; product ownerOf banned outside holder + Unit L builders + bridge delivery polls; mode-custody compare is held|not_held|refused (PDA derive failure never silent skip→not_held)",
+    rule: "Sole dual-VM passport holder fact (known/projection/pending/in_transit/absent/refused): EVM keyed ownerOf / SVM kar-passport/asset + Core AssetV1 owner via decode-core-asset; SVM account fetch returns {data,owner}; chain beats projection; listing-seller arm stays in isPassportHolder; chrome uses isSessionHolder / isPassportHolderFromFact; product ownerOf banned outside holder + Unit L builders + bridge delivery polls; mode-custody takes PassportHolder → held|not_held|unknown(unread)|refused(typed pda_failed+pdaCause|unresolved_namespace); edit fails closed on unknown+refused",
     guardTests: [
       "passport-holder-policy.test.ts",
       "decode-core-asset-policy.test.ts",
@@ -877,7 +877,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "passport-commerce-facts",
     owner:
       "lib/passport/passport-commerce-facts.ts · lib/passport/commerce-fact.ts · lib/passport/passport-commerce-rail.ts · hooks/use-passport-commerce-facts.ts · lib/web3/supported-chains.ts · lib/passport/simulate-passport-may.ts",
-    rule: "Dual-VM passport commerce chrome: EVM batched may/custodyLocked/encumbrance/modes; SVM mode/challenge/registry facts + may_* from simulatePassportMay inject (never invent hasLiveConsignment false or configured false); CommerceFact = known|pending|refused(KeyedReadCause|SurfaceSupportCause); wagmiChainId only inside the EVM plan arm; eip155WagmiChainId returns undefined for commercial SVM; readPassportCustodyLockLive is the sole RSC custody-lock door (product custodyLocked banned outside this module; never eternal SVM pending)",
+    rule: "Dual-VM passport commerce chrome: EVM batched may/custodyLocked/encumbrance/modes; SVM mode/challenge/registry facts + may_* from simulatePassportMay inject (never invent hasLiveConsignment false or configured false); CommerceFact = known|pending|refused(KeyedReadCause|SurfaceSupportCause); wagmiChainId only inside the EVM plan arm; eip155WagmiChainId returns undefined for commercial SVM; readPassportCustodyLockLive is the sole RSC custody-lock door (product custodyLocked banned outside this module; never eternal SVM pending; state-PDA derive fail → pda_failed not malformed_response)",
     guardTests: [
       "passport-detail-svm-chrome-policy.test.ts",
       "commerce-fact-status-policy.test.ts",

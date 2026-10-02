@@ -47,7 +47,8 @@ export type KeyedContract<K extends string = string> =
 export type KeyedReadCause =
   | FetchSvmAccountDataCause
   | "unresolved_namespace"
-  | "evm_call_failed";
+  | "evm_call_failed"
+  | "pda_failed";
 
 export type KeyedEntry =
   | { status: "success"; result: unknown }

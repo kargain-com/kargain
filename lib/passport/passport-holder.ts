@@ -9,7 +9,10 @@
  */
 
 import { decodeCoreAssetOwner } from "@/lib/svm/decode-core-asset";
-import { deriveSvmPda } from "@/lib/svm/derive-pda";
+import {
+  deriveSvmPda,
+  type DeriveSvmPdaCause,
+} from "@/lib/svm/derive-pda";
 import { tokenIdToBytes32 } from "@/lib/svm/event-payload-decode";
 import { commerceModeAddresses } from "@/lib/commerce/mode";
 import {
@@ -508,27 +511,53 @@ export async function readPassportHolderLive(args: {
 /**
  * Mode-custody compare for edit admission: EVM mode contract addresses, or
  * SVM `custody_authority` PDAs under each configured mode program.
- * Derivation failure is refused — never silent skip → not held.
+ * Takes the full holder fact — unread/refused holders are `unknown`, never
+ * silent not_held. Derivation failure is typed refused — never a template string.
  */
 export type ModeCustodyHold =
   | { status: "held" }
   | { status: "not_held" }
-  | { status: "refused"; cause: string; mode?: string };
+  | {
+      status: "unknown";
+      holder: "pending" | "in_transit" | "absent" | "refused";
+    }
+  | { status: "refused"; cause: "unresolved_namespace" }
+  | {
+      status: "refused";
+      cause: "pda_failed";
+      pdaCause: DeriveSvmPdaCause;
+      mode: string;
+    };
 
 export async function passportHeldByModeCustody(args: {
   namespace: number;
-  holderOwner: string | undefined;
+  holder: PassportHolder;
   registry?: CommercialRegistry;
   derivePda?: typeof deriveSvmPda;
 }): Promise<ModeCustodyHold> {
-  if (args.holderOwner == null) return { status: "not_held" };
+  switch (args.holder.status) {
+    case "pending":
+    case "in_transit":
+    case "absent":
+    case "refused":
+      return { status: "unknown", holder: args.holder.status };
+    case "known":
+    case "projection":
+      break;
+    default: {
+      const _exhaustive: never = args.holder;
+      return _exhaustive;
+    }
+  }
+
+  const owner = args.holder.owner;
   const modes = commerceModeAddresses(args.namespace, args.registry);
   const stack = commercialActive(args.namespace, args.registry);
   if (stack == null) return { status: "refused", cause: "unresolved_namespace" };
 
   if (stack.vm === "evm") {
     const custodians = Object.values(modes).map((a) => a.toLowerCase());
-    return custodians.includes(args.holderOwner.toLowerCase())
+    return custodians.includes(owner.toLowerCase())
       ? { status: "held" }
       : { status: "not_held" };
   }
@@ -542,11 +571,12 @@ export async function passportHeldByModeCustody(args: {
     if (!pda.ok) {
       return {
         status: "refused",
-        cause: `pda_failed:${pda.cause}`,
+        cause: "pda_failed",
+        pdaCause: pda.cause,
         mode,
       };
     }
-    if (protocolAddressesEqual(args.namespace, args.holderOwner, pda.address)) {
+    if (protocolAddressesEqual(args.namespace, owner, pda.address)) {
       return { status: "held" };
     }
   }

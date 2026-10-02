@@ -22,6 +22,7 @@ export const COMMERCE_FACT_CAUSES = [
   "malformed_response",
   "unresolved_namespace",
   "evm_call_failed",
+  "pda_failed",
   "not_in_program",
   "product_owner_owed",
   "authority_only",
@@ -64,6 +65,8 @@ export function commerceFactCauseCopy(cause: CommerceFactCause): string {
       return unresolvedNamespaceCopy();
     case "evm_call_failed":
       return "The chain did not return this value.";
+    case "pda_failed":
+      return "This account address could not be derived on this network.";
     case "not_in_program":
     case "authority_only":
     case "product_owner_owed":

@@ -1,9 +1,10 @@
 /**
- * Unit O corrective — sole live custody-lock door + custodyLocked ban.
+ * Unit O corrective — sole live custody-lock door + mode-custody honesty.
  *
  * Product `functionName: "custodyLocked"` only in passport-commerce-facts.
  * Live reader: SVM PassportState → known true/false (never eternal pending);
- * PDA / account failure → refused; EVM boolean via inject.
+ * state-PDA failure → `pda_failed` (not malformed_response).
+ * Mode-custody takes PassportHolder; unread → unknown; PDA fail → typed refused.
  */
 
 import assert from "node:assert/strict";
@@ -16,12 +17,16 @@ import {
   custodyLockFromKeyedEntry,
   readPassportCustodyLockLive,
 } from "@/lib/passport/passport-commerce-facts";
-import { passportHeldByModeCustody } from "@/lib/passport/passport-holder";
+import {
+  passportHeldByModeCustody,
+  type PassportHolder,
+} from "@/lib/passport/passport-holder";
 import {
   hexToBytes,
   passportStateLayout,
 } from "@/lib/svm/decode-account-state";
 import type { CommercialRegistry } from "@/lib/web3/commercial-active";
+import { mintProtocolOwner } from "@/lib/web3/protocol-address";
 import { svmAccountData } from "@/lib/web3/svm-rpc";
 import {
   FIXTURE_SVM_NAMESPACE,
@@ -34,6 +39,8 @@ import {
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OWNER_REL = "lib/passport/passport-commerce-facts.ts";
+const HOLDER_REL = "lib/passport/passport-holder.ts";
+const EDIT_REL = "app/(identity)/passport/[tokenId]/edit/page.tsx";
 
 const CUSTODY_LOCKED_ALLOWLIST: Readonly<Record<string, string>> = {
   [OWNER_REL]:
@@ -47,6 +54,9 @@ const PRODUCT_ROOTS = ["app", "components", "hooks", "lib"] as const;
 
 /** custody_locked bool sits after disc(8)+token(32)+status(1)+verifier(32)+verified_at(8) = 81 */
 const CUSTODY_LOCKED_OFFSET = 81;
+
+const MODE_CUSTODY_PDA = FIXTURE_SVM_STACK.karPassport;
+const STRANGER_OWNER = FIXTURE_SVM_STACK.karProPass;
 
 function walkTs(dir: string, out: string[]): void {
   for (const ent of readdirSync(dir, { withFileTypes: true })) {
@@ -95,6 +105,12 @@ function plantedDeriveOk(address = "StatePda1111111111111111111111111111111") {
     }) as Awaited<ReturnType<typeof import("@/lib/svm/derive-pda").deriveSvmPda>>;
 }
 
+function knownHolder(ownerAddress: string): PassportHolder {
+  const owner = mintProtocolOwner(FIXTURE_SVM_NAMESPACE, ownerAddress);
+  assert.ok(owner != null);
+  return { status: "known", owner, source: "chain" };
+}
+
 describe("passport-custody-lock-live-policy", () => {
   it("product custodyLocked only in passport-commerce-facts", () => {
     const hits = findCustodyLockedViolations();
@@ -113,10 +129,7 @@ describe("passport-custody-lock-live-policy", () => {
   });
 
   it("edit page has no getPublicClient / KarPassportAbi / passportAddr fork", () => {
-    const src = readFileSync(
-      path.join(ROOT, "app/(identity)/passport/[tokenId]/edit/page.tsx"),
-      "utf8",
-    );
+    const src = readFileSync(path.join(ROOT, EDIT_REL), "utf8");
     assert.doesNotMatch(src, /getPublicClient/);
     assert.doesNotMatch(src, /KarPassportAbi/);
     assert.doesNotMatch(src, /passportAddr/);
@@ -124,7 +137,9 @@ describe("passport-custody-lock-live-policy", () => {
     assert.match(src, /readPassportCustodyLockLive/);
     assert.match(src, /modeCustodyRefused/);
     assert.doesNotMatch(src, /derivePassportPresence/);
+    assert.doesNotMatch(src, /passportHolderOwnerAddress/);
     assert.match(src, /modeHold\.status === ["']refused["']/);
+    assert.match(src, /modeHold\.status === ["']unknown["']/);
   });
 
   it("scan stays clean for custodyLocked allowlist", () => {
@@ -189,6 +204,24 @@ describe("passport-custody-lock-live-policy", () => {
     });
   });
 
+  it("state-PDA derive failure → pda_failed (not malformed_response)", async () => {
+    const lock = await readPassportCustodyLockLive({
+      namespace: FIXTURE_SVM_NAMESPACE,
+      tokenId: "1",
+      registry: fixtureRegistry(),
+      derivePda: async () => ({
+        ok: false,
+        cause: "unregistered_program",
+        detail: "plant",
+      }),
+    });
+    assert.deepEqual(lock, { status: "refused", cause: "pda_failed" });
+    assert.notEqual(
+      (lock as { cause?: string }).cause,
+      "malformed_response",
+    );
+  });
+
   it("EVM live inject → known boolean via mapper", async () => {
     const lock = await readPassportCustodyLockLive({
       namespace: 84532,
@@ -212,10 +245,51 @@ describe("passport-custody-lock-live-policy", () => {
     assert.equal(lock.status, "refused");
   });
 
-  it("planted PDA derive failure → mode custody refused not not_held", async () => {
+  for (const status of [
+    "pending",
+    "in_transit",
+    "absent",
+    "refused",
+  ] as const) {
+    it(`holder ${status} → mode custody unknown (not not_held)`, async () => {
+      const holder: PassportHolder =
+        status === "refused"
+          ? { status: "refused", cause: "core_decode_failed" }
+          : { status };
+      const hold = await passportHeldByModeCustody({
+        namespace: FIXTURE_SVM_NAMESPACE,
+        holder,
+        registry: fixtureRegistry(),
+      });
+      assert.deepEqual(hold, { status: "unknown", holder: status });
+      assert.notEqual(hold.status, "not_held" as const);
+    });
+  }
+
+  it("known held by mode PDA → held", async () => {
     const hold = await passportHeldByModeCustody({
       namespace: FIXTURE_SVM_NAMESPACE,
-      holderOwner: "AnyHolder111111111111111111111111111111111",
+      holder: knownHolder(MODE_CUSTODY_PDA),
+      registry: fixtureRegistry(),
+      derivePda: plantedDeriveOk(MODE_CUSTODY_PDA),
+    });
+    assert.equal(hold.status, "held");
+  });
+
+  it("known not a mode → not_held", async () => {
+    const hold = await passportHeldByModeCustody({
+      namespace: FIXTURE_SVM_NAMESPACE,
+      holder: knownHolder(STRANGER_OWNER),
+      registry: fixtureRegistry(),
+      derivePda: plantedDeriveOk(MODE_CUSTODY_PDA),
+    });
+    assert.equal(hold.status, "not_held");
+  });
+
+  it("planted PDA derive failure → typed refused with pdaCause", async () => {
+    const hold = await passportHeldByModeCustody({
+      namespace: FIXTURE_SVM_NAMESPACE,
+      holder: knownHolder(STRANGER_OWNER),
       registry: fixtureRegistry(),
       derivePda: async () => ({
         ok: false,
@@ -225,17 +299,29 @@ describe("passport-custody-lock-live-policy", () => {
     });
     assert.equal(hold.status, "refused");
     if (hold.status !== "refused") return;
-    assert.match(hold.cause, /pda_failed/);
-    assert.notEqual(hold.status, "not_held" as const);
+    assert.equal(hold.cause, "pda_failed");
+    if (hold.cause !== "pda_failed") return;
+    assert.equal(hold.pdaCause, "unregistered_program");
+    assert.ok(typeof hold.mode === "string" && hold.mode.length > 0);
+  });
+
+  it("mode-custody owner has no text-encoded pda_failed cause", () => {
+    const owner = readFileSync(path.join(ROOT, HOLDER_REL), "utf8");
+    assert.doesNotMatch(
+      owner,
+      /pda_failed:\$\{/,
+      "cause must not be a template string",
+    );
+    assert.doesNotMatch(owner, /holderOwner/);
+    assert.match(owner, /status:\s*["']unknown["']/);
+    assert.match(owner, /cause:\s*["']pda_failed["']/);
+    assert.match(owner, /pdaCause:/);
   });
 
   it("HEAD skip→false defect class: silent continue would be not_held", () => {
     const headDefect = `if (!pda.ok) continue;\nreturn false;`;
     assert.match(headDefect, /continue/);
-    const owner = readFileSync(
-      path.join(ROOT, "lib/passport/passport-holder.ts"),
-      "utf8",
-    );
+    const owner = readFileSync(path.join(ROOT, HOLDER_REL), "utf8");
     assert.doesNotMatch(
       owner,
       /if\s*\(\s*!pda\.ok\s*\)\s*continue/,

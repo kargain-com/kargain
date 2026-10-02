@@ -12,7 +12,6 @@ import type { CustodyLockRead, PassportPresence } from "@/lib/passport/presence"
 import { readPassportCustodyLockLive } from "@/lib/passport/passport-commerce-facts";
 import {
   passportHeldByModeCustody,
-  passportHolderOwnerAddress,
   readPassportHolderLive,
 } from "@/lib/passport/passport-holder";
 import { parsePassportTokenId } from "@/lib/passport/passport-token-id";
@@ -276,9 +275,9 @@ export default async function EditPassportPage({
 
     const modeHold = await passportHeldByModeCustody({
       namespace: chainId,
-      holderOwner: passportHolderOwnerAddress(holder),
+      holder,
     });
-    if (modeHold.status === "refused") {
+    if (modeHold.status === "refused" || modeHold.status === "unknown") {
       modeCustodyRefused = true;
     } else {
       listingActive = modeHold.status === "held";

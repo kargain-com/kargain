@@ -219,6 +219,7 @@ export function sellSurfaceClosedCopy(
     case "malformed_response":
     case "unresolved_namespace":
     case "evm_call_failed":
+    case "pda_failed":
     case "not_in_program":
     case "product_owner_owed":
     case "authority_only":

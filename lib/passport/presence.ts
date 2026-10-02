@@ -91,6 +91,8 @@ const LOCATION_REFUSED_CAUSE_LINE: Record<KeyedReadCause, string> = {
   unresolved_namespace:
     "This network is not registered for lock reads in Kargain.",
   evm_call_failed: "The chain call for this passport's lock did not succeed.",
+  pda_failed:
+    "This passport's lock address could not be derived on this network.",
 };
 
 /**

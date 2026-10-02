@@ -922,7 +922,7 @@ export async function readPassportCustodyLockLive(args: {
     seeds: { token_id: tokenBytes },
   });
   if (!statePda.ok) {
-    return { status: "refused", cause: "malformed_response" };
+    return { status: "refused", cause: "pda_failed" };
   }
 
   const fetch = args.fetchAccountData ?? fetchProductSvmAccountData;

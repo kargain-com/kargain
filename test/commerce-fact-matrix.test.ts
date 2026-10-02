@@ -327,12 +327,13 @@ describe("S8-D1b commerce-fact behaviour matrix", () => {
 
 describe("commerceFactCauseCopy", () => {
   it("every CommerceFactCause returns a non-empty sentence", () => {
-    assert.equal(COMMERCE_FACT_CAUSES.length, 8);
+    assert.equal(COMMERCE_FACT_CAUSES.length, 9);
     for (const cause of COMMERCE_FACT_CAUSES) {
       const copy = commerceFactCauseCopy(cause);
       assert.ok(copy.length > 0, cause);
       assert.doesNotMatch(copy, /Waiting/, cause);
     }
+    assert.match(commerceFactCauseCopy("pda_failed"), /derived/);
   });
 
   it("pins support and keyed sentences", () => {
