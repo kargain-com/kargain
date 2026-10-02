@@ -8,8 +8,8 @@ import {
   type PassportEditRefusalCause,
 } from "@/lib/passport/action-surface";
 import { fetchPassportDetail } from "@/lib/passport/fetch-passport-detail";
-import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import type { CustodyLockRead, PassportPresence } from "@/lib/passport/presence";
+import { readPassportCustodyLockLive } from "@/lib/passport/passport-commerce-facts";
 import {
   passportHeldByModeCustody,
   passportHolderOwnerAddress,
@@ -17,9 +17,7 @@ import {
 } from "@/lib/passport/passport-holder";
 import { parsePassportTokenId } from "@/lib/passport/passport-token-id";
 import { commercialActive } from "@/lib/web3/commercial-active";
-import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { parseOptionalChainParam } from "@/lib/web3/chain-context";
-import { getPublicClient } from "@/lib/web3/public-client";
 
 function marketplaceDetailHref(tokenId: string, chainId: number | undefined) {
   if (chainId == null) return `/marketplace/${tokenId}`;
@@ -218,7 +216,6 @@ export default async function EditPassportPage({
     }
   }
 
-  const passportAddr = karPassportAddress(chainId);
   const stack = commercialActive(chainId);
 
   if (stack == null) {
@@ -246,6 +243,7 @@ export default async function EditPassportPage({
   }
 
   let listingActive = false;
+  let modeCustodyRefused = false;
   let presenceFacts: {
     viewChainId: number;
     custodyLock: CustodyLockRead;
@@ -259,40 +257,31 @@ export default async function EditPassportPage({
   };
 
   try {
-    const holder = await readPassportHolderLive({
-      namespace: chainId,
-      tokenId,
-    });
-    const holderOwner = passportHolderOwnerAddress(holder);
-    listingActive = await passportHeldByModeCustody({
-      namespace: chainId,
-      holderOwner,
-    });
+    const [custodyLock, holder] = await Promise.all([
+      readPassportCustodyLockLive({
+        namespace: chainId,
+        tokenId,
+      }),
+      readPassportHolderLive({
+        namespace: chainId,
+        tokenId,
+      }),
+    ]);
+    presenceFacts = {
+      viewChainId: chainId,
+      custodyLock,
+      ponderCustodyChain: passport.custodyChain,
+      custodyUnresolved: passport.custodyUnresolved,
+    };
 
-    // EVM: karPassportAddress present → custodyLocked on chain.
-    // SVM / no EVM address: lock unread until Unit L wires PassportState;
-    // listingActive already from holder ↔ mode custody PDA.
-    if (passportAddr != null) {
-      const client = getPublicClient(chainId);
-      const custodyLocked = await client.readContract({
-        address: passportAddr,
-        abi: KarPassportAbi,
-        functionName: "custodyLocked",
-        args: [BigInt(tokenId)],
-      });
-      presenceFacts = {
-        viewChainId: chainId,
-        custodyLock: { status: "known", locked: Boolean(custodyLocked) },
-        ponderCustodyChain: passport.custodyChain,
-        custodyUnresolved: passport.custodyUnresolved,
-      };
+    const modeHold = await passportHeldByModeCustody({
+      namespace: chainId,
+      holderOwner: passportHolderOwnerAddress(holder),
+    });
+    if (modeHold.status === "refused") {
+      modeCustodyRefused = true;
     } else {
-      presenceFacts = {
-        viewChainId: chainId,
-        custodyLock: { status: "pending" },
-        ponderCustodyChain: passport.custodyChain,
-        custodyUnresolved: passport.custodyUnresolved,
-      };
+      listingActive = modeHold.status === "held";
     }
   } catch {
     // Fail closed: setPassportURI is gated by custody lock — unread → no edit.
@@ -303,6 +292,32 @@ export default async function EditPassportPage({
       custodyUnresolved: passport.custodyUnresolved,
     };
     listingActive = false;
+  }
+
+  if (modeCustodyRefused) {
+    // Mode-custody unread ≡ location unread family — fail closed via presence.
+    const access = resolvePassportEditAccess({
+      presenceFacts: {
+        viewChainId: chainId,
+        custodyLock: { status: "pending" },
+        ponderCustodyChain: passport.custodyChain,
+        custodyUnresolved: passport.custodyUnresolved,
+      },
+      status: passport.status,
+      listingActive: false,
+      configured: true,
+    });
+    if (access.status === "refuse") {
+      return (
+        <EditRefusalShell
+          tokenId={tokenId}
+          chainId={chainId}
+          cause={access.cause}
+          presence={access.presence}
+          title={REFUSAL_TITLE[access.cause]}
+        />
+      );
+    }
   }
 
   const access = resolvePassportEditAccess({

@@ -105,10 +105,11 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "passport-holder",
     owner:
       "passport-holder + use-passport-holder + decode-core-asset (Unit O dual-VM holder fact)",
-    rule: "Sole dual-VM passport holder fact (known/projection/pending/in_transit/absent/refused): EVM keyed ownerOf / SVM kar-passport/asset + Core AssetV1 owner via decode-core-asset; SVM account fetch returns {data,owner}; chain beats projection; listing-seller arm stays in isPassportHolder; chrome uses isSessionHolder / isPassportHolderFromFact; product ownerOf banned outside holder + Unit L builders + bridge delivery polls",
+    rule: "Sole dual-VM passport holder fact (known/projection/pending/in_transit/absent/refused): EVM keyed ownerOf / SVM kar-passport/asset + Core AssetV1 owner via decode-core-asset; SVM account fetch returns {data,owner}; chain beats projection; listing-seller arm stays in isPassportHolder; chrome uses isSessionHolder / isPassportHolderFromFact; product ownerOf banned outside holder + Unit L builders + bridge delivery polls; mode-custody compare is held|not_held|refused (PDA derive failure never silent skip→not_held)",
     guardTests: [
       "passport-holder-policy.test.ts",
       "decode-core-asset-policy.test.ts",
+      "passport-custody-lock-live-policy.test.ts",
     ],
   },
   {
@@ -876,7 +877,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "passport-commerce-facts",
     owner:
       "lib/passport/passport-commerce-facts.ts · lib/passport/commerce-fact.ts · lib/passport/passport-commerce-rail.ts · hooks/use-passport-commerce-facts.ts · lib/web3/supported-chains.ts · lib/passport/simulate-passport-may.ts",
-    rule: "Dual-VM passport commerce chrome: EVM batched may/custodyLocked/encumbrance/modes; SVM mode/challenge/registry facts + may_* from simulatePassportMay inject (never invent hasLiveConsignment false or configured false); CommerceFact = known|pending|refused(KeyedReadCause|SurfaceSupportCause); wagmiChainId only inside the EVM plan arm; eip155WagmiChainId returns undefined for commercial SVM",
+    rule: "Dual-VM passport commerce chrome: EVM batched may/custodyLocked/encumbrance/modes; SVM mode/challenge/registry facts + may_* from simulatePassportMay inject (never invent hasLiveConsignment false or configured false); CommerceFact = known|pending|refused(KeyedReadCause|SurfaceSupportCause); wagmiChainId only inside the EVM plan arm; eip155WagmiChainId returns undefined for commercial SVM; readPassportCustodyLockLive is the sole RSC custody-lock door (product custodyLocked banned outside this module; never eternal SVM pending)",
     guardTests: [
       "passport-detail-svm-chrome-policy.test.ts",
       "commerce-fact-status-policy.test.ts",
@@ -884,6 +885,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "passport-commerce-facts-svm-resolve.test.ts",
       "simulate-passport-may-policy.test.ts",
       "product-eslint-disable-policy.test.ts",
+      "passport-custody-lock-live-policy.test.ts",
     ],
   },
   {
@@ -900,12 +902,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "passport-presence-deriver",
     owner:
       "lib/passport/presence.ts · lib/passport/action-surface.ts · lib/passport/bridge-surface.ts · hooks/use-passport-presence.ts · lib/passport/passport-commerce-facts.ts",
-    rule: "derivePassportPresence only in named owners; components/routes consume answers; custodyLock on SVM from PassportState decode via commerce-facts — never invent unlocked or treat missing EVM address as pending; location_pending and location_refused never share a sentence; presenceBlocksWrites is a type guard to BlockingPassportPresence; passportAwayActionCopy accepts only BlockingPassportPresence (no empty-string arm for here)",
+    rule: "derivePassportPresence only in named owners; components/routes consume answers; custodyLock on SVM from PassportState decode via commerce-facts (readPassportCustodyLockLive for RSC) — never invent unlocked or treat missing EVM address as pending; location_pending and location_refused never share a sentence; presenceBlocksWrites is a type guard to BlockingPassportPresence; passportAwayActionCopy accepts only BlockingPassportPresence (no empty-string arm for here)",
     guardTests: [
       "passport-presence-owner-policy.test.ts",
       "passport-action-surface.test.ts",
       "passport-detail-svm-chrome-policy.test.ts",
       "passport-presence.test.ts",
+      "passport-custody-lock-live-policy.test.ts",
     ],
   },
   {

@@ -62,7 +62,12 @@ import type {
   KeyedContract,
   KeyedEntry,
 } from "@/lib/web3/keyed-multicall";
-import { isSvmAccountData } from "@/lib/web3/svm-rpc";
+import { getPublicClient } from "@/lib/web3/public-client";
+import {
+  fetchProductSvmAccountData,
+  isSvmAccountData,
+  type FetchSvmAccountDataResult,
+} from "@/lib/web3/svm-rpc";
 import { wagmiChainId } from "@/lib/web3/supported-chains";
 import { toHex } from "viem";
 
@@ -845,6 +850,90 @@ export function custodyLockFromKeyedEntry(
       return _exhaustive;
     }
   }
+}
+
+/**
+ * Server / RSC door: live dual-VM custody-lock fact (Unit O corrective).
+ * EVM `custodyLocked(tokenId)` / SVM PassportState via {@link custodyLockFromKeyedEntry}.
+ * Never invents unlocked; never eternal pending on SVM.
+ */
+export async function readPassportCustodyLockLive(args: {
+  namespace: number;
+  tokenId: string;
+  registry?: CommercialRegistry;
+  fetchAccountData?: (
+    account: string,
+  ) => Promise<FetchSvmAccountDataResult>;
+  readEvmCustodyLocked?: (
+    passport: `0x${string}`,
+    tokenId: bigint,
+  ) => Promise<boolean>;
+  derivePda?: typeof deriveSvmPda;
+}): Promise<CustodyLockRead> {
+  const stack = commercialActive(args.namespace, args.registry);
+  if (stack == null) {
+    return { status: "refused", cause: "unresolved_namespace" };
+  }
+
+  if (stack.vm === "evm") {
+    const passport = karPassportAddress(args.namespace);
+    if (passport == null) {
+      return { status: "refused", cause: "unresolved_namespace" };
+    }
+    let tid: bigint;
+    try {
+      tid = BigInt(args.tokenId);
+    } catch {
+      return { status: "refused", cause: "malformed_response" };
+    }
+    try {
+      const read =
+        args.readEvmCustodyLocked ??
+        (async (addr, tokenId) => {
+          const client = getPublicClient(args.namespace);
+          return client.readContract({
+            address: addr,
+            abi: KarPassportAbi,
+            functionName: "custodyLocked",
+            args: [tokenId],
+          }) as Promise<boolean>;
+        });
+      const locked = await read(passport, tid);
+      return custodyLockFromKeyedEntry({
+        status: "success",
+        result: Boolean(locked),
+      });
+    } catch {
+      return { status: "refused", cause: "evm_call_failed" };
+    }
+  }
+
+  let tokenBytes: Uint8Array;
+  try {
+    tokenBytes = tokenIdToBytes32(args.tokenId);
+  } catch {
+    return { status: "refused", cause: "malformed_response" };
+  }
+
+  const derive = args.derivePda ?? deriveSvmPda;
+  const statePda = await derive({
+    recipe: "kar-passport/state",
+    programId: stack.karPassport,
+    seeds: { token_id: tokenBytes },
+  });
+  if (!statePda.ok) {
+    return { status: "refused", cause: "malformed_response" };
+  }
+
+  const fetch = args.fetchAccountData ?? fetchProductSvmAccountData;
+  const accountResult = await fetch(statePda.address);
+  if (!accountResult.ok) {
+    return { status: "refused", cause: accountResult.cause };
+  }
+  return custodyLockFromKeyedEntry({
+    status: "success",
+    result: accountResult.value,
+  });
 }
 
 /**

@@ -508,31 +508,47 @@ export async function readPassportHolderLive(args: {
 /**
  * Mode-custody compare for edit admission: EVM mode contract addresses, or
  * SVM `custody_authority` PDAs under each configured mode program.
+ * Derivation failure is refused — never silent skip → not held.
  */
+export type ModeCustodyHold =
+  | { status: "held" }
+  | { status: "not_held" }
+  | { status: "refused"; cause: string; mode?: string };
+
 export async function passportHeldByModeCustody(args: {
   namespace: number;
   holderOwner: string | undefined;
   registry?: CommercialRegistry;
-}): Promise<boolean> {
-  if (args.holderOwner == null) return false;
+  derivePda?: typeof deriveSvmPda;
+}): Promise<ModeCustodyHold> {
+  if (args.holderOwner == null) return { status: "not_held" };
   const modes = commerceModeAddresses(args.namespace, args.registry);
   const stack = commercialActive(args.namespace, args.registry);
-  if (stack == null) return false;
+  if (stack == null) return { status: "refused", cause: "unresolved_namespace" };
 
   if (stack.vm === "evm") {
     const custodians = Object.values(modes).map((a) => a.toLowerCase());
-    return custodians.includes(args.holderOwner.toLowerCase());
+    return custodians.includes(args.holderOwner.toLowerCase())
+      ? { status: "held" }
+      : { status: "not_held" };
   }
 
-  for (const modeAddress of Object.values(modes)) {
-    const pda = await deriveSvmPda({
+  const derive = args.derivePda ?? deriveSvmPda;
+  for (const [mode, modeAddress] of Object.entries(modes)) {
+    const pda = await derive({
       recipe: "kargain-consignment-base/custody_authority",
       programId: modeAddress,
     });
-    if (!pda.ok) continue;
+    if (!pda.ok) {
+      return {
+        status: "refused",
+        cause: `pda_failed:${pda.cause}`,
+        mode,
+      };
+    }
     if (protocolAddressesEqual(args.namespace, args.holderOwner, pda.address)) {
-      return true;
+      return { status: "held" };
     }
   }
-  return false;
+  return { status: "not_held" };
 }
