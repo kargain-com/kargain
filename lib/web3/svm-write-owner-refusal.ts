@@ -37,8 +37,6 @@ export type SvmWriteOwnerRefusalCause =
   | "not_in_program"
   | "product_owner_owed"
   | "authority_only"
-  | "passport_not_configured"
-  | "staking_not_configured"
   | "mode_not_configured"
   | "invalid_token_id"
   | "invalid_outcome"
@@ -151,10 +149,6 @@ export function svmWriteOwnerRefusalCopy(
       return "Could not build the instruction.";
     case "missing_wallet_standard_chain":
       return "This network has no Wallet Standard chain id.";
-    case "passport_not_configured":
-      return "Passport contract not available on this network.";
-    case "staking_not_configured":
-      return "Staking is not configured on this network.";
     case "mode_not_configured":
       return "This commerce mode is not configured on this network.";
     case "invalid_token_id":

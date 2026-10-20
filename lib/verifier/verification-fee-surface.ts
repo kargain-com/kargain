@@ -3,11 +3,7 @@
  * Answers chrome properties — never an `"evm"` / `"svm"` identity for panels.
  */
 
-import {
-  commercialActive,
-  nativeUnitOf,
-  type CommercialRegistry,
-} from "@/lib/web3/commercial-active";
+import { commercialActive, nativeUnitOf, type CommercialRegistry, evmChainOf } from "@/lib/web3/commercial-active";
 import type { CommercialNativeUnit } from "@/lib/web3/commercial-native-unit";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { VERIFICATION_FEE_SVM_CURRENT_UNREAD } from "@/lib/verifier/set-verification-fee";
@@ -50,8 +46,7 @@ export function verificationFeeSurface(
   if (stack == null) return { configured: false, chainId };
 
   if (stack.vm === "evm") {
-    const stakingAddress = karProStakingAddress(chainId);
-    if (stakingAddress == null) return { configured: false, chainId };
+    const stakingAddress = karProStakingAddress(evmChainOf(stack));
     return {
       configured: true,
       chainId,

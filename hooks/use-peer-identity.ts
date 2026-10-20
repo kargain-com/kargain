@@ -9,10 +9,7 @@ import {
   karProAnyActive,
   preferActiveMembershipChainId,
 } from "@/lib/kar-pro/membership-roster";
-import {
-  peerIdentityMembershipChainId,
-  peerIdentityStakingChainId,
-} from "@/lib/web3/evm-wagmi-chrome";
+import { peerIdentityMembershipChainId, peerIdentityStakingChainId, eip155WhenWagmiOk } from "@/lib/web3/evm-wagmi-chrome";
 import { evmWagmiChain } from "@/lib/web3/supported-chains";
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
@@ -51,11 +48,9 @@ export function usePeerIdentity(
     query: { enabled: Boolean(peerAddress) },
   });
 
-  const staking =
-    membershipChainId != null
-      ? karProStakingAddress(membershipChainId)
-      : undefined;
   const wagmiChain = evmWagmiChain(membershipChainId);
+  const eip155 = eip155WhenWagmiOk(wagmiChain);
+  const staking = eip155 != null ? karProStakingAddress(eip155) : undefined;
   const wc = peerIdentityStakingChainId(membershipChainId, wagmiChain);
 
   const { data: chainActive, isPending: chainActivePending } = useReadContract({

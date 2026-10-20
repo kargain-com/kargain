@@ -1,6 +1,6 @@
+import { LOCALHOST_CHAIN_ID } from "../../lib/web3/local-chain.js";
 import type { DeploymentBlocks } from "./load-deployment.js";
 import {
-  LOCAL_CHAIN_ID,
   ponderCommercialAddresses,
   ponderLocalAddresses,
   ponderSepoliaAddresses,
@@ -43,7 +43,7 @@ function loadEthereumSepoliaBundle(): CommercialChainBundle {
 
 /** Per-chain start block — decouples commercial chains from localhost. */
 export function resolveChainStartBlock(chainId: number): number | "latest" {
-  if (chainId === LOCAL_CHAIN_ID) {
+  if (chainId === LOCALHOST_CHAIN_ID) {
     const parsed = parseStartBlock(process.env.PONDER_START_BLOCK_31337);
     return parsed === "latest" || parsed === undefined ? 0 : parsed;
   }
@@ -88,7 +88,7 @@ export function resolveContractStartBlock(
   contract: ContractBlockKey,
 ): number | "latest" {
   const chainStart = resolveChainStartBlock(chainId);
-  if (chainId === LOCAL_CHAIN_ID) {
+  if (chainId === LOCALHOST_CHAIN_ID) {
     return chainStart === "latest" ? 0 : chainStart;
   }
   if (chainId === SEPOLIA_CHAIN_ID) {
@@ -172,9 +172,9 @@ export function buildPonderRuntime() {
 
   if (enableLocal && localAddresses) {
     chains.localhost = {
-      id: LOCAL_CHAIN_ID,
+      id: LOCALHOST_CHAIN_ID,
       rpc: process.env.PONDER_RPC_URL_31337 ?? "http://127.0.0.1:8545",
-      maxRequestsPerSecond: resolveMaxRequestsPerSecond(LOCAL_CHAIN_ID),
+      maxRequestsPerSecond: resolveMaxRequestsPerSecond(LOCALHOST_CHAIN_ID),
     };
   }
 
@@ -198,7 +198,7 @@ export function buildPonderRuntime() {
       return {
         chain: "localhost" as const,
         address: localAddress,
-        startBlock: resolveContractStartBlock(LOCAL_CHAIN_ID, contract),
+        startBlock: resolveContractStartBlock(LOCALHOST_CHAIN_ID, contract),
       };
     }
 
@@ -219,7 +219,7 @@ export function buildPonderRuntime() {
     if (enableLocal && localAddress) {
       commercial.localhost = {
         address: localAddress,
-        startBlock: resolveContractStartBlock(LOCAL_CHAIN_ID, contract),
+        startBlock: resolveContractStartBlock(LOCALHOST_CHAIN_ID, contract),
       };
     }
 

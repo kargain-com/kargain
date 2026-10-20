@@ -29,6 +29,7 @@ import { deriveSvmPda } from "@/lib/svm/derive-pda";
 import { tokenIdToBytes32 } from "@/lib/svm/event-payload-decode";
 import { commercialSvmNamespaceIds, requireSvmCommercialActive } from "@/lib/web3/commercial-active";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import { SEPOLIA_CHAIN_ID } from "../lib/web3/sepolia-addresses.ts";
 import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import type { SvmSignAndSendPort } from "@/lib/web3/svm-write-adapter";
 import {
@@ -204,7 +205,7 @@ describe("verifyPassport EVM behavioural pin", () => {
   const tokenId = "42";
 
   it("buildEvmVerifyPassportCall yields verifyPassport with exactly one argument", () => {
-    const address = karPassportAddress(84532);
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     assert.ok(address);
     const call = buildEvmVerifyPassportCall({
       address,
@@ -234,7 +235,7 @@ describe("verifyPassport EVM behavioural pin", () => {
   });
 
   it("planted second argument (fee / URI) is red; live one-arg is green", () => {
-    const address = karPassportAddress(84532)!;
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     const live = buildEvmVerifyPassportCall({
       address,
       tokenId,
@@ -253,7 +254,7 @@ describe("verifyPassport EVM behavioural pin", () => {
   });
 
   it("planted setPassportURI functionName is red; live builder is green", () => {
-    const address = karPassportAddress(84532)!;
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     const live = buildEvmVerifyPassportCall({
       address,
       tokenId,
@@ -271,7 +272,7 @@ describe("verifyPassport EVM behavioural pin", () => {
   });
 
   it("executeVerifyPassport EVM passes the pinned call through writeEvmContract", async () => {
-    const address = karPassportAddress(84532)!;
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     let captured: unknown;
     const hash = await executeVerifyPassport({
       account: {

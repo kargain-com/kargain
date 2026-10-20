@@ -3,7 +3,8 @@ import { dirname } from "node:path";
 import hardhat from "hardhat";
 import { getAddress } from "viem";
 
-import { DEPLOYMENT_PATH, LOCAL_CHAIN_ID } from "./lib/load-deployment.js";
+import { LOCALHOST_CHAIN_ID } from "../lib/web3/local-chain.js";
+import { DEPLOYMENT_PATH } from "./lib/load-deployment.js";
 import {
   DISPUTE_DEPOSIT,
   deployAscendingConsignment,
@@ -24,9 +25,9 @@ async function main() {
     const { viem } = connection;
     const publicClient = await viem.getPublicClient();
     const chainId = await publicClient.getChainId();
-    if (chainId !== LOCAL_CHAIN_ID) {
+    if (chainId !== LOCALHOST_CHAIN_ID) {
       throw new Error(
-        `Expected chain ${LOCAL_CHAIN_ID}, got ${chainId}. Run with: pnpm deploy:local (hardhat node on :8545)`,
+        `Expected chain ${LOCALHOST_CHAIN_ID}, got ${chainId}. Run with: pnpm deploy:local (hardhat node on :8545)`,
       );
     }
 
@@ -116,7 +117,7 @@ async function main() {
         ascendingConsignmentImpl: getAddress(ascending.impl.address),
         commercePayoutSink: modePlatform,
       },
-      LOCAL_CHAIN_ID,
+      LOCALHOST_CHAIN_ID,
     );
 
     mkdirSync(dirname(DEPLOYMENT_PATH()), { recursive: true });

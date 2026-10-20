@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 import {
   COMMERCIAL_ACTIVE,
   commercialActive,
+  evmProtocolAddresses,
   registryDisjointnessViolations,
   requireCommercialActive,
   requireEvmCommercialActive,
@@ -18,8 +19,7 @@ import {
   NON_EVM_NAMESPACE_MIN,
   mintKargainNamespace,
 } from "../lib/web3/kargain-namespace.ts";
-import { kargainContractDenylist } from "../lib/web3/deployment-addresses.ts";
-import { ETHEREUM_SEPOLIA_SPOKE, SEPOLIA_ACTIVE, SEPOLIA_HISTORICAL_DENYLIST, ETHEREUM_SEPOLIA_HISTORICAL_DENYLIST } from "../lib/web3/sepolia-addresses.ts";
+import { ETHEREUM_SEPOLIA_SPOKE, SEPOLIA_ACTIVE } from "../lib/web3/sepolia-addresses.ts";
 import { EID_BY_CHAIN } from "../lib/web3/bridge/bridge-config.ts";
 import {
   ponderAddressesFromStack,
@@ -107,9 +107,9 @@ describe("COMMERCIAL_ACTIVE registry", () => {
   });
 
   it("Nuclear #4/#5/#6 core stacks are denylisted, not active", () => {
-    const hubDeny = new Set(SEPOLIA_HISTORICAL_DENYLIST.map((a) => a.toLowerCase()));
+    const hubDeny = new Set(requireEvmCommercialActive(HUB).historicalDenylist.map((a) => a.toLowerCase()));
     const ethDeny = new Set(
-      ETHEREUM_SEPOLIA_HISTORICAL_DENYLIST.map((a) => a.toLowerCase()),
+      requireEvmCommercialActive(ETH).historicalDenylist.map((a) => a.toLowerCase()),
     );
     // N4
     assert.ok(hubDeny.has("0x8354697d0ddce6a3aa9ad33ddc1585e4b60cbc76"));
@@ -122,7 +122,7 @@ describe("COMMERCIAL_ACTIVE registry", () => {
     assert.ok(ethDeny.has("0xfcc3fb7e926483778898f8dd38bdb1db51412a41"));
     // Still reachable via product denylist helper
     assert.ok(
-      kargainContractDenylist(HUB)
+      evmProtocolAddresses(requireEvmCommercialActive(HUB))
         .map((a) => a.toLowerCase())
         .includes("0x8354697d0ddce6a3aa9ad33ddc1585e4b60cbc76"),
     );
@@ -131,9 +131,9 @@ describe("COMMERCIAL_ACTIVE registry", () => {
   it("live N7 addresses are not on their own-chain historical denylist", () => {
     const hub = requireCommercialActive(HUB);
     const eth = requireCommercialActive(ETH);
-    const hubDeny = new Set(SEPOLIA_HISTORICAL_DENYLIST.map((a) => a.toLowerCase()));
+    const hubDeny = new Set(requireEvmCommercialActive(HUB).historicalDenylist.map((a) => a.toLowerCase()));
     const ethDeny = new Set(
-      ETHEREUM_SEPOLIA_HISTORICAL_DENYLIST.map((a) => a.toLowerCase()),
+      requireEvmCommercialActive(ETH).historicalDenylist.map((a) => a.toLowerCase()),
     );
     for (const addr of [
       hub.karPassport,
@@ -156,9 +156,9 @@ describe("COMMERCIAL_ACTIVE registry", () => {
   });
 
   it("§I.12.12 dual-list hex stays denylisted on both chains; N7 Eth live ≠ Base historical self", () => {
-    const hubDeny = new Set(SEPOLIA_HISTORICAL_DENYLIST.map((a) => a.toLowerCase()));
+    const hubDeny = new Set(requireEvmCommercialActive(HUB).historicalDenylist.map((a) => a.toLowerCase()));
     const ethDeny = new Set(
-      ETHEREUM_SEPOLIA_HISTORICAL_DENYLIST.map((a) => a.toLowerCase()),
+      requireEvmCommercialActive(ETH).historicalDenylist.map((a) => a.toLowerCase()),
     );
     const dual = "0xc219bf834b8965339b95c0b6afe3c4d0f1266fb0";
     assert.ok(hubDeny.has(dual));

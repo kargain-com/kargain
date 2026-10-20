@@ -8,9 +8,9 @@
 import type { ActiveAccount } from "@/lib/web3/active-account";
 import {
   commercialActive,
+  commercialProtocolAddresses,
   isCommercialEip155Id,
   registeredCommercialNamespaceIds,
-  type CommercialActiveStack,
   type CommercialRegistry,
   COMMERCIAL_ACTIVE,
 } from "@/lib/web3/commercial-active";
@@ -19,7 +19,6 @@ import {
   protocolAddressesEqual,
   type ProtocolOwner,
 } from "@/lib/web3/protocol-address";
-import { isProtocolAddress } from "@/lib/web3/wallet-account";
 
 export type ProfileSubjectResolution =
   | {
@@ -28,30 +27,6 @@ export type ProfileSubjectResolution =
       readonly namespaces: readonly number[];
     }
   | { readonly status: "absent" };
-
-/**
- * Protocol / mode / feed / endpoint addresses on a commercial stack — never a
- * user profile. SPEC II.4.1: deployer and upgradeAuthority EOAs are subjects;
- * TimelockController on EVM is owned by {@link isProtocolAddress}, not here.
- * Sinks (platform / forfeit recipients) are person wallets, not protocol ids.
- */
-function stackIdentityAddressFields(stack: CommercialActiveStack): string[] {
-  const out: string[] = [];
-  const push = (v: string | undefined) => {
-    if (v != null && v.length > 0) out.push(v);
-  };
-  push(stack.karPassport);
-  push(stack.karProPass);
-  push(stack.karProStaking);
-  push(stack.usdc);
-  push(stack.nativeFeed);
-  push(stack.eurFeed);
-  push(stack.bridgeGateway);
-  push(stack.fixedPriceConsignment);
-  push(stack.ascendingConsignment);
-  push(stack.layerZeroEndpoint);
-  return out;
-}
 
 /**
  * True when `owner` is a Kargain protocol / denylist / stack identity address
@@ -65,10 +40,7 @@ export function isCommercialProtocolOwner(
   for (const ns of namespaces) {
     const stack = commercialActive(ns, registry);
     if (stack == null) continue;
-    if (isCommercialEip155Id(ns, registry) && isProtocolAddress(owner, ns)) {
-      return true;
-    }
-    for (const raw of stackIdentityAddressFields(stack)) {
+    for (const raw of commercialProtocolAddresses(stack)) {
       if (protocolAddressesEqual(ns, owner, raw)) return true;
     }
   }

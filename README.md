@@ -97,7 +97,7 @@ pnpm dev                    # Next.js → http://localhost:3000
 pnpm ponder:dev             # Ponder → http://localhost:42069 (needs Postgres)
 ```
 
-Configure `.env.local` from [`.env.example`](.env.example). Contract fallbacks: [`lib/web3/deployment-addresses.ts`](lib/web3/deployment-addresses.ts) / [`lib/web3/commercial-active.ts`](lib/web3/commercial-active.ts) (must match [SPEC I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) and [I.9.2](docs/contracts/SPEC.md#i92-active-deployment-ethereum-sepolia-11155111)). For mobile wallets, set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` from [WalletConnect Cloud](https://cloud.walletconnect.com). Dual-chain RPC: `NEXT_PUBLIC_RPC_BY_CHAIN` (or `ETH_SEPOLIA_RPC_URL`) must include **11155111**.
+Configure `.env.local` from [`.env.example`](.env.example). Contract addresses come only from the registry in [`lib/web3/commercial-active.ts`](lib/web3/commercial-active.ts) (must match [SPEC I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) and [I.9.2](docs/contracts/SPEC.md#i92-active-deployment-ethereum-sepolia-11155111)). For mobile wallets, set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` from [WalletConnect Cloud](https://cloud.walletconnect.com). Dual-chain RPC: `NEXT_PUBLIC_RPC_BY_CHAIN` (or `ETH_SEPOLIA_RPC_URL`) must include **11155111**.
 
 ### Local chain (31337)
 

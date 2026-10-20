@@ -51,6 +51,7 @@ import type { PassportStatus } from "@/lib/types/ponder";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 import { txWriteAvailability } from "@/lib/web3/tx-write-availability";
+import { eip155WhenWagmiOk } from "@/lib/web3/evm-wagmi-chrome";
 
 /** EVM-only AuctionAgentAuth shape — refuse to invent hex from SVM base58. */
 function ascendingMandateAsAuth(
@@ -105,8 +106,9 @@ export function PassportSellPanel({
   const [fixedPriceDialogOpen, setFixedPriceDialogOpen] = useState(false);
   const [ascendingDialogOpen, setAscendingDialogOpen] = useState(false);
 
-  const staking = karProStakingAddress(chainId);
   const wagmi = evmWagmiChain(chainId);
+  const eip155 = eip155WhenWagmiOk(wagmi);
+  const staking = eip155 != null ? karProStakingAddress(eip155) : undefined;
   const wc = wagmi.ok ? wagmi.chainId : undefined
   const tid = BigInt(tokenId);
   const { paused: fixedPricePaused } = useCommerceModePaused({

@@ -10,14 +10,16 @@ import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { commercialActive, nativeUnitOf } from "@/lib/web3/commercial-active";
 import { evmWagmiChain } from "@/lib/web3/supported-chains";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
+import { eip155WhenWagmiOk } from "@/lib/web3/evm-wagmi-chrome";
 
 export function KarProHeroSubtitle() {
   const { account } = useActiveAccount();
   const evm = requireEvmSession(account);
   const walletChainId = evm.ok ? evm.chainId : undefined;
   const chainId = resolveKarProTargetChainId(walletChainId);
-  const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
   const wagmiChain = evmWagmiChain(chainId);
+  const eip155 = eip155WhenWagmiOk(wagmiChain);
+  const staking = eip155 != null ? karProStakingAddress(eip155) : undefined;
   const wc = chainId != null ? wagmiChain.ok ? wagmiChain.chainId : undefined : undefined;
 
   const { data: minStake, isPending: minStakePending } = useReadContract({

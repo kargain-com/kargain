@@ -5,8 +5,9 @@ import { getPublicClient } from "@/lib/web3/public-client";
 
 /**
  * Per-chain batch of `isActiveVerifier`. Return `null` when the chain read
- * failed entirely (RPC / multicall throw). A resolved array is usable even if
- * every entry is false.
+ * failed entirely (RPC / multicall throw) or when the namespace is not an EVM
+ * commercial network (no `isActiveVerifier` read exists there). A resolved
+ * array is usable even if every entry is false.
  */
 export type ReadChainVerifierActive = (
   chainId: number,
@@ -31,14 +32,9 @@ async function readChainActiveMulticall(
   chainId: number,
   addresses: readonly `0x${string}`[],
 ): Promise<boolean[] | null> {
-  const staking = karProStakingAddress(chainId);
-  if (!staking) {
-    return addresses.map(() => false);
-  }
   const resolved = resolveEvmChain(chainId);
-  if (!resolved.ok) {
-    return addresses.map(() => false);
-  }
+  if (!resolved.ok) return null;
+  const staking = karProStakingAddress(resolved.chainId);
   try {
     const client = getPublicClient(resolved.chainId);
     const results = await client.multicall({

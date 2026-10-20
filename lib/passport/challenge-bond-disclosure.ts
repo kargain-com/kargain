@@ -13,7 +13,7 @@
 import { decodePassportConfig } from "@/lib/svm/decode-account-state";
 import { deriveSvmPda } from "@/lib/svm/derive-pda";
 import { isSvmAccountData } from "@/lib/web3/svm-rpc";
-import { commercialActive, type CommercialRegistry } from "@/lib/web3/commercial-active";
+import { commercialActive, type CommercialRegistry, evmChainOf } from "@/lib/web3/commercial-active";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import type {
   KeyedContract,
@@ -92,8 +92,7 @@ export function challengeBondDisclosure(
   if (stack == null) return { configured: false, chainId };
 
   if (stack.vm === "evm") {
-    const passportAddress = karPassportAddress(chainId);
-    if (passportAddress == null) return { configured: false, chainId };
+    const passportAddress = karPassportAddress(evmChainOf(stack));
     return {
       configured: true,
       chainId,
@@ -141,10 +140,7 @@ export async function planChallengeBondAmountRead(args: {
   }
 
   if (stack.vm === "evm") {
-    const passport = karPassportAddress(args.chainId);
-    if (passport == null) {
-      return { ok: false, cause: "not_configured", detail: "no_passport" };
-    }
+    const passport = karPassportAddress(evmChainOf(stack));
     return {
       ok: true,
       arm: "passport_contract",

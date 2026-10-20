@@ -249,10 +249,9 @@ async function confirmStatusOnChain(
   chainId: number,
   ponderStatus: PassportStatus,
 ): Promise<PassportStatus> {
-  const address = karPassportAddress(chainId);
-  if (!address) return ponderStatus;
   const resolved = resolveEvmChain(chainId);
   if (!resolved.ok) return ponderStatus;
+  const address = karPassportAddress(resolved.chainId);
 
   try {
     const client = getPublicClient(resolved.chainId);
@@ -279,10 +278,9 @@ async function confirmOwnerOnChain(
   chainId: number,
   ponderOwner: ProtocolOwner,
 ): Promise<ProtocolOwner> {
-  const address = karPassportAddress(chainId);
-  if (!address) return ponderOwner;
   const resolved = resolveEvmChain(chainId);
   if (!resolved.ok) return ponderOwner;
+  const address = karPassportAddress(resolved.chainId);
 
   try {
     const client = getPublicClient(resolved.chainId);

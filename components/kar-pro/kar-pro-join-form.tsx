@@ -36,6 +36,7 @@ import {
 } from "@/lib/web3/chain-selector-state";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
+import { evmChainWhenEvm } from "@/lib/web3/evm-wagmi-chrome";
 
 type LoadingPhase = "idle" | "uploading";
 
@@ -104,7 +105,8 @@ export function KarProJoinForm({
   const [loadingPhase, setLoadingPhase] = useState<LoadingPhase>("idle");
   const [error, setError] = useState<string | null>(null);
 
-  const staking = karProStakingAddress(chainId);
+  const eip155 = evmChainWhenEvm(chainId);
+  const staking = eip155 != null ? karProStakingAddress(eip155) : undefined;
 
   const { minStake, stakeLabel } = useMinStakeNative(
     isSurfaceAdmissionAvailable(admission) ? chainId : undefined,

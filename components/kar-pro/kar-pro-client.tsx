@@ -27,6 +27,7 @@ import { messagingReadyForChecklist, needsMessagingSetupCard } from "@/lib/messa
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
+import { eip155WhenWagmiOk } from "@/lib/web3/evm-wagmi-chrome";
 
 export function KarProClient({
   embedded = false,
@@ -42,8 +43,9 @@ export function KarProClient({
   const walletChainId = hub.admission === "full" ? hub.walletChainId : undefined;
   const chainId = resolveKarProTargetChainId(walletChainId);
 
-  const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
   const wagmiChain = evmWagmiChain(chainId);
+  const eip155 = eip155WhenWagmiOk(wagmiChain);
+  const staking = eip155 != null ? karProStakingAddress(eip155) : undefined;
   const wc = chainId != null ? wagmiChain.ok ? wagmiChain.chainId : undefined : undefined;
 
   // Full-hub multicall only — never invent inactive on fee_only admission.

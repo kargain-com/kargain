@@ -6,7 +6,10 @@ import {
   bridgeGatewayAddress,
   karPassportAddress,
 } from "@/lib/web3/deployment-addresses";
-import { unresolvedNamespaceCopy } from "@/lib/web3/commercial-active";
+import {
+  unresolvedNamespaceCopy,
+  type Eip155ChainId,
+} from "@/lib/web3/commercial-active";
 
 /** Star hub chain id (reference). */
 export const BRIDGE_HUB_CHAIN_ID = SEPOLIA_CHAIN_ID;
@@ -158,9 +161,7 @@ export function resolveBridgeRoute(
   };
 }
 
-export function bridgeAdapterAddress(
-  chainId: number,
-): `0x${string}` | undefined {
+export function bridgeAdapterAddress(chainId: Eip155ChainId): `0x${string}` {
   return bridgeGatewayAddress(chainId);
 }
 
@@ -189,9 +190,7 @@ export function bridgeDstEid(srcChainId: number): number | undefined {
 }
 
 /** KarPassport ERC721 on `chainId` (ownerOf delivery poll target). */
-export function bridgeTokenAddress(
-  chainId: number,
-): `0x${string}` | undefined {
+export function bridgeTokenAddress(chainId: Eip155ChainId): `0x${string}` {
   return karPassportAddress(chainId);
 }
 

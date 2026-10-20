@@ -34,6 +34,7 @@ import { tokenIdToBytes32 } from "@/lib/svm/event-payload-decode";
 import { systemProgramId } from "@/lib/svm/foreign-programs";
 import { commercialSvmNamespaceIds, requireSvmCommercialActive } from "@/lib/web3/commercial-active";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import { SEPOLIA_CHAIN_ID } from "../lib/web3/sepolia-addresses.ts";
 import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import type { SvmSignAndSendPort } from "@/lib/web3/svm-write-adapter";
 import { writeSubmissionReference, isSvmWriteSubmission } from "../lib/web3/write-outcome.ts";
@@ -123,7 +124,7 @@ describe("appendPassportAttestation EVM behavioural pin", () => {
   const evidenceCid = "ar://attestation";
 
   it("buildEvmAppendPassportAttestationCall yields appendAttestation with three args", () => {
-    const address = karPassportAddress(84532);
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     assert.ok(address);
     const call = buildEvmAppendPassportAttestationCall({
       address,
@@ -157,7 +158,7 @@ describe("appendPassportAttestation EVM behavioural pin", () => {
   });
 
   it("planted fourth argument (appendRecord shape) is red; live three-arg is green", () => {
-    const address = karPassportAddress(84532)!;
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     const live = buildEvmAppendPassportAttestationCall({
       address,
       tokenId,
@@ -188,7 +189,7 @@ describe("appendPassportAttestation EVM behavioural pin", () => {
   });
 
   it("planted appendRecord functionName is red; live builder is green", () => {
-    const address = karPassportAddress(84532)!;
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     const live = buildEvmAppendPassportAttestationCall({
       address,
       tokenId,
@@ -208,7 +209,7 @@ describe("appendPassportAttestation EVM behavioural pin", () => {
   });
 
   it("executeAppendPassportAttestation EVM passes the pinned call through writeEvmContract", async () => {
-    const address = karPassportAddress(84532)!;
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     let captured: unknown;
     const hash = await executeAppendPassportAttestation({
       account: {

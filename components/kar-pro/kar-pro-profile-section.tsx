@@ -21,6 +21,7 @@ import { arUriToHttp } from "@/lib/storage/ar-gateway";
 import { karProPassAddress } from "@/lib/web3/deployment-addresses";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
+import { evmChainWhenEvm } from "@/lib/web3/evm-wagmi-chrome";
 
 type KarProProfileSectionProps = {
   chainId: number;
@@ -85,7 +86,8 @@ export function KarProProfileSection({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const proPass = karProPassAddress(chainId);
+  const eip155 = evmChainWhenEvm(chainId);
+  const proPass = eip155 != null ? karProPassAddress(eip155) : undefined;
   const showroomSlug = (slugProp ?? "").trim() || fields.slug.trim();
   const isBusy = loading || txPhase !== "idle";
 

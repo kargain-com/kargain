@@ -8,7 +8,7 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { registeredCommercialNamespaceIds } from "../lib/web3/commercial-active.ts";
-import { LOCALHOST_CHAIN_ID } from "../lib/web3/deployment-addresses.ts";
+import { LOCALHOST_CHAIN_ID } from "../lib/web3/local-chain.ts";
 import { indexerReadNamespaceIds } from "../src/lib/ponder-read-namespaces.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");

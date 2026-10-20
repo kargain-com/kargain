@@ -68,10 +68,9 @@ export async function readTokenUriOnChain(
   tokenId: string,
   chainId: number,
 ): Promise<string | null> {
-  const address = karPassportAddress(chainId);
-  if (!address) return null;
   const resolved = resolveEvmChain(chainId);
   if (!resolved.ok) return null;
+  const address = karPassportAddress(resolved.chainId);
 
   try {
     const client = getPublicClient(resolved.chainId);
@@ -91,10 +90,9 @@ export async function fetchChainPassportDetail(
   tokenId: string,
   chainId: number,
 ): Promise<ChainPassportDetailResult> {
-  const address = karPassportAddress(chainId);
-  if (!address) return { ok: false };
   const resolved = resolveEvmChain(chainId);
   if (!resolved.ok) return { ok: false };
+  const address = karPassportAddress(resolved.chainId);
 
   const client = getPublicClient(resolved.chainId);
   const tokenIdBigInt = BigInt(tokenId);

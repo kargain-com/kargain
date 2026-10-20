@@ -44,6 +44,7 @@ import {
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
+import { evmChainWhenEvm } from "@/lib/web3/evm-wagmi-chrome";
 
 export type BridgePhase =
   | "idle"
@@ -88,8 +89,9 @@ export function useBridge(
   const [localError, setLocalError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const adapter = bridgeAdapterAddress(srcChainId);
-  const passport = karPassportAddress(srcChainId);
+  const srcEip155 = evmChainWhenEvm(srcChainId);
+  const adapter = srcEip155 != null ? bridgeAdapterAddress(srcEip155) : undefined;
+  const passport = srcEip155 != null ? karPassportAddress(srcEip155) : undefined;
   const dstEid = bridgeDstEid(srcChainId);
 
   const { isApproved, ensureApproved } = usePassportApproval({

@@ -25,6 +25,7 @@ import { tokenIdToBytes32 } from "@/lib/svm/event-payload-decode";
 import { systemProgramId } from "@/lib/svm/foreign-programs";
 import { commercialSvmNamespaceIds, requireSvmCommercialActive } from "@/lib/web3/commercial-active";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import { SEPOLIA_CHAIN_ID } from "../lib/web3/sepolia-addresses.ts";
 import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import type { SvmSignAndSendPort } from "@/lib/web3/svm-write-adapter";
 import {
@@ -134,7 +135,7 @@ function assertOpenProcessorFacts(body: string): {
 
 describe("openChallenge EVM pin", () => {
   it("live builder is open + [tid] + value; planted missing value is red", async () => {
-    const address = karPassportAddress(84532)!;
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     const live = buildEvmOpenChallengeCall({
       address,
       tokenId,
@@ -184,7 +185,7 @@ describe("openChallenge EVM pin", () => {
   });
 
   it("planted second argument is red; live one-arg is green", () => {
-    const address = karPassportAddress(84532)!;
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     const live = buildEvmOpenChallengeCall({
       address,
       tokenId,
@@ -204,7 +205,7 @@ describe("openChallenge EVM pin", () => {
   });
 
   it("executeOpenChallenge EVM passes pinned call through writeEvmContract", async () => {
-    const address = karPassportAddress(84532)!;
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     let captured: unknown;
     const hash = await executeOpenChallenge({
       account: {

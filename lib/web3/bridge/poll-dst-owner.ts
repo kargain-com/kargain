@@ -35,10 +35,7 @@ export async function pollDstOwner(
     return { status: "refused", cause: resolved.cause };
   }
   const client = getBridgeReadClient(resolved.chainId);
-  const token = bridgeTokenAddress(dstChainId);
-  if (!token) {
-    return { status: "refused", cause: "unresolved_namespace" };
-  }
+  const token = bridgeTokenAddress(resolved.chainId);
   const deadline = Date.now() + BRIDGE_DELIVERY_TIMEOUT_MS;
 
   while (Date.now() < deadline) {

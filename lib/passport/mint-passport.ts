@@ -23,7 +23,13 @@ import {
   type ActiveAccount,
   type WalletFamilyWanted,
 } from "@/lib/web3/active-account";
-import { commercialActive, unresolvedNamespaceCopy, type CommercialRegistry, type SvmCommercialActiveStack } from "@/lib/web3/commercial-active";
+import {
+  commercialActive,
+  unresolvedNamespaceCopy,
+  type CommercialRegistry,
+  type SvmCommercialActiveStack,
+  evmChainOf,
+} from "@/lib/web3/commercial-active";
 import type { KargainWriteUnionChainId } from "@/lib/web3/supported-chains";
 import { wagmiChainOfStack } from "@/lib/web3/supported-chains";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
@@ -90,7 +96,6 @@ export type MintPassportCause =
   | "not_in_program"
   | "product_owner_owed"
   | "authority_only"
-  | "passport_not_configured"
   | "config_unavailable"
   | "config_decode_failed"
   | "registry_bridge_gateway_mismatch"
@@ -192,7 +197,6 @@ const MINT_PASSPORT_CAUSE_COPY: Record<MintPassportCause, string> = {
   not_in_program: surfaceSupportCauseCopy("not_in_program"),
   product_owner_owed: surfaceSupportCauseCopy("product_owner_owed"),
   authority_only: surfaceSupportCauseCopy("authority_only"),
-  passport_not_configured: "Passport contract not available on this network.",
   config_unavailable: "Passport config could not be read. Try again.",
   config_decode_failed: "Passport config on chain could not be decoded.",
   registry_bridge_gateway_mismatch:
@@ -485,13 +489,7 @@ export async function planMintPassport(input: {
         "evm",
       );
     }
-    const address = karPassportAddress(input.chainId);
-    if (address == null) {
-      return refusePlan(
-        "passport_not_configured",
-        `no karPassport for chain ${input.chainId}`,
-      );
-    }
+    const address = karPassportAddress(evmChainOf(stack));
     const call = buildEvmMintPassportCall({
       address,
       to: input.account.address,

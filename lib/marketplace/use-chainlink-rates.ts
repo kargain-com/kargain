@@ -12,6 +12,7 @@ import {
   useKeyedReadContracts,
   type KeyedContract,
 } from "@/lib/web3/keyed-multicall";
+import { eip155WhenWagmiOk } from "@/lib/web3/evm-wagmi-chrome";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
@@ -53,8 +54,13 @@ export function useChainlinkRates(options?: { enabled?: boolean }): {
   // Always read feeds on the FX reference pin — not the wallet's active chain.
   const fxChain = hubFxRateChainId();
   const wagmiChain = evmWagmiChain(fxChain);
-  const nativeFeed = chainlinkNativeUsdFeed(fxChain);
-  const eurFeed = chainlinkEurUsdFeed(fxChain);
+  const eip155 = eip155WhenWagmiOk(wagmiChain);
+  const nativeFeed =
+    eip155 != null ? chainlinkNativeUsdFeed(eip155) : undefined;
+  const eurFeedResult =
+    eip155 != null ? chainlinkEurUsdFeed(eip155) : undefined;
+  // `not_configured` → no EUR read; the market-rates fallback supplies EUR/USD.
+  const eurFeed = eurFeedResult?.ok ? eurFeedResult.address : undefined;
 
   const contracts = useMemo((): KeyedContract[] => {
     const reads: KeyedContract[] = [];

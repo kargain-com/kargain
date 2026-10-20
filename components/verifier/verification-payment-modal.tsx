@@ -45,6 +45,7 @@ import { evmWagmiChain } from "@/lib/web3/supported-chains";
 import { karProStakingAddress, usdcAddress } from "@/lib/web3/deployment-addresses";
 import { cn } from "@/lib/utils";
 import { useEvmWriteContract, useEvmSendTransaction } from "@/lib/web3/evm-write-adapter";
+import { evmChainWhenEvm } from "@/lib/web3/evm-wagmi-chrome";
 
 const ERC20_ABI = [
   {
@@ -145,8 +146,9 @@ function VerificationPaymentModalReady({
     enabled: open,
   });
 
-  const usdc = usdcAddress(chainId);
-  const staking = karProStakingAddress(chainId);
+  const eip155 = evmChainWhenEvm(chainId);
+  const usdc = eip155 != null ? usdcAddress(eip155) : undefined;
+  const staking = eip155 != null ? karProStakingAddress(eip155) : undefined;
   const isPending = isEthPending || isWritePending || txPhase !== "idle";
 
   const feeStack = commercialActive(chainId);

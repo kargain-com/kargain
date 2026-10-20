@@ -14,6 +14,7 @@ import {
 } from "@/lib/web3/commercial-active";
 import { usdcAddress } from "@/lib/web3/deployment-addresses";
 import { shortAddress } from "@/lib/web3/wallet-display";
+import { evmChainWhenEvm } from "@/lib/web3/evm-wagmi-chrome";
 
 export type SettlementAssetIdentity = "native" | "usdc" | "unknown";
 
@@ -71,7 +72,8 @@ export function resolveSettlementAssetMeta(input: {
     };
   }
 
-  const usdc = usdcAddress(input.chainId);
+  const eip155 = evmChainWhenEvm(input.chainId);
+  const usdc = eip155 != null ? usdcAddress(eip155) : undefined;
   if (usdc) {
     try {
       if (getAddress(usdc) === checksummed) {

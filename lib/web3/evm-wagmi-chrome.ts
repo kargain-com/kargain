@@ -3,7 +3,11 @@
  * shared by panels/hooks (N1). Never throw; never invent a chain id.
  */
 
-import { isCommercialEip155Id, type Eip155ChainId } from "@/lib/web3/commercial-active";
+import {
+  isCommercialEip155Id,
+  resolveEvmChain,
+  type Eip155ChainId,
+} from "@/lib/web3/commercial-active";
 import type {
   EvmWagmiChainResult,
   KargainWriteUnionChainId,
@@ -21,6 +25,19 @@ export function wrongChainFromWagmi(
     walletChainId !== undefined &&
     walletChainId !== wagmi.chainId
   );
+}
+
+/**
+ * Branded EIP-155 id for a commercial namespace when it is an EVM network;
+ * undefined for SVM / unresolved / absent (soft-disable — never throws, never
+ * invents an id). Feed the result to the address doors in `deployment-addresses`.
+ */
+export function evmChainWhenEvm(
+  namespace: number | null | undefined,
+): Eip155ChainId | undefined {
+  if (namespace == null || !Number.isFinite(namespace)) return undefined;
+  const resolved = resolveEvmChain(namespace);
+  return resolved.ok ? resolved.chainId : undefined;
 }
 
 /** Write-union id when the door admits; undefined when soft-disabled. */

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getAddress } from "viem";
 
+import { LOCALHOST_CHAIN_ID } from "../../lib/web3/local-chain.js";
 import { SEPOLIA_ACTIVE } from "../../lib/web3/sepolia-addresses.js";
 import type {
   SvmDevnetEvidence,
@@ -11,7 +12,6 @@ import type {
 import type { LocalStackAddresses } from "./local-stack.js";
 import type { ContractVersionName } from "./contract-versions.js";
 
-export const LOCAL_CHAIN_ID = 31337;
 export const SEPOLIA_CHAIN_ID = 84532;
 export const SPOKE_CHAIN_ID = 11155111;
 
@@ -36,7 +36,7 @@ export const commercialDeploymentPath = deploymentPathForChain;
 
 /** Live path to `31337.json` — re-reads `KARGAIN_DEPLOYMENTS_DIR` / cwd. */
 export function DEPLOYMENT_PATH(): string {
-  return deploymentPathForChain(LOCAL_CHAIN_ID);
+  return deploymentPathForChain(LOCALHOST_CHAIN_ID);
 }
 /** Live path to `84532.json`. */
 export function SEPOLIA_DEPLOYMENT_PATH(): string {
@@ -166,7 +166,7 @@ export type PonderAddressBundle = {
 function normalizeLocal(raw: LocalStackAddresses): LocalStackAddresses {
   return {
     ...raw,
-    chainId: raw.chainId ?? LOCAL_CHAIN_ID,
+    chainId: raw.chainId ?? LOCALHOST_CHAIN_ID,
     karPassport: getAddress(raw.karPassport),
     karProPass: getAddress(raw.karProPass),
     karProStaking: getAddress(raw.karProStaking),
@@ -352,7 +352,7 @@ export function loadSpokeDeployment(): SpokeDeploymentManifest | null {
 
 export function ponderLocalAddresses(): LocalStackAddresses {
   const fromEnv = {
-    chainId: LOCAL_CHAIN_ID,
+    chainId: LOCALHOST_CHAIN_ID,
     karPassport: process.env.PONDER_KAR_PASSPORT_ADDRESS,
     karProPass: process.env.PONDER_KAR_PRO_PASS_ADDRESS,
     karProStaking: process.env.PONDER_KAR_PRO_STAKING_ADDRESS,

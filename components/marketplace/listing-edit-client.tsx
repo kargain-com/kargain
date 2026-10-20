@@ -43,9 +43,6 @@ import {
 import type { PassportStatus } from "@/lib/types/ponder";
 import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 import { eip155WhenWagmiOk, wagmiWriteUnionId } from "@/lib/web3/evm-wagmi-chrome";
-import {
-  ascendingConsignmentAddress,
-} from "@/lib/web3/deployment-addresses";
 import { commercialActive } from "@/lib/web3/commercial-active";
 import { evmWagmiChain } from "@/lib/web3/supported-chains";
 import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
@@ -538,7 +535,7 @@ export function ListingEditClient({
       {active && isSeller && market && (
         <section className="space-y-4 rounded-md border border-border-default bg-bg-surface p-4">
           <h2 className="text-sm font-medium text-text-primary">Delist</h2>
-          {ascendingConsignmentAddress(chainId) ? (
+          {resolveCommerceMode("ascending", chainId).status === "configured" ? (
             <p className="font-sans text-sm text-text-secondary" role="status">
               {auctionHint}
             </p>

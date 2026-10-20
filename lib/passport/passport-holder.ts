@@ -318,15 +318,8 @@ export async function planPassportHolderRead(args: {
   }
 
   if (stack.vm === "evm") {
-    const passport = karPassportAddress(args.namespace);
+    const passport = karPassportAddress(evmChainOf(stack));
     const wc = wagmiChainOfStack(stack);
-    if (passport == null) {
-      return {
-        ok: false,
-        cause: "unresolved_namespace",
-        detail: "karPassportAddress missing",
-      };
-    }
     return {
       ok: true,
       vm: "evm",
@@ -458,14 +451,11 @@ export async function readPassportHolderLive(args: {
   }
 
   if (plan.vm === "evm") {
-    const passport = karPassportAddress(args.namespace);
-    if (passport == null) {
-      return { status: "refused", cause: "unresolved_namespace", detail: "passport missing" };
-    }
     const stack = commercialActive(args.namespace, args.registry);
     if (stack == null || stack.vm !== "evm") {
       return { status: "refused", cause: "unresolved_namespace" };
     }
+    const passport = karPassportAddress(evmChainOf(stack));
     try {
       const read =
         args.readEvmOwnerOf ??

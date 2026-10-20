@@ -20,7 +20,7 @@ import { isSvmAccountData } from "@/lib/web3/svm-rpc";
 import {
   type ActiveAccount,
 } from "@/lib/web3/active-account";
-import { commercialActive, type CommercialRegistry } from "@/lib/web3/commercial-active";
+import { commercialActive, type CommercialRegistry, evmChainOf } from "@/lib/web3/commercial-active";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import type {
   KeyedContract,
@@ -101,12 +101,12 @@ export async function planActiveVerifierRead(args: {
   }
 
   if (stack.vm === "evm") {
-    const staking = karProStakingAddress(args.chainId);
+    const staking = karProStakingAddress(evmChainOf(stack));
     const sessionAddress =
       args.account.status === "connected" && args.account.vm === "evm"
         ? args.account.address
         : undefined;
-    if (staking == null || sessionAddress == null) {
+    if (sessionAddress == null) {
       return { ok: true, sessionBound: false, contracts: [], vm: "evm" };
     }
     return {

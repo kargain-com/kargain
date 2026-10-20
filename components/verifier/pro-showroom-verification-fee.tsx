@@ -12,6 +12,7 @@ import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { nativeUnitOf, requireCommercialActive } from "@/lib/web3/commercial-active";
 import { evmWagmiChain } from "@/lib/web3/supported-chains";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
+import { eip155WhenWagmiOk } from "@/lib/web3/evm-wagmi-chrome";
 
 type ProShowroomVerificationFeeProps = {
   address: `0x${string}`;
@@ -27,8 +28,9 @@ export function ProShowroomVerificationFee({
   ponderFeeWei,
   chainId,
 }: ProShowroomVerificationFeeProps) {
-  const staking = karProStakingAddress(chainId);
   const wagmiChain = evmWagmiChain(chainId);
+  const eip155 = eip155WhenWagmiOk(wagmiChain);
+  const staking = eip155 != null ? karProStakingAddress(eip155) : undefined;
   const wc = wagmiChain.ok ? wagmiChain.chainId : undefined;
 
   const { data: chainFeeWei } = useReadContract({

@@ -9,7 +9,7 @@ import {
   foldAnyActiveByAddress,
   karProMembershipActiveKey,
 } from "@/lib/kar-pro/membership-roster";
-import { commercialChainIds } from "@/lib/web3/chain-context";
+import { commercialEip155Ids } from "@/lib/web3/commercial-active";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import {
   useKeyedReadContracts,
@@ -44,7 +44,7 @@ export function useKarProMembershipActive(
   );
 
   const chainIds = useMemo(
-    () => commercialChainIds().filter((cid) => Boolean(karProStakingAddress(cid))),
+    () => commercialEip155Ids(),
     [],
   );
 
@@ -53,7 +53,6 @@ export function useKarProMembershipActive(
     const out: KeyedContract[] = [];
     for (const cid of chainIds) {
       const staking = karProStakingAddress(cid);
-      if (!staking) continue;
       const wagmi = evmWagmiChain(cid);
       if (!wagmi.ok) continue;
       for (const attester of attesters) {

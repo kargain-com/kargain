@@ -276,10 +276,7 @@ export async function planPassportCommerceReads(args: {
   }
 
   if (stack.vm === "evm") {
-    const passport = karPassportAddress(args.chainId);
-    if (passport == null) {
-      return { ok: true, vm: null, contracts: [], tokenId: args.tokenId };
-    }
+    const passport = karPassportAddress(evmChainOf(stack));
     let tid: bigint;
     try {
       tid = BigInt(args.tokenId);
@@ -313,12 +310,13 @@ export async function planPassportCommerceReads(args: {
     };
   }
 
-  return planSvmCommerceReads(stack, args.tokenId);
+  return planSvmCommerceReads(stack, args.tokenId, args.registry);
 }
 
 async function planSvmCommerceReads(
   stack: SvmCommercialActiveStack,
   tokenId: string,
+  registry: CommercialRegistry | undefined,
 ): Promise<PassportCommerceReadPlan> {
   let tokenBytes: Uint8Array;
   try {
@@ -369,8 +367,12 @@ async function planSvmCommerceReads(
     }
   }
 
-  if (stack.fixedPriceConsignment) {
-    const mode = stack.fixedPriceConsignment;
+  const namespace = Number(stack.namespace);
+  const fixedPriceMode = resolveCommerceMode("fixedPrice", namespace, registry);
+  const ascendingMode = resolveCommerceMode("ascending", namespace, registry);
+
+  if (fixedPriceMode.status === "configured") {
+    const mode = fixedPriceMode.address;
     for (const [key, recipe] of [
       [FP_CONSIGNMENT_KEY, "kargain-consignment-base/consignment"],
       [FP_MANDATE_KEY, "kargain-consignment-base/mandate"],
@@ -382,8 +384,8 @@ async function planSvmCommerceReads(
     }
   }
 
-  if (stack.ascendingConsignment) {
-    const mode = stack.ascendingConsignment;
+  if (ascendingMode.status === "configured") {
+    const mode = ascendingMode.address;
     for (const [key, recipe] of [
       [ASC_CONSIGNMENT_KEY, "kargain-consignment-base/consignment"],
       [ASC_MANDATE_KEY, "kargain-consignment-base/mandate"],
@@ -399,9 +401,9 @@ async function planSvmCommerceReads(
     ok: true,
     vm: "svm",
     tokenId,
-    namespace: Number(stack.namespace),
-    fixedPriceConfigured: Boolean(stack.fixedPriceConsignment),
-    ascendingConfigured: Boolean(stack.ascendingConsignment),
+    namespace,
+    fixedPriceConfigured: fixedPriceMode.status === "configured",
+    ascendingConfigured: ascendingMode.status === "configured",
     contracts,
   };
 }
@@ -417,8 +419,7 @@ export function planPassportDisputeReads(args: {
 }): readonly KeyedContract[] {
   const stack = commercialActive(args.chainId, args.registry);
   if (stack == null || stack.vm !== "evm") return [];
-  const passport = karPassportAddress(args.chainId);
-  if (passport == null) return [];
+  const passport = karPassportAddress(evmChainOf(stack));
   let tid: bigint;
   try {
     tid = BigInt(args.tokenId);
@@ -461,11 +462,13 @@ function unconfiguredModeFacts(): CommerceModeFacts {
 function svmPlanningFacts(
   stack: SvmCommercialActiveStack,
   isPending: boolean,
-  _registry?: CommercialRegistry,
+  registry?: CommercialRegistry,
 ): PassportCommerceFacts {
   const namespace = Number(stack.namespace);
-  const fixedPriceConfigured = Boolean(stack.fixedPriceConsignment);
-  const ascendingConfigured = Boolean(stack.ascendingConsignment);
+  const fixedPriceConfigured =
+    resolveCommerceMode("fixedPrice", namespace, registry).status === "configured";
+  const ascendingConfigured =
+    resolveCommerceMode("ascending", namespace, registry).status === "configured";
   const fixedPrice: CommerceModeFacts = fixedPriceConfigured
     ? {
         configured: true,
@@ -872,10 +875,7 @@ export async function readPassportCustodyLockLive(args: {
   }
 
   if (stack.vm === "evm") {
-    const passport = karPassportAddress(args.namespace);
-    if (passport == null) {
-      return { status: "refused", cause: "unresolved_namespace" };
-    }
+    const passport = karPassportAddress(evmChainOf(stack));
     let tid: bigint;
     try {
       tid = BigInt(args.tokenId);

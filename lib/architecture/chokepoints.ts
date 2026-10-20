@@ -252,8 +252,11 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "commerce-mode",
     owner: "lib/commerce/mode.ts",
-    rule: "Sole namespace-keyed commerce mode presence: resolveCommerceMode → configured(ProtocolOwner)|absent(unresolved_namespace|mode_not_on_namespace|mode_address_unusable); unresolved_namespace carries no namespace field (never NaN/-1/empty invent); commerceModeAbsentCopy exhaustive non-empty; unresolved_namespace sentence delegates to commercial-active unresolvedNamespaceCopy (no re-inline); hasCommerceMode/Addresses derived from resolve; commerceModeAddress EVM-only hex and banned from app|components|hooks; surfaces must not treat hex undefined as mode absence",
-    guardTests: ["commerce-mode-resolution-policy.test.ts"],
+    rule: "Sole namespace-keyed commerce mode presence: resolveCommerceMode → configured(ProtocolOwner)|absent(unresolved_namespace|mode_not_on_namespace|mode_address_unusable); unresolved_namespace carries no namespace field (never NaN/-1/empty invent); commerceModeAbsentCopy exhaustive non-empty; unresolved_namespace sentence delegates to commercial-active unresolvedNamespaceCopy (no re-inline); hasCommerceMode/Addresses derived from resolve; the mode address is read from the registry stack here and nowhere else (a property, element or destructure read of fixedPriceConsignment / ascendingConsignment outside this module and the registry is red); commerceModeEvmAddress is the EVM hex view and never a presence gate; surfaces must not treat hex undefined as mode absence",
+    guardTests: [
+      "commerce-mode-resolution-policy.test.ts",
+      "n2-registry-address-policy.test.ts",
+    ],
   },
   {
     id: "commerce-open-fixed-price",
@@ -470,11 +473,31 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "eip155-chain-doors",
     owner:
       "lib/web3/supported-chains.ts · lib/web3/public-client.ts · lib/web3/bridge/bridge-read-client.ts",
-    rule: "Branded Eip155ChainId doors only: getViemChain / rpcUrlForChain / getPublicClient / getBridgeReadClient; private writeUnionChainId + rpcUrlForWriteUnionChain keep Hardhat 31337; Result wagmi door evmWagmiChain (namespace → soft + eip155 for ActiveAccount.switchChain) and wagmiChainOfStack (EVM stack); AST ban: ThrowStatement under resolveEvmChain/evmWagmiChain !ok (not TxWriteGuardRefusal after switchAvail); ActiveAccount.switchChain takes Eip155ChainId only (WriteUnion collapses to number under viem — cannot invent-ban alone; adapter keeps WriteUnion for Hardhat); call sites resolve via evmWagmiChain and must not call on !ok (never silent success); Vincent registry via requireEvmCommercialActive→evmChainOf; eleven soft-door sites bind named chrome seams (n1-site-seam-binding-policy); callers: chrome soft-disable on !ok, write owners refuse by name, EVM-by-construction uses evmChainOf / wagmiChainOfStack only; brand cast to Eip155ChainId banned outside commercial-active.ts; address doors stay on number until N2",
+    rule: "Branded Eip155ChainId doors only: getViemChain / rpcUrlForChain / getPublicClient / getBridgeReadClient; private writeUnionChainId + rpcUrlForWriteUnionChain keep Hardhat 31337; Result wagmi door evmWagmiChain (namespace → soft + eip155 for ActiveAccount.switchChain) and wagmiChainOfStack (EVM stack); AST ban: ThrowStatement under resolveEvmChain/evmWagmiChain !ok (not TxWriteGuardRefusal after switchAvail); ActiveAccount.switchChain takes Eip155ChainId only (WriteUnion collapses to number under viem — cannot invent-ban alone; adapter keeps WriteUnion for Hardhat); call sites resolve via evmWagmiChain and must not call on !ok (never silent success); Vincent registry via requireEvmCommercialActive→evmChainOf; eleven soft-door sites bind named chrome seams (n1-site-seam-binding-policy); callers: chrome soft-disable on !ok, write owners refuse by name, EVM-by-construction uses evmChainOf / wagmiChainOfStack only; brand cast to Eip155ChainId banned outside commercial-active.ts; address doors take the brand (registry-address)",
     guardTests: [
       "eip155-chain-door-policy.test.ts",
       "n1-corrective-behaviour.test.ts",
       "n1-site-seam-binding-policy.test.ts",
+    ],
+  },
+  {
+    id: "registry-address-doors",
+    owner:
+      "lib/web3/deployment-addresses.ts · lib/web3/commercial-active.ts · lib/web3/local-chain.ts",
+    rule: "The commercial registry is the only runtime address source: no environment path to a contract address; typed doors (karPassportAddress / karProPassAddress / karProStakingAddress / usdcAddress / chainlinkNativeUsdFeed / kargainTimelockAddress / bridgeGatewayAddress / bridgeTokenAddress) take Eip155ChainId and return 0x…; chainlinkEurUsdFeed returns ok|not_configured; chain-id literal exports are deleted, sepolia-addresses derives its ids from the registry rows and holds no chain-id literal, LOCALHOST_CHAIN_ID has one owner; the historical per-network lists live on the registry rows",
+    guardTests: [
+      "n2-registry-address-policy.test.ts",
+      "deployment-addresses.test.ts",
+    ],
+  },
+  {
+    id: "protocol-address-owner",
+    owner: "lib/web3/commercial-active.ts",
+    rule: "Sole enumerator of Kargain-owned protocol addresses: evmProtocolAddresses (programs, token, feeds, gateway, timelock, modes, endpoint, historical list) with svmProtocolAddresses and commercialProtocolAddresses beside it; deployer, upgrade authority and fee / forfeit sinks stay subjects (SPEC II.4.1); isProtocolAddress / isMessageablePeer take Eip155ChainId; a second function reading the same stack fields as a set is red",
+    guardTests: [
+      "n2-registry-address-policy.test.ts",
+      "wallet-account.test.ts",
+      "profile-subject-policy.test.ts",
     ],
   },
   {

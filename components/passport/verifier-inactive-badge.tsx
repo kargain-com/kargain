@@ -3,6 +3,7 @@
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
+import { evmChainWhenEvm } from "@/lib/web3/evm-wagmi-chrome";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 
@@ -14,7 +15,8 @@ type Props = {
 
 export function VerifierInactiveBadge({ chainId, verifier, className }: Props) {
   const normalized = verifier.trim().toLowerCase();
-  const staking = karProStakingAddress(chainId);
+  const eip155 = evmChainWhenEvm(chainId);
+  const staking = eip155 != null ? karProStakingAddress(eip155) : undefined;
   const hasVerifier = normalized && normalized !== ZERO;
 
   const reads = useKeyedReadContracts({

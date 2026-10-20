@@ -152,31 +152,39 @@ describe("profile subject resolution", () => {
   });
 
   it("constructed: governance roles coinciding must not denylist a person", () => {
-    // Plant of the pre-fix defect: treating deployer/UA/timelock as stack identity.
+    // Plant of the pre-fix defect: treating deployer / upgrade authority / sinks
+    // as protocol identity. The sole owners live beside the registry.
     const roleFields = [
       "deployer",
       "upgradeAuthority",
-      "timelock",
       "forfeitRecipient",
       "platformRecipient",
     ] as const;
     const ownerSrc = fs.readFileSync(
-      path.join(ROOT, "lib/profile/resolve-profile-subject.ts"),
+      path.join(ROOT, "lib/web3/commercial-active.ts"),
       "utf8",
     );
-    const fieldsFn = ownerSrc.slice(
-      ownerSrc.indexOf("function stackIdentityAddressFields"),
-      ownerSrc.indexOf("export function isCommercialProtocolOwner"),
+    const evmFn = ownerSrc.slice(
+      ownerSrc.indexOf("export function evmProtocolAddresses"),
+      ownerSrc.indexOf("export function svmProtocolAddresses"),
     );
-    for (const field of roleFields) {
-      assert.doesNotMatch(
-        fieldsFn,
-        new RegExp(`push\\(stack\\.${field}\\)`),
-        `stackIdentityAddressFields must not push stack.${field} (SPEC II.4.1)`,
-      );
+    const svmFn = ownerSrc.slice(
+      ownerSrc.indexOf("export function svmProtocolAddresses"),
+      ownerSrc.indexOf("export function commercialProtocolAddresses"),
+    );
+    for (const fn of [evmFn, svmFn]) {
+      for (const field of roleFields) {
+        assert.doesNotMatch(
+          fn,
+          new RegExp(`add\\(stack\\.${field}\\)`),
+          `protocol addresses must not add stack.${field} (SPEC II.4.1)`,
+        );
+      }
+      assert.match(fn, /add\(stack\.karPassport\)/);
+      assert.match(fn, /add\(stack\.fixedPriceConsignment\)/);
     }
-    assert.match(fieldsFn, /push\(stack\.karPassport\)/);
-    assert.match(fieldsFn, /push\(stack\.fixedPriceConsignment\)/);
+    assert.match(evmFn, /add\(stack\.timelock\)/);
+    assert.doesNotMatch(svmFn, /add\(stack\.timelock\)/);
   });
 });
 

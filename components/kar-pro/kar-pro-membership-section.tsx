@@ -22,6 +22,7 @@ import {
   isWalletRejection,
   walletRejectionCopy,
 } from "@/lib/web3/wallet-rejection";
+import { evmChainWhenEvm } from "@/lib/web3/evm-wagmi-chrome";
 
 type KarProMembershipSectionProps = {
   chainId: number;
@@ -45,7 +46,8 @@ export function KarProMembershipSection({
   const [leaveConfirm, setLeaveConfirm] = useState(false);
   const [claimMessage, setClaimMessage] = useState<string | null>(null);
 
-  const staking = karProStakingAddress(chainId);
+  const eip155 = evmChainWhenEvm(chainId);
+  const staking = eip155 != null ? karProStakingAddress(eip155) : undefined;
   const resolvedPassId = passId ?? proPassTokenIdFromAddress(address);
   const loading = txPhase !== "idle";
 

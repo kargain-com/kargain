@@ -28,6 +28,7 @@ import { verificationFeeSurface } from "@/lib/verifier/verification-fee-surface"
 import { commercialSvmNamespaceIds, requireSvmCommercialActive } from "@/lib/web3/commercial-active";
 import { mintCommercialNativeUnit } from "@/lib/web3/commercial-native-unit";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
+import { SEPOLIA_CHAIN_ID } from "../lib/web3/sepolia-addresses.ts";
 import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import type { SvmSignAndSendPort } from "@/lib/web3/svm-write-adapter";
 import {
@@ -57,7 +58,7 @@ function readRel(rel: string): string {
 
 describe("U6.2 pin 1 — EVM setVerificationFee behaviour", () => {
   it("buildEvmSetVerificationFeeCall pins functionName + args shape", () => {
-    const address = karProStakingAddress(84532)!;
+    const address = karProStakingAddress(SEPOLIA_CHAIN_ID);
     const feeWei = 12_345_678_901_234_567n;
     const call = buildEvmSetVerificationFeeCall({
       address,
@@ -102,7 +103,7 @@ describe("U6.2 pin 1 — EVM setVerificationFee behaviour", () => {
     };
     assert.equal(call.functionName, "setVerificationFee");
     assert.deepEqual(call.args, [expected]);
-    assert.equal(call.address, karProStakingAddress(84532));
+    assert.equal(call.address, karProStakingAddress(SEPOLIA_CHAIN_ID));
   });
 
   it("planted wrong functionName is red against live pin", () => {

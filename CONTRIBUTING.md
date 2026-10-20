@@ -54,7 +54,7 @@ Follow [design-spec.md](docs/design-spec.md):
 
 - Behavior must match [contracts/SPEC.md](docs/contracts/SPEC.md); update the same file in the PR
 - Base Sepolia addresses: [SPEC Part I.9.1](docs/contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) only — do not duplicate elsewhere
-- Do not hardcode single-network assumptions; use `deployment-addresses.ts` + env `*_BY_CHAIN`
+- Do not hardcode single-network assumptions; read addresses from the commercial registry (`lib/web3/commercial-active.ts`) through its typed doors
 
 ## Pull request expectations
 

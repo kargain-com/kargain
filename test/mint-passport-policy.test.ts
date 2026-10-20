@@ -35,6 +35,7 @@ import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import { commercialSvmNamespaceIds, requireSvmCommercialActive } from "@/lib/web3/commercial-active";
 import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import { SEPOLIA_CHAIN_ID } from "../lib/web3/sepolia-addresses.ts";
 import { svmActiveAccountFromAddress } from "@/lib/web3/active-account";
 import {
   mplCoreProgramId,
@@ -67,7 +68,7 @@ describe("mintPassport EVM behavioural pin", () => {
   const to = "0x0000000000000000000000000000000000000001" as `0x${string}`;
 
   it("buildEvmMintPassportCall yields mintPassport with [address, uri]", () => {
-    const address = karPassportAddress(84532);
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     assert.ok(address);
     const call = buildEvmMintPassportCall({
       address,
@@ -97,7 +98,7 @@ describe("mintPassport EVM behavioural pin", () => {
   });
 
   it("planted wrong functionName is red; live builder is green", () => {
-    const address = karPassportAddress(84532)!;
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     const live = buildEvmMintPassportCall({
       address,
       to,

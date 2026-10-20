@@ -2,10 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { evmWagmiChain } from "@/lib/web3/supported-chains";
-import {
-  karProOnChainReadsEnabled,
-  wagmiWriteUnionId,
-} from "@/lib/web3/evm-wagmi-chrome";
+import { karProOnChainReadsEnabled, wagmiWriteUnionId, eip155WhenWagmiOk } from "@/lib/web3/evm-wagmi-chrome";
 
 import type { KarProVerifierProfile } from "@/lib/verifier/verifier-profile-types";
 import {
@@ -29,8 +26,9 @@ export function useKarProOnChainProfile(
 ): { profile: KarProVerifierProfile | null; isLoading: boolean } {
   const wagmiChain = evmWagmiChain(chainId);
   const wc = chainId != null ? wagmiWriteUnionId(wagmiChain) : undefined;
-  const proPass = chainId != null ? karProPassAddress(chainId) : undefined;
-  const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
+  const eip155 = eip155WhenWagmiOk(wagmiChain);
+  const proPass = eip155 != null ? karProPassAddress(eip155) : undefined;
+  const staking = eip155 != null ? karProStakingAddress(eip155) : undefined;
   const readsEnabled = karProOnChainReadsEnabled({
     enabled,
     address,

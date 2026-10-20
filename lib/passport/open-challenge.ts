@@ -24,7 +24,12 @@ import {
   type ActiveAccount,
   type WalletFamilyWanted,
 } from "@/lib/web3/active-account";
-import { commercialActive, type CommercialRegistry, type SvmCommercialActiveStack } from "@/lib/web3/commercial-active";
+import {
+  commercialActive,
+  type CommercialRegistry,
+  type SvmCommercialActiveStack,
+  evmChainOf,
+} from "@/lib/web3/commercial-active";
 import type { KargainWriteUnionChainId } from "@/lib/web3/supported-chains";
 import { wagmiChainOfStack } from "@/lib/web3/supported-chains";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
@@ -68,7 +73,6 @@ export type OpenChallengeCause =
   | "not_in_program"
   | "product_owner_owed"
   | "authority_only"
-  | "passport_not_configured"
   | "deposit_unknown"
   | "invalid_token_id"
   | "encode_failed"
@@ -178,14 +182,7 @@ export async function planOpenChallenge(input: {
         wanted: stack.vm,
       };
     }
-    const address = karPassportAddress(input.chainId);
-    if (address == null) {
-      return {
-        ok: false,
-        cause: "passport_not_configured",
-        detail: `no karPassport for chain ${input.chainId}`,
-      };
-    }
+    const address = karPassportAddress(evmChainOf(stack));
     if (input.disputeDeposit === undefined) {
       return {
         ok: false,

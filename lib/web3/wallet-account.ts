@@ -1,18 +1,12 @@
-import { commercialEip155Ids, resolveEvmChain } from "@/lib/web3/commercial-active";
 import {
-  chainlinkEurUsdFeed,
-  chainlinkNativeUsdFeed,
-  karPassportAddress,
-  karProPassAddress,
-  karProStakingAddress,
-  kargainContractDenylist,
-  kargainTimelockAddress,
-  bridgeGatewayAddress,
-  usdcAddress,
-} from "@/lib/web3/deployment-addresses";
+  commercialEip155Ids,
+  evmProtocolAddresses,
+  requireEvmCommercialActive,
+  resolveEvmChain,
+  type Eip155ChainId,
+} from "@/lib/web3/commercial-active";
 import {
   normalizeProtocolAddress,
-  protocolAddressDedupKey,
   protocolAddressesEqual,
 } from "@/lib/web3/protocol-address";
 import { getPublicClient } from "@/lib/web3/public-client";
@@ -34,41 +28,14 @@ export function classifyBytecode(code: string | undefined | null): WalletAccount
 }
 
 /**
- * On-chain protocol contracts for messaging / profile denylist.
- * Includes TimelockController when configured. Never deployer EOA (SPEC II.4.1).
+ * True when `address` is a Kargain protocol contract on `chainId` — membership
+ * is the registry's {@link evmProtocolAddresses}. Never the deployer EOA
+ * (SPEC II.4.1). Invalid addresses are not protocol addresses.
  */
-export function allProtocolAddresses(chainId: number): `0x${string}`[] {
-  const candidates = [
-    karPassportAddress(chainId),
-    karProPassAddress(chainId),
-    karProStakingAddress(chainId),
-    usdcAddress(chainId),
-    chainlinkNativeUsdFeed(chainId),
-    chainlinkEurUsdFeed(chainId),
-    bridgeGatewayAddress(chainId),
-    kargainTimelockAddress(chainId),
-  ];
-
-  candidates.push(...kargainContractDenylist(chainId));
-
-  const seen = new Set<string>();
-  const out: `0x${string}`[] = [];
-  for (const addr of candidates) {
-    if (!addr) continue;
-    const key = protocolAddressDedupKey(chainId, addr);
-    if (key == null || seen.has(key)) continue;
-    seen.add(key);
-    const normalized = normalizeProtocolAddress(chainId, addr);
-    if (normalized == null) continue;
-    out.push(normalized as `0x${string}`);
-  }
-  return out;
-}
-
-export function isProtocolAddress(address: string, chainId: number): boolean {
+export function isProtocolAddress(address: string, chainId: Eip155ChainId): boolean {
   const normalized = normalizeProtocolAddress(chainId, address);
   if (!normalized) return false;
-  return allProtocolAddresses(chainId).some((addr) =>
+  return evmProtocolAddresses(requireEvmCommercialActive(chainId)).some((addr) =>
     protocolAddressesEqual(chainId, addr, normalized),
   );
 }
@@ -81,7 +48,7 @@ export function isProtocolAddressOnCommercialChains(address: string): boolean {
   return commercialEip155Ids().some((id) => isProtocolAddress(address, id));
 }
 
-export function isMessageablePeer(address: string, chainId: number): boolean {
+export function isMessageablePeer(address: string, chainId: Eip155ChainId): boolean {
   return !isProtocolAddress(address, chainId);
 }
 
