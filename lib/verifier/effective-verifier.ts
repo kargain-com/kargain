@@ -24,14 +24,19 @@ export function resolveEffectiveVerifierActive(
 }
 
 /**
- * Showroom open/closed from membership + Ponder — one answer for metadata and body.
- * `null` membership (unread / failed / non-EVM) falls back to Ponder; never invent open.
+ * Showroom open/closed — one answer for metadata and body (`6c5cebc` parity).
+ * Effective active (chain when known, Ponder when unread) **or** verified passport
+ * inventory keeps a public showroom even when inactive.
  */
 export function showroomOpenFromMembership(
   isActiveVerifier: boolean | null,
   ponderActive: boolean,
+  verifiedPassportTotal: number,
 ): boolean {
-  return resolveEffectiveVerifierActive("success", isActiveVerifier, ponderActive);
+  return (
+    resolveEffectiveVerifierActive("success", isActiveVerifier, ponderActive) ||
+    verifiedPassportTotal > 0
+  );
 }
 
 /**

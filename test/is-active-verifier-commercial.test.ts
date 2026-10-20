@@ -100,7 +100,8 @@ describe("readActiveVerifierMemberships", () => {
         { chainId: 84532, address: WALLET_C },
       ],
       {
-        readChainActive: async (_chainId, addresses) => {
+        readChainActive: async (chainId, addresses) => {
+          assert.equal(chainId, 84532);
           assert.equal(addresses.length, 3);
           return [true, null, false];
         },

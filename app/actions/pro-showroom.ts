@@ -152,6 +152,7 @@ async function loadResolvedShowroom(
   const showroomOpen = showroomOpenFromMembership(
     isActiveVerifier,
     verifier?.active === true,
+    verifiedPassportTotal,
   );
 
   return {

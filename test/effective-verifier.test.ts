@@ -27,20 +27,28 @@ describe("resolveEffectiveVerifierActive", () => {
 });
 
 describe("showroomOpenFromMembership", () => {
-  it("null membership + ponder inactive → closed (metadata and body agree)", () => {
-    assert.equal(showroomOpenFromMembership(null, false), false);
+  it("null membership + ponder inactive + no passports → closed", () => {
+    assert.equal(showroomOpenFromMembership(null, false, 0), false);
   });
 
   it("null membership + ponder active → open", () => {
-    assert.equal(showroomOpenFromMembership(null, true), true);
+    assert.equal(showroomOpenFromMembership(null, true, 0), true);
   });
 
-  it("known inactive wins over ponder active", () => {
-    assert.equal(showroomOpenFromMembership(false, true), false);
+  it("known inactive wins over ponder active when no passports", () => {
+    assert.equal(showroomOpenFromMembership(false, true, 0), false);
   });
 
   it("known active opens", () => {
-    assert.equal(showroomOpenFromMembership(true, false), true);
+    assert.equal(showroomOpenFromMembership(true, false, 0), true);
+  });
+
+  it("inactive + verifiedPassportTotal > 0 → open (6c5cebc parity)", () => {
+    assert.equal(showroomOpenFromMembership(false, false, 1), true);
+  });
+
+  it("unread + ponder inactive + verifiedPassportTotal > 0 → open", () => {
+    assert.equal(showroomOpenFromMembership(null, false, 2), true);
   });
 });
 
