@@ -5,6 +5,7 @@ import { verifierMembershipKey } from "../lib/kar-pro/is-active-verifier-commerc
 import {
   filterVerifierDirectoryEntries,
   resolveEffectiveVerifierActive,
+  showroomOpenFromMembership,
 } from "../lib/verifier/effective-verifier.ts";
 
 describe("resolveEffectiveVerifierActive", () => {
@@ -22,6 +23,24 @@ describe("resolveEffectiveVerifierActive", () => {
     assert.equal(resolveEffectiveVerifierActive("failure", false, true), true);
     assert.equal(resolveEffectiveVerifierActive("failure", true, false), false);
     assert.equal(resolveEffectiveVerifierActive("failure", null, true), true);
+  });
+});
+
+describe("showroomOpenFromMembership", () => {
+  it("null membership + ponder inactive → closed (metadata and body agree)", () => {
+    assert.equal(showroomOpenFromMembership(null, false), false);
+  });
+
+  it("null membership + ponder active → open", () => {
+    assert.equal(showroomOpenFromMembership(null, true), true);
+  });
+
+  it("known inactive wins over ponder active", () => {
+    assert.equal(showroomOpenFromMembership(false, true), false);
+  });
+
+  it("known active opens", () => {
+    assert.equal(showroomOpenFromMembership(true, false), true);
   });
 });
 

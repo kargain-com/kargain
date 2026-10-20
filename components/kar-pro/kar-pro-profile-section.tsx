@@ -1,10 +1,5 @@
 "use client";
 
-import { resolveEvmChain } from "@/lib/web3/commercial-active";
-
-import { useActiveAccount } from "@/hooks/use-active-account";
-import { evmWagmiChain } from "@/lib/web3/supported-chains";
-
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -13,6 +8,7 @@ import {
   type KarProProfileFieldValues,
 } from "@/components/kar-pro/kar-pro-profile-fields";
 import { Button } from "@/components/ui/button";
+import { useActiveAccount } from "@/hooks/use-active-account";
 import { useIrysDepositPorts } from "@/hooks/use-irys-deposit-ports";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
 import { KarProPassAbi } from "@/lib/contracts/abis.generated";
@@ -20,9 +16,11 @@ import { parseKarProMetadataJson } from "@/lib/kar-pro/kar-pro-metadata";
 import { proShowroomHref } from "@/lib/kar-pro/pro-showroom-href";
 import { uploadKarProMetadata } from "@/lib/kar-pro/upload-kar-pro-metadata";
 import { arUriToHttp } from "@/lib/storage/ar-gateway";
+import { resolveEvmChain } from "@/lib/web3/commercial-active";
 import { karProPassAddress } from "@/lib/web3/deployment-addresses";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
 type KarProProfileSectionProps = {
   chainId: number;

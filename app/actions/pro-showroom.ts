@@ -13,6 +13,7 @@ import {
   type MarketplaceListingRow,
 } from "@/lib/marketplace/map-ponder-listing";
 import { fetchVerifierPublicData } from "@/lib/verifier/fetch-verifier-public-data";
+import { showroomOpenFromMembership } from "@/lib/verifier/effective-verifier";
 import type {
   PassportStatus,
   PonderVerifierAttestation,
@@ -48,6 +49,11 @@ export type ProShowroomData = {
   profileMetadata: { slug?: string; description?: string; website?: string } | null;
   /** `null` when the membership read is unread — never invent inactive. */
   isActiveVerifier: boolean | null;
+  /**
+   * One open/closed decision for metadata and page body (membership + Ponder).
+   * Never invent open from unread membership alone.
+   */
+  showroomOpen: boolean;
   verificationFee: bigint;
 };
 
@@ -143,6 +149,11 @@ async function loadResolvedShowroom(
     profileMetadata.slug = verifier.slug;
   }
 
+  const showroomOpen = showroomOpenFromMembership(
+    isActiveVerifier,
+    verifier?.active === true,
+  );
+
   return {
     address,
     slug,
@@ -157,6 +168,7 @@ async function loadResolvedShowroom(
     attestationTotal,
     profileMetadata,
     isActiveVerifier,
+    showroomOpen,
     verificationFee,
   };
 }

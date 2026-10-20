@@ -76,6 +76,8 @@ export const VM_BRANCH_ALLOWLIST = [
   "lib/kar-pro/kar-pro-hub-admit.ts",
   // S8-D4 unit 3 FixedPrice OpenDirect — dual-VM commerce owner; panels stay blind.
   "lib/commerce/open-fixed-price-consignment.ts",
+  // N2 claimable census — EVM stack fields + commerce/mode; SVM → empty.
+  "lib/web3/claimable-contracts.ts",
   // S8-D4 Create passport — support-before-session admit; wizard stays blind.
   "lib/passport/create-passport-surface.ts",
   "lib/passport/mint-passport.ts",

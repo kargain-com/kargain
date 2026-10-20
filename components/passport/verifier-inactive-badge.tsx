@@ -1,8 +1,7 @@
 "use client";
 
-import { resolveEvmChain } from "@/lib/web3/commercial-active";
-
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
+import { resolveEvmChain } from "@/lib/web3/commercial-active";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 

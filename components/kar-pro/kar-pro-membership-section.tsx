@@ -11,11 +11,12 @@ import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { monoLinkSm, sansLink } from "@/lib/design/instrument-classes";
 import { formatKarProPassTitle, proPassTokenIdFromAddress } from "@/lib/kar-pro/pro-pass-token-id";
 import { karProLeaveNetworkScopeCopy } from "@/lib/kar-pro/membership-roster";
-import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
-import { writeOutcomeHasClaimRecipient } from "@/lib/web3/write-outcome";
-import { requireCommercialActive,
+import {
+  requireCommercialActive,
   resolveEvmChain,
 } from "@/lib/web3/commercial-active";
+import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
+import { writeOutcomeHasClaimRecipient } from "@/lib/web3/write-outcome";
 import { evmWagmiChain } from "@/lib/web3/supported-chains";
 import { explorerAddressUrl } from "@/lib/web3/network-explorer";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";

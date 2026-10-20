@@ -7,6 +7,7 @@ import { isCommercialEip155Id } from "@/lib/web3/commercial-active";
 import {
   readActiveVerifierMemberships,
   verifierMembershipKey,
+  type ReadChainVerifierActive,
 } from "@/lib/kar-pro/is-active-verifier-commercial";
 import { getAddress } from "viem";
 
@@ -105,8 +106,12 @@ export async function resolveProShowroomBySlug(
 export async function isActiveVerifierOnChain(
   address: `0x${string}`,
   chainId: number,
+  deps?: { readChainActive?: ReadChainVerifierActive },
 ): Promise<boolean | null> {
-  const batch = await readActiveVerifierMemberships([{ address, chainId }]);
+  const batch = await readActiveVerifierMemberships(
+    [{ address, chainId }],
+    deps,
+  );
   if (batch.status === "failure") return null;
   const key = verifierMembershipKey(chainId, address);
   if (!batch.activeByMembership.has(key)) return null;

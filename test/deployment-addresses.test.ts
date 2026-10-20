@@ -36,7 +36,9 @@ const ENV_KEYS = [
   "NEXT_PUBLIC_KAR_PASSPORT_ADDRESS",
   "NEXT_PUBLIC_USDC_BY_CHAIN",
   "NEXT_PUBLIC_KAR_PRO_STAKING_BY_CHAIN",
-  ] as const;
+  "NEXT_PUBLIC_EUR_FEED_ADDRESS",
+  "NEXT_PUBLIC_EUR_FEED_BY_CHAIN",
+] as const;
 
 afterEach(() => {
   for (const key of ENV_KEYS) delete process.env[key];

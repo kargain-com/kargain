@@ -24,6 +24,17 @@ export function resolveEffectiveVerifierActive(
 }
 
 /**
+ * Showroom open/closed from membership + Ponder — one answer for metadata and body.
+ * `null` membership (unread / failed / non-EVM) falls back to Ponder; never invent open.
+ */
+export function showroomOpenFromMembership(
+  isActiveVerifier: boolean | null,
+  ponderActive: boolean,
+): boolean {
+  return resolveEffectiveVerifierActive("success", isActiveVerifier, ponderActive);
+}
+
+/**
  * Filter directory rows by effective active status per membership.
  * Map keys = {@link verifierMembershipKey}; missing key on success → unread
  * (Ponder fallback), never invent inactive.

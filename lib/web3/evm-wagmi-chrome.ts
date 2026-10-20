@@ -26,7 +26,6 @@ export function wrongChainFromWagmi(
   );
 }
 
-
 /** Write-union id when the door admits; undefined when soft-disabled. */
 export function wagmiWriteUnionId(
   wagmi: EvmWagmiChainResult,

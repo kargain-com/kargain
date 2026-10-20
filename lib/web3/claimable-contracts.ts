@@ -1,7 +1,7 @@
 /**
  * ClaimablePayouts inheritors on a commercial stack.
- * Passport/staking come from the held stack when EVM-shaped (0x…);
- * modes go through commerce/mode (never a direct stack mode-field read).
+ * Passport/staking from the held EVM stack fields; modes via commerce/mode.
+ * Non-EVM commercial rows → empty (no claimable hex contracts).
  * Fifth money-moving contract: append here + ponder dualEntry + handler factory call.
  */
 
@@ -36,16 +36,11 @@ export type ClaimableContractEntry = {
   address: `0x${string}`;
 };
 
-function evmHex(value: string | undefined): `0x${string}` | undefined {
-  if (value == null || !value.startsWith("0x")) return undefined;
-  return value as `0x${string}`;
-}
-
 export function claimableContractsForChain(
   chainId: number,
 ): ClaimableContractEntry[] {
   const stack = commercialActive(chainId);
-  if (stack == null) return [];
+  if (stack == null || stack.vm !== "evm") return [];
   const out: ClaimableContractEntry[] = [];
 
   const push = (key: ClaimableStackKey, address: `0x${string}` | undefined) => {
@@ -53,8 +48,8 @@ export function claimableContractsForChain(
     out.push({ key, role: ROLE_BY_KEY[key], address });
   };
 
-  push("karPassport", evmHex(stack.karPassport));
-  push("karProStaking", evmHex(stack.karProStaking));
+  push("karPassport", stack.karPassport);
+  push("karProStaking", stack.karProStaking);
   push("fixedPriceConsignment", commerceModeEvmAddress("fixedPrice", chainId));
   push("ascendingConsignment", commerceModeEvmAddress("ascending", chainId));
   return out;

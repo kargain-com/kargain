@@ -23,12 +23,17 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 import { readActiveVerifierMemberships } from "../lib/kar-pro/is-active-verifier-commercial.ts";
+import { planPassportHolderRead } from "../lib/passport/passport-holder.ts";
+import { planSetPassportUri } from "../lib/passport/set-passport-uri.ts";
 import {
   COMMERCIAL_ACTIVE,
   commercialProtocolAddresses,
   evmProtocolAddresses,
   requireEvmCommercialActive,
+  type CommercialRegistry,
+  type EvmCommercialActiveStack,
 } from "../lib/web3/commercial-active.ts";
+import { mintKargainNamespace } from "../lib/web3/kargain-namespace.ts";
 import {
   ETHEREUM_SEPOLIA_CHAIN_ID,
   SEPOLIA_CHAIN_ID,
@@ -73,10 +78,78 @@ const MODE_FIELDS = new Set(["fixedPriceConsignment", "ascendingConsignment"]);
 /** Sole owner of the protocol-address union and of the registry rows. */
 const PROTOCOL_OWNER = "lib/web3/commercial-active.ts";
 /** Sole reader of a mode address (beside the registry rows themselves). */
-const MODE_OWNERS = ["lib/web3/commercial-active.ts", "lib/commerce/mode.ts"];
+const MODE_OWNERS = new Set([
+  "lib/web3/commercial-active.ts",
+  "lib/commerce/mode.ts",
+]);
+/**
+ * Computed stack[field] program-id walks outside #26 — tracked separately.
+ * Must stay explicit path exemptions (never name/heuristic dodge).
+ */
+const COMPUTED_STACK_ACCESS_EXEMPT = new Map<string, string>([
+  [
+    "lib/svm/derive-pda.ts",
+    "SVM program-id census (commercialSvmProgramIds); dual enumerator — #35",
+  ],
+  [
+    "lib/svm/ingest-config.ts",
+    "SVM ingest program map; outside N2 address-door scope — #35",
+  ],
+]);
+
+/**
+ * Planted passport on the live hub namespace — differs from COMMERCIAL_ACTIVE.
+ * On 578e734, door re-entry returns the live hub address (assertion red).
+ * On head, the held stack field is used (green). Inject-only namespaces cannot
+ * reach wagmiChainOfStack (write-union), so the dual-source pin uses live ns.
+ */
+const PLANTED_PASSPORT =
+  "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as const;
 
 function parse(rel: string, source: string): ts.SourceFile {
   return ts.createSourceFile(rel, source, ts.ScriptTarget.ES2022, true);
+}
+
+function plantedHubRegistry(): {
+  registry: CommercialRegistry;
+  stack: EvmCommercialActiveStack;
+  livePassport: `0x${string}`;
+} {
+  const base = COMMERCIAL_ACTIVE[SEPOLIA_CHAIN_ID];
+  assert.ok(base != null && base.vm === "evm");
+  assert.notEqual(base.karPassport.toLowerCase(), PLANTED_PASSPORT.toLowerCase());
+  const stack: EvmCommercialActiveStack = {
+    ...base,
+    karPassport: PLANTED_PASSPORT,
+  };
+  return {
+    registry: { ...COMMERCIAL_ACTIVE, [SEPOLIA_CHAIN_ID]: stack },
+    stack,
+    livePassport: base.karPassport,
+  };
+}
+
+const STACK_TYPE_NAMES = new Set([
+  "CommercialActiveStack",
+  "EvmCommercialActiveStack",
+  "SvmCommercialActiveStack",
+]);
+
+function typeMentionsCommercialStack(
+  checker: ts.TypeChecker,
+  type: ts.Type,
+  depth = 0,
+): boolean {
+  if (depth > 6) return false;
+  if (type.aliasSymbol != null && STACK_TYPE_NAMES.has(type.aliasSymbol.getName())) {
+    return true;
+  }
+  const sym = type.getSymbol();
+  if (sym != null && STACK_TYPE_NAMES.has(sym.getName())) return true;
+  if (type.isUnionOrIntersection()) {
+    return type.types.some((t) => typeMentionsCommercialStack(checker, t, depth + 1));
+  }
+  return false;
 }
 
 function accessedFieldName(node: ts.Node): string | null {
@@ -130,47 +203,14 @@ function findSecondEnumerators(rel: string, source: string): string[] {
   return found;
 }
 
-/**
- * Reads of a mode address field — property, string element, destructure, or
- * computed `stack[key]` when a mode-name string literal appears in-file
- * (catches CLAIMABLE_STACK_KEYS-style bypasses).
- */
-function findDirectModeReads(rel: string, source: string): string[] {
+/** Literal mode-field reads (property / string element / destructure). */
+function findLiteralModeFieldReads(rel: string, source: string): string[] {
   const sf = parse(rel, source);
   const found: string[] = [];
-  const modeLiterals = new Set<string>();
-  const collectLiterals = (node: ts.Node) => {
-    if (ts.isStringLiteralLike(node) && MODE_FIELDS.has(node.text)) {
-      modeLiterals.add(node.text);
-    }
-    ts.forEachChild(node, collectLiterals);
-  };
-  collectLiterals(sf);
-
   const visit = (node: ts.Node) => {
     const field = accessedFieldName(node);
     if (field != null && MODE_FIELDS.has(field)) {
       found.push(`${rel}: reads ${field}`);
-    }
-    if (
-      ts.isElementAccessExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === "stack" &&
-      !ts.isStringLiteralLike(node.argumentExpression) &&
-      modeLiterals.size > 0
-    ) {
-      // Narrow: CLAIMABLE-style tables (not SVM program-id field walks).
-      const claimableShape =
-        /CLAIMABLE_STACK_KEYS/.test(source) ||
-        /as keyof CommercialActiveStack/.test(source) ||
-        /\[\s*["']fixedPriceConsignment["']\s*,\s*["']ascendingConsignment["']/.test(
-          source,
-        );
-      if (claimableShape) {
-        found.push(
-          `${rel}: computed mode key via stack[...] (${[...modeLiterals].join(",")})`,
-        );
-      }
     }
     ts.forEachChild(node, visit);
   };
@@ -178,17 +218,91 @@ function findDirectModeReads(rel: string, source: string): string[] {
   return found;
 }
 
-/** Held EVM stack + address-door re-entry (global COMMERCIAL_ACTIVE). */
-function findStackHolderDoorCalls(rel: string, source: string): string[] {
-  const hits: string[] = [];
-  // Text plant: door(evmChainOf(stack)) is the dual-source defect.
-  if (/karPassportAddress\s*\(\s*evmChainOf\s*\(\s*stack\b/.test(source)) {
-    hits.push(`${rel}: karPassportAddress(evmChainOf(stack))`);
+/**
+ * Type-aware computed element access on a commercial stack type.
+ * Object need not be named `stack`; binder rename still red.
+ */
+function findComputedCommercialStackAccesses(
+  program: ts.Program,
+): string[] {
+  const checker = program.getTypeChecker();
+  const found: string[] = [];
+  for (const sf of program.getSourceFiles()) {
+    if (sf.isDeclarationFile) continue;
+    const abs = path.resolve(sf.fileName);
+    if (!abs.startsWith(ROOT + path.sep) && abs !== ROOT) continue;
+    const rel = path.relative(ROOT, abs).replace(/\\/g, "/");
+    if (
+      !rel.startsWith("lib/") &&
+      !rel.startsWith("app/") &&
+      !rel.startsWith("components/") &&
+      !rel.startsWith("hooks/")
+    ) {
+      continue;
+    }
+    if (MODE_OWNERS.has(rel) || COMPUTED_STACK_ACCESS_EXEMPT.has(rel)) continue;
+
+    const visit = (node: ts.Node) => {
+      if (
+        ts.isElementAccessExpression(node) &&
+        !ts.isStringLiteralLike(node.argumentExpression) &&
+        !ts.isNumericLiteral(node.argumentExpression)
+      ) {
+        const objType = checker.getTypeAtLocation(node.expression);
+        if (typeMentionsCommercialStack(checker, objType)) {
+          found.push(
+            `${rel}: computed element access on commercial stack type`,
+          );
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
   }
-  if (/karProStakingAddress\s*\(\s*evmChainOf\s*\(\s*stack\b/.test(source)) {
-    hits.push(`${rel}: karProStakingAddress(evmChainOf(stack))`);
+  return found;
+}
+
+function createAppProgram(extraRoot?: {
+  fileName: string;
+  source: string;
+}): ts.Program {
+  const configPath = path.join(ROOT, "tsconfig.json");
+  const configFile = ts.readConfigFile(configPath, (p) => ts.sys.readFile(p));
+  assert.equal(configFile.error, undefined);
+  const parsed = ts.parseJsonConfigFileContent(
+    configFile.config,
+    ts.sys,
+    ROOT,
+  );
+  const rootNames = [...parsed.fileNames];
+  const host = ts.createCompilerHost(parsed.options, true);
+  if (extraRoot != null) {
+    const abs = path.resolve(ROOT, extraRoot.fileName);
+    rootNames.push(abs);
+    const readFile = host.readFile.bind(host);
+    const fileExists = host.fileExists.bind(host);
+    const baseGet = host.getSourceFile.bind(host);
+    host.readFile = (fileName) =>
+      path.resolve(fileName) === abs ? extraRoot.source : readFile(fileName);
+    host.fileExists = (fileName) =>
+      path.resolve(fileName) === abs ? true : fileExists(fileName);
+    host.getSourceFile = (fileName, languageVersion, onError, shouldCreate) => {
+      if (path.resolve(fileName) === abs) {
+        return ts.createSourceFile(
+          abs,
+          extraRoot.source,
+          languageVersion,
+          true,
+        );
+      }
+      return baseGet(fileName, languageVersion, onError, shouldCreate);
+    };
   }
-  return hits;
+  return ts.createProgram({
+    rootNames,
+    options: { ...parsed.options, noEmit: true },
+    host,
+  });
 }
 
 function numericLiterals(source: string): number[] {
@@ -265,8 +379,9 @@ describe("no environment path to a contract address", () => {
     const banned =
       /\b(ENV_SINGLE|ENV_BY_CHAIN|parseJsonMap|resolveAddress|resolveOptionalAddress|commerceModeAddress|fixedPriceConsignmentAddress|ascendingConsignmentAddress|kargainContractDenylist|allProtocolAddresses)\b/;
     const scan = scanCommercialAbiEnumerationSources((rel, source) => {
-      void rel;
-      return banned.test(source) ? "deleted address resolver name" : false;
+      return banned.test(source)
+        ? `${rel}: deleted address resolver name`
+        : false;
     });
     assertCleanCommercialAbiEnumerationScan(scan);
   });
@@ -424,18 +539,29 @@ export function mine(stack: EvmCommercialActiveStack): string[] {
 });
 
 describe("one mode-address reader", () => {
+  const modeOwnerList = [...MODE_OWNERS];
+
   it("no product or indexer file reads a mode address outside commerce/mode.ts", () => {
     const scan = scanCommercialAbiEnumerationSources(
       (rel, source) => {
         // Indexer address bundle (`ponder.config.ts`) and deploy tooling carry their
         // own manifest-shaped fields; the rule is about the registry stack.
         if (rel.startsWith("scripts/") || rel === "ponder.config.ts") return false;
-        const hits = findDirectModeReads(rel, source);
+        const hits = findLiteralModeFieldReads(rel, source);
         return hits.length > 0 ? hits.join("; ") : false;
       },
-      { owners: MODE_OWNERS },
+      { owners: modeOwnerList },
     );
-    assertCleanCommercialAbiEnumerationScan(scan, { owners: MODE_OWNERS });
+    assertCleanCommercialAbiEnumerationScan(scan, { owners: modeOwnerList });
+  });
+
+  it("no computed element access on a commercial stack outside owners + exemptions", () => {
+    const program = createAppProgram();
+    const hits = findComputedCommercialStackAccesses(program);
+    assert.deepEqual(hits, [], hits.join("\n"));
+    // Exemptions are named and required — deleting a path without updating the map is red.
+    assert.equal(COMPUTED_STACK_ACCESS_EXEMPT.has("lib/svm/derive-pda.ts"), true);
+    assert.equal(COMPUTED_STACK_ACCESS_EXEMPT.has("lib/svm/ingest-config.ts"), true);
   });
 
   it("constructed: planted direct mode reads are red (property, element, destructure)", () => {
@@ -444,51 +570,82 @@ describe("one mode-address reader", () => {
       'export const a = stack["ascendingConsignment"];',
       "export const { fixedPriceConsignment } = stack;",
     ]) {
-      assert.equal(findDirectModeReads("lib/plant.ts", planted).length, 1, planted);
+      assert.equal(
+        findLiteralModeFieldReads("lib/plant.ts", planted).length,
+        1,
+        planted,
+      );
     }
     assert.deepEqual(
-      findDirectModeReads("lib/plant.ts", "export const a = stack.karPassport;"),
+      findLiteralModeFieldReads(
+        "lib/plant.ts",
+        "export const a = stack.karPassport;",
+      ),
       [],
     );
   });
 
-  it("constructed: computed stack[key] with a mode-name literal is red", () => {
+  it("constructed: renamed binder row[key] on EvmCommercialActiveStack is red", () => {
     const planted = `
-const CLAIMABLE_STACK_KEYS = ["fixedPriceConsignment", "ascendingConsignment"] as const;
-export function read(stack: { [k: string]: string }) {
-  for (const key of CLAIMABLE_STACK_KEYS) {
-    void stack[key as keyof typeof stack];
-  }
+import type { EvmCommercialActiveStack } from "@/lib/web3/commercial-active";
+export function read(
+  row: EvmCommercialActiveStack,
+  key: keyof EvmCommercialActiveStack,
+) {
+  return row[key];
 }
 `;
+    const program = createAppProgram({
+      fileName: "lib/web3/plant-computed-stack.ts",
+      source: planted,
+    });
+    const hits = findComputedCommercialStackAccesses(program);
     assert.ok(
-      findDirectModeReads("lib/web3/claimable-contracts.ts", planted).length >= 1,
+      hits.some((h) => h.includes("lib/web3/plant-computed-stack.ts")),
+      hits.join("; "),
     );
   });
 });
 
-describe("held stack does not re-enter address doors", () => {
-  it("no product file calls karPassportAddress(evmChainOf(stack))", () => {
-    const scan = scanCommercialAbiEnumerationSources((rel, source) => {
-      if (rel.startsWith("scripts/") || rel.startsWith("test/")) return false;
-      const hits = findStackHolderDoorCalls(rel, source);
-      return hits.length > 0 ? hits.join("; ") : false;
+describe("held stack owns the address (injected registry)", () => {
+  it("planSetPassportUri uses injected karPassport without door re-entry", async () => {
+    const { registry, livePassport } = plantedHubRegistry();
+    const planned = await planSetPassportUri({
+      account: {
+        status: "connected",
+        vm: "evm",
+        address: "0x0000000000000000000000000000000000000001",
+        namespace: mintKargainNamespace(SEPOLIA_CHAIN_ID),
+        chainId: SEPOLIA_CHAIN_ID,
+      },
+      chainId: SEPOLIA_CHAIN_ID,
+      tokenId: "1",
+      uri: "ar://n2-inject-uri",
+      registry,
     });
-    assertCleanCommercialAbiEnumerationScan(scan);
+    assert.equal(planned.ok, true);
+    if (!planned.ok || planned.vm !== "evm") {
+      assert.fail(`expected evm plan, got ${JSON.stringify(planned)}`);
+    }
+    assert.equal(planned.call.address, PLANTED_PASSPORT);
+    assert.notEqual(planned.call.address.toLowerCase(), livePassport.toLowerCase());
   });
 
-  it("constructed: door(evmChainOf(stack)) is red", () => {
-    const planted = `
-import { karPassportAddress } from "@/lib/web3/deployment-addresses";
-import { evmChainOf } from "@/lib/web3/commercial-active";
-export function plan(stack: { vm: "evm" }) {
-  return karPassportAddress(evmChainOf(stack));
-}
-`;
-    assert.equal(
-      findStackHolderDoorCalls("lib/passport/plant.ts", planted).length,
-      1,
-    );
+  it("planPassportHolderRead uses injected karPassport without door re-entry", async () => {
+    const { registry, livePassport } = plantedHubRegistry();
+    const planned = await planPassportHolderRead({
+      namespace: SEPOLIA_CHAIN_ID,
+      tokenId: "1",
+      registry,
+    });
+    assert.equal(planned.ok, true);
+    if (!planned.ok || planned.vm !== "evm") {
+      assert.fail(`expected evm plan, got ${JSON.stringify(planned)}`);
+    }
+    const first = planned.contracts[0];
+    assert.ok(first != null && "address" in first);
+    assert.equal(first.address, PLANTED_PASSPORT);
+    assert.notEqual(first.address.toLowerCase(), livePassport.toLowerCase());
   });
 });
 
