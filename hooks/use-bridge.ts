@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveEvmChain } from "@/lib/web3/commercial-active";
+
 import { useActiveAccount, requireEvmSession } from "@/hooks/use-active-account";
 import { evmWagmiChain } from "@/lib/web3/supported-chains";
 
@@ -30,7 +32,6 @@ import {
   BRIDGE_HUB_CHAIN_ID,
   BRIDGE_SPOKE_CHAIN_ID,
   BridgeUriTooLongError,
-  bridgeAdapterAddress,
   bridgeCounterpartChainId,
   bridgeDstEid,
   bridgeUriTooLongCopy,
@@ -41,10 +42,12 @@ import {
   sendArgs,
   type BridgeSendParam,
 } from "@/lib/web3/bridge";
-import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import {
+  bridgeGatewayAddress,
+  karPassportAddress,
+} from "@/lib/web3/deployment-addresses";
 import { commercialNetworkLabel } from "@/lib/web3/chain-selector-state";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
-import { evmChainWhenEvm } from "@/lib/web3/evm-wagmi-chrome";
 
 export type BridgePhase =
   | "idle"
@@ -89,8 +92,9 @@ export function useBridge(
   const [localError, setLocalError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const srcEip155 = evmChainWhenEvm(srcChainId);
-  const adapter = srcEip155 != null ? bridgeAdapterAddress(srcEip155) : undefined;
+  const resolvedSrc = resolveEvmChain(srcChainId);
+  const srcEip155 = resolvedSrc.ok ? resolvedSrc.chainId : undefined;
+  const adapter = srcEip155 != null ? bridgeGatewayAddress(srcEip155) : undefined;
   const passport = srcEip155 != null ? karPassportAddress(srcEip155) : undefined;
   const dstEid = bridgeDstEid(srcChainId);
 

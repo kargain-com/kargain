@@ -28,11 +28,9 @@ import {
   unresolvedNamespaceCopy,
   type CommercialRegistry,
   type SvmCommercialActiveStack,
-  evmChainOf,
 } from "@/lib/web3/commercial-active";
 import type { KargainWriteUnionChainId } from "@/lib/web3/supported-chains";
 import { wagmiChainOfStack } from "@/lib/web3/supported-chains";
-import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import {
   evmLandedRevertCopy,
   REVERT_COPY,
@@ -489,7 +487,7 @@ export async function planMintPassport(input: {
         "evm",
       );
     }
-    const address = karPassportAddress(evmChainOf(stack));
+    const address = stack.karPassport;
     const call = buildEvmMintPassportCall({
       address,
       to: input.account.address,

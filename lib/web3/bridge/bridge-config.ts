@@ -2,10 +2,7 @@ import {
   ETHEREUM_SEPOLIA_CHAIN_ID,
   SEPOLIA_CHAIN_ID,
 } from "@/lib/web3/sepolia-addresses";
-import {
-  bridgeGatewayAddress,
-  karPassportAddress,
-} from "@/lib/web3/deployment-addresses";
+import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import {
   unresolvedNamespaceCopy,
   type Eip155ChainId,
@@ -159,10 +156,6 @@ export function resolveBridgeRoute(
       { srcChainId: BRIDGE_HUB_CHAIN_ID, dstChainId: dst },
     ],
   };
-}
-
-export function bridgeAdapterAddress(chainId: Eip155ChainId): `0x${string}` {
-  return bridgeGatewayAddress(chainId);
 }
 
 /**

@@ -1,9 +1,10 @@
 "use client";
 
+import { resolveEvmChain } from "@/lib/web3/commercial-active";
+
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
-import { evmChainWhenEvm } from "@/lib/web3/evm-wagmi-chrome";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 
@@ -15,7 +16,8 @@ type Props = {
 
 export function VerifierInactiveBadge({ chainId, verifier, className }: Props) {
   const normalized = verifier.trim().toLowerCase();
-  const eip155 = evmChainWhenEvm(chainId);
+  const resolvedEip155 = resolveEvmChain(chainId);
+  const eip155 = resolvedEip155.ok ? resolvedEip155.chainId : undefined;
   const staking = eip155 != null ? karProStakingAddress(eip155) : undefined;
   const hasVerifier = normalized && normalized !== ZERO;
 

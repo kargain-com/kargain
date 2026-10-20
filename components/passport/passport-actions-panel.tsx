@@ -64,6 +64,7 @@ import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import {
   commercialActive,
   nativeUnitOf,
+  resolveEvmChain,
 } from "@/lib/web3/commercial-active";
 import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 import { formatNativeAmountLabeled } from "@/lib/web3/native-amount";
@@ -71,7 +72,6 @@ import { writeOutcomeHasClaimRecipient } from "@/lib/web3/write-outcome";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 import { usePassportCommerceFacts } from "@/hooks/use-passport-commerce-facts";
 import { txWriteAvailability } from "@/lib/web3/tx-write-availability";
-import { evmChainWhenEvm } from "@/lib/web3/evm-wagmi-chrome";
 
 type Props = {
   tokenId: string;
@@ -188,7 +188,8 @@ export function PassportActionsPanel({
   const [recordEvidencePaste, setRecordEvidencePaste] = useState("");
   const [recordEvidenceFile, setRecordEvidenceFile] = useState<File | null>(null);
 
-  const eip155 = evmChainWhenEvm(chainId);
+  const resolvedEip155 = resolveEvmChain(chainId);
+  const eip155 = resolvedEip155.ok ? resolvedEip155.chainId : undefined;
   const passport = eip155 != null ? karPassportAddress(eip155) : undefined;
   /** EVM hex address or any commercial stack (SVM program id) — no VM fork. */
   const writeTargetConfigured =

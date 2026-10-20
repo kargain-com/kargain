@@ -25,11 +25,9 @@ import {
   nativeUnitOf,
   type CommercialRegistry,
   type SvmCommercialActiveStack,
-  evmChainOf,
 } from "@/lib/web3/commercial-active";
 import type { KargainWriteUnionChainId } from "@/lib/web3/supported-chains";
 import { wagmiChainOfStack } from "@/lib/web3/supported-chains";
-import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import {
   AccountRole,
   sendSvmInstruction,
@@ -169,7 +167,7 @@ export async function planSetVerificationFee(
         wanted: stack.vm,
       };
     }
-    const address = karProStakingAddress(evmChainOf(stack));
+    const address = stack.karProStaking;
     if (input.marginNative < 0n) {
       return {
         ok: false,

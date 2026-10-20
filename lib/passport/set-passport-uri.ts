@@ -25,11 +25,9 @@ import {
   commercialActive,
   type CommercialRegistry,
   type SvmCommercialActiveStack,
-  evmChainOf,
 } from "@/lib/web3/commercial-active";
 import type { KargainWriteUnionChainId } from "@/lib/web3/supported-chains";
 import { wagmiChainOfStack } from "@/lib/web3/supported-chains";
-import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import {
   AccountRole,
   sendSvmInstruction,
@@ -167,7 +165,7 @@ export async function planSetPassportUri(input: {
         wanted: stack.vm,
       };
     }
-    const address = karPassportAddress(evmChainOf(stack));
+    const address = stack.karPassport;
     try {
       const call = buildEvmSetPassportUriCall({
         address,

@@ -1,13 +1,12 @@
 /**
  * ClaimablePayouts inheritors on a commercial stack.
- * Addresses resolve only through COMMERCIAL_ACTIVE — no literals.
- * Fifth money-moving contract: append a key here + ponder dualEntry + handler factory call.
+ * Passport/staking come from the held stack when EVM-shaped (0x…);
+ * modes go through commerce/mode (never a direct stack mode-field read).
+ * Fifth money-moving contract: append here + ponder dualEntry + handler factory call.
  */
 
-import {
-  commercialActive,
-  type CommercialActiveStack,
-} from "@/lib/web3/commercial-active";
+import { commerceModeEvmAddress } from "@/lib/commerce/mode";
+import { commercialActive } from "@/lib/web3/commercial-active";
 
 export const CLAIMABLE_STACK_KEYS = [
   "karPassport",
@@ -37,21 +36,27 @@ export type ClaimableContractEntry = {
   address: `0x${string}`;
 };
 
+function evmHex(value: string | undefined): `0x${string}` | undefined {
+  if (value == null || !value.startsWith("0x")) return undefined;
+  return value as `0x${string}`;
+}
+
 export function claimableContractsForChain(
   chainId: number,
 ): ClaimableContractEntry[] {
   const stack = commercialActive(chainId);
-  if (!stack) return [];
+  if (stack == null) return [];
   const out: ClaimableContractEntry[] = [];
-  for (const key of CLAIMABLE_STACK_KEYS) {
-    const address = stack[key as keyof CommercialActiveStack];
-    if (typeof address !== "string" || !address.startsWith("0x")) continue;
-    out.push({
-      key,
-      role: ROLE_BY_KEY[key],
-      address: address as `0x${string}`,
-    });
-  }
+
+  const push = (key: ClaimableStackKey, address: `0x${string}` | undefined) => {
+    if (address == null) return;
+    out.push({ key, role: ROLE_BY_KEY[key], address });
+  };
+
+  push("karPassport", evmHex(stack.karPassport));
+  push("karProStaking", evmHex(stack.karProStaking));
+  push("fixedPriceConsignment", commerceModeEvmAddress("fixedPrice", chainId));
+  push("ascendingConsignment", commerceModeEvmAddress("ascending", chainId));
   return out;
 }
 

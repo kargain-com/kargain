@@ -11,10 +11,10 @@ import { getAddress, zeroAddress } from "viem";
 import {
   commercialActive,
   nativeUnitOf,
+  resolveEvmChain,
 } from "@/lib/web3/commercial-active";
 import { usdcAddress } from "@/lib/web3/deployment-addresses";
 import { shortAddress } from "@/lib/web3/wallet-display";
-import { evmChainWhenEvm } from "@/lib/web3/evm-wagmi-chrome";
 
 export type SettlementAssetIdentity = "native" | "usdc" | "unknown";
 
@@ -72,7 +72,8 @@ export function resolveSettlementAssetMeta(input: {
     };
   }
 
-  const eip155 = evmChainWhenEvm(input.chainId);
+  const resolvedEip155 = resolveEvmChain(input.chainId);
+  const eip155 = resolvedEip155.ok ? resolvedEip155.chainId : undefined;
   const usdc = eip155 != null ? usdcAddress(eip155) : undefined;
   if (usdc) {
     try {

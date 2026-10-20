@@ -98,15 +98,17 @@ export async function resolveProShowroomBySlug(
   };
 }
 
-/** Membership-keyed active on one chain (not commercial OR). */
+/**
+ * Membership-keyed active on one chain (not commercial OR).
+ * `null` = unread / failed / non-EVM — never invent inactive.
+ */
 export async function isActiveVerifierOnChain(
   address: `0x${string}`,
   chainId: number,
-): Promise<boolean> {
+): Promise<boolean | null> {
   const batch = await readActiveVerifierMemberships([{ address, chainId }]);
-  if (batch.status === "failure") return false;
-  return (
-    batch.activeByMembership.get(verifierMembershipKey(chainId, address)) ===
-    true
-  );
+  if (batch.status === "failure") return null;
+  const key = verifierMembershipKey(chainId, address);
+  if (!batch.activeByMembership.has(key)) return null;
+  return batch.activeByMembership.get(key) === true;
 }

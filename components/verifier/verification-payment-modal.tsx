@@ -40,12 +40,13 @@ import {
 import { acceptedPaymentMethods } from "@/lib/verifier/payment-methods";
 import { useNostrProfile } from "@/hooks/use-nostr-profile";
 import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
-import { commercialActive, nativeUnitOf } from "@/lib/web3/commercial-active";
+import { commercialActive, nativeUnitOf,
+  resolveEvmChain,
+} from "@/lib/web3/commercial-active";
 import { evmWagmiChain } from "@/lib/web3/supported-chains";
 import { karProStakingAddress, usdcAddress } from "@/lib/web3/deployment-addresses";
 import { cn } from "@/lib/utils";
 import { useEvmWriteContract, useEvmSendTransaction } from "@/lib/web3/evm-write-adapter";
-import { evmChainWhenEvm } from "@/lib/web3/evm-wagmi-chrome";
 
 const ERC20_ABI = [
   {
@@ -146,7 +147,8 @@ function VerificationPaymentModalReady({
     enabled: open,
   });
 
-  const eip155 = evmChainWhenEvm(chainId);
+  const resolvedEip155 = resolveEvmChain(chainId);
+  const eip155 = resolvedEip155.ok ? resolvedEip155.chainId : undefined;
   const usdc = eip155 != null ? usdcAddress(eip155) : undefined;
   const staking = eip155 != null ? karProStakingAddress(eip155) : undefined;
   const isPending = isEthPending || isWritePending || txPhase !== "idle";

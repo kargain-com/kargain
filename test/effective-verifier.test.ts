@@ -11,7 +11,11 @@ describe("resolveEffectiveVerifierActive", () => {
   it("success uses chain active (including inactive)", () => {
     assert.equal(resolveEffectiveVerifierActive("success", true, false), true);
     assert.equal(resolveEffectiveVerifierActive("success", false, true), false);
-    assert.equal(resolveEffectiveVerifierActive("success", null, true), false);
+  });
+
+  it("success with unread falls back to ponder", () => {
+    assert.equal(resolveEffectiveVerifierActive("success", null, true), true);
+    assert.equal(resolveEffectiveVerifierActive("success", null, false), false);
   });
 
   it("failure falls back to ponder active", () => {
@@ -55,9 +59,13 @@ describe("filterVerifierDirectoryEntries", () => {
     assert.deepEqual(filterVerifierDirectoryEntries(rows, "success", map), []);
   });
 
-  it("success treats missing map key as inactive", () => {
+  it("success treats missing map key as unread (ponder fallback)", () => {
     const map = new Map<string, boolean>();
-    assert.deepEqual(filterVerifierDirectoryEntries(rows, "success", map), []);
+    const filtered = filterVerifierDirectoryEntries(rows, "success", map);
+    assert.deepEqual(
+      filtered.map((r) => r.name),
+      ["a-hub", "a-spoke", "b-hub"],
+    );
   });
 
   it("failure keeps ponder-active rows", () => {

@@ -54,7 +54,6 @@ import { deriveSvmPda } from "@/lib/svm/derive-pda";
 import { tokenIdToBytes32 } from "@/lib/svm/event-payload-decode";
 import { commercialActive, type CommercialRegistry, type SvmCommercialActiveStack, evmChainOf } from "@/lib/web3/commercial-active";
 import { wagmiChainOfStack } from "@/lib/web3/supported-chains";
-import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import type {
   KeyedContract,
   KeyedEntry,
@@ -276,7 +275,7 @@ export async function planPassportCommerceReads(args: {
   }
 
   if (stack.vm === "evm") {
-    const passport = karPassportAddress(evmChainOf(stack));
+    const passport = stack.karPassport;
     let tid: bigint;
     try {
       tid = BigInt(args.tokenId);
@@ -288,11 +287,21 @@ export async function planPassportCommerceReads(args: {
       };
     }
     const fixedPriceConfigured =
-      resolveCommerceMode("fixedPrice", args.chainId).status === "configured";
+      resolveCommerceMode("fixedPrice", args.chainId, args.registry).status ===
+      "configured";
     const ascendingConfigured =
-      resolveCommerceMode("ascending", args.chainId).status === "configured";
-    const fixedPrice = commerceModeEvmAddress("fixedPrice", args.chainId);
-    const ascending = commerceModeEvmAddress("ascending", args.chainId);
+      resolveCommerceMode("ascending", args.chainId, args.registry).status ===
+      "configured";
+    const fixedPrice = commerceModeEvmAddress(
+      "fixedPrice",
+      args.chainId,
+      args.registry,
+    );
+    const ascending = commerceModeEvmAddress(
+      "ascending",
+      args.chainId,
+      args.registry,
+    );
     const wc = wagmiChainOfStack(stack);
     return {
       ok: true,
@@ -419,7 +428,7 @@ export function planPassportDisputeReads(args: {
 }): readonly KeyedContract[] {
   const stack = commercialActive(args.chainId, args.registry);
   if (stack == null || stack.vm !== "evm") return [];
-  const passport = karPassportAddress(evmChainOf(stack));
+  const passport = stack.karPassport;
   let tid: bigint;
   try {
     tid = BigInt(args.tokenId);
@@ -875,7 +884,7 @@ export async function readPassportCustodyLockLive(args: {
   }
 
   if (stack.vm === "evm") {
-    const passport = karPassportAddress(evmChainOf(stack));
+    const passport = stack.karPassport;
     let tid: bigint;
     try {
       tid = BigInt(args.tokenId);

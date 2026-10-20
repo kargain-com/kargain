@@ -24,7 +24,6 @@ import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import type { ActiveAccount } from "@/lib/web3/active-account";
 import { commercialActive, type CommercialRegistry, evmChainOf } from "@/lib/web3/commercial-active";
 import { wagmiChainOfStack } from "@/lib/web3/supported-chains";
-import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import type {
   KeyedContract,
   KeyedEntry,
@@ -318,7 +317,7 @@ export async function planPassportHolderRead(args: {
   }
 
   if (stack.vm === "evm") {
-    const passport = karPassportAddress(evmChainOf(stack));
+    const passport = stack.karPassport;
     const wc = wagmiChainOfStack(stack);
     return {
       ok: true,
@@ -455,7 +454,7 @@ export async function readPassportHolderLive(args: {
     if (stack == null || stack.vm !== "evm") {
       return { status: "refused", cause: "unresolved_namespace" };
     }
-    const passport = karPassportAddress(evmChainOf(stack));
+    const passport = stack.karPassport;
     try {
       const read =
         args.readEvmOwnerOf ??

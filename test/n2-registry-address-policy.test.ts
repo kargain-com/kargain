@@ -114,13 +114,14 @@ function findSecondEnumerators(rel: string, source: string): string[] {
       scopes.push({ name, fields: new Set() });
     }
     const field = accessedFieldName(node);
-    if (field != null && OWNED_FIELDS.has(field) && scopes.length > 0) {
-      scopes[scopes.length - 1]!.fields.add(field);
+    const top = scopes.length > 0 ? scopes[scopes.length - 1] : null;
+    if (field != null && OWNED_FIELDS.has(field) && top != null) {
+      top.fields.add(field);
     }
     ts.forEachChild(node, visit);
     if (isScope) {
-      const scope = scopes.pop()!;
-      if (scope.fields.size >= ENUMERATOR_THRESHOLD) {
+      const scope = scopes.pop();
+      if (scope != null && scope.fields.size >= ENUMERATOR_THRESHOLD) {
         found.push(`${rel}: ${scope.name} reads ${scope.fields.size} owned fields`);
       }
     }
@@ -129,19 +130,65 @@ function findSecondEnumerators(rel: string, source: string): string[] {
   return found;
 }
 
-/** Reads of a mode address field. */
+/**
+ * Reads of a mode address field — property, string element, destructure, or
+ * computed `stack[key]` when a mode-name string literal appears in-file
+ * (catches CLAIMABLE_STACK_KEYS-style bypasses).
+ */
 function findDirectModeReads(rel: string, source: string): string[] {
   const sf = parse(rel, source);
   const found: string[] = [];
+  const modeLiterals = new Set<string>();
+  const collectLiterals = (node: ts.Node) => {
+    if (ts.isStringLiteralLike(node) && MODE_FIELDS.has(node.text)) {
+      modeLiterals.add(node.text);
+    }
+    ts.forEachChild(node, collectLiterals);
+  };
+  collectLiterals(sf);
+
   const visit = (node: ts.Node) => {
     const field = accessedFieldName(node);
     if (field != null && MODE_FIELDS.has(field)) {
       found.push(`${rel}: reads ${field}`);
     }
+    if (
+      ts.isElementAccessExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "stack" &&
+      !ts.isStringLiteralLike(node.argumentExpression) &&
+      modeLiterals.size > 0
+    ) {
+      // Narrow: CLAIMABLE-style tables (not SVM program-id field walks).
+      const claimableShape =
+        /CLAIMABLE_STACK_KEYS/.test(source) ||
+        /as keyof CommercialActiveStack/.test(source) ||
+        /\[\s*["']fixedPriceConsignment["']\s*,\s*["']ascendingConsignment["']/.test(
+          source,
+        );
+      if (claimableShape) {
+        found.push(
+          `${rel}: computed mode key via stack[...] (${[...modeLiterals].join(",")})`,
+        );
+      }
+    }
     ts.forEachChild(node, visit);
   };
   visit(sf);
   return found;
+}
+
+/** Held EVM stack + address-door re-entry (global COMMERCIAL_ACTIVE). */
+function findStackHolderDoorCalls(rel: string, source: string): string[] {
+  const hits: string[] = [];
+  // Text plant: door(evmChainOf(stack)) is the dual-source defect.
+  if (/karPassportAddress\s*\(\s*evmChainOf\s*\(\s*stack\b/.test(source)) {
+    hits.push(`${rel}: karPassportAddress(evmChainOf(stack))`);
+  }
+  if (/karProStakingAddress\s*\(\s*evmChainOf\s*\(\s*stack\b/.test(source)) {
+    hits.push(`${rel}: karProStakingAddress(evmChainOf(stack))`);
+  }
+  return hits;
 }
 
 function numericLiterals(source: string): number[] {
@@ -217,9 +264,10 @@ describe("no environment path to a contract address", () => {
   it("deleted resolver names do not exist anywhere in product, indexer or scripts", () => {
     const banned =
       /\b(ENV_SINGLE|ENV_BY_CHAIN|parseJsonMap|resolveAddress|resolveOptionalAddress|commerceModeAddress|fixedPriceConsignmentAddress|ascendingConsignmentAddress|kargainContractDenylist|allProtocolAddresses)\b/;
-    const scan = scanCommercialAbiEnumerationSources((_rel, source) =>
-      banned.test(source) ? "deleted address resolver name" : false,
-    );
+    const scan = scanCommercialAbiEnumerationSources((rel, source) => {
+      void rel;
+      return banned.test(source) ? "deleted address resolver name" : false;
+    });
     assertCleanCommercialAbiEnumerationScan(scan);
   });
 
@@ -403,6 +451,45 @@ describe("one mode-address reader", () => {
       [],
     );
   });
+
+  it("constructed: computed stack[key] with a mode-name literal is red", () => {
+    const planted = `
+const CLAIMABLE_STACK_KEYS = ["fixedPriceConsignment", "ascendingConsignment"] as const;
+export function read(stack: { [k: string]: string }) {
+  for (const key of CLAIMABLE_STACK_KEYS) {
+    void stack[key as keyof typeof stack];
+  }
+}
+`;
+    assert.ok(
+      findDirectModeReads("lib/web3/claimable-contracts.ts", planted).length >= 1,
+    );
+  });
+});
+
+describe("held stack does not re-enter address doors", () => {
+  it("no product file calls karPassportAddress(evmChainOf(stack))", () => {
+    const scan = scanCommercialAbiEnumerationSources((rel, source) => {
+      if (rel.startsWith("scripts/") || rel.startsWith("test/")) return false;
+      const hits = findStackHolderDoorCalls(rel, source);
+      return hits.length > 0 ? hits.join("; ") : false;
+    });
+    assertCleanCommercialAbiEnumerationScan(scan);
+  });
+
+  it("constructed: door(evmChainOf(stack)) is red", () => {
+    const planted = `
+import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import { evmChainOf } from "@/lib/web3/commercial-active";
+export function plan(stack: { vm: "evm" }) {
+  return karPassportAddress(evmChainOf(stack));
+}
+`;
+    assert.equal(
+      findStackHolderDoorCalls("lib/passport/plant.ts", planted).length,
+      1,
+    );
+  });
 });
 
 function assertSuperset(
@@ -460,7 +547,8 @@ describe("protocol-address union is a superset of the pre-registry consumers", (
     ));
 
   it("SVM stack keeps its programs and excludes the deployer", () => {
-    const svm = COMMERCIAL_ACTIVE[SVM_NS]!;
+    const svm = COMMERCIAL_ACTIVE[SVM_NS];
+    assert.ok(svm != null && svm.vm === "svm");
     const set = new Set(commercialProtocolAddresses(svm));
     assert.equal(set.has(svm.karPassport), true);
     assert.equal(set.has(svm.deployer), false);

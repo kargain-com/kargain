@@ -13,7 +13,9 @@ import { formatKarProPassTitle, proPassTokenIdFromAddress } from "@/lib/kar-pro/
 import { karProLeaveNetworkScopeCopy } from "@/lib/kar-pro/membership-roster";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { writeOutcomeHasClaimRecipient } from "@/lib/web3/write-outcome";
-import { requireCommercialActive } from "@/lib/web3/commercial-active";
+import { requireCommercialActive,
+  resolveEvmChain,
+} from "@/lib/web3/commercial-active";
 import { evmWagmiChain } from "@/lib/web3/supported-chains";
 import { explorerAddressUrl } from "@/lib/web3/network-explorer";
 import { txErrorMessage } from "@/lib/marketplace/tx-error-message";
@@ -22,7 +24,6 @@ import {
   isWalletRejection,
   walletRejectionCopy,
 } from "@/lib/web3/wallet-rejection";
-import { evmChainWhenEvm } from "@/lib/web3/evm-wagmi-chrome";
 
 type KarProMembershipSectionProps = {
   chainId: number;
@@ -46,7 +47,8 @@ export function KarProMembershipSection({
   const [leaveConfirm, setLeaveConfirm] = useState(false);
   const [claimMessage, setClaimMessage] = useState<string | null>(null);
 
-  const eip155 = evmChainWhenEvm(chainId);
+  const resolvedEip155 = resolveEvmChain(chainId);
+  const eip155 = resolvedEip155.ok ? resolvedEip155.chainId : undefined;
   const staking = eip155 != null ? karProStakingAddress(eip155) : undefined;
   const resolvedPassId = passId ?? proPassTokenIdFromAddress(address);
   const loading = txPhase !== "idle";

@@ -157,7 +157,7 @@ export async function generateMetadata({
   }
   const data = result.data;
 
-  if (!data.isActiveVerifier) {
+  if (data.isActiveVerifier === false) {
     return {
       title: `${slug} · Showroom coming soon · Kargain`,
     };
@@ -244,7 +244,7 @@ export default async function ProShowroomPage({
   const membershipChainId = data.chainId;
 
   const showShowroom =
-    data.isActiveVerifier ||
+    data.isActiveVerifier === true ||
     verifier?.active === true ||
     data.verifiedPassportTotal > 0;
 

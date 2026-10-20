@@ -36,8 +36,7 @@ const ENV_KEYS = [
   "NEXT_PUBLIC_KAR_PASSPORT_ADDRESS",
   "NEXT_PUBLIC_USDC_BY_CHAIN",
   "NEXT_PUBLIC_KAR_PRO_STAKING_BY_CHAIN",
-  "NEXT_PUBLIC_CHAINLINK_EUR_USD_FEED",
-] as const;
+  ] as const;
 
 afterEach(() => {
   for (const key of ENV_KEYS) delete process.env[key];
@@ -108,10 +107,21 @@ describe("chainlinkEurUsdFeed", () => {
     });
   });
 
-  it("an env value does not configure it", () => {
-    process.env.NEXT_PUBLIC_CHAINLINK_EUR_USD_FEED =
-      "0x1111111111111111111111111111111111111111";
-    assert.equal(chainlinkEurUsdFeed(SEPOLIA_CHAIN_ID).ok, false);
+  it("pre-N2 EUR env names do not configure it", () => {
+    const planted = "0x1111111111111111111111111111111111111111";
+    process.env.NEXT_PUBLIC_EUR_FEED_ADDRESS = planted;
+    process.env.NEXT_PUBLIC_EUR_FEED_BY_CHAIN = JSON.stringify({
+      "84532": planted,
+      "11155111": planted,
+    });
+    assert.deepEqual(chainlinkEurUsdFeed(SEPOLIA_CHAIN_ID), {
+      ok: false,
+      cause: "not_configured",
+    });
+    assert.deepEqual(chainlinkEurUsdFeed(ETHEREUM_SEPOLIA_CHAIN_ID), {
+      ok: false,
+      cause: "not_configured",
+    });
   });
 });
 
