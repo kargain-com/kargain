@@ -30,6 +30,9 @@ import {
   commercialProtocolAddresses,
   evmProtocolAddresses,
   requireEvmCommercialActive,
+  requireSvmCommercialActive,
+  svmKargainProgramIds,
+  svmProtocolAddresses,
   type CommercialRegistry,
   type EvmCommercialActiveStack,
 } from "../lib/web3/commercial-active.ts";
@@ -41,8 +44,10 @@ import {
 import {
   BASE_SEPOLIA_AT_6C5CEBC,
   ETHEREUM_SEPOLIA_AT_6C5CEBC,
+  SVM_PROTOCOL_SET_AT_063DB5C,
   type BaselineChain,
 } from "./fixtures/n2-addresses-at-6c5cebc.ts";
+import { FIXTURE_SVM_STACK } from "./fixtures/commercial-svm-stack.ts";
 import {
   assertCleanCommercialAbiEnumerationScan,
   assertCleanProductScan,
@@ -709,6 +714,24 @@ describe("protocol-address union is a superset of the pre-registry consumers", (
     const set = new Set(commercialProtocolAddresses(svm));
     assert.equal(set.has(svm.karPassport), true);
     assert.equal(set.has(svm.deployer), false);
+  });
+
+  it("live SVM protocol set equals the freeze measured on 063db5c", () => {
+    const actual = [...svmProtocolAddresses(requireSvmCommercialActive(SVM_NS))].sort();
+    assert.deepEqual(actual, [...SVM_PROTOCOL_SET_AT_063DB5C]);
+  });
+
+  it("constructed: every svmKargainProgramIds entry appears in svmProtocolAddresses", () => {
+    const programs = svmKargainProgramIds(FIXTURE_SVM_STACK);
+    assert.ok(programs.length >= 6, "fixture must set every optional program field");
+    const protocol = new Set(svmProtocolAddresses(FIXTURE_SVM_STACK));
+    for (const id of programs) {
+      assert.equal(
+        protocol.has(id),
+        true,
+        `svmProtocolAddresses missing program id ${id}`,
+      );
+    }
   });
 });
 

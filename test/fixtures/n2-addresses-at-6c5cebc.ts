@@ -539,3 +539,19 @@ export const ETHEREUM_SEPOLIA_AT_6C5CEBC: BaselineChain = {
   ],
 };
 
+/**
+ * Measured on commit 063db5c (before svmProtocolAddresses → svmKargainProgramIds).
+ * Sorted set of `svmProtocolAddresses(COMMERCIAL_ACTIVE[2000040168])`.
+ * Frozen literals — do not regenerate from product code.
+ */
+export const SVM_PROTOCOL_SET_AT_063DB5C: readonly string[] = [
+  "4TE2kf7N4F43ab1436KA71ZwKKokdGt7ANRDbreWbnHr",
+  "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+  "76y77prsiCMvXMjuoZ5VRrhG5qYBrUMYTE5WgHqgjEn6",
+  "8tts6h74Uos5FuUJMEQ8uQd5oPXfKZ41Xfid9D6iZvXY",
+  "9ugwozoJteH4D5XQmwvprevsZ6uWLoHEcWZWeVbDn693",
+  "ArvcryxBL1mP44Vo4MoK1FE3YCnNG8JdVa3iTKxgWnTQ",
+  "HMGnyNMFNi9Rjakrch3iAfmoNWRFK7DEBzsEyLiQNt74",
+  "HmKV5QEVQLdpCiyQAvP4dpqPDBUedi35RSCcWL5XTxyu",
+];
+

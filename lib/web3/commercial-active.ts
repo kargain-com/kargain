@@ -760,9 +760,11 @@ export function evmProtocolAddresses(
 }
 
 /**
- * SVM counterpart of {@link evmProtocolAddresses}: programs, mint, feeds,
- * gateway, modes and endpoint. The timelock-equivalent is the deployer pubkey
- * on testnet and stays a profile subject (SPEC II.4.1).
+ * SVM counterpart of {@link evmProtocolAddresses}: every present Kargain
+ * program id (via {@link svmKargainProgramIds}) plus non-program mint / feeds /
+ * endpoint. Deployer, upgrade authority and fee / forfeit sinks stay excluded
+ * (SPEC II.4.1). The timelock-equivalent is the deployer pubkey on testnet and
+ * stays a profile subject.
  */
 export function svmProtocolAddresses(
   stack: SvmCommercialActiveStack,
@@ -771,15 +773,10 @@ export function svmProtocolAddresses(
   const add = (value: string | undefined) => {
     if (value != null && value.length > 0) out.push(value);
   };
-  add(stack.karPassport);
-  add(stack.karProPass);
-  add(stack.karProStaking);
+  for (const id of svmKargainProgramIds(stack)) add(id);
   add(stack.usdc);
   add(stack.nativeFeed);
   add(stack.eurFeed);
-  add(stack.bridgeGateway);
-  add(stack.fixedPriceConsignment);
-  add(stack.ascendingConsignment);
   add(stack.layerZeroEndpoint);
   return out;
 }

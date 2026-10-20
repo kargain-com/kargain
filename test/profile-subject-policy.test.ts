@@ -25,7 +25,10 @@ import {
 } from "@/lib/web3/active-account";
 import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import { surfaceSupportCauseCopy } from "@/lib/web3/surface-support";
-import { COMMERCIAL_ACTIVE } from "@/lib/web3/commercial-active";
+import {
+  COMMERCIAL_ACTIVE,
+  SVM_KARGAIN_PROGRAM_FIELDS,
+} from "@/lib/web3/commercial-active";
 import {
   assertCleanProductScan,
   scanProductSources,
@@ -180,11 +183,19 @@ describe("profile subject resolution", () => {
           `protocol addresses must not add stack.${field} (SPEC II.4.1)`,
         );
       }
-      assert.match(fn, /add\(stack\.karPassport\)/);
-      assert.match(fn, /add\(stack\.fixedPriceConsignment\)/);
     }
+    assert.match(evmFn, /add\(stack\.karPassport\)/);
+    assert.match(evmFn, /add\(stack\.fixedPriceConsignment\)/);
     assert.match(evmFn, /add\(stack\.timelock\)/);
     assert.doesNotMatch(svmFn, /add\(stack\.timelock\)/);
+    assert.match(svmFn, /svmKargainProgramIds/);
+    for (const key of Object.keys(SVM_KARGAIN_PROGRAM_FIELDS)) {
+      assert.doesNotMatch(
+        svmFn,
+        new RegExp(`add\\(stack\\.${key}\\)`),
+        `svmProtocolAddresses must not hand-add stack.${key}`,
+      );
+    }
   });
 });
 
