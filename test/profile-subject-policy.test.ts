@@ -40,6 +40,24 @@ const PROFILE_ROUTE = "app/(identity)/profile/[handle]/page.tsx";
 const WALLET_LOGIN = "components/wallet-login-button.tsx";
 const MOBILE_NAV = "components/shell/mobile-bottom-nav.tsx";
 
+/**
+ * Direct program-field reads inside svmProtocolAddresses — any spelling.
+ * Bans `stack.karProPass`, `s.karPassport`, destructure `{ bridgeGateway }`, etc.
+ * Does not pin the `add(stack.…)` call shape alone.
+ */
+function svmProtocolProgramFieldViolations(svmFn: string): string[] {
+  const violations: string[] = [];
+  for (const key of Object.keys(SVM_KARGAIN_PROGRAM_FIELDS)) {
+    if (new RegExp(`\\.\\s*${key}\\b`).test(svmFn)) {
+      violations.push(`.${key}`);
+    }
+    if (new RegExp(`\\{[^}]*\\b${key}\\b`).test(svmFn)) {
+      violations.push(`destructure ${key}`);
+    }
+  }
+  return violations;
+}
+
 /** Valid base58 pubkey that is not a commercial stack identity field on live Solana. */
 const SAMPLE_SVM_OWNER = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 
@@ -189,11 +207,33 @@ describe("profile subject resolution", () => {
     assert.match(evmFn, /add\(stack\.timelock\)/);
     assert.doesNotMatch(svmFn, /add\(stack\.timelock\)/);
     assert.match(svmFn, /svmKargainProgramIds/);
-    for (const key of Object.keys(SVM_KARGAIN_PROGRAM_FIELDS)) {
-      assert.doesNotMatch(
-        svmFn,
-        new RegExp(`add\\(stack\\.${key}\\)`),
-        `svmProtocolAddresses must not hand-add stack.${key}`,
+    assert.deepEqual(
+      svmProtocolProgramFieldViolations(svmFn),
+      [],
+      "svmProtocolAddresses must not read any Kargain program field directly",
+    );
+  });
+
+  it("constructed: out.push(stack.karProPass) in svmProtocolAddresses is red", () => {
+    const planted = `
+export function svmProtocolAddresses(stack: SvmCommercialActiveStack): readonly string[] {
+  const out: string[] = [];
+  for (const id of svmKargainProgramIds(stack)) out.push(id);
+  out.push(stack.karProPass);
+  return out;
+}
+`;
+    assert.ok(
+      svmProtocolProgramFieldViolations(planted).includes(".karProPass"),
+      "direct out.push(stack.karProPass) must be red (not only add(stack.…))",
+    );
+    for (const plantedDestructure of [
+      "const { bridgeGateway } = stack;",
+      "const { karPassport, usdc } = stack;",
+    ]) {
+      assert.ok(
+        svmProtocolProgramFieldViolations(plantedDestructure).length > 0,
+        plantedDestructure,
       );
     }
   });
