@@ -2,11 +2,11 @@
 
 ## Project
 
-Kargain is a multi-chain vehicle passport and commerce product spanning EVM and Solana (SVM). Active commercial networks are read only from [`lib/web3/commercial-active.ts`](lib/web3/commercial-active.ts) — never listed by hand in app or docs. Commercial mainnet remains gated behind [SPEC §7.6](docs/contracts/SPEC.md) Phase 2 (LayerZero) and [§7.7](docs/contracts/SPEC.md) (messaging fee payer).
+Decentralized peer-to-peer marketplace for used vehicles. Multi-VM (EVM + SVM): active commercial networks are read only from [`lib/web3/commercial-active.ts`](lib/web3/commercial-active.ts) — never listed by hand. Commercial mainnet remains gated behind [SPEC §7.6](docs/contracts/SPEC.md#76-layerzero-security-configuration-normative) Phase 2 and [§7.7](docs/contracts/SPEC.md#77-messaging-fee-payer-normative).
 
 ## How work flows
 
-One issue → one branch → one PR. For the pause classes below, design first: open an ADR PR and get maintainer approval before product code. Gate results come from CI on the commit under review; report a local run only for gates not yet in CI. Nobody pushes to `master`; only the maintainer merges, deploys, and runs on-chain operations. Never read, print, or commit `.env*` files (except `.env.example`) or keypairs.
+One issue → one branch → one PR. For the [pause classes](#pause-classes-adr-first) below, design first: open an ADR PR and get maintainer approval before product code. Gate results come from CI; a local run is reported only for gates not yet in CI. Nobody pushes to `master`; only the maintainer merges, deploys, and runs on-chain operations. Never read, print, or commit `.env*` files (except `.env.example`) or keypairs.
 
 ## Before any decision — three questions
 
@@ -31,6 +31,8 @@ Stop and file an ADR before changing:
 ## Engineering rules
 
 - One owner per state and per fact.
+- A second independent copy of the same defect means a missing owner, not two call sites to patch.
+- No retries, banners, caches, or flags that paper over a missing owner.
 - Minimal diff without architectural debt.
 - Invariants expressed as types at the boundary.
 - The product key is the commercial namespace, never `chainId`.
@@ -44,31 +46,31 @@ Stop and file an ADR before changing:
 
 ## Choke-points
 
-Executable registry: [`lib/architecture/chokepoints.ts`](lib/architecture/chokepoints.ts). Violations are caught by ESLint and `pnpm test:verify`. `eslint-disable` is forbidden. Area owners (full table in the registry):
+Executable registry: [`lib/architecture/chokepoints.ts`](lib/architecture/chokepoints.ts). Violations are caught by ESLint and `pnpm test:verify`. `eslint-disable` is forbidden. Area owners (registered owners: full table in the registry; Geo is the module path only):
 
-| Area | Owner summary |
+| Area | Owner module |
 |------|----------------|
-| Wallet / session | One ActiveAccount; EVM and SVM adapters; no silent hub invent |
-| Writes and outcomes | `runTx` / write adapters; typed confirm Outcome and refusals |
-| Reads | Keyed multicall; SVM keyed-read; named pending vs refused |
-| Registry / network roles | `commercial-active`; branded namespace, explorer, native unit |
-| Amounts / explorer URLs | `native-amount`; `network-explorer` from stack |
-| Passport presence / origin | Presence deriver; entity origin; holder / custody lock facts |
-| Ponder reads | Tagged fetch; route catalog; HTTP freshness classes |
-| SVM ingest | Raw writer; projection from raw; readiness surface |
-| Custody fold | Read-time fold over crossings + custody-determining events |
-| Storage | Irys upload plan + deposit owner (no SDK `fund()`) |
-| Messaging | Session contract; consent; compose draft; XMTP ports |
-| Bridge | Route resolver; crossing stream; EID→namespace |
-| Geo | Place / Photon owners |
-| Nostr | Kind writers; coverage; personal-sign identity gate |
+| Wallet / session | [`lib/web3/active-account.ts`](lib/web3/active-account.ts) |
+| Writes and outcomes | [`hooks/use-tx-sync.ts`](hooks/use-tx-sync.ts) |
+| Reads | [`lib/web3/keyed-multicall.ts`](lib/web3/keyed-multicall.ts) |
+| Registry / network roles | [`lib/web3/commercial-active.ts`](lib/web3/commercial-active.ts) |
+| Amounts / explorer URLs | [`lib/web3/native-amount.ts`](lib/web3/native-amount.ts) · [`lib/web3/network-explorer.ts`](lib/web3/network-explorer.ts) |
+| Passport presence / origin | [`lib/passport/presence.ts`](lib/passport/presence.ts) · [`lib/passport/passport-holder.ts`](lib/passport/passport-holder.ts) |
+| Ponder reads | [`lib/web3/ponder-tagged-read.ts`](lib/web3/ponder-tagged-read.ts) |
+| SVM ingest | [`src/lib/svm-raw-writer.ts`](src/lib/svm-raw-writer.ts) |
+| Custody fold | [`src/lib/ponder-passport-custody.ts`](src/lib/ponder-passport-custody.ts) |
+| Storage | [`lib/storage/irys-deposit.ts`](lib/storage/irys-deposit.ts) |
+| Messaging | [`lib/messaging/session-registry.ts`](lib/messaging/session-registry.ts) |
+| Bridge | [`lib/web3/bridge/bridge-config.ts`](lib/web3/bridge/bridge-config.ts) |
+| Geo | [`lib/geo/`](lib/geo/) |
+| Nostr | [`lib/nostr/key-manager.ts`](lib/nostr/key-manager.ts) |
 
 ## Multi-VM and chain rules
 
 - Non-EVM namespace = `2_000_000_000 + LayerZero EID`.
 - Custody: one usable copy on one network; origin in `tokenId >> 128` differs from `custodyChain`.
-- Trust does not survive a bridge crossing ([SPEC §I.12.3](docs/contracts/SPEC.md)).
-- Bridge is star-only through the gateway.
+- Trust does not survive a bridge crossing ([SPEC §I.12.3](docs/contracts/SPEC.md#123-trust-never-survives-a-crossing-supersedes-75-preserved-on-return)).
+- Bridge is star-only through the gateway ([SPEC §I.12](docs/contracts/SPEC.md#i12-multi-chain-architecture-normative)).
 - Program upgrades are in place under the same program id; check program-data capacity before send; extension needs maintainer confirmation.
 - Bytecode identity is proven by digest against the ELF read from chain.
 - `kargain_svm_raw` is never dropped; the projection is dropped and replayed.
@@ -80,34 +82,35 @@ Executable registry: [`lib/architecture/chokepoints.ts`](lib/architecture/chokep
 
 ## Gates
 
-A result counts only on the commit being accepted. Never quote a fixed test count — say “all passing”.
+A result counts only on the commit being accepted. Never quote a fixed test count — say “all passing”. *Where* is `CI` ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) or `local — attach output on PR head`.
 
-| Gate | Where / when |
-|------|----------------|
-| `pnpm build` | CI and every ship; Next production build |
-| `pnpm typecheck` | CI and every ship; union of all typecheck projects |
-| `pnpm lint` | CI and every ship |
-| `pnpm test:ci` | CI trunk; `test:verify` minus deploy-machine-only suites |
-| `pnpm test:verify` | Architecture / deploy / policy; mandatory for those changes; deploy-machine subset may be local-only |
-| `pnpm test:svm-ingest` | Hard blocker for ingest changes |
-| `pnpm test:ponder` | Indexer / schema / HTTP readers; state explicit reindex need when schema or start blocks change |
-| `pnpm test` | Hardhat-native contract suites; all passing for contract changes |
-| `pnpm test:svm` | SVM programs / crates (`cargo test`); all passing for program changes |
-| Layer suites | e.g. `test:commerce-ui`, `test:bridge`, `test:passport-ui`, `test:messaging` — run the suite that owns the layer you changed |
-| `pnpm test:e2e` | Local E2E against a running Hardhat node |
+| Gate | Where | When mandatory |
+|------|-------|----------------|
+| `pnpm compile` | CI | Contract / ABI compile before ship |
+| `pnpm build` | CI | Every ship |
+| `pnpm typecheck` | CI | Every ship |
+| `pnpm lint` | CI | Every ship |
+| `pnpm test:ci` | CI | Trunk policy subset on every PR |
+| `pnpm test:unit` | CI | Helper / non-layer Node suites |
+| `pnpm test:verify` | local — attach output on PR head | Architecture / deploy / policy changes (CI runs a subset via `test:ci`) |
+| `pnpm test:svm-ingest` | local — attach output on PR head | Hard blocker for ingest changes |
+| `pnpm test:ponder` | CI | Indexer / schema / HTTP readers; state explicit reindex need when schema or start blocks change |
+| `pnpm test` | CI | Hardhat-native contract suites; all passing for contract changes |
+| `pnpm test:svm` | local — attach output on PR head | SVM programs / crates; all passing for program changes |
+| Layer suites | CI | All run in CI; [`.github/workflows/ci.yml`](.github/workflows/ci.yml) is the list |
+| `pnpm test:e2e` | local — attach output on PR head | Local E2E against a running Hardhat node |
 
 ## Documentation map (single sources)
 
 | Topic | Source |
 |-------|--------|
-| EVM addresses | [SPEC I.9](docs/contracts/SPEC.md) |
-| SVM program ids and start slots | [`lib/web3/commercial-active.ts`](lib/web3/commercial-active.ts) |
-| Contract behaviour | [SPEC Part I](docs/contracts/SPEC.md) |
-| Multi-chain custody and trust | [SPEC §I.12](docs/contracts/SPEC.md) |
+| EVM addresses, SVM program ids and start slots | [`lib/web3/commercial-active.ts`](lib/web3/commercial-active.ts) ([SPEC I.9](docs/contracts/SPEC.md#i9-multi-chain-deployment-matrix) must match) |
+| Contract behaviour | [SPEC Part I](docs/contracts/SPEC.md#part-i--generation-v2-current) |
+| Multi-chain custody and trust | [SPEC §I.12](docs/contracts/SPEC.md#i12-multi-chain-architecture-normative) |
 | Contract versions | [`scripts/lib/contract-versions.ts`](scripts/lib/contract-versions.ts) |
 | Ponder routes | [`docs/indexer/README.md`](docs/indexer/README.md) |
 | Reindex | [`docs/indexer/OPERATIONS.md`](docs/indexer/OPERATIONS.md) |
-| UI | [`docs/design-spec.md`](docs/design-spec.md) (§10 Instrument Layer wins over §4 for factual typography, accent, and trust colours) |
+| UI | [`docs/design-spec.md`](docs/design-spec.md) ([§10 Instrument Layer](docs/design-spec.md#10-instrument-layer) wins over §4 for factual typography, accent, and trust colours) |
 | Env | [`.env.example`](.env.example) |
 | On-chain operations | [`docs/ops/deploys/`](docs/ops/deploys/) |
 | Decisions | [`docs/adr/`](docs/adr/) |
@@ -134,8 +137,9 @@ Read [`docs/design-spec.md`](docs/design-spec.md) before UI work.
 - `NEXT_PUBLIC_*` for secrets.
 - Chain id / namespace / address literals in components.
 - `DEFAULT_CHAIN_ID` or any silent hub fallback.
+- Never patch a workflow to hide a product, typecheck, or build failure.
 - `@solana/web3.js` in `app`, `components`, `lib`, `hooks`.
 - `console.log` in `app/`, `components/`, `lib/`, `hooks/`.
-- `: any` in `lib/nostr/`, `lib/messaging/`, `hooks/`.
+- `: any` in Ponder reads ([`lib/web3/ponder-*.ts`](lib/web3/ponder-client.ts), [`lib/types/ponder.ts`](lib/types/ponder.ts)), the indexer [`src/`](src/), [`lib/nostr/`](lib/nostr/), [`lib/messaging/`](lib/messaging/) (includes the XMTP adapter), and [`hooks/`](hooks/).
 - `font-semibold` / `font-bold`; Title Case in UI.
 - Public docs linking to files that are not in git.
