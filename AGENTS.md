@@ -58,12 +58,12 @@ Executable registry: [`lib/architecture/chokepoints.ts`](lib/architecture/chokep
 | Passport presence / origin | [`lib/passport/presence.ts`](lib/passport/presence.ts) · [`lib/passport/passport-holder.ts`](lib/passport/passport-holder.ts) |
 | Ponder reads | [`lib/web3/ponder-tagged-read.ts`](lib/web3/ponder-tagged-read.ts) |
 | SVM ingest | [`src/lib/svm-raw-writer.ts`](src/lib/svm-raw-writer.ts) |
-| Custody fold | [`src/lib/ponder-passport-custody.ts`](src/lib/ponder-passport-custody.ts) |
+| Custody fold | [`lib/custody/fold.ts`](lib/custody/fold.ts) |
 | Storage | [`lib/storage/irys-deposit.ts`](lib/storage/irys-deposit.ts) |
 | Messaging | [`lib/messaging/session-registry.ts`](lib/messaging/session-registry.ts) |
 | Bridge | [`lib/web3/bridge/bridge-config.ts`](lib/web3/bridge/bridge-config.ts) |
 | Geo | [`lib/geo/`](lib/geo/) |
-| Nostr | [`lib/nostr/key-manager.ts`](lib/nostr/key-manager.ts) |
+| Nostr | [`lib/nostr/app-event-store.ts`](lib/nostr/app-event-store.ts) |
 
 ## Multi-VM and chain rules
 
@@ -86,10 +86,10 @@ A result counts only on the commit being accepted. Never quote a fixed test coun
 
 | Gate | Where | When mandatory |
 |------|-------|----------------|
-| `pnpm compile` | CI | Contract / ABI compile before ship |
-| `pnpm build` | CI | Every ship |
-| `pnpm typecheck` | CI | Every ship |
-| `pnpm lint` | CI | Every ship |
+| `pnpm compile` | CI | Contract / ABI compile on every PR |
+| `pnpm build` | CI | Every PR |
+| `pnpm typecheck` | CI | Every PR |
+| `pnpm lint` | CI | Every PR |
 | `pnpm test:ci` | CI | Trunk policy subset on every PR |
 | `pnpm test:unit` | CI | Helper / non-layer Node suites |
 | `pnpm test:verify` | local — attach output on PR head | Architecture / deploy / policy changes (CI runs a subset via `test:ci`) |
@@ -140,6 +140,6 @@ Read [`docs/design-spec.md`](docs/design-spec.md) before UI work.
 - Never patch a workflow to hide a product, typecheck, or build failure.
 - `@solana/web3.js` in `app`, `components`, `lib`, `hooks`.
 - `console.log` in `app/`, `components/`, `lib/`, `hooks/`.
-- `: any` in Ponder reads ([`lib/web3/ponder-*.ts`](lib/web3/ponder-client.ts), [`lib/types/ponder.ts`](lib/types/ponder.ts)), the indexer [`src/`](src/), [`lib/nostr/`](lib/nostr/), [`lib/messaging/`](lib/messaging/) (includes the XMTP adapter), and [`hooks/`](hooks/).
+- `: any` in Ponder reads (`lib/web3/ponder-*.ts`, [`lib/types/ponder.ts`](lib/types/ponder.ts)), the indexer [`src/`](src/), [`lib/nostr/`](lib/nostr/), [`lib/messaging/`](lib/messaging/) (includes the XMTP adapter), and [`hooks/`](hooks/).
 - `font-semibold` / `font-bold`; Title Case in UI.
 - Public docs linking to files that are not in git.
