@@ -1,8 +1,5 @@
 "use client";
 
-import { useActiveAccount } from "@/hooks/use-active-account";
-import { evmWagmiChain } from "@/lib/web3/supported-chains";
-
 import { useState } from "react";
 
 import {
@@ -12,6 +9,7 @@ import {
 } from "@/components/kar-pro/kar-pro-profile-fields";
 import { Button } from "@/components/ui/button";
 import { SurfaceAdmissionRefusalView } from "@/components/shell/surface-admission-refusal";
+import { useActiveAccount } from "@/hooks/use-active-account";
 import { useMinStakeNative } from "@/hooks/use-min-stake-native";
 import { useIrysDepositPorts } from "@/hooks/use-irys-deposit-ports";
 import { TX_SYNC_LAG_ADVISORY, useTxSync } from "@/hooks/use-tx-sync";
@@ -24,6 +22,8 @@ import {
 } from "@/lib/kar-pro/membership-roster";
 import { SLUG_PATTERN } from "@/lib/kar-pro/kar-pro-slug-rules";
 import { uploadKarProMetadata } from "@/lib/kar-pro/upload-kar-pro-metadata";
+import { resolveEvmChain } from "@/lib/web3/commercial-active";
+import { evmWagmiChain } from "@/lib/web3/supported-chains";
 import {
   admitSurface,
   admitSurfaceEvmAddress,
@@ -104,7 +104,9 @@ export function KarProJoinForm({
   const [loadingPhase, setLoadingPhase] = useState<LoadingPhase>("idle");
   const [error, setError] = useState<string | null>(null);
 
-  const staking = karProStakingAddress(chainId);
+  const resolvedEip155 = resolveEvmChain(chainId);
+  const eip155 = resolvedEip155.ok ? resolvedEip155.chainId : undefined;
+  const staking = eip155 != null ? karProStakingAddress(eip155) : undefined;
 
   const { minStake, stakeLabel } = useMinStakeNative(
     isSurfaceAdmissionAvailable(admission) ? chainId : undefined,

@@ -89,6 +89,11 @@ type EvmCommercialActiveStackShared = {
   forfeitRecipient: `0x${string}`;
   deployer: `0x${string}`;
   upgradeAuthority: `0x${string}`;
+  /**
+   * Abandoned Kargain contracts on **this** network only (SPEC §I.12.12).
+   * Never match chain-blind: the same hex can be a live contract elsewhere.
+   */
+  historicalDenylist: readonly `0x${string}`[];
   indexFromBlock: number;
   blocks: CommercialActiveBlocks;
   nativeUnit: CommercialNativeUnit;
@@ -210,7 +215,7 @@ const SOL_NATIVE_UNIT = mintCommercialNativeUnit("SOL", 9);
 const SOLANA_DEVNET_NAMESPACE = namespaceFromLayerZeroEid(40168);
 
 /** Base Sepolia — Nuclear #7 August 29, 2026 (SPEC I.9.1); S9-A cutover. */
-const BASE_SEPOLIA_84532 = {
+export const BASE_SEPOLIA_STACK = {
   vm: "evm",
   namespace: mintKargainNamespace(84532),
   chainId: 84532,
@@ -232,6 +237,80 @@ const BASE_SEPOLIA_84532 = {
   forfeitRecipient: "0x8d97a127A3Cf9a94c460BcaA06a429FFE75eF1A1",
   deployer: "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
   upgradeAuthority: "0xfDe4c336b23e3a21A3460bA005B4710584E43f27",
+  // Nuclear #4 cutover August 2, 2026: Nuclear #3 hub + prior stacks retired.
+  // Nuclear #7 / S9-A cutover September 2026: Nuclear #4 hub retired; N5+N6 hub
+  // stacks denylisted (deployed, never served the app). Cross-chain CREATE
+  // collisions: some N7 Eth live hexes appear on this list as historical —
+  // they stay scoped to this network (SPEC §I.12.12).
+  historicalDenylist: [
+    "0x6378469256907D7DC14BBfce0261ceDE22314507",
+    "0x4FC74e0B7eE0A741707A553D43Efff68126D198B",
+    "0x2794015C00Da0FAf5D2451Ffba9FdD30F86dBC31",
+    "0x59779D666747AEeDB0d9cc843cB8a68B8ab2470c",
+    // Pre-Nuclear hub (June–July 2026 RC stack)
+    "0x2C46B2310E2cb09b0FEeDd174D9CD3870137F594",
+    "0x9411Af4C4Ec26D939fb1AD04362456Cb41616c19",
+    "0xB13D264368C8cbcc8EC973D1E5DDBa435eA458Ce",
+    "0xC219bf834B8965339b95C0B6Afe3c4d0F1266Fb0",
+    "0xb5d79551BB11F726D2A1A110BAc645C4345dA568",
+    "0x8e4dcb5C0b415d6c2481D72dFac6da32d9cf22C1",
+    // Thin spoke ONFT (retired)
+    "0x5b7fD0ffF9B82255AD4d043a491e81948b76e703",
+    // Commerce cutover Phase 1 — retired Nuclear legacy escrows (84532)
+    "0x60336c550946AF79c8FCfaDfA65d76224B356323",
+    "0x0F98B21857386dF0c3B0323c94e63e140533495F",
+    "0x37Fa0460Cfc46EC17E1d11D86AA4F9C9e0D79a04",
+    "0x5aB1947806d9D28bb5CAB770A586a968EAeaDfF2",
+    // July 21 Nuclear hub (superseded by Nuclear #2 July 30)
+    "0x899FaE4Bd3612A6268E45E199B0CeFb5310f416a",
+    "0xD9B6C20ffE5A9bcEb3771d8a1E39fE35aEfc5b25",
+    "0xdEe5eD7e4036C85EEa9d102449E60BBA98Fe257f",
+    "0x2a4339656393da943730b7Ac728480f40909f14C",
+    // Nuclear #2 hub (superseded by Nuclear #3 August 1, 2026)
+    "0x380021e9a560b8CF1482Cd501F4B2629739b2452",
+    "0xD9Ea579DD90b4c5386A55688036d73B9d6bA5d4f",
+    "0xC90d6Ecd1BB814eD18E6704f433662541f94fcaD",
+    "0xFC33887c97Ff4c65B47279b43c6Ca6817f5528aE",
+    "0x77C881b9FB3cD425367c99378588b2790669F51F",
+    "0xE98EbDb9354ff9c91872390D7106D621794C9118",
+    "0x568f44F238BD1104D8c51Ea93eC92dC91ef5a17D",
+    // Nuclear #3 hub (superseded by Nuclear #4 August 2, 2026)
+    "0x886328c407998EA493b757bE9d49034624F8f4BE",
+    "0xF4bCec8dC6f699c311d75c7aaEb7790c76f0FF43",
+    "0xB7563aa97537a804Eb9f9E64f2b92DD7B1c60FD5",
+    "0xEf7403424Ce96f0e1845AB70800022c78D97a52C",
+    "0xd4728af32553005A2BEae8f29eb73DB425980daa",
+    "0x233B0e6780d52275caE1f1d08035F6a3C932B99E",
+    "0xf1d84e984CE294C35A654C9d3B7F580104Fa8773",
+    "0xC0ADc29De760195d5BBB5d3c11f040B388872039",
+    "0x254340154a0C5B1d8679f49400AF292e33E1e855",
+    // Nuclear #4 hub (superseded by Nuclear #7 / S9-A)
+    "0x274515B5b2Ba32bDce7E97122C69cfDa343E85Fb",
+    "0x046DB61Ac23520bd6f9466a7f8B033325795B32c",
+    "0xCBfCDfebbb6fDF4C3bbD30F363558FE618C986aE",
+    "0x8354697d0DdCe6a3AA9aD33DDc1585e4b60CbC76",
+    "0x73F41293bb207443990006b951CE9BC38Ef2eB3b",
+    "0xa4A2FE8Bd5A7Ee99ED375BA179861D1DA7F2e8F4",
+    "0xABd47E54595b814625B1B911BC3A078397Abb973",
+    "0xcdfEe11B2F2eA6501E06576e1a50baa7B8Bd8750",
+    "0xb1aEEA9466b8C67Ba9D8931987E26A2Bef59B7Dc",
+    // Nuclear #5 hub (deployed, never app-served — ops/deploys/nuclear-5.md)
+    "0x4e75F7d0D5847e6730da328F92890f1FcE3628F4",
+    "0x3C2E19AdE259453D43a20E94D4Bf979250BC32c3",
+    "0x408c0DB8cDf1bC31aa69aD73bf260e70803a2379",
+    "0x8542Dd53345d851a320C7d1B2e78E1786743a70e",
+    "0x74a659E081317bB63Bb552ab1C3d886e4728CceE",
+    "0x88821bfb1A2C9dAB404C4a86a88685469b74101a",
+    "0x66aF522A26C7650f63Bc82f611a623F3E863888b",
+    // Nuclear #6 hub (explorers red; never app-served — archive/nuclear-6-84532.manifest.json)
+    "0xb2762a11C14991E5EdD5270c44ab10f5956E3aAA",
+    "0x8E6D4e07f45913fcf94a92261AE51522141AAF9f",
+    "0xB081b8e3c6a5f72e07D5628F60A77Fb018BF0029",
+    "0x8fc3325c2d018812Fcf782e3DE0f0F954B3f1915",
+    "0x6aD4409089FcF8f2513b7E90CB7818d04D80Dedb",
+    "0x6f309EdABCfcd3243E63eAc6EC2c476a9Ef3526e",
+    "0xFA4FcEf7a1bF882438f70BaC63401410d4f6DB29",
+  ],
   indexFromBlock: 46_119_704,
   blocks: {
     timelock: 46_119_714,
@@ -247,7 +326,7 @@ const BASE_SEPOLIA_84532 = {
 } as const satisfies EvmCommercialActiveStack;
 
 /** Ethereum Sepolia — Nuclear #7 August 29, 2026 (SPEC I.9.2); S9-A cutover. */
-const ETHEREUM_SEPOLIA_11155111 = {
+export const ETHEREUM_SEPOLIA_STACK = {
   vm: "evm",
   namespace: mintKargainNamespace(11155111),
   chainId: 11155111,
@@ -269,6 +348,65 @@ const ETHEREUM_SEPOLIA_11155111 = {
   forfeitRecipient: "0x8d97a127A3Cf9a94c460BcaA06a429FFE75eF1A1",
   deployer: "0xcf1Eb0E7ed453Ed266bF90E7C09e0E4769580b77",
   upgradeAuthority: "0xbD13C4B92d7Ec454401AE242A0aa8E841EEba977",
+  // Nuclear #4 cutover August 2, 2026: Nuclear #3 Eth stack + prior Nuclear/legacy retired.
+  // Nuclear #7 / S9-A cutover September 2026: Nuclear #4 Eth retired; N5+N6 Eth
+  // stacks denylisted (deployed, never served the app). Live N7 Eth addresses must
+  // not appear on this list (own-network ban); other-network collisions stay scoped.
+  historicalDenylist: [
+    "0x4FC74e0B7eE0A741707A553D43Efff68126D198B",
+    "0x7d37e7cbcc42308264B608429a82D03B7C3112F4",
+    "0x796Fb1476440C3D8A34a8EC2Fa56664864531499",
+    "0xCf78b714DB70960bf1BB418C3370e4502AcFFC64",
+    // July 21 Nuclear Eth (superseded by Nuclear #2 July 30)
+    "0x6378469256907D7DC14BBfce0261ceDE22314507",
+    "0x8888594b12DF2e1EF406e91CFF72d52801BCaC24",
+    "0xcD40C83CD57422C616e7e63F562B2e78C269Fb7F",
+    "0xEBcd44736C7F1E8Bf3E5f1c98D176732eB134eAB",
+    // Nuclear #2 Eth (superseded by Nuclear #3 August 1, 2026)
+    "0x48B0a4205A3CD16BA97FE17222A717c63F6756D8",
+    "0xc31197fcBa5D4f373A556b36CD05916fd73a9376",
+    "0x3F6594d97FbD9D332866BB7EFB3f1b89554e1249",
+    "0xC219bf834B8965339b95C0B6Afe3c4d0F1266Fb0",
+    "0xd2c6EAdc9c03741D6A44dB5CF54f520Ee774b655",
+    "0xf9dF8c00B89D833A1C7E1210259F9c4F673258E9",
+    "0xe8ECf3b42b489F6289434840661770b43B027F13",
+    // Nuclear #3 Eth (superseded by Nuclear #4 August 2, 2026)
+    "0x20683ca58425DA09B148242432318EeFbfbfFAb1",
+    "0xFc12ea568DD7aa636C64f4f778b965D2434D0054",
+    "0xea8Ee6b1E9f1a6D6F1229EC498f1A93Fcddd02CB",
+    "0xc903feE4395dd5Db35d9BcB558917f3Af8d71869",
+    "0x3aC463aE600BB80Fe1b0Da20f2996Fd3F6e02E41",
+    "0xe9c06240059800228aB5f8c39f1a323dAFBA84a1",
+    "0x1424084C800b4712D835d244904915D1e62B2f21",
+    "0x07f9c182F176C2C4A82Fcb80c4f942864420542D",
+    "0x3ef0bD0e9446D5C3B7A10A1e0563b1d5a96afc4E",
+    // Nuclear #4 Eth (superseded by Nuclear #7 / S9-A)
+    "0x95D9A432B53ceB42a0681b1900f52e7Fe2247586",
+    "0xb83b89f4a7303f005dA8c0787e904104a1030128",
+    "0x5dF3f185D9fAb40D1BEBC74b63268F8528a02906",
+    "0x1016BCA92B98Ea2C648074cAAf04C5d0B3Baf8eC",
+    "0xc416f642a85E3E104A42c2B067bB31485947891d",
+    "0x49e8ce3e99Fa7413133b04f4085E55BF332BFC60",
+    "0xbFdA994743feF37b268aA70ffF8a91eF3d10936E",
+    "0x689D4A780a0d65A3f6dd02BD1013b1d3a5f60660",
+    "0xec44167ab1e2619C9aCaA87F5B06DcAFe1BF7269",
+    // Nuclear #5 Eth (deployed, never app-served — ops/deploys/nuclear-5.md)
+    "0x8A3529d2B4CC482476Bd40f81a1E2F9E335867F7",
+    "0xcAa270392eEa2AD4471C12267Ed9Bf7567ECa498",
+    "0xfe9b6477C32dB849E7C5520BF1e055b2e5ABA6C9",
+    "0x2961A0fDa331E1ecaF4e9F8A3515fe4346f60b2d",
+    "0x6d1169F4b639Ee27442786b160FB3F06fDe6c28E",
+    "0xD9Ea579DD90b4c5386A55688036d73B9d6bA5d4f",
+    "0x2f74620F74A9addb441225356Abe79b2691F39B9",
+    // Nuclear #6 Eth (explorers red; never app-served — archive/nuclear-6-11155111.manifest.json)
+    "0xbAf046a0433644C5f8Eb16ceC1E42F4EF67A6802",
+    "0x379BA6b8368Fc5C457fFaa4d7b5816a335754b3E",
+    "0x2F1036251227EdaFaC51934AB5157854d2632Dc4",
+    "0xFCC3FB7e926483778898f8Dd38bDb1Db51412a41",
+    "0xf06BD41AA01BC31Dcb9e9B4eAA739E170A29147b",
+    "0x77C881b9FB3cD425367c99378588b2790669F51F",
+    "0xb9B649e13cA11a87c8842dD593E2008FBd130ECb",
+  ],
   indexFromBlock: 11_591_966,
   blocks: {
     timelock: 11_591_976,
@@ -371,8 +509,8 @@ export function resolveEvmChain(
  * Do not reuse addresses across namespaces (SPEC §I.12.12).
  */
 export const COMMERCIAL_ACTIVE: CommercialRegistry = {
-  [BASE_SEPOLIA_84532.chainId]: BASE_SEPOLIA_84532,
-  [ETHEREUM_SEPOLIA_11155111.chainId]: ETHEREUM_SEPOLIA_11155111,
+  [BASE_SEPOLIA_STACK.chainId]: BASE_SEPOLIA_STACK,
+  [ETHEREUM_SEPOLIA_STACK.chainId]: ETHEREUM_SEPOLIA_STACK,
   [SOLANA_DEVNET_NAMESPACE]: SOLANA_DEVNET_40168,
 };
 
@@ -584,6 +722,70 @@ export function requireEvmCommercialActive(
     );
   }
   return stack;
+}
+
+/**
+ * Sole enumerator of Kargain-owned protocol addresses on an EVM commercial
+ * stack (profile / messaging denylist): programs, token, feeds, gateway,
+ * timelock, commerce modes, LayerZero endpoint, and the network's historical
+ * list. Deployer, upgrade authority and fee / forfeit sinks are people or
+ * governance wallets and stay excluded (SPEC II.4.1). Deduplicated by
+ * lowercase hex; order is stable.
+ */
+export function evmProtocolAddresses(
+  stack: EvmCommercialActiveStack,
+): readonly `0x${string}`[] {
+  const out: `0x${string}`[] = [];
+  const seen = new Set<string>();
+  const add = (value: `0x${string}` | undefined) => {
+    if (value == null || value.length === 0) return;
+    const key = value.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(value);
+  };
+  add(stack.karPassport);
+  add(stack.karProPass);
+  add(stack.karProStaking);
+  add(stack.usdc);
+  add(stack.nativeFeed);
+  add(stack.eurFeed);
+  add(stack.bridgeGateway);
+  add(stack.timelock);
+  add(stack.fixedPriceConsignment);
+  add(stack.ascendingConsignment);
+  add(stack.layerZeroEndpoint);
+  for (const historical of stack.historicalDenylist) add(historical);
+  return out;
+}
+
+/**
+ * SVM counterpart of {@link evmProtocolAddresses}: every present Kargain
+ * program id (via {@link svmKargainProgramIds}) plus non-program mint / feeds /
+ * endpoint. Deployer, upgrade authority and fee / forfeit sinks stay excluded
+ * (SPEC II.4.1). The timelock-equivalent is the deployer pubkey on testnet and
+ * stays a profile subject.
+ */
+export function svmProtocolAddresses(
+  stack: SvmCommercialActiveStack,
+): readonly string[] {
+  const out: string[] = [];
+  const add = (value: string | undefined) => {
+    if (value != null && value.length > 0) out.push(value);
+  };
+  for (const id of svmKargainProgramIds(stack)) add(id);
+  add(stack.usdc);
+  add(stack.nativeFeed);
+  add(stack.eurFeed);
+  add(stack.layerZeroEndpoint);
+  return out;
+}
+
+/** Protocol addresses of any commercial stack — the one door per-VM owners hide behind. */
+export function commercialProtocolAddresses(
+  stack: CommercialActiveStack,
+): readonly string[] {
+  return stack.vm === "evm" ? evmProtocolAddresses(stack) : svmProtocolAddresses(stack);
 }
 
 /**

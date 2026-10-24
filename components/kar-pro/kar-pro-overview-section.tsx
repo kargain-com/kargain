@@ -20,6 +20,7 @@ import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { nativeUnitOf, requireCommercialActive } from "@/lib/web3/commercial-active";
 import { evmWagmiChain } from "@/lib/web3/supported-chains";
 import { explorerAddressUrl } from "@/lib/web3/network-explorer";
+import { eip155WhenWagmiOk } from "@/lib/web3/evm-wagmi-chrome";
 
 type KarProOverviewSectionProps = {
   chainId: number;
@@ -54,8 +55,9 @@ export function KarProOverviewSection({
   membershipRows,
 }: KarProOverviewSectionProps) {
   const pathname = usePathname();
-  const staking = karProStakingAddress(chainId);
   const wagmiChain = evmWagmiChain(chainId);
+  const eip155 = eip155WhenWagmiOk(wagmiChain);
+  const staking = eip155 != null ? karProStakingAddress(eip155) : undefined;
   const wc = wagmiChain.ok ? wagmiChain.chainId : undefined;
   const resolvedPassId = passId ?? proPassTokenIdFromAddress(address);
   const { stakeLabel } = useMinStakeNative(chainId);

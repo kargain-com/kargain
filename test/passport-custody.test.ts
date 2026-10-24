@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { commerceModeAddress, resolveCommerceMode } from "../lib/commerce/mode.ts";
+import { commerceModeEvmAddress, resolveCommerceMode } from "../lib/commerce/mode.ts";
 import { resolvePassportCustody } from "../lib/marketplace/passport-custody.ts";
 
 const CHAIN_ID = 84532;
-const FIXED_PRICE = commerceModeAddress("fixedPrice", CHAIN_ID);
+const FIXED_PRICE = commerceModeEvmAddress("fixedPrice", CHAIN_ID);
 assert.ok(FIXED_PRICE, "84532 FixedPrice must be live for custody tests");
 
 const SELLER = "0xcfe194fea9727bD04dA8F78c2362680986e02dF1" as const;

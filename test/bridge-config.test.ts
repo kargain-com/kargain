@@ -5,13 +5,13 @@ import {
   BRIDGE_HUB_CHAIN_ID,
   BRIDGE_SPOKE_CHAIN_ID,
   EID_BY_CHAIN,
-  bridgeAdapterAddress,
   bridgeCounterpartChainId,
   bridgeDstEid,
   bridgeTokenAddress,
   resolveBridgeRoute,
 } from "../lib/web3/bridge/bridge-config";
 import { commercialActive } from "../lib/web3/commercial-active";
+import { bridgeGatewayAddress } from "../lib/web3/deployment-addresses";
 import {
   EID_HUB,
   EID_SPOKE,
@@ -74,15 +74,15 @@ describe("resolveBridgeRoute", () => {
   });
 });
 
-describe("bridgeAdapterAddress", () => {
-  it("returns the gateway for the given chain; unknown is undefined", () => {
+describe("bridgeGatewayAddress", () => {
+  it("returns the gateway for the given chain", () => {
     const hub = commercialActive(BRIDGE_HUB_CHAIN_ID);
     const spoke = commercialActive(BRIDGE_SPOKE_CHAIN_ID);
     assert.ok(hub);
     assert.ok(spoke);
-    assert.equal(bridgeAdapterAddress(BRIDGE_HUB_CHAIN_ID), hub.bridgeGateway);
-    assert.equal(bridgeAdapterAddress(BRIDGE_SPOKE_CHAIN_ID), spoke.bridgeGateway);
-    assert.equal(bridgeAdapterAddress(1), undefined);
+    assert.ok(hub.vm === "evm" && spoke.vm === "evm");
+    assert.equal(bridgeGatewayAddress(BRIDGE_HUB_CHAIN_ID), hub.bridgeGateway);
+    assert.equal(bridgeGatewayAddress(BRIDGE_SPOKE_CHAIN_ID), spoke.bridgeGateway);
   });
 });
 
@@ -114,11 +114,7 @@ describe("bridgeTokenAddress", () => {
     const spoke = commercialActive(11155111);
     assert.ok(hub);
     assert.ok(spoke);
-    assert.equal(bridgeTokenAddress(84532), hub.karPassport);
-    assert.equal(bridgeTokenAddress(11155111), spoke.karPassport);
-  });
-
-  it("unknown chain → undefined", () => {
-    assert.equal(bridgeTokenAddress(1), undefined);
+    assert.equal(bridgeTokenAddress(BRIDGE_HUB_CHAIN_ID), hub.karPassport);
+    assert.equal(bridgeTokenAddress(BRIDGE_SPOKE_CHAIN_ID), spoke.karPassport);
   });
 });

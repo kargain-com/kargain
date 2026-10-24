@@ -1,6 +1,7 @@
 "use client";
 
 import { KarProStakingAbi } from "@/lib/contracts/abis.generated";
+import { resolveEvmChain } from "@/lib/web3/commercial-active";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
 
@@ -14,7 +15,9 @@ type Props = {
 
 export function VerifierInactiveBadge({ chainId, verifier, className }: Props) {
   const normalized = verifier.trim().toLowerCase();
-  const staking = karProStakingAddress(chainId);
+  const resolvedEip155 = resolveEvmChain(chainId);
+  const eip155 = resolvedEip155.ok ? resolvedEip155.chainId : undefined;
+  const staking = eip155 != null ? karProStakingAddress(eip155) : undefined;
   const hasVerifier = normalized && normalized !== ZERO;
 
   const reads = useKeyedReadContracts({

@@ -36,6 +36,7 @@ import { tokenIdToBytes32 } from "@/lib/svm/event-payload-decode";
 import { systemProgramId } from "@/lib/svm/foreign-programs";
 import { commercialSvmNamespaceIds, requireSvmCommercialActive } from "@/lib/web3/commercial-active";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import { SEPOLIA_CHAIN_ID } from "../lib/web3/sepolia-addresses.ts";
 import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import type { SvmSignAndSendPort } from "@/lib/web3/svm-write-adapter";
 import {
@@ -129,7 +130,7 @@ describe("appendPassportRecord EVM behavioural pin", () => {
   const evidenceCid = "ar://evidence";
 
   it("buildEvmAppendPassportRecordCall yields appendRecord with four args", () => {
-    const address = karPassportAddress(84532);
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     assert.ok(address);
     const call = buildEvmAppendPassportRecordCall({
       address,
@@ -191,7 +192,7 @@ describe("appendPassportRecord EVM behavioural pin", () => {
   });
 
   it("planted wrong functionName is red; live builder is green", () => {
-    const address = karPassportAddress(84532)!;
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     const live = buildEvmAppendPassportRecordCall({
       address,
       tokenId,
@@ -233,7 +234,7 @@ describe("appendPassportRecord EVM behavioural pin", () => {
   });
 
   it("executeAppendPassportRecord EVM passes the pinned call through writeEvmContract", async () => {
-    const address = karPassportAddress(84532)!;
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     let captured: unknown;
     const hash = await executeAppendPassportRecord({
       account: {

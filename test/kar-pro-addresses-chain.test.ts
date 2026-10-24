@@ -6,10 +6,14 @@ import {
   karProPassAddress,
   karProStakingAddress,
 } from "../lib/web3/deployment-addresses.ts";
+import {
+  ETHEREUM_SEPOLIA_CHAIN_ID,
+  SEPOLIA_CHAIN_ID,
+} from "../lib/web3/sepolia-addresses.ts";
 import { requireCommercialActive } from "../lib/web3/commercial-active.ts";
 
-const HUB = 84532;
-const ETH = 11155111;
+const HUB = SEPOLIA_CHAIN_ID;
+const ETH = ETHEREUM_SEPOLIA_CHAIN_ID;
 
 describe("KarPro addresses per commercial chain", () => {
   it("resolves staking and ProPass on hub", () => {

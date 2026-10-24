@@ -27,9 +27,9 @@ import {
   resolvePassportCommerceFacts,
 } from "../lib/passport/passport-commerce-facts.ts";
 import { derivePassportPresence } from "../lib/passport/presence.ts";
-import { karPassportAddress } from "../lib/web3/deployment-addresses.ts";
 import {
   commercialSvmNamespaceIds,
+  resolveEvmChain,
 } from "../lib/web3/commercial-active.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -248,14 +248,15 @@ describe("passport detail SVM chrome policy (U9.2a)", () => {
     );
   });
 
-  it("(c) presence is not location_pending merely because karPassportAddress is undefined", () => {
+  it("(c) presence is not location_pending merely because the namespace has no EVM passport door", () => {
     const namespaces = commercialSvmNamespaceIds();
     assert.ok(namespaces.length > 0, "live SVM commercial row required");
-    const ns = namespaces[0]!;
+    const ns = namespaces[0];
+    assert.ok(ns != null, "live SVM commercial row required");
     assert.equal(
-      karPassportAddress(ns),
-      undefined,
-      "SVM namespace has no EVM passport hex — precondition for the plant",
+      resolveEvmChain(ns).ok,
+      false,
+      "SVM namespace has no EVM chain id — precondition for the plant",
     );
 
     // Honest answer: lock known unlocked → here (not unread).
@@ -275,7 +276,7 @@ describe("passport detail SVM chrome policy (U9.2a)", () => {
       chainId: number;
       custodyLock: { status: "known"; locked: boolean };
     }): "location_pending" | "other" {
-      if (karPassportAddress(input.chainId) == null) {
+      if (!resolveEvmChain(input.chainId).ok) {
         return "location_pending";
       }
       const p = derivePassportPresence({

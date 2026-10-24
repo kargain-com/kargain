@@ -19,6 +19,7 @@ import { addressesMatch } from "@/lib/commerce/consignment";
 import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { useKeyedReadContracts } from "@/lib/web3/keyed-multicall";
+import { eip155WhenWagmiOk } from "@/lib/web3/evm-wagmi-chrome";
 
 export type PassportApprovalStep = "idle" | "approving" | "ready";
 
@@ -44,8 +45,9 @@ export function usePassportApproval({
   const { writeContractAsync } = useEvmWriteContract();
   const [approvalBusy, setApprovalBusy] = useState(false);
 
-  const passport = karPassportAddress(chainId);
   const wagmi = evmWagmiChain(chainId);
+  const eip155 = eip155WhenWagmiOk(wagmi);
+  const passport = eip155 != null ? karPassportAddress(eip155) : undefined;
   const wc = wagmi.ok ? wagmi.chainId : undefined
   const tokenIdBig = useMemo(() => {
     try {

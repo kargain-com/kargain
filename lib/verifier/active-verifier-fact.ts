@@ -21,7 +21,6 @@ import {
   type ActiveAccount,
 } from "@/lib/web3/active-account";
 import { commercialActive, type CommercialRegistry } from "@/lib/web3/commercial-active";
-import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import type {
   KeyedContract,
   KeyedEntry,
@@ -101,12 +100,12 @@ export async function planActiveVerifierRead(args: {
   }
 
   if (stack.vm === "evm") {
-    const staking = karProStakingAddress(args.chainId);
+    const staking = stack.karProStaking;
     const sessionAddress =
       args.account.status === "connected" && args.account.vm === "evm"
         ? args.account.address
         : undefined;
-    if (staking == null || sessionAddress == null) {
+    if (sessionAddress == null) {
       return { ok: true, sessionBound: false, contracts: [], vm: "evm" };
     }
     return {

@@ -2,11 +2,11 @@ import {
   ETHEREUM_SEPOLIA_CHAIN_ID,
   SEPOLIA_CHAIN_ID,
 } from "@/lib/web3/sepolia-addresses";
+import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import {
-  bridgeGatewayAddress,
-  karPassportAddress,
-} from "@/lib/web3/deployment-addresses";
-import { unresolvedNamespaceCopy } from "@/lib/web3/commercial-active";
+  unresolvedNamespaceCopy,
+  type Eip155ChainId,
+} from "@/lib/web3/commercial-active";
 
 /** Star hub chain id (reference). */
 export const BRIDGE_HUB_CHAIN_ID = SEPOLIA_CHAIN_ID;
@@ -158,12 +158,6 @@ export function resolveBridgeRoute(
   };
 }
 
-export function bridgeAdapterAddress(
-  chainId: number,
-): `0x${string}` | undefined {
-  return bridgeGatewayAddress(chainId);
-}
-
 /**
  * Star counterpart chain for `src` (hub↔spoke).
  * Hub counterpart is unique while there is one commercial spoke.
@@ -189,9 +183,7 @@ export function bridgeDstEid(srcChainId: number): number | undefined {
 }
 
 /** KarPassport ERC721 on `chainId` (ownerOf delivery poll target). */
-export function bridgeTokenAddress(
-  chainId: number,
-): `0x${string}` | undefined {
+export function bridgeTokenAddress(chainId: Eip155ChainId): `0x${string}` {
   return karPassportAddress(chainId);
 }
 

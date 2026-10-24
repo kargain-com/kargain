@@ -157,7 +157,7 @@ export async function generateMetadata({
   }
   const data = result.data;
 
-  if (!data.isActiveVerifier) {
+  if (!data.showroomOpen) {
     return {
       title: `${slug} · Showroom coming soon · Kargain`,
     };
@@ -243,12 +243,7 @@ export default async function ProShowroomPage({
   const name = displayName(verifier?.name, address);
   const membershipChainId = data.chainId;
 
-  const showShowroom =
-    data.isActiveVerifier ||
-    verifier?.active === true ||
-    data.verifiedPassportTotal > 0;
-
-  if (!showShowroom) {
+  if (!data.showroomOpen) {
     return (
       <div className="min-h-dvh bg-bg-primary text-text-primary">
         <section className="w-full bg-bg-primary py-16">

@@ -53,8 +53,7 @@ async function readDstOwner(
   const resolved = resolveEvmChain(dstChainId);
   if (!resolved.ok) return null;
   const client = getBridgeReadClient(resolved.chainId);
-  const token = bridgeTokenAddress(dstChainId);
-  if (!token) return null;
+  const token = bridgeTokenAddress(resolved.chainId);
   try {
     return getAddress(
       (await client.readContract({

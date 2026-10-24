@@ -5,7 +5,7 @@
  */
 
 import { registeredCommercialNamespaceIds } from "../../lib/web3/commercial-active.js";
-import { LOCALHOST_CHAIN_ID } from "../../lib/web3/deployment-addresses.js";
+import { LOCALHOST_CHAIN_ID } from "../../lib/web3/local-chain.js";
 
 /**
  * Namespaces allowed on UNION `ANY(...)` filters.

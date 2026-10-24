@@ -1,10 +1,8 @@
 /**
  * Sole owner of "which program/contract implements a commerce mode on a
- * namespace" — {@link resolveCommerceMode}. Presence is never inferred from the
- * EVM-only hex accessor.
- *
- * {@link commerceModeAddress} remains EVM-only (`0x…`) for ABI/wagmi callers
- * that already know they need hex. It must not be used as a presence gate.
+ * namespace" — {@link resolveCommerceMode}. Mode addresses are read from the
+ * registry stack here and nowhere else; {@link commerceModeEvmAddress} is the
+ * EVM hex view for ABI/wagmi callers and is not a presence gate.
  */
 
 import {
@@ -17,10 +15,6 @@ import {
   unresolvedNamespaceCopy,
   type CommercialRegistry,
 } from "@/lib/web3/commercial-active";
-import {
-  ascendingConsignmentAddress,
-  fixedPriceConsignmentAddress,
-} from "@/lib/web3/deployment-addresses";
 import {
   mintProtocolOwner,
   type ProtocolOwner,
@@ -124,21 +118,6 @@ export function commerceModeAbsentCopy(cause: CommerceModeAbsentCause): string {
   }
 }
 
-/**
- * EVM-only hex mode address. Presence/absence of a mode is owned by
- * {@link resolveCommerceMode} — do not treat `undefined` here as "not deployed"
- * on a commercial SVM namespace (hex cannot represent base58 program ids).
- */
-export function commerceModeAddress(
-  mode: CommerceMode,
-  chainId: number | null | undefined,
-): `0x${string}` | undefined {
-  if (chainId == null || !Number.isFinite(chainId)) return undefined;
-  return mode === "fixedPrice"
-    ? fixedPriceConsignmentAddress(chainId)
-    : ascendingConsignmentAddress(chainId);
-}
-
 export function hasCommerceMode(
   mode: CommerceMode,
   chainId: number | null | undefined,
@@ -179,8 +158,9 @@ export function commerceModeAddresses(
 
 /**
  * Hex address for EVM ABI/wagmi when the mode is configured and EVM-shaped.
- * Prefer this over {@link commerceModeAddress} when presence was already
- * answered by {@link resolveCommerceMode} and only the hex wire is needed.
+ * Presence/absence of a mode is owned by {@link resolveCommerceMode} — do not
+ * treat `undefined` here as "not deployed" on a commercial SVM namespace (hex
+ * cannot represent base58 program ids).
  */
 export function commerceModeEvmAddress(
   mode: CommerceMode,

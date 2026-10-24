@@ -6,7 +6,6 @@ export {
   BRIDGE_SPOKE_CHAIN_ID,
   EID_BY_CHAIN,
   admitBridgeCrossingRoute,
-  bridgeAdapterAddress,
   bridgeCounterpartChainId,
   bridgeCrossingRouteCauseCopy,
   bridgeCrossingRouteRefusalCopy,

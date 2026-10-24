@@ -5,19 +5,50 @@ import { verifierMembershipKey } from "../lib/kar-pro/is-active-verifier-commerc
 import {
   filterVerifierDirectoryEntries,
   resolveEffectiveVerifierActive,
+  showroomOpenFromMembership,
 } from "../lib/verifier/effective-verifier.ts";
 
 describe("resolveEffectiveVerifierActive", () => {
   it("success uses chain active (including inactive)", () => {
     assert.equal(resolveEffectiveVerifierActive("success", true, false), true);
     assert.equal(resolveEffectiveVerifierActive("success", false, true), false);
-    assert.equal(resolveEffectiveVerifierActive("success", null, true), false);
+  });
+
+  it("success with unread falls back to ponder", () => {
+    assert.equal(resolveEffectiveVerifierActive("success", null, true), true);
+    assert.equal(resolveEffectiveVerifierActive("success", null, false), false);
   });
 
   it("failure falls back to ponder active", () => {
     assert.equal(resolveEffectiveVerifierActive("failure", false, true), true);
     assert.equal(resolveEffectiveVerifierActive("failure", true, false), false);
     assert.equal(resolveEffectiveVerifierActive("failure", null, true), true);
+  });
+});
+
+describe("showroomOpenFromMembership", () => {
+  it("null membership + ponder inactive + no passports → closed", () => {
+    assert.equal(showroomOpenFromMembership(null, false, 0), false);
+  });
+
+  it("null membership + ponder active → open", () => {
+    assert.equal(showroomOpenFromMembership(null, true, 0), true);
+  });
+
+  it("known inactive wins over ponder active when no passports", () => {
+    assert.equal(showroomOpenFromMembership(false, true, 0), false);
+  });
+
+  it("known active opens", () => {
+    assert.equal(showroomOpenFromMembership(true, false, 0), true);
+  });
+
+  it("inactive + verifiedPassportTotal > 0 → open (6c5cebc parity)", () => {
+    assert.equal(showroomOpenFromMembership(false, false, 1), true);
+  });
+
+  it("unread + ponder inactive + verifiedPassportTotal > 0 → open", () => {
+    assert.equal(showroomOpenFromMembership(null, false, 2), true);
   });
 });
 
@@ -55,9 +86,13 @@ describe("filterVerifierDirectoryEntries", () => {
     assert.deepEqual(filterVerifierDirectoryEntries(rows, "success", map), []);
   });
 
-  it("success treats missing map key as inactive", () => {
+  it("success treats missing map key as unread (ponder fallback)", () => {
     const map = new Map<string, boolean>();
-    assert.deepEqual(filterVerifierDirectoryEntries(rows, "success", map), []);
+    const filtered = filterVerifierDirectoryEntries(rows, "success", map);
+    assert.deepEqual(
+      filtered.map((r) => r.name),
+      ["a-hub", "a-spoke", "b-hub"],
+    );
   });
 
   it("failure keeps ponder-active rows", () => {

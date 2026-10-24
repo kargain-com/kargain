@@ -25,7 +25,10 @@ import {
 } from "@/lib/web3/active-account";
 import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import { surfaceSupportCauseCopy } from "@/lib/web3/surface-support";
-import { COMMERCIAL_ACTIVE } from "@/lib/web3/commercial-active";
+import {
+  COMMERCIAL_ACTIVE,
+  SVM_KARGAIN_PROGRAM_FIELDS,
+} from "@/lib/web3/commercial-active";
 import {
   assertCleanProductScan,
   scanProductSources,
@@ -36,6 +39,24 @@ const SOLANA_NS = 2_000_040_168;
 const PROFILE_ROUTE = "app/(identity)/profile/[handle]/page.tsx";
 const WALLET_LOGIN = "components/wallet-login-button.tsx";
 const MOBILE_NAV = "components/shell/mobile-bottom-nav.tsx";
+
+/**
+ * Direct program-field reads inside svmProtocolAddresses — any spelling.
+ * Bans `stack.karProPass`, `s.karPassport`, destructure `{ bridgeGateway }`, etc.
+ * Does not pin the `add(stack.…)` call shape alone.
+ */
+function svmProtocolProgramFieldViolations(svmFn: string): string[] {
+  const violations: string[] = [];
+  for (const key of Object.keys(SVM_KARGAIN_PROGRAM_FIELDS)) {
+    if (new RegExp(`\\.\\s*${key}\\b`).test(svmFn)) {
+      violations.push(`.${key}`);
+    }
+    if (new RegExp(`\\{[^}]*\\b${key}\\b`).test(svmFn)) {
+      violations.push(`destructure ${key}`);
+    }
+  }
+  return violations;
+}
 
 /** Valid base58 pubkey that is not a commercial stack identity field on live Solana. */
 const SAMPLE_SVM_OWNER = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
@@ -152,31 +173,69 @@ describe("profile subject resolution", () => {
   });
 
   it("constructed: governance roles coinciding must not denylist a person", () => {
-    // Plant of the pre-fix defect: treating deployer/UA/timelock as stack identity.
+    // Plant of the pre-fix defect: treating deployer / upgrade authority / sinks
+    // as protocol identity. The sole owners live beside the registry.
     const roleFields = [
       "deployer",
       "upgradeAuthority",
-      "timelock",
       "forfeitRecipient",
       "platformRecipient",
     ] as const;
     const ownerSrc = fs.readFileSync(
-      path.join(ROOT, "lib/profile/resolve-profile-subject.ts"),
+      path.join(ROOT, "lib/web3/commercial-active.ts"),
       "utf8",
     );
-    const fieldsFn = ownerSrc.slice(
-      ownerSrc.indexOf("function stackIdentityAddressFields"),
-      ownerSrc.indexOf("export function isCommercialProtocolOwner"),
+    const evmFn = ownerSrc.slice(
+      ownerSrc.indexOf("export function evmProtocolAddresses"),
+      ownerSrc.indexOf("export function svmProtocolAddresses"),
     );
-    for (const field of roleFields) {
-      assert.doesNotMatch(
-        fieldsFn,
-        new RegExp(`push\\(stack\\.${field}\\)`),
-        `stackIdentityAddressFields must not push stack.${field} (SPEC II.4.1)`,
+    const svmFn = ownerSrc.slice(
+      ownerSrc.indexOf("export function svmProtocolAddresses"),
+      ownerSrc.indexOf("export function commercialProtocolAddresses"),
+    );
+    for (const fn of [evmFn, svmFn]) {
+      for (const field of roleFields) {
+        assert.doesNotMatch(
+          fn,
+          new RegExp(`add\\(stack\\.${field}\\)`),
+          `protocol addresses must not add stack.${field} (SPEC II.4.1)`,
+        );
+      }
+    }
+    assert.match(evmFn, /add\(stack\.karPassport\)/);
+    assert.match(evmFn, /add\(stack\.fixedPriceConsignment\)/);
+    assert.match(evmFn, /add\(stack\.timelock\)/);
+    assert.doesNotMatch(svmFn, /add\(stack\.timelock\)/);
+    assert.match(svmFn, /svmKargainProgramIds/);
+    assert.deepEqual(
+      svmProtocolProgramFieldViolations(svmFn),
+      [],
+      "svmProtocolAddresses must not read any Kargain program field directly",
+    );
+  });
+
+  it("constructed: out.push(stack.karProPass) in svmProtocolAddresses is red", () => {
+    const planted = `
+export function svmProtocolAddresses(stack: SvmCommercialActiveStack): readonly string[] {
+  const out: string[] = [];
+  for (const id of svmKargainProgramIds(stack)) out.push(id);
+  out.push(stack.karProPass);
+  return out;
+}
+`;
+    assert.ok(
+      svmProtocolProgramFieldViolations(planted).includes(".karProPass"),
+      "direct out.push(stack.karProPass) must be red (not only add(stack.…))",
+    );
+    for (const plantedDestructure of [
+      "const { bridgeGateway } = stack;",
+      "const { karPassport, usdc } = stack;",
+    ]) {
+      assert.ok(
+        svmProtocolProgramFieldViolations(plantedDestructure).length > 0,
+        plantedDestructure,
       );
     }
-    assert.match(fieldsFn, /push\(stack\.karPassport\)/);
-    assert.match(fieldsFn, /push\(stack\.fixedPriceConsignment\)/);
   });
 });
 

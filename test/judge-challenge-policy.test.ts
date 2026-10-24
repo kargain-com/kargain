@@ -34,6 +34,7 @@ import { tokenIdToBytes32 } from "@/lib/svm/event-payload-decode";
 import { encodeSvmPubkeyBytes } from "@/lib/web3/protocol-address";
 import { commercialSvmNamespaceIds, requireSvmCommercialActive } from "@/lib/web3/commercial-active";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import { SEPOLIA_CHAIN_ID } from "../lib/web3/sepolia-addresses.ts";
 import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import type { FetchSvmAccountDataResult } from "@/lib/web3/svm-rpc";
 import type { SvmSignAndSendPort } from "@/lib/web3/svm-write-adapter";
@@ -176,7 +177,7 @@ describe("judgeChallenge ordinal pin (both VMs)", () => {
     assert.match(entry, /0\s*=>\s*JudgeOutcome::Upheld/);
     assert.match(entry, /1\s*=>\s*JudgeOutcome::Rejected/);
 
-    const address = karPassportAddress(84532)!;
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     const upheld = buildEvmJudgeChallengeCall({
       address,
       tokenId,
@@ -230,7 +231,7 @@ describe("judgeChallenge ordinal pin (both VMs)", () => {
 
 describe("judgeChallenge EVM pin", () => {
   it("live builder is judge + [tid, outcome] with no value; planted value / arity are red", async () => {
-    const address = karPassportAddress(84532)!;
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     const live = buildEvmJudgeChallengeCall({
       address,
       tokenId,

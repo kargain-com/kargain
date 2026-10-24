@@ -100,7 +100,7 @@ pnpm smoke:sepolia
 | RPC timeout / tx not found | Retry `pnpm deploy:auction`; partial txs may need manual recovery |
 | `verify:sepolia` HHE80009 / exit 1 | Bytecode mismatch — **exit 0 by default** since verify UX fix; run `pnpm smoke:sepolia`. Use `--strict` for CI fail-on-mismatch. |
 | Smoke missing auction checks | Manifest lacks `auctionEscrow` — run `pnpm deploy:auction` first |
-| `auctionEscrowAddress()` undefined in app | Commit proxy to `SEPOLIA_ACTIVE` or set `NEXT_PUBLIC_AUCTION_ESCROW_BY_CHAIN` |
+| `auctionEscrowAddress()` undefined in app | Commit the proxy to the registry row (`SEPOLIA_ACTIVE`) |
 
 ---
 

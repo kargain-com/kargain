@@ -20,10 +20,14 @@ import {
   type ActiveAccount,
   type WalletFamilyWanted,
 } from "@/lib/web3/active-account";
-import { commercialActive, nativeUnitOf, type CommercialRegistry, type SvmCommercialActiveStack } from "@/lib/web3/commercial-active";
+import {
+  commercialActive,
+  nativeUnitOf,
+  type CommercialRegistry,
+  type SvmCommercialActiveStack,
+} from "@/lib/web3/commercial-active";
 import type { KargainWriteUnionChainId } from "@/lib/web3/supported-chains";
 import { wagmiChainOfStack } from "@/lib/web3/supported-chains";
-import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import {
   AccountRole,
   sendSvmInstruction,
@@ -63,7 +67,6 @@ export type SetVerificationFeeCause =
   | "not_in_program"
   | "product_owner_owed"
   | "authority_only"
-  | "staking_not_configured"
   | "encode_failed"
   | "pda_failed"
   | "wallet_cannot_sign_and_send"
@@ -164,14 +167,7 @@ export async function planSetVerificationFee(
         wanted: stack.vm,
       };
     }
-    const address = karProStakingAddress(input.chainId);
-    if (address == null) {
-      return {
-        ok: false,
-        cause: "staking_not_configured",
-        detail: `no karProStaking for chain ${input.chainId}`,
-      };
-    }
+    const address = stack.karProStaking;
     if (input.marginNative < 0n) {
       return {
         ok: false,

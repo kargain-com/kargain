@@ -11,6 +11,7 @@ import { getAddress, zeroAddress } from "viem";
 import {
   commercialActive,
   nativeUnitOf,
+  resolveEvmChain,
 } from "@/lib/web3/commercial-active";
 import { usdcAddress } from "@/lib/web3/deployment-addresses";
 import { shortAddress } from "@/lib/web3/wallet-display";
@@ -71,7 +72,9 @@ export function resolveSettlementAssetMeta(input: {
     };
   }
 
-  const usdc = usdcAddress(input.chainId);
+  const resolvedEip155 = resolveEvmChain(input.chainId);
+  const eip155 = resolvedEip155.ok ? resolvedEip155.chainId : undefined;
+  const usdc = eip155 != null ? usdcAddress(eip155) : undefined;
   if (usdc) {
     try {
       if (getAddress(usdc) === checksummed) {

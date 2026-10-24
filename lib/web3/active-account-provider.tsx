@@ -40,7 +40,6 @@ import { useEvmAccountAdapter } from "@/lib/web3/evm-account-adapter";
 import { useSvmAccountAdapter } from "@/lib/web3/svm-account-adapter";
 import type { ActiveAccountSwitchChain } from "@/lib/web3/active-account-switch";
 import type { Eip155ChainId } from "@/lib/web3/commercial-active";
-import type { KargainWriteUnionChainId } from "@/lib/web3/supported-chains";
 import {
   listDiscoveredSvmWallets,
   subscribeSvmWalletDiscovery,
@@ -165,7 +164,7 @@ export function ActiveAccountProvider({ children }: { children: ReactNode }) {
         throw new Error("switchChain: no EVM session");
       }
       // Commercial Eip155 ⊆ write-union; adapter keeps WriteUnion for Hardhat local.
-      await evmSwitchChain(chainId as KargainWriteUnionChainId);
+      await evmSwitchChain(chainId);
     },
     [evmConnected, evmSwitchChain],
   );

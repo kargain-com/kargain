@@ -1,76 +1,164 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 
-import { COMMERCIAL_ACTIVE } from "../lib/web3/commercial-active.ts";
 import {
-  ascendingConsignmentAddress,
-  fixedPriceConsignmentAddress,
-  kargainContractDenylist,
+  evmChainOf,
+  evmProtocolAddresses,
+  requireEvmCommercialActive,
+} from "../lib/web3/commercial-active.ts";
+import {
+  bridgeGatewayAddress,
+  chainlinkEurUsdFeed,
+  chainlinkNativeUsdFeed,
+  kargainTimelockAddress,
   karPassportAddress,
+  karProPassAddress,
+  karProStakingAddress,
+  usdcAddress,
 } from "../lib/web3/deployment-addresses.ts";
-import { SEPOLIA_ACTIVE } from "../lib/web3/sepolia-addresses.ts";
+import { commerceModeEvmAddress } from "../lib/commerce/mode.ts";
+import {
+  ETHEREUM_SEPOLIA_CHAIN_ID,
+  SEPOLIA_CHAIN_ID,
+} from "../lib/web3/sepolia-addresses.ts";
 import { kargainChains } from "../lib/web3/supported-chains.ts";
+import {
+  BASE_SEPOLIA_AT_6C5CEBC,
+  ETHEREUM_SEPOLIA_AT_6C5CEBC,
+  type BaselineChain,
+} from "./fixtures/n2-addresses-at-6c5cebc.ts";
 
-const HUB = COMMERCIAL_ACTIVE[84532]!;
-const SPOKE = COMMERCIAL_ACTIVE[11155111]!;
+const HUB = requireEvmCommercialActive(84532);
+const SPOKE = requireEvmCommercialActive(11155111);
 
-describe("resolveAddress commercial fallback", () => {
-  it("resolves hub addresses on 84532", () => {
-    assert.equal(karPassportAddress(84532), HUB.karPassport);
+const ENV_KEYS = [
+  "NEXT_PUBLIC_KAR_PASSPORT_BY_CHAIN",
+  "NEXT_PUBLIC_KAR_PASSPORT_ADDRESS",
+  "NEXT_PUBLIC_USDC_BY_CHAIN",
+  "NEXT_PUBLIC_KAR_PRO_STAKING_BY_CHAIN",
+  "NEXT_PUBLIC_EUR_FEED_ADDRESS",
+  "NEXT_PUBLIC_EUR_FEED_BY_CHAIN",
+] as const;
+
+afterEach(() => {
+  for (const key of ENV_KEYS) delete process.env[key];
+});
+
+describe("registry is the only address source", () => {
+  it("resolves hub and spoke from the stack rows", () => {
+    assert.equal(karPassportAddress(SEPOLIA_CHAIN_ID), HUB.karPassport);
+    assert.equal(karPassportAddress(ETHEREUM_SEPOLIA_CHAIN_ID), SPOKE.karPassport);
   });
 
-  it("resolves spoke addresses on 11155111", () => {
-    assert.equal(karPassportAddress(11155111), SPOKE.karPassport);
+  it("ids come from the registry rows", () => {
+    assert.equal(SEPOLIA_CHAIN_ID, evmChainOf(HUB));
+    assert.equal(ETHEREUM_SEPOLIA_CHAIN_ID, evmChainOf(SPOKE));
   });
 
-  it("returns undefined for unknown chain", () => {
-    assert.equal(karPassportAddress(1), undefined);
+  it("a non-empty address env map does not change any door", () => {
+    const before = karPassportAddress(SEPOLIA_CHAIN_ID);
+    const foreign = "0x1111111111111111111111111111111111111111";
+    process.env.NEXT_PUBLIC_KAR_PASSPORT_BY_CHAIN = JSON.stringify({
+      "84532": foreign,
+    });
+    process.env.NEXT_PUBLIC_KAR_PASSPORT_ADDRESS = foreign;
+    process.env.NEXT_PUBLIC_USDC_BY_CHAIN = JSON.stringify({ "84532": foreign });
+    process.env.NEXT_PUBLIC_KAR_PRO_STAKING_BY_CHAIN = JSON.stringify({
+      "84532": foreign,
+    });
+    assert.equal(karPassportAddress(SEPOLIA_CHAIN_ID), before);
+    assert.equal(karPassportAddress(SEPOLIA_CHAIN_ID), HUB.karPassport);
+    assert.equal(usdcAddress(SEPOLIA_CHAIN_ID), HUB.usdc);
+    assert.equal(karProStakingAddress(SEPOLIA_CHAIN_ID), HUB.karProStaking);
   });
 });
 
-describe("commerce mode resolvers (Nuclear #4 live)", () => {
-  it("fixedPriceConsignmentAddress resolves on both commercial stacks", () => {
-    assert.equal(fixedPriceConsignmentAddress(84532), HUB.fixedPriceConsignment);
-    assert.equal(fixedPriceConsignmentAddress(11155111), SPOKE.fixedPriceConsignment);
+function assertKeysMatchBaseline(chainId: typeof SEPOLIA_CHAIN_ID, base: BaselineChain) {
+  assert.equal(karPassportAddress(chainId), base.keys.karPassport);
+  assert.equal(karProPassAddress(chainId), base.keys.karProPass);
+  assert.equal(karProStakingAddress(chainId), base.keys.karProStaking);
+  assert.equal(usdcAddress(chainId), base.keys.usdc);
+  assert.equal(chainlinkNativeUsdFeed(chainId), base.keys.nativeFeed);
+  assert.equal(kargainTimelockAddress(chainId), base.keys.timelock);
+  assert.equal(bridgeGatewayAddress(chainId), base.keys.bridgeGateway);
+  assert.equal(
+    commerceModeEvmAddress("fixedPrice", chainId),
+    base.keys.fixedPriceConsignment,
+  );
+  assert.equal(
+    commerceModeEvmAddress("ascending", chainId),
+    base.keys.ascendingConsignment,
+  );
+}
+
+describe("doors are byte-identical to the pre-registry values", () => {
+  it("84532", () => assertKeysMatchBaseline(SEPOLIA_CHAIN_ID, BASE_SEPOLIA_AT_6C5CEBC));
+  it("11155111", () =>
+    assertKeysMatchBaseline(ETHEREUM_SEPOLIA_CHAIN_ID, ETHEREUM_SEPOLIA_AT_6C5CEBC));
+});
+
+describe("chainlinkEurUsdFeed", () => {
+  it("is not_configured on both commercial rows", () => {
+    assert.deepEqual(chainlinkEurUsdFeed(SEPOLIA_CHAIN_ID), {
+      ok: false,
+      cause: "not_configured",
+    });
+    assert.deepEqual(chainlinkEurUsdFeed(ETHEREUM_SEPOLIA_CHAIN_ID), {
+      ok: false,
+      cause: "not_configured",
+    });
   });
 
-  it("ascendingConsignmentAddress resolves on both commercial stacks", () => {
-    assert.equal(ascendingConsignmentAddress(84532), HUB.ascendingConsignment);
-    assert.equal(ascendingConsignmentAddress(11155111), SPOKE.ascendingConsignment);
-  });
-
-  it("returns undefined for unknown chain", () => {
-    assert.equal(fixedPriceConsignmentAddress(1), undefined);
-    assert.equal(ascendingConsignmentAddress(1), undefined);
+  it("pre-N2 EUR env names do not configure it", () => {
+    const planted = "0x1111111111111111111111111111111111111111";
+    process.env.NEXT_PUBLIC_EUR_FEED_ADDRESS = planted;
+    process.env.NEXT_PUBLIC_EUR_FEED_BY_CHAIN = JSON.stringify({
+      "84532": planted,
+      "11155111": planted,
+    });
+    assert.deepEqual(chainlinkEurUsdFeed(SEPOLIA_CHAIN_ID), {
+      ok: false,
+      cause: "not_configured",
+    });
+    assert.deepEqual(chainlinkEurUsdFeed(ETHEREUM_SEPOLIA_CHAIN_ID), {
+      ok: false,
+      cause: "not_configured",
+    });
   });
 });
 
-describe("kargainContractDenylist per-chain", () => {
-  it("84532 includes hub actives", () => {
-    const list = kargainContractDenylist(84532).map((a) => a.toLowerCase());
-    assert.ok(list.includes(HUB.karPassport.toLowerCase()));
-    assert.ok(list.includes(HUB.bridgeGateway.toLowerCase()));
+describe("historical addresses live on the registry rows", () => {
+  it("84532 historical list is byte-identical to the pre-registry list", () => {
+    assert.deepEqual([...HUB.historicalDenylist], [...BASE_SEPOLIA_AT_6C5CEBC.historical]);
   });
 
-  it("11155111 includes spoke actives; hub Nuclear passport is not required", () => {
-    const list = kargainContractDenylist(11155111).map((a) => a.toLowerCase());
-    assert.ok(list.includes(SPOKE.karPassport.toLowerCase()));
-    assert.ok(list.includes(SPOKE.karProPass.toLowerCase()));
-    assert.ok(list.includes(SPOKE.bridgeGateway.toLowerCase()));
-    assert.equal(list.includes(SEPOLIA_ACTIVE.karPassport.toLowerCase()), false);
+  it("11155111 historical list is byte-identical to the pre-registry list", () => {
+    assert.deepEqual(
+      [...SPOKE.historicalDenylist],
+      [...ETHEREUM_SEPOLIA_AT_6C5CEBC.historical],
+    );
   });
 
-  it("unknown chain returns empty", () => {
-    assert.deepEqual(kargainContractDenylist(1), []);
+  it("is per-network: spoke does not contain the hub passport", () => {
+    const spoke = evmProtocolAddresses(SPOKE).map((a) => a.toLowerCase());
+    assert.equal(spoke.includes(HUB.karPassport.toLowerCase()), false);
   });
 });
 
 describe("kargainChains write-union", () => {
   it("includes Ethereum Sepolia 11155111", () => {
-    assert.ok(kargainChains.some((c) => c.id === 11155111));
+    assert.ok(kargainChains.some((c) => c.id === ETHEREUM_SEPOLIA_CHAIN_ID));
   });
 
   it("keeps Base Sepolia 84532", () => {
-    assert.ok(kargainChains.some((c) => c.id === 84532));
+    assert.ok(kargainChains.some((c) => c.id === SEPOLIA_CHAIN_ID));
+  });
+});
+
+describe("door argument type", () => {
+  it("refuses a bare number at compile time", () => {
+    // @ts-expect-error — a bare number is not an Eip155ChainId (TS2345).
+    const address = karPassportAddress(84532);
+    assert.equal(address, HUB.karPassport);
   });
 });

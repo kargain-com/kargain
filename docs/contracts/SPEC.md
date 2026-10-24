@@ -1223,7 +1223,7 @@ Three **distinct** concepts — do not conflate in config or UI:
 
 **Config rules:**
 
-- `lib/web3/deployment-addresses.ts` — **no** Sepolia fallback for `timelock`. Use `NEXT_PUBLIC_TIMELOCK_*` only when a TimelockController exists (local / future mainnet).
+- `lib/web3/commercial-active.ts` — the registry row is the only source of the `timelock` address; no environment variable overrides it.
 - `deployments/84532.json` — must record `deployer` and `upgradeAuthority` separately from any future `timelock` field.
 - **Profiles / messaging** — never treat deployer or `upgradeAuthority` EOA as a protocol denylist entry; block contract accounts via bytecode (`lib/web3/wallet-account.ts`).
 
@@ -1427,7 +1427,7 @@ Local dev stack on **Hardhat chain 31337** — full passport lifecycle before Ph
 | `NEXT_PUBLIC_CHAIN_ID=31337` | Default UI chain |
 | `NEXT_PUBLIC_RPC_BY_CHAIN` | Include `"31337":"http://127.0.0.1:8545"` |
 
-Export addresses after deploy: `eval "$(node --import tsx scripts/lib/print-local-env.ts)"`
+Export the indexer addresses after deploy: `eval "$(node --import tsx scripts/lib/print-local-env.ts)"`
 
 ### E2E scenario (`pnpm test:e2e`)
 

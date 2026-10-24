@@ -3,7 +3,10 @@
  * shared by panels/hooks (N1). Never throw; never invent a chain id.
  */
 
-import { isCommercialEip155Id, type Eip155ChainId } from "@/lib/web3/commercial-active";
+import {
+  isCommercialEip155Id,
+  type Eip155ChainId,
+} from "@/lib/web3/commercial-active";
 import type {
   EvmWagmiChainResult,
   KargainWriteUnionChainId,

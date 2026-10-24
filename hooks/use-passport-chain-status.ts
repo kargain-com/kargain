@@ -8,14 +8,16 @@ import { KarPassportAbi } from "@/lib/contracts/abis.generated";
 import { chainStatusFromGetPassportStatusResult } from "@/lib/passport/confirm-listing-status";
 import type { PassportStatus } from "@/lib/types/ponder";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import { eip155WhenWagmiOk } from "@/lib/web3/evm-wagmi-chrome";
 
 export function usePassportChainStatus(
   chainId: number,
   tokenId: string,
   ponderStatus: PassportStatus,
 ) {
-  const address = karPassportAddress(chainId);
   const wagmi = evmWagmiChain(chainId);
+  const eip155 = eip155WhenWagmiOk(wagmi);
+  const address = eip155 != null ? karPassportAddress(eip155) : undefined;
   const wc = wagmi.ok ? wagmi.chainId : undefined
 
   const { data, isLoading, isFetching, isError, refetch } = useReadContract({

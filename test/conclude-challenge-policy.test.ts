@@ -30,6 +30,7 @@ import { tokenIdToBytes32 } from "@/lib/svm/event-payload-decode";
 import { encodeSvmPubkeyBytes } from "@/lib/web3/protocol-address";
 import { commercialSvmNamespaceIds, requireSvmCommercialActive } from "@/lib/web3/commercial-active";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import { SEPOLIA_CHAIN_ID } from "../lib/web3/sepolia-addresses.ts";
 import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import type { FetchSvmAccountDataResult } from "@/lib/web3/svm-rpc";
 import type { SvmSignAndSendPort } from "@/lib/web3/svm-write-adapter";
@@ -148,7 +149,7 @@ function makeConfigFetcher(args: {
 
 describe("concludeChallenge EVM arity pin", () => {
   it("live conclude+[tid] with no value; planted second arg / value are red", async () => {
-    const address = karPassportAddress(84532)!;
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     const live = buildEvmConcludeChallengeCall({
       address,
       tokenId,

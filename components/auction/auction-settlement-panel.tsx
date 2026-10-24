@@ -107,9 +107,9 @@ export function AuctionSettlementPanel({
   const wagmiChain = evmWagmiChain(chainId);
   const wrongChain = wrongChainFromWagmi(evm.ok, walletChainId, wagmiChain);
   const tid = BigInt(tokenId);
-  const staking = karProStakingAddress(chainId);
   const wc = wagmiWriteUnionId(wagmiChain);
   const eip155 = eip155WhenWagmiOk(wagmiChain);
+  const staking = eip155 != null ? karProStakingAddress(eip155) : undefined;
 
   const verifierReads = useKeyedReadContracts({
     contracts:

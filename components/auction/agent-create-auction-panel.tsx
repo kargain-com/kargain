@@ -38,7 +38,7 @@ import {
 import { REVERT_COPY } from "@/lib/marketplace/tx-error-message";
 import { commercialActive, nativeUnitOf } from "@/lib/web3/commercial-active";
 import { evmWagmiChain } from "@/lib/web3/supported-chains";
-import { wrongChainFromWagmi } from "@/lib/web3/evm-wagmi-chrome";
+import { wrongChainFromWagmi, eip155WhenWagmiOk } from "@/lib/web3/evm-wagmi-chrome";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import { cn } from "@/lib/utils";
 import { useEvmWriteContract } from "@/lib/web3/evm-write-adapter";
@@ -74,8 +74,9 @@ export function AgentCreateAuctionPanel({
   const busy = phase !== "idle";
 
   const mode = commerceModeEvmAddress("ascending", chainId);
-  const passport = karPassportAddress(chainId);
   const wagmiChain = evmWagmiChain(chainId);
+  const eip155 = eip155WhenWagmiOk(wagmiChain);
+  const passport = eip155 != null ? karPassportAddress(eip155) : undefined;
   const wrongChain = wrongChainFromWagmi(evm.ok, walletChainId, wagmiChain);
   const { paused: modePaused } = useCommerceModePaused({
     mode: "ascending",

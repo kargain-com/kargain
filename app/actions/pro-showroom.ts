@@ -13,6 +13,7 @@ import {
   type MarketplaceListingRow,
 } from "@/lib/marketplace/map-ponder-listing";
 import { fetchVerifierPublicData } from "@/lib/verifier/fetch-verifier-public-data";
+import { showroomOpenFromMembership } from "@/lib/verifier/effective-verifier";
 import type {
   PassportStatus,
   PonderVerifierAttestation,
@@ -46,7 +47,13 @@ export type ProShowroomData = {
   recentAttestations: PonderVerifierAttestation[];
   attestationTotal: number;
   profileMetadata: { slug?: string; description?: string; website?: string } | null;
-  isActiveVerifier: boolean;
+  /** `null` when the membership read is unread — never invent inactive. */
+  isActiveVerifier: boolean | null;
+  /**
+   * One open/closed decision for metadata and page body (membership + Ponder).
+   * Never invent open from unread membership alone.
+   */
+  showroomOpen: boolean;
   verificationFee: bigint;
 };
 
@@ -76,7 +83,7 @@ async function loadResolvedShowroom(
   chainId: number,
   address: `0x${string}`,
 ): Promise<ProShowroomData> {
-  let isActiveVerifier = false;
+  let isActiveVerifier: boolean | null = null;
   let verifier: VerifierRow | null = null;
   let verifiedPassports: ProShowroomPassport[] = [];
   let verifiedPassportTotal = 0;
@@ -96,7 +103,7 @@ async function loadResolvedShowroom(
         getConsignments({ agent: address, live: true, page: 1, limit: 100 }),
       ]);
 
-    isActiveVerifier = activeOnChain === true;
+    isActiveVerifier = activeOnChain;
 
     if (verifierData.profile) {
       verifier = mapVerifierRow(verifierData.profile, address);
@@ -142,6 +149,12 @@ async function loadResolvedShowroom(
     profileMetadata.slug = verifier.slug;
   }
 
+  const showroomOpen = showroomOpenFromMembership(
+    isActiveVerifier,
+    verifier?.active === true,
+    verifiedPassportTotal,
+  );
+
   return {
     address,
     slug,
@@ -156,6 +169,7 @@ async function loadResolvedShowroom(
     attestationTotal,
     profileMetadata,
     isActiveVerifier,
+    showroomOpen,
     verificationFee,
   };
 }

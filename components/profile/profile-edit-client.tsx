@@ -45,6 +45,7 @@ import { resolveKarProTargetChainId } from "@/lib/kar-pro/kar-pro-target-chain";
 import { karProStakingAddress } from "@/lib/web3/deployment-addresses";
 import { nativeUnitOf, commercialActive } from "@/lib/web3/commercial-active";
 import { evmWagmiChain } from "@/lib/web3/supported-chains";
+import { eip155WhenWagmiOk } from "@/lib/web3/evm-wagmi-chrome";
 
 const ABOUT_MAX = 280;
 
@@ -124,8 +125,9 @@ export function ProfileEditClient() {
   const { profile, loading, refetch } = useNostrProfile(address);
 
   const chainId = resolveKarProTargetChainId(walletChainId);
-  const staking = chainId != null ? karProStakingAddress(chainId) : undefined;
   const wagmiChain = evmWagmiChain(chainId);
+  const eip155 = eip155WhenWagmiOk(wagmiChain);
+  const staking = eip155 != null ? karProStakingAddress(eip155) : undefined;
   const wc = chainId != null ? wagmiChain.ok ? wagmiChain.chainId : undefined : undefined;
   const verifierStatusEnabled = Boolean(staking && address && chainId != null);
 

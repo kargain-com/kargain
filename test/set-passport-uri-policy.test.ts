@@ -31,6 +31,7 @@ import { commercialSvmNamespaceIds, requireSvmCommercialActive } from "@/lib/web
 import { mintKargainNamespace } from "@/lib/web3/kargain-namespace";
 import type { SvmSignAndSendPort } from "@/lib/web3/svm-write-adapter";
 import { karPassportAddress } from "@/lib/web3/deployment-addresses";
+import { SEPOLIA_CHAIN_ID } from "../lib/web3/sepolia-addresses.ts";
 import {
   txWriteAvailability,
   txWriteRefusalTitle,
@@ -130,7 +131,7 @@ describe("setPassportUri EVM behavioural pin", () => {
   const uri = "ar://edited";
 
   it("buildEvmSetPassportUriCall yields setPassportURI with [BigInt(tokenId), uri]", () => {
-    const address = karPassportAddress(84532);
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     assert.ok(address);
     const call = buildEvmSetPassportUriCall({
       address,
@@ -144,7 +145,7 @@ describe("setPassportUri EVM behavioural pin", () => {
   });
 
   it("planSetPassportUri EVM arm matches today's call for live hub", async () => {
-    const address = karPassportAddress(84532);
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     assert.ok(address);
     const planned = await planSetPassportUri({
       account: {
@@ -164,7 +165,7 @@ describe("setPassportUri EVM behavioural pin", () => {
   });
 
   it("planted wrong functionName is red; live builder is green", () => {
-    const address = karPassportAddress(84532)!;
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     const live = buildEvmSetPassportUriCall({
       address,
       tokenId,
@@ -207,7 +208,7 @@ describe("setPassportUri EVM behavioural pin", () => {
   });
 
   it("executeSetPassportUri EVM passes the pinned call through writeEvmContract", async () => {
-    const address = karPassportAddress(84532)!;
+    const address = karPassportAddress(SEPOLIA_CHAIN_ID);
     let captured: unknown;
     const hash = await executeSetPassportUri({
       account: {

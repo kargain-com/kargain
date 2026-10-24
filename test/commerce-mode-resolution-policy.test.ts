@@ -15,7 +15,7 @@ import { commerceFactCauseCopy } from "@/lib/passport/commerce-fact";
 import {
   COMMERCE_MODE_ABSENT_CAUSES,
   commerceModeAbsentCopy,
-  commerceModeAddress,
+  commerceModeEvmAddress,
   hasCommerceMode,
   resolveCommerceMode,
   type CommerceModeResolution,
@@ -64,7 +64,7 @@ describe("commerce mode resolution policy", () => {
     );
     assert.equal(hasCommerceMode("ascending", SOLANA_NS), true);
     assert.equal(
-      commerceModeAddress("ascending", SOLANA_NS),
+      commerceModeEvmAddress("ascending", SOLANA_NS),
       undefined,
       "hex accessor must stay undefined on SVM",
     );
@@ -146,7 +146,7 @@ describe("commerce mode resolution policy", () => {
   it("constructed: treating a configured Solana mode as hex-absent is red", () => {
     const asc = resolveCommerceMode("ascending", SOLANA_NS);
     assert.equal(asc.status, "configured");
-    const hexUndefined = commerceModeAddress("ascending", SOLANA_NS) == null;
+    const hexUndefined = commerceModeEvmAddress("ascending", SOLANA_NS) == null;
     assert.equal(hexUndefined, true, "hex is undefined on SVM by design");
     // Presence must not follow the hex lie:
     assert.equal(
@@ -161,13 +161,17 @@ describe("commerce mode resolution policy", () => {
     );
   });
 
-  it("EVM identity: resolve address equals commerceModeAddress checksum on hub and spoke", () => {
+  it("EVM identity: resolve address equals the registry stack field on hub and spoke", () => {
     for (const chainId of [84532, 11155111] as const) {
       for (const mode of ["fixedPrice", "ascending"] as const) {
         const resolved = resolveCommerceMode(mode, chainId);
-        const hex = commerceModeAddress(mode, chainId);
+        const stack = COMMERCIAL_ACTIVE[chainId]!;
+        const hex =
+          mode === "fixedPrice"
+            ? stack.fixedPriceConsignment
+            : stack.ascendingConsignment;
         assert.equal(resolved.status, "configured");
-        assert.ok(hex, `hex required on ${chainId} ${mode}`);
+        assert.equal(commerceModeEvmAddress(mode, chainId), hex);
         if (resolved.status !== "configured") continue;
         assert.equal(resolved.address, hex);
         assertNoFabricatedNamespace(resolved);

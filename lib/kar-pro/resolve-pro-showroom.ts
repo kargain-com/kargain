@@ -7,6 +7,7 @@ import { isCommercialEip155Id } from "@/lib/web3/commercial-active";
 import {
   readActiveVerifierMemberships,
   verifierMembershipKey,
+  type ReadChainVerifierActive,
 } from "@/lib/kar-pro/is-active-verifier-commercial";
 import { getAddress } from "viem";
 
@@ -98,15 +99,21 @@ export async function resolveProShowroomBySlug(
   };
 }
 
-/** Membership-keyed active on one chain (not commercial OR). */
+/**
+ * Membership-keyed active on one chain (not commercial OR).
+ * `null` = unread / failed / non-EVM — never invent inactive.
+ */
 export async function isActiveVerifierOnChain(
   address: `0x${string}`,
   chainId: number,
-): Promise<boolean> {
-  const batch = await readActiveVerifierMemberships([{ address, chainId }]);
-  if (batch.status === "failure") return false;
-  return (
-    batch.activeByMembership.get(verifierMembershipKey(chainId, address)) ===
-    true
+  deps?: { readChainActive?: ReadChainVerifierActive },
+): Promise<boolean | null> {
+  const batch = await readActiveVerifierMemberships(
+    [{ address, chainId }],
+    deps,
   );
+  if (batch.status === "failure") return null;
+  const key = verifierMembershipKey(chainId, address);
+  if (!batch.activeByMembership.has(key)) return null;
+  return batch.activeByMembership.get(key) === true;
 }

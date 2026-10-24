@@ -64,6 +64,7 @@ import { karPassportAddress } from "@/lib/web3/deployment-addresses";
 import {
   commercialActive,
   nativeUnitOf,
+  resolveEvmChain,
 } from "@/lib/web3/commercial-active";
 import type { ProtocolOwner } from "@/lib/web3/protocol-address";
 import { formatNativeAmountLabeled } from "@/lib/web3/native-amount";
@@ -187,7 +188,9 @@ export function PassportActionsPanel({
   const [recordEvidencePaste, setRecordEvidencePaste] = useState("");
   const [recordEvidenceFile, setRecordEvidenceFile] = useState<File | null>(null);
 
-  const passport = karPassportAddress(chainId);
+  const resolvedEip155 = resolveEvmChain(chainId);
+  const eip155 = resolvedEip155.ok ? resolvedEip155.chainId : undefined;
+  const passport = eip155 != null ? karPassportAddress(eip155) : undefined;
   /** EVM hex address or any commercial stack (SVM program id) — no VM fork. */
   const writeTargetConfigured =
     passport != null || commercialActive(chainId) != null;
