@@ -26,7 +26,14 @@ const PONDER_WF = join(WORKFLOWS_DIR, "deploy-ponder.yml");
 const SVM_WF = join(WORKFLOWS_DIR, "deploy-svm-ingest.yml");
 const PKG = JSON.parse(
   readFileSync(join(ROOT, "package.json"), "utf8"),
-) as { scripts: Record<string, string>; packageManager?: string };
+) as {
+  scripts: Record<string, string>;
+  packageManager?: string;
+  engines?: { node?: string };
+  devDependencies?: Record<string, string>;
+};
+const NODE_VERSION_FILE = join(ROOT, ".node-version");
+const NODE_VERSION_EXACT = /^\d+\.\d+\.\d+\n?$/;
 
 /** Local reusable workflow or owner/repo@<40-hex> # vX.Y.Z */
 const PINNED_USES =
@@ -84,6 +91,96 @@ export function ponderDeployLacksExecutableSkip(yaml: string): string | null {
     return "deploy path lacks EXECUTABLE_DIGEST comparison";
   }
   return null;
+}
+
+/** Owner file must be exact x.y.z (optional trailing newline). */
+export function nodeVersionOwnerDefect(raw: string): string | null {
+  if (!NODE_VERSION_EXACT.test(raw)) {
+    return "node-version owner must be exact x.y.z";
+  }
+  return null;
+}
+
+export function readNodeVersionOwner(): string {
+  const raw = readFileSync(NODE_VERSION_FILE, "utf8");
+  const defect = nodeVersionOwnerDefect(raw);
+  assert.equal(defect, null, defect ?? undefined);
+  return raw.trim();
+}
+
+/** setup-node with: block must use node-version-file and omit node-version. */
+export function setupNodeVersionDefect(yaml: string): string | null {
+  if (!/actions\/setup-node@/.test(yaml)) {
+    return null;
+  }
+  if (!/node-version-file:\s*\.node-version\b/.test(yaml)) {
+    return "setup-node must set node-version-file: .node-version";
+  }
+  if (/^\s*node-version:\s*/m.test(yaml)) {
+    return "setup-node must not set node-version:";
+  }
+  return null;
+}
+
+/** Dockerfile FROM node: must equal owner x.y.z-alpine (no floating major). */
+export function dockerfileNodeFromDefect(
+  dockerfile: string,
+  ownerXyz: string,
+): string | null {
+  const m = dockerfile.match(/^FROM\s+node:(\S+)\s*$/m);
+  if (!m) {
+    return "Dockerfile must have FROM node:<tag>";
+  }
+  const expected = `${ownerXyz}-alpine`;
+  if (m[1] !== expected) {
+    return `Dockerfile FROM node tag must be ${expected}`;
+  }
+  return null;
+}
+
+export function enginesNodeDefect(
+  enginesNode: string | undefined,
+  ownerMajor: string,
+): string | null {
+  const expected = `${ownerMajor}.x`;
+  if (enginesNode !== expected) {
+    return `engines.node must be ${expected}`;
+  }
+  return null;
+}
+
+export function typesNodeMajorDefect(
+  range: string | undefined,
+  ownerMajor: string,
+): string | null {
+  if (range === undefined) {
+    return "@types/node must be declared";
+  }
+  const m = range.match(/^\^?(\d+)\./);
+  if (!m) {
+    return "@types/node range must start with a major version";
+  }
+  if (m[1] !== ownerMajor) {
+    return `@types/node major must be ${ownerMajor}`;
+  }
+  return null;
+}
+
+function rootNodeDockerfiles(): string[] {
+  return readdirSync(ROOT)
+    .filter((name) => name.startsWith("Dockerfile"))
+    .filter((name) => {
+      const body = readFileSync(join(ROOT, name), "utf8");
+      return /^FROM\s+node:/m.test(body);
+    })
+    .sort();
+}
+
+function workflowsUsingSetupNode(): string[] {
+  return workflowYamlFiles().filter((name) => {
+    const yaml = readFileSync(join(WORKFLOWS_DIR, name), "utf8");
+    return /actions\/setup-node@/.test(yaml);
+  });
 }
 
 describe("deploy-ponder-svm-ingest-ci-policy", () => {
@@ -165,6 +262,111 @@ deploy:
       assert.match(df, /corepack prepare pnpm@10\.6\.5 --activate/);
       assert.doesNotMatch(df, /npm install -g pnpm/);
     }
+  });
+
+  it(".node-version is exact x.y.z", () => {
+    const raw = readFileSync(NODE_VERSION_FILE, "utf8");
+    assert.equal(nodeVersionOwnerDefect(raw), null);
+  });
+
+  it("setup-node workflows use node-version-file and omit node-version", () => {
+    const names = workflowsUsingSetupNode();
+    assert.ok(names.length > 0, "at least one workflow must use setup-node");
+    for (const name of names) {
+      const yaml = readFileSync(join(WORKFLOWS_DIR, name), "utf8");
+      assert.equal(
+        setupNodeVersionDefect(yaml),
+        null,
+        `${name} must pin Node via .node-version`,
+      );
+    }
+  });
+
+  it("root node Dockerfiles pin FROM node:<owner>-alpine", () => {
+    const owner = readNodeVersionOwner();
+    const names = rootNodeDockerfiles();
+    assert.ok(names.length > 0, "at least one root Dockerfile must use FROM node:");
+    for (const name of names) {
+      const df = readFileSync(join(ROOT, name), "utf8");
+      assert.equal(
+        dockerfileNodeFromDefect(df, owner),
+        null,
+        `${name} must match .node-version`,
+      );
+    }
+  });
+
+  it("engines.node major matches .node-version", () => {
+    const owner = readNodeVersionOwner();
+    const major = owner.split(".")[0]!;
+    assert.equal(enginesNodeDefect(PKG.engines?.node, major), null);
+  });
+
+  it("@types/node major matches .node-version", () => {
+    const owner = readNodeVersionOwner();
+    const major = owner.split(".")[0]!;
+    assert.equal(
+      typesNodeMajorDefect(PKG.devDependencies?.["@types/node"], major),
+      null,
+    );
+  });
+
+  it("constructed: Dockerfile FROM node:20-alpine is red", () => {
+    const owner = readNodeVersionOwner();
+    assert.equal(
+      dockerfileNodeFromDefect("FROM node:20-alpine\n", owner),
+      `Dockerfile FROM node tag must be ${owner}-alpine`,
+    );
+  });
+
+  it("constructed: Dockerfile floating FROM node:<major>-alpine is red", () => {
+    const owner = readNodeVersionOwner();
+    const major = owner.split(".")[0]!;
+    assert.equal(
+      dockerfileNodeFromDefect(`FROM node:${major}-alpine\n`, owner),
+      `Dockerfile FROM node tag must be ${owner}-alpine`,
+    );
+  });
+
+  it("constructed: workflow with literal node-version is red", () => {
+    const planted = `
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "22"
+          package-manager-cache: false
+`;
+    assert.equal(
+      setupNodeVersionDefect(planted),
+      "setup-node must set node-version-file: .node-version",
+    );
+  });
+
+  it("constructed: engines.node with a different major is red", () => {
+    const owner = readNodeVersionOwner();
+    const major = owner.split(".")[0]!;
+    const wrong = major === "20" ? "22.x" : "20.x";
+    assert.equal(
+      enginesNodeDefect(wrong, major),
+      `engines.node must be ${major}.x`,
+    );
+  });
+
+  it("constructed: @types/node with a different major is red", () => {
+    const owner = readNodeVersionOwner();
+    const major = owner.split(".")[0]!;
+    const wrong = major === "20" ? "^22.14.1" : "^20.14.1";
+    assert.equal(
+      typesNodeMajorDefect(wrong, major),
+      `@types/node major must be ${major}`,
+    );
+  });
+
+  it("constructed: .node-version of major-only is red", () => {
+    assert.equal(
+      nodeVersionOwnerDefect("24\n"),
+      "node-version owner must be exact x.y.z",
+    );
   });
 
   it("ci.yml exists, triggers on push to master, runs compile through build", () => {

@@ -154,7 +154,7 @@
     "@openzeppelin/hardhat-upgrades": "^4.0.2",
     "@tailwindcss/postcss": "^4.1.8",
     "@types/js-yaml": "4.0.9",
-    "@types/node": "^22.14.1",
+    "@types/node": "^24.19.2",
     "@types/pg": "^8.23.1",
     "@types/qrcode": "^1.5.5",
     "@types/react": "^19.1.2",
@@ -173,6 +173,9 @@
     "tailwindcss": "^4.1.8",
     "tsx": "^4.21.0",
     "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": "24.x"
   },
   "packageManager": "pnpm@10.6.5",
   "pnpm": {

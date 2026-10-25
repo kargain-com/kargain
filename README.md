@@ -82,7 +82,7 @@ UI layout: **[docs/design-spec.md](docs/design-spec.md)**.
 
 ### Prerequisites
 
-- Node.js 20+, pnpm
+- Node.js 24.22.1 (see `.node-version`), pnpm
 - Base Sepolia ETH for on-chain testing — [faucet](https://faucet.quicknode.com/base/sepolia)
 
 ### Install and run

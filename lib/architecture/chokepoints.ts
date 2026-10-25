@@ -1026,6 +1026,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     ],
   },
   {
+    id: "node-runtime-version",
+    owner: ".node-version",
+    rule: "Exact Node.js x.y.z for CI, Docker images, engines major, and @types/node major",
+    guardTests: ["deploy-ponder-svm-ingest-ci-policy.test.ts"],
+  },
+  {
     id: "deploy-ponder-svm-ingest-ci",
     owner:
       ".github/workflows/ci.yml · .github/workflows/deploy-ponder.yml · .github/workflows/deploy-svm-ingest.yml · lib/architecture/ci-verify-partition.ts",
