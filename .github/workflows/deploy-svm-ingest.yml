@@ -12,6 +12,8 @@ on:
       - "src/lib/svm-raw-writer.ts"
       - "Dockerfile.svm-ingest"
       - ".github/workflows/deploy-svm-ingest.yml"
+      - "scripts/lib/svm-ingest-readiness-probe.ts"
+      - "scripts/svm-ingest-ready-probe.ts"
 
 # Least privilege for GITHUB_TOKEN. Deploy uses repository secrets over SSH;
 # secrets access is not controlled by this block. No job needs write.
@@ -25,18 +27,51 @@ jobs:
   deploy:
     needs: gates
     runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-svm-ingest
+      cancel-in-progress: false
     steps:
+      - name: Require master
+        run: test "$GITHUB_REF" = "refs/heads/master"
+
       - name: Deploy svm-ingest to VPS
         uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
         with:
           host: ${{ secrets.VPS_SSH_HOST }}
           username: ${{ secrets.VPS_SSH_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_SSH_PORT }}
+          command_timeout: 30m
+          envs: DEPLOY_SHA
           script: |
+            set -euo pipefail
             cd /opt/kargain
-            git pull https://github.com/kargain-com/kargain.git master
+            exec 9>.deploy.lock
+            if ! flock -w 900 9; then
+              echo "deploy_lock_not_acquired: waited 900s for .deploy.lock"
+              exit 1
+            fi
+
+            git fetch https://github.com/kargain-com/kargain.git master
+            git checkout --force "$DEPLOY_SHA"
+
             docker compose build svm-ingest
             docker compose up -d --force-recreate svm-ingest
+
+            # Probe via the image's node (host may lack tsx). --network host → published :42100.
+            IMAGE_ID=$(docker compose images -q svm-ingest)
+            NODE_VER=$(docker run --rm --entrypoint node "$IMAGE_ID" --version)
+            READY_STATUS=$(docker run --rm --network host \
+              -v /opt/kargain/scripts:/app/scripts:ro \
+              --entrypoint node "$IMAGE_ID" \
+              --import tsx /app/scripts/svm-ingest-ready-probe.ts)
+
             docker image prune -f
             docker compose ps
+
+            echo "deploy_evidence outcome=recreated"
+            echo "deploy_evidence commit=$DEPLOY_SHA"
+            echo "deploy_evidence node=$NODE_VER"
+            echo "deploy_evidence ready=svm-ingest status=$READY_STATUS"

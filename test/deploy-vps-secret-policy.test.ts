@@ -285,6 +285,77 @@ function jobHasIfKey(job: Record<string, unknown>): boolean {
   return Object.keys(job).some((k) => k.toLowerCase() === "if");
 }
 
+const MASTER_GUARD_RUN = 'test "$GITHUB_REF" = "refs/heads/master"';
+
+function onHasWorkflowDispatch(on: unknown): boolean {
+  if (on === "workflow_dispatch") return true;
+  if (Array.isArray(on)) return on.includes("workflow_dispatch");
+  if (on && typeof on === "object" && !Array.isArray(on)) {
+    return Object.prototype.hasOwnProperty.call(on, "workflow_dispatch");
+  }
+  return false;
+}
+
+function firstDeployStep(doc: YamlDoc): Record<string, unknown> | null {
+  const jobs = doc.jobs;
+  if (!jobs || typeof jobs !== "object" || Array.isArray(jobs)) return null;
+  const deploy = (jobs as Record<string, unknown>).deploy;
+  if (!deploy || typeof deploy !== "object" || Array.isArray(deploy)) return null;
+  const steps = (deploy as Record<string, unknown>).steps;
+  if (!Array.isArray(steps) || steps.length === 0) return null;
+  const first = steps[0];
+  if (!first || typeof first !== "object" || Array.isArray(first)) return null;
+  return first as Record<string, unknown>;
+}
+
+/**
+ * workflow_dispatch requires a fail-fast first deploy step comparing
+ * $GITHUB_REF (env var only — no ${{ … }} in run:).
+ */
+export function deployMasterGuardViolations(repoRoot: string): string[] {
+  const violations: string[] = [];
+  for (const rel of ALLOWED_DEPLOY_WORKFLOW_PATHS) {
+    const abs = join(repoRoot, rel);
+    const label = rel.split("/").pop()!;
+    if (!existsSync(abs)) {
+      violations.push(`${label} missing`);
+      continue;
+    }
+    const loaded = loadYamlFile(abs);
+    if (!loaded.ok) {
+      violations.push(`${label} fail-closed (${loaded.reason})`);
+      continue;
+    }
+    if (!onHasWorkflowDispatch(loaded.doc.on)) continue;
+    const first = firstDeployStep(loaded.doc);
+    if (!first) {
+      violations.push(
+        `${label} workflow_dispatch requires Require master as first deploy step`,
+      );
+      continue;
+    }
+    const run = first.run;
+    if (typeof run !== "string") {
+      violations.push(
+        `${label} workflow_dispatch requires Require master as first deploy step`,
+      );
+      continue;
+    }
+    if (run.includes("${{")) {
+      violations.push(
+        `${label} master guard must not interpolate \${{ }} into run:`,
+      );
+      continue;
+    }
+    if (run.trim() !== MASTER_GUARD_RUN) {
+      violations.push(
+        `${label} workflow_dispatch requires Require master as first deploy step`,
+      );
+    }
+  }
+  return violations;
+}
+
 /**
  * Each deploy workflow: gates is exactly reusable ci.yml; deploy needs gates
  * and has no if.
@@ -367,6 +438,61 @@ describe("deploy-vps-secret-policy", () => {
 
   it("live deploy jobs need exact gates via ci.yml and no if", () => {
     assert.deepEqual(deployGatesViolations(ROOT), []);
+  });
+
+  it("live deploy workflows with workflow_dispatch require master env-var guard", () => {
+    assert.ok(ALLOWED_DEPLOY_WORKFLOW_PATHS.size > 0);
+    assert.deepEqual(deployMasterGuardViolations(ROOT), []);
+  });
+
+  it("constructed: workflow_dispatch without the master guard is red", () => {
+    withTempGithub(
+      (tmp) => {
+        const { abs, doc } = loadDeployPonder(tmp);
+        const jobs = doc.jobs as Record<string, unknown>;
+        const deploy = jobs.deploy as Record<string, unknown>;
+        const steps = deploy.steps as Record<string, unknown>[];
+        // Drop Require master — leave Checkout (or later steps) first.
+        if (steps[0]?.name === "Require master") steps.shift();
+        writeFileSync(abs, yaml.dump(doc));
+      },
+      (tmp) => {
+        const hits = deployMasterGuardViolations(tmp);
+        assert.ok(
+          hits.includes(
+            "deploy-ponder.yml workflow_dispatch requires Require master as first deploy step",
+          ),
+          "deploy-ponder.yml workflow_dispatch requires Require master as first deploy step",
+        );
+      },
+    );
+    assert.deepEqual(deployMasterGuardViolations(ROOT), []);
+  });
+
+  it("constructed: master guard interpolating ${{ github.ref }} into run: is red", () => {
+    withTempGithub(
+      (tmp) => {
+        const { abs, doc } = loadDeployPonder(tmp);
+        const jobs = doc.jobs as Record<string, unknown>;
+        const deploy = jobs.deploy as Record<string, unknown>;
+        const steps = deploy.steps as Record<string, unknown>[];
+        steps[0] = {
+          name: "Require master",
+          run: 'test "${{ github.ref }}" = "refs/heads/master"',
+        };
+        writeFileSync(abs, yaml.dump(doc));
+      },
+      (tmp) => {
+        const hits = deployMasterGuardViolations(tmp);
+        assert.ok(
+          hits.includes(
+            "deploy-ponder.yml master guard must not interpolate ${{ }} into run:",
+          ),
+          "deploy-ponder.yml master guard must not interpolate ${{ }} into run:",
+        );
+      },
+    );
+    assert.deepEqual(deployMasterGuardViolations(ROOT), []);
   });
 
   it("constructed: secrets.VPS_ under pull_request_target is red", () => {

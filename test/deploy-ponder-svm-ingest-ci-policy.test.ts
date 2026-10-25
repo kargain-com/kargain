@@ -2,6 +2,7 @@
  * Trunk CI + deploy workflows: isolation, gates-before-SSH, verify∖CI partition.
  */
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
@@ -92,6 +93,152 @@ export function ponderDeployLacksExecutableSkip(yaml: string): string | null {
     return "deploy path lacks EXECUTABLE_DIGEST comparison";
   }
   return null;
+}
+
+const DEPLOY_WORKFLOW_FILES = [
+  "deploy-ponder.yml",
+  "deploy-svm-ingest.yml",
+] as const;
+
+const EXPECTED_CONCURRENCY_GROUP: Record<
+  (typeof DEPLOY_WORKFLOW_FILES)[number],
+  string
+> = {
+  "deploy-ponder.yml": "deploy-ponder",
+  "deploy-svm-ingest.yml": "deploy-svm-ingest",
+};
+
+const LOCK_FAILURE_MESSAGE =
+  "deploy_lock_not_acquired: waited 900s for .deploy.lock";
+
+/** Per-service job concurrency with cancel-in-progress: false. */
+export function deployConcurrencyDefect(
+  yamlText: string,
+  expectedGroup: string,
+): string | null {
+  const doc = yaml.load(yamlText);
+  if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
+    return `deploy job lacks concurrency group ${expectedGroup}`;
+  }
+  const jobs = (doc as Record<string, unknown>).jobs;
+  if (!jobs || typeof jobs !== "object" || Array.isArray(jobs)) {
+    return `deploy job lacks concurrency group ${expectedGroup}`;
+  }
+  const deploy = (jobs as Record<string, unknown>).deploy;
+  if (!deploy || typeof deploy !== "object" || Array.isArray(deploy)) {
+    return `deploy job lacks concurrency group ${expectedGroup}`;
+  }
+  const concurrency = (deploy as Record<string, unknown>).concurrency;
+  if (!concurrency || typeof concurrency !== "object" || Array.isArray(concurrency)) {
+    return `deploy job lacks concurrency group ${expectedGroup}`;
+  }
+  const c = concurrency as Record<string, unknown>;
+  if (c.group !== expectedGroup) {
+    return `deploy job lacks concurrency group ${expectedGroup}`;
+  }
+  if (c["cancel-in-progress"] !== false) {
+    return "deploy job concurrency must set cancel-in-progress: false";
+  }
+  return null;
+}
+
+/** Whole remote script must flock .deploy.lock with the named timeout refusal. */
+export function deployLockDefect(yamlText: string): string | null {
+  if (!/\.deploy\.lock/.test(yamlText)) {
+    return "deploy script lacks .deploy.lock flock";
+  }
+  if (!/flock -w 900/.test(yamlText)) {
+    return "deploy script lacks .deploy.lock flock";
+  }
+  if (!yamlText.includes(LOCK_FAILURE_MESSAGE)) {
+    return "deploy script lacks .deploy.lock flock";
+  }
+  return null;
+}
+
+export function deployGitPullDefect(yamlText: string): string | null {
+  if (/\bgit\s+pull\b/.test(yamlText)) {
+    return "deploy script must not use git pull";
+  }
+  return null;
+}
+
+export function deployPipefailDefect(yamlText: string): string | null {
+  if (!/set -euo pipefail/.test(yamlText)) {
+    return "deploy script lacks set -euo pipefail";
+  }
+  return null;
+}
+
+export function deployCommandTimeoutDefect(yamlText: string): string | null {
+  if (!/command_timeout:\s*30m/.test(yamlText)) {
+    return "deploy SSH step lacks command_timeout: 30m";
+  }
+  return null;
+}
+
+/** Evidence lines: recreated (+ unchanged for Ponder); ready=status not ready=ok. */
+export function deployEvidenceDefect(
+  yamlText: string,
+  opts: { requireUnchanged: boolean; service: "ponder" | "svm-ingest" },
+): string | null {
+  if (/ready=\S+\s+ok\b/.test(yamlText)) {
+    return "deploy evidence must use ready=<service> status=<code> not ready=… ok";
+  }
+  if (!/deploy_evidence outcome=recreated/.test(yamlText)) {
+    return "deploy script lacks deploy_evidence outcome=recreated";
+  }
+  if (opts.requireUnchanged && !/deploy_evidence outcome=unchanged/.test(yamlText)) {
+    return "deploy script lacks deploy_evidence outcome=unchanged";
+  }
+  const readyRe = new RegExp(
+    `deploy_evidence ready=${opts.service} status=`,
+  );
+  if (!readyRe.test(yamlText)) {
+    return `deploy script lacks deploy_evidence ready=${opts.service} status=`;
+  }
+  return null;
+}
+
+/** Extract appleboy remote `script:` bodies from a deploy workflow. */
+export function extractDeployRemoteScripts(yamlText: string): string[] {
+  const doc = yaml.load(yamlText);
+  if (!doc || typeof doc !== "object" || Array.isArray(doc)) return [];
+  const jobs = (doc as Record<string, unknown>).jobs;
+  if (!jobs || typeof jobs !== "object" || Array.isArray(jobs)) return [];
+  const deploy = (jobs as Record<string, unknown>).deploy;
+  if (!deploy || typeof deploy !== "object" || Array.isArray(deploy)) return [];
+  const steps = (deploy as Record<string, unknown>).steps;
+  if (!Array.isArray(steps)) return [];
+  const out: string[] = [];
+  for (const step of steps) {
+    if (!step || typeof step !== "object" || Array.isArray(step)) continue;
+    const withBlock = (step as Record<string, unknown>).with;
+    if (!withBlock || typeof withBlock !== "object" || Array.isArray(withBlock)) {
+      continue;
+    }
+    const script = (withBlock as Record<string, unknown>).script;
+    if (typeof script === "string" && script.trim().length > 0) {
+      out.push(script);
+    }
+  }
+  return out;
+}
+
+export function bashSyntaxDefect(script: string): string | null {
+  const result = spawnSync("bash", ["-n"], {
+    input: script,
+    encoding: "utf8",
+  });
+  if (result.status === 0) return null;
+  const detail = (result.stderr || result.stdout || "bash -n failed").trim();
+  return `deploy remote script fails bash -n: ${detail}`;
+}
+
+export function listDeployWorkflowFiles(): string[] {
+  return DEPLOY_WORKFLOW_FILES.filter((name) =>
+    readdirSync(WORKFLOWS_DIR).includes(name),
+  );
 }
 
 /** Owner file must be exact x.y.z (optional trailing newline). */
@@ -363,6 +510,135 @@ deploy:
       ponderDeployLacksExecutableSkip(planted),
       "deploy path lacks executable-fingerprint skip-recreate branch",
     );
+  });
+
+  it("live deploy workflows enumerate a non-empty set with ADR 0010 serialization", () => {
+    const files = listDeployWorkflowFiles();
+    assert.ok(files.length > 0, "deploy workflow set must be non-empty");
+    for (const name of files) {
+      const yamlText = readFileSync(join(WORKFLOWS_DIR, name), "utf8");
+      const group = EXPECTED_CONCURRENCY_GROUP[name as keyof typeof EXPECTED_CONCURRENCY_GROUP];
+      assert.equal(deployConcurrencyDefect(yamlText, group), null, name);
+      assert.equal(deployLockDefect(yamlText), null, name);
+      assert.equal(deployGitPullDefect(yamlText), null, name);
+      assert.equal(deployPipefailDefect(yamlText), null, name);
+      assert.equal(deployCommandTimeoutDefect(yamlText), null, name);
+      const service = name === "deploy-ponder.yml" ? "ponder" : "svm-ingest";
+      assert.equal(
+        deployEvidenceDefect(yamlText, {
+          requireUnchanged: name === "deploy-ponder.yml",
+          service,
+        }),
+        null,
+        name,
+      );
+      const scripts = extractDeployRemoteScripts(yamlText);
+      assert.ok(scripts.length > 0, `${name} must expose a remote script`);
+      for (const script of scripts) {
+        assert.equal(bashSyntaxDefect(script), null, name);
+      }
+    }
+  });
+
+  it("constructed: deploy job without its per-service concurrency group is red", () => {
+    const planted = `
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps: []
+`;
+    assert.equal(
+      deployConcurrencyDefect(planted, "deploy-ponder"),
+      "deploy job lacks concurrency group deploy-ponder",
+    );
+  });
+
+  it("constructed: deploy script without the lock is red", () => {
+    const planted = `
+script: |
+  set -euo pipefail
+  git checkout --force "$DEPLOY_SHA"
+`;
+    assert.equal(
+      deployLockDefect(planted),
+      "deploy script lacks .deploy.lock flock",
+    );
+  });
+
+  it("constructed: deploy script using git pull is red", () => {
+    const planted = `
+script: |
+  set -euo pipefail
+  git pull https://github.com/kargain-com/kargain.git master
+`;
+    assert.equal(
+      deployGitPullDefect(planted),
+      "deploy script must not use git pull",
+    );
+  });
+
+  it("constructed: deploy script without set -euo pipefail is red", () => {
+    const planted = `
+script: |
+  flock -w 900 9
+  git checkout --force "$DEPLOY_SHA"
+`;
+    assert.equal(
+      deployPipefailDefect(planted),
+      "deploy script lacks set -euo pipefail",
+    );
+  });
+
+  it("constructed: deploy without evidence lines is red", () => {
+    const planted = `
+script: |
+  set -euo pipefail
+  flock -w 900 9
+`;
+    assert.equal(
+      deployEvidenceDefect(planted, {
+        requireUnchanged: true,
+        service: "ponder",
+      }),
+      "deploy script lacks deploy_evidence outcome=recreated",
+    );
+  });
+
+  it("constructed: ready=… ok instead of ready=<service> status=<code> is red", () => {
+    const planted = `
+script: |
+  set -euo pipefail
+  echo "deploy_evidence outcome=recreated"
+  echo "deploy_evidence outcome=unchanged"
+  echo "deploy_evidence ready=ponder ok"
+`;
+    assert.equal(
+      deployEvidenceDefect(planted, {
+        requireUnchanged: true,
+        service: "ponder",
+      }),
+      "deploy evidence must use ready=<service> status=<code> not ready=… ok",
+    );
+  });
+
+  it("constructed: missing command_timeout is red", () => {
+    const planted = `
+with:
+  host: example
+  script: |
+    set -euo pipefail
+`;
+    assert.equal(
+      deployCommandTimeoutDefect(planted),
+      "deploy SSH step lacks command_timeout: 30m",
+    );
+  });
+
+  it("constructed: remote script that fails bash -n is red", () => {
+    const planted = "if then fi\n";
+    const defect = bashSyntaxDefect(planted);
+    assert.ok(defect, "planted script must fail bash -n");
+    assert.match(defect!, /^deploy remote script fails bash -n:/);
   });
 
   it("svm-ingest workflow exists and never builds or restarts ponder", () => {

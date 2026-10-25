@@ -1,6 +1,7 @@
 name: Deploy Ponder to VPS
 
 on:
+  workflow_dispatch:
   push:
     branches: [master]
     # Do not use a bare `src/**` — that rebuilds Ponder on every svm-ingest push.
@@ -43,7 +44,13 @@ jobs:
   deploy:
     needs: gates
     runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-ponder
+      cancel-in-progress: false
     steps:
+      - name: Require master
+        run: test "$GITHUB_REF" = "refs/heads/master"
+
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
@@ -79,10 +86,17 @@ jobs:
           username: ${{ secrets.VPS_SSH_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_SSH_PORT }}
+          command_timeout: 30m
           envs: IDENTITY_DIGEST,EXECUTABLE_DIGEST,DEPLOY_SHA
           script: |
             set -euo pipefail
             cd /opt/kargain
+            exec 9>.deploy.lock
+            if ! flock -w 900 9; then
+              echo "deploy_lock_not_acquired: waited 900s for .deploy.lock"
+              exit 1
+            fi
+
             git fetch https://github.com/kargain-com/kargain.git master
             git checkout --force "$DEPLOY_SHA"
 
@@ -98,6 +112,16 @@ jobs:
             if [ -n "$STORED_EXEC" ] && [ "$STORED_EXEC" = "$EXECUTABLE_DIGEST" ]; then
               echo "Ponder executable inputs unchanged — leaving running service alone"
               echo "identity=$IDENTITY_DIGEST executable=$EXECUTABLE_DIGEST"
+              IMAGE_ID=$(docker compose images -q ponder)
+              NODE_VER=$(docker run --rm --entrypoint node "$IMAGE_ID" --version)
+              READY_STATUS=$(docker run --rm --network host \
+                -v /opt/kargain/scripts:/app/scripts:ro \
+                --entrypoint node "$IMAGE_ID" \
+                --import tsx /app/scripts/ponder-ready-probe.ts)
+              echo "deploy_evidence outcome=unchanged"
+              echo "deploy_evidence executable=$STORED_EXEC"
+              echo "deploy_evidence node=$NODE_VER"
+              echo "deploy_evidence ready=ponder status=$READY_STATUS"
               exit 0
             fi
 
@@ -115,11 +139,20 @@ jobs:
             docker compose up -d ponder
 
             # Probe via the image's node (host may lack tsx). --network host → published :42069.
+            # Mount host scripts so the checked-out probe stdout contract is used.
             IMAGE_ID=$(docker compose images -q ponder)
-            docker run --rm --network host --entrypoint node "$IMAGE_ID" \
-              --import tsx /app/scripts/ponder-ready-probe.ts
+            NODE_VER=$(docker run --rm --entrypoint node "$IMAGE_ID" --version)
+            READY_STATUS=$(docker run --rm --network host \
+              -v /opt/kargain/scripts:/app/scripts:ro \
+              --entrypoint node "$IMAGE_ID" \
+              --import tsx /app/scripts/ponder-ready-probe.ts)
 
             python3 -c "import json,os; p='$STATE_FILE'; json.dump({'identity':os.environ['IDENTITY_DIGEST'],'executable':os.environ['EXECUTABLE_DIGEST']}, open(p,'w')); print('wrote', p)"
             docker image prune -f
             docker builder prune -f --filter until=72h
             docker compose ps
+
+            echo "deploy_evidence outcome=recreated"
+            echo "deploy_evidence commit=$DEPLOY_SHA"
+            echo "deploy_evidence node=$NODE_VER"
+            echo "deploy_evidence ready=ponder status=$READY_STATUS"
