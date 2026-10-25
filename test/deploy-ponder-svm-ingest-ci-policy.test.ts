@@ -37,10 +37,17 @@ const TOP_LEVEL_CONTENTS_READ = /^permissions:\n {2}contents: read\n/m;
 function workflowUsesRefs(yaml: string): string[] {
   const refs: string[] = [];
   for (const line of yaml.split("\n")) {
-    const m = line.match(/^\s*uses:\s*(.+?)\s*$/);
+    // Optional list-item dash: "- uses: …" as well as indented "uses: …".
+    const m = line.match(/^\s*(?:-\s+)?uses:\s*(.+?)\s*$/);
     if (m) refs.push(m[1]!);
   }
   return refs;
+}
+
+function workflowYamlFiles(): string[] {
+  return readdirSync(WORKFLOWS_DIR)
+    .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
+    .sort();
 }
 
 function unpinnedUsesRefs(yaml: string): string[] {
@@ -447,8 +454,11 @@ it("vacuous", () => {
   });
 
   it("every workflow uses: is local or SHA-pinned with exact release comment", () => {
-    const files = readdirSync(WORKFLOWS_DIR).filter((f) => f.endsWith(".yml"));
-    assert.ok(files.length >= 3, "expected workflow YAMLs under .github/workflows");
+    const files = workflowYamlFiles();
+    assert.ok(
+      files.length >= 3,
+      "expected .yml/.yaml workflows under .github/workflows",
+    );
     for (const file of files) {
       const yaml = readFileSync(join(WORKFLOWS_DIR, file), "utf8");
       const bad = unpinnedUsesRefs(yaml);
@@ -461,7 +471,7 @@ it("vacuous", () => {
   });
 
   it("every workflow declares top-level permissions: contents: read", () => {
-    const files = readdirSync(WORKFLOWS_DIR).filter((f) => f.endsWith(".yml"));
+    const files = workflowYamlFiles();
     for (const file of files) {
       const yaml = readFileSync(join(WORKFLOWS_DIR, file), "utf8");
       assert.equal(
@@ -478,6 +488,17 @@ it("vacuous", () => {
       unpinnedUsesRefs(planted),
       ["actions/checkout@v5"],
       "planted @v5 must fail PINNED_USES",
+    );
+    const live = readFileSync(CI_WF, "utf8");
+    assert.deepEqual(unpinnedUsesRefs(live), []);
+  });
+
+  it("constructed: list-item mutable uses tag is red", () => {
+    const planted = "      - uses: actions/checkout@v5";
+    assert.deepEqual(
+      unpinnedUsesRefs(planted),
+      ["actions/checkout@v5"],
+      "planted list-item - uses: @v5 must fail PINNED_USES",
     );
     const live = readFileSync(CI_WF, "utf8");
     assert.deepEqual(unpinnedUsesRefs(live), []);

@@ -70,7 +70,6 @@ jobs:
 
       - name: Deploy Ponder to VPS
         uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
-
         env:
           IDENTITY_DIGEST: ${{ steps.fingerprints.outputs.identity }}
           EXECUTABLE_DIGEST: ${{ steps.fingerprints.outputs.executable }}
