@@ -1,0 +1,41 @@
+name: Task
+description: Scoped implementation unit with measurements and acceptance
+title: ""
+labels: []
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Current state with measurements (commands and outputs), not memory.
+      placeholder: Measured on <sha>…
+    validations:
+      required: true
+  - type: textarea
+    id: task
+    attributes:
+      label: Task
+      description: Numbered work items for this unit.
+    validations:
+      required: true
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Requirements
+      description: Hard constraints (owners, gates, what must not change).
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance
+      description: Evidence the PR description must include.
+    validations:
+      required: true
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+      description: Explicit non-goals for this unit.
+    validations:
+      required: true

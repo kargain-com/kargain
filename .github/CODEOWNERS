@@ -1,0 +1,61 @@
+# Default owner for every path.
+* @digirayc
+
+# Design-pause areas (contracts, programs, CI/deploy).
+/contracts/ @digirayc
+/svm/ @digirayc
+/.github/ @digirayc
+
+# Ponder schema / config and all indexer surfaces (handlers, projection, ingest).
+/ponder.schema.ts @digirayc
+/ponder.config.ts @digirayc
+/src/ @digirayc
+
+# Deploy and upgrade entry points, evidence helpers, records, and images.
+/scripts/deploy.ts @digirayc
+/scripts/svm-deploy.ts @digirayc
+/scripts/svm-build-deploy-artifacts.ts @digirayc
+/scripts/svm-upgrade-in-place.ts @digirayc
+/scripts/svm-program-extend.ts @digirayc
+/scripts/lib/load-deployment.ts @digirayc
+/scripts/lib/deployment-build-info.ts @digirayc
+/scripts/lib/assert-deploy-evidence.ts @digirayc
+/scripts/lib/assert-commercial-active-manifest.ts @digirayc
+/scripts/lib/verify-from-deploy-evidence.ts @digirayc
+/scripts/lib/svm-deploy-artifact.ts @digirayc
+/scripts/lib/assert-svm-upgrade-authority.ts @digirayc
+/scripts/lib/assert-svm-binary-identity.ts @digirayc
+/scripts/lib/svm-program-extend-plan.ts @digirayc
+/scripts/lib/svm-upgrade-in-place-assert.ts @digirayc
+/scripts/lib/on-chain-bytecode-identity.ts @digirayc
+/scripts/lib/etherscan-api.ts @digirayc
+/deployments/ @digirayc
+/docs/ops/deploys/ @digirayc
+/Dockerfile.svm-ingest @digirayc
+
+# Money, custody, bridge, and commercial registry choke-points.
+/lib/custody/ @digirayc
+/lib/web3/commercial-active.ts @digirayc
+/lib/web3/kargain-namespace.ts @digirayc
+/lib/web3/deployment-addresses.ts @digirayc
+/lib/web3/local-chain.ts @digirayc
+/lib/web3/protocol-address.ts @digirayc
+/lib/web3/native-amount.ts @digirayc
+/lib/web3/declared-weights.ts @digirayc
+/lib/web3/commercial-native-unit.ts @digirayc
+/lib/web3/commercial-eid-namespace.ts @digirayc
+/lib/web3/supported-chains.ts @digirayc
+/lib/web3/bridge/ @digirayc
+/lib/bridge/ @digirayc
+/lib/svm/encode-system-transfer.ts @digirayc
+/lib/storage/irys-deposit.ts @digirayc
+/lib/storage/irys-deposit-record.ts @digirayc
+/lib/storage/irys-bundler-deposit-post.ts @digirayc
+/lib/storage/irys-client.ts @digirayc
+/lib/storage/irys-upload-plan.ts @digirayc
+/hooks/use-irys-deposit-ports.ts @digirayc
+
+# Rule owners for architecture gates and repository hardening meta.
+/lib/architecture/ @digirayc
+/.gitleaks.toml @digirayc
+/SECURITY.md @digirayc

@@ -31,6 +31,11 @@ on:
       - "scripts/ponder-ready-probe.ts"
       - "scripts/lib/ponder-env.ts"
 
+# Least privilege for GITHUB_TOKEN. Deploy uses repository secrets over SSH;
+# secrets access is not controlled by this block. No job needs write.
+permissions:
+  contents: read
+
 jobs:
   gates:
     uses: ./.github/workflows/ci.yml
@@ -40,10 +45,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: "22"
           package-manager-cache: false
@@ -64,7 +69,7 @@ jobs:
           node --import tsx scripts/ponder-deploy-fingerprints.ts >> "$GITHUB_OUTPUT"
 
       - name: Deploy Ponder to VPS
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         env:
           IDENTITY_DIGEST: ${{ steps.fingerprints.outputs.identity }}
           EXECUTABLE_DIGEST: ${{ steps.fingerprints.outputs.executable }}

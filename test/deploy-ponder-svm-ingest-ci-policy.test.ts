@@ -2,7 +2,7 @@
  * Trunk CI + deploy workflows: isolation, gates-before-SSH, verify∖CI partition.
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -20,12 +20,43 @@ import {
 } from "../lib/architecture/ci-verify-partition.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const CI_WF = join(ROOT, ".github/workflows/ci.yml");
-const PONDER_WF = join(ROOT, ".github/workflows/deploy-ponder.yml");
-const SVM_WF = join(ROOT, ".github/workflows/deploy-svm-ingest.yml");
+const WORKFLOWS_DIR = join(ROOT, ".github/workflows");
+const CI_WF = join(WORKFLOWS_DIR, "ci.yml");
+const PONDER_WF = join(WORKFLOWS_DIR, "deploy-ponder.yml");
+const SVM_WF = join(WORKFLOWS_DIR, "deploy-svm-ingest.yml");
 const PKG = JSON.parse(
   readFileSync(join(ROOT, "package.json"), "utf8"),
 ) as { scripts: Record<string, string>; packageManager?: string };
+
+/** Local reusable workflow or owner/repo@<40-hex> # vX.Y.Z */
+const PINNED_USES =
+  /^(?:\.\/\S+|[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[0-9a-f]{40}\s+#\s+v\d+\.\d+\.\d+)$/;
+
+const TOP_LEVEL_CONTENTS_READ = /^permissions:\n {2}contents: read\n/m;
+
+function workflowUsesRefs(yaml: string): string[] {
+  const refs: string[] = [];
+  for (const line of yaml.split("\n")) {
+    // Optional list-item dash: "- uses: …" as well as indented "uses: …".
+    const m = line.match(/^\s*(?:-\s+)?uses:\s*(.+?)\s*$/);
+    if (m) refs.push(m[1]!);
+  }
+  return refs;
+}
+
+function workflowYamlFiles(): string[] {
+  return readdirSync(WORKFLOWS_DIR)
+    .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
+    .sort();
+}
+
+function unpinnedUsesRefs(yaml: string): string[] {
+  return workflowUsesRefs(yaml).filter((ref) => !PINNED_USES.test(ref));
+}
+
+function lacksTopLevelContentsRead(yaml: string): boolean {
+  return !TOP_LEVEL_CONTENTS_READ.test(yaml);
+}
 
 function pathsBlock(yaml: string): string {
   const m = yaml.match(/paths:\n((?: {6}- .+\n)+)/);
@@ -210,15 +241,16 @@ concurrency:
       /pnpm --dir svm\/lab install --frozen-lockfile/,
       "CI must install svm/lab so svm/tsconfig can resolve @solana/spl-token",
     );
-    assert.match(yaml, /actions\/checkout@v5/);
-    assert.match(yaml, /actions\/setup-node@v5/);
+    // Pin expectation: mutable tags replaced by full commit SHAs (issue #17).
+    assert.match(yaml, /actions\/checkout@[0-9a-f]{40}/);
+    assert.match(yaml, /actions\/setup-node@[0-9a-f]{40}/);
   });
 
   it("ci.yml checkout is deep so append-only can load published-trunk baseline", () => {
     const yaml = readFileSync(CI_WF, "utf8");
     assert.match(
       yaml,
-      /actions\/checkout@v5[\s\S]*?fetch-depth:\s*0/,
+      /actions\/checkout@[0-9a-f]{40}[\s\S]*?fetch-depth:\s*0/,
       "CI checkout must use fetch-depth: 0 for git show <before|base>:manifest",
     );
     assert.match(
@@ -231,7 +263,7 @@ concurrency:
   it("constructed: shallow CI checkout is red vs live deep checkout", () => {
     const planted = `
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@0000000000000000000000000000000000000000
 `;
     assert.doesNotMatch(planted, /fetch-depth:\s*0/);
     const live = readFileSync(CI_WF, "utf8");
@@ -419,5 +451,72 @@ it("vacuous", () => {
       ),
       "enumerator member absent from verify must be in_neither",
     );
+  });
+
+  it("every workflow uses: is local or SHA-pinned with exact release comment", () => {
+    const files = workflowYamlFiles();
+    assert.ok(
+      files.length >= 3,
+      "expected .yml/.yaml workflows under .github/workflows",
+    );
+    for (const file of files) {
+      const yaml = readFileSync(join(WORKFLOWS_DIR, file), "utf8");
+      const bad = unpinnedUsesRefs(yaml);
+      assert.deepEqual(
+        bad,
+        [],
+        `${file}: uses must be ./… or owner/repo@<40-hex> # vX.Y.Z; got ${bad.join(", ")}`,
+      );
+    }
+  });
+
+  it("every workflow declares top-level permissions: contents: read", () => {
+    const files = workflowYamlFiles();
+    for (const file of files) {
+      const yaml = readFileSync(join(WORKFLOWS_DIR, file), "utf8");
+      assert.equal(
+        lacksTopLevelContentsRead(yaml),
+        false,
+        `${file}: missing top-level permissions: contents: read`,
+      );
+    }
+  });
+
+  it("constructed: mutable action tag is red vs live SHA pin", () => {
+    const planted = "uses: actions/checkout@v5";
+    assert.deepEqual(
+      unpinnedUsesRefs(planted),
+      ["actions/checkout@v5"],
+      "planted @v5 must fail PINNED_USES",
+    );
+    const live = readFileSync(CI_WF, "utf8");
+    assert.deepEqual(unpinnedUsesRefs(live), []);
+  });
+
+  it("constructed: list-item mutable uses tag is red", () => {
+    const planted = "      - uses: actions/checkout@v5";
+    assert.deepEqual(
+      unpinnedUsesRefs(planted),
+      ["actions/checkout@v5"],
+      "planted list-item - uses: @v5 must fail PINNED_USES",
+    );
+    const live = readFileSync(CI_WF, "utf8");
+    assert.deepEqual(unpinnedUsesRefs(live), []);
+  });
+
+  it("constructed: workflow without permissions block is red", () => {
+    const planted = `name: X
+on: push
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+`;
+    assert.equal(
+      lacksTopLevelContentsRead(planted),
+      true,
+      "planted YAML without permissions must be red",
+    );
+    const live = readFileSync(CI_WF, "utf8");
+    assert.equal(lacksTopLevelContentsRead(live), false);
   });
 });
