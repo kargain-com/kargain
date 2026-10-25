@@ -194,8 +194,9 @@ export async function waitForSvmIngestReady(
       const body = await res.text();
       const parsed = parseSvmIngestReadyPayload(body);
       if (!parsed.ok) {
+        // Last observation wins: a malformed answer clears any earlier payload.
         lastMalformed = parsed.reason;
-        // Do not classify invented fields; keep lastPayload unchanged.
+        lastPayload = null;
       } else {
         lastPayload = parsed.payload;
         lastMalformed = null;

@@ -147,4 +147,35 @@ describe("svm-ingest-readiness-probe", () => {
     assert.match(msg, /payload_malformed:/);
     assert.doesNotMatch(msg, /classification=/);
   });
+
+  it("valid 503 then malformed until timeout → last observation is payload_malformed", async () => {
+    const missingSlot = {
+      status: "not_ready",
+      bootstrapState: "historical_backfill",
+      incident: null,
+      lagSlots: 0,
+    };
+    let calls = 0;
+    const result = await waitForSvmIngestReady({
+      timeoutMs: 80,
+      intervalMs: 10,
+      sleep: async () => {},
+      fetch: async () => {
+        calls += 1;
+        if (calls === 1) return jsonResponse(503, bootstrapPayload);
+        return jsonResponse(503, missingSlot);
+      },
+    });
+    assert.ok(calls >= 2, "must observe bootstrap then malformed");
+    assert.equal(result.ok, false);
+    if (result.ok) throw new Error("unreachable");
+    assert.equal(result.classification, null);
+    assert.equal(result.payloadStatus, null);
+    assert.ok(result.payloadMalformed);
+    assert.match(result.payloadMalformed!, /^payload_malformed:/);
+    assert.doesNotMatch(
+      svmIngestDidNotBecomeReadyMessage(result),
+      /classification=/,
+    );
+  });
 });

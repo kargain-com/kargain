@@ -174,8 +174,9 @@ export function deployScriptLockDefect(script: string): string | null {
   if (execIdx < 0 || flockIdx < 0 || refusalIdx < 0) {
     return "deploy script lacks .deploy.lock flock";
   }
+  // git/docker at the start of a command, including right after $( …
   const firstGitOrDocker = lines.findIndex((l) =>
-    /^\s*(git|docker)\b/.test(l.trim()),
+    /(?:^|\$\()\s*(?:git|docker)\b/.test(l.trim()),
   );
   if (
     firstGitOrDocker >= 0 &&
@@ -350,63 +351,6 @@ export function listDeployWorkflowFiles(): string[] {
   return DEPLOY_WORKFLOW_FILES.filter((name) =>
     readdirSync(WORKFLOWS_DIR).includes(name),
   );
-}
-
-/** @deprecated whole-file scans — use deployScript* helpers on extracted scripts. */
-export function deployLockDefect(yamlText: string): string | null {
-  const scripts = extractDeployRemoteScripts(yamlText);
-  if (scripts.length === 0) return "deploy script lacks .deploy.lock flock";
-  for (const script of scripts) {
-    const d = deployScriptLockDefect(script);
-    if (d) return d;
-  }
-  return null;
-}
-
-/** @deprecated whole-file scans — use deployScriptPipefailDefect. */
-export function deployPipefailDefect(yamlText: string): string | null {
-  const scripts = extractDeployRemoteScripts(yamlText);
-  if (scripts.length === 0) {
-    return "deploy script lacks set -euo pipefail as first statement";
-  }
-  for (const script of scripts) {
-    const d = deployScriptPipefailDefect(script);
-    if (d) return d;
-  }
-  return null;
-}
-
-/** @deprecated whole-file scans — use deploySshCommandTimeoutDefect. */
-export function deployCommandTimeoutDefect(yamlText: string): string | null {
-  return deploySshCommandTimeoutDefect(yamlText);
-}
-
-export function deployGitPullDefect(yamlText: string): string | null {
-  const scripts = extractDeployRemoteScripts(yamlText);
-  if (scripts.length === 0) {
-    // Allow planted script-only fixtures used by constructed controls.
-    return deployScriptGitPullDefect(yamlText);
-  }
-  for (const script of scripts) {
-    const d = deployScriptGitPullDefect(script);
-    if (d) return d;
-  }
-  return null;
-}
-
-export function deployEvidenceDefect(
-  yamlText: string,
-  opts: { requireUnchanged: boolean; service: "ponder" | "svm-ingest" },
-): string | null {
-  const scripts = extractDeployRemoteScripts(yamlText);
-  if (scripts.length === 0) {
-    return deployScriptEvidenceDefect(yamlText, opts);
-  }
-  for (const script of scripts) {
-    const d = deployScriptEvidenceDefect(script, opts);
-    if (d) return d;
-  }
-  return null;
 }
 
 /** Owner file must be exact x.y.z (optional trailing newline). */
@@ -741,6 +685,22 @@ git checkout --force "$DEPLOY_SHA"
     const planted = `set -euo pipefail
 cd /opt/kargain
 git fetch https://github.com/kargain-com/kargain.git master
+exec 9>.deploy.lock
+if ! flock -w 900 9; then
+  echo "deploy_lock_not_acquired: waited 900s for .deploy.lock"
+  exit 1
+fi
+`;
+    assert.equal(
+      deployScriptLockDefect(planted),
+      "deploy script acquires lock after git or docker",
+    );
+  });
+
+  it("constructed: git inside command substitution before the lock is red", () => {
+    const planted = `set -euo pipefail
+cd /opt/kargain
+X=$(git rev-parse HEAD)
 exec 9>.deploy.lock
 if ! flock -w 900 9; then
   echo "deploy_lock_not_acquired: waited 900s for .deploy.lock"
