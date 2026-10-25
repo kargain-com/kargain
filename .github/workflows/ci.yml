@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           # Full history so append-only can `git show <push.before|PR base>:ix.manifest.json`.
           # workflow_call inherits the caller's push/PR github context (not a merge-base path).
@@ -51,26 +51,31 @@ jobs:
           ./gitleaks version
 
       - name: Secret scan (gitleaks)
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            log_opts="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            LOG_OPTS="${PR_BASE_SHA}..${PR_HEAD_SHA}"
           else
-            before="${{ github.event.before }}"
-            sha="${{ github.sha }}"
             zeros="0000000000000000000000000000000000000000"
-            if [ -z "$before" ] || [ "$before" = "$zeros" ]; then
+            if [ -z "${BEFORE:-}" ] || [ "$BEFORE" = "$zeros" ]; then
               # First push of a branch / missing before: scan the tip commit only.
-              log_opts="${sha}^!"
+              LOG_OPTS="${SHA}^!"
             else
-              log_opts="${before}..${sha}"
+              LOG_OPTS="${BEFORE}..${SHA}"
             fi
           fi
-          echo "gitleaks log-opts=${log_opts}"
-          ./gitleaks detect --source . --log-opts "${log_opts}" --verbose
+          echo "gitleaks log-opts=${LOG_OPTS}"
+          ./gitleaks git --config .gitleaks.toml --log-opts "${LOG_OPTS}" \
+            --verbose --redact --ignore-gitleaks-allow
 
       - name: Setup Node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: "22"
           package-manager-cache: false

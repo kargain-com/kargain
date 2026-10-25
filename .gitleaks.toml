@@ -1,5 +1,5 @@
-# Path-scoped allowlists for existing test fixtures only.
-# Secrets found in new paths or rules outside these entries stay red.
+# Exact-fixture allowlists only: path AND generic-api-key AND the listed secret.
+# A new secret in an allowlisted file, or any other rule, stays red.
 
 title = "kargain"
 
@@ -8,28 +8,65 @@ useDefault = true
 
 [[allowlists]]
 description = "Hardhat account #0 private key fixture used by profile attestation tests"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
 paths = ['''(^|/)test/profile-attestation\.test\.ts$''']
+regexes = ['''^0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80$''']
 
 [[allowlists]]
 description = "Hardhat account #0 private key fixture used by attested-profile resolver tests"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
 paths = ['''(^|/)test/resolve-attested-profile\.test\.ts$''']
+regexes = ['''^0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80$''']
 
 [[allowlists]]
 description = "Synthetic hex private-key fixtures for Vincent commons review tests"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
 paths = ['''(^|/)test/vincent-commons-review\.test\.ts$''']
+regexes = [
+  '''^0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef$''',
+  '''^0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210$''',
+]
 
 [[allowlists]]
 description = "Synthetic hex private-key fixtures for Vincent commons confirmation tests"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
 paths = ['''(^|/)test/vincent-commons-confirmation\.test\.ts$''']
+regexes = [
+  '''^0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef$''',
+  '''^0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210$''',
+]
 
 [[allowlists]]
 description = "Synthetic hex private-key fixtures for Vincent commons assemble tests"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
 paths = ['''(^|/)test/vincent-commons-assemble\.test\.ts$''']
+regexes = [
+  '''^0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef$''',
+  '''^0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210$''',
+]
 
 [[allowlists]]
 description = "Synthetic NWC secret hex fixture for URI parsing tests"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
 paths = ['''(^|/)test/nwc-uri\.test\.ts$''']
+regexes = ['''^fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321$''']
 
 [[allowlists]]
-description = "Function-name tokens match generic-api-key; no secret material in the file"
+description = "Function-name token matches generic-api-key; no secret material"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
 paths = ['''(^|/)test/personal-sign-identity-policy\.test\.ts$''']
+regexes = ['''^decryptPrivateKeyV1$''']
