@@ -64,7 +64,6 @@ svm/lab/node_modules/
 svm/lab/test-ledger/
 
 # internal docs (local only — not in git)
-/AGENTS.md
 /docs/*
 !/docs/README.md
 !/docs/contracts/
@@ -76,6 +75,8 @@ svm/lab/test-ledger/
 /docs/ops/plans/
 /docs/ops/relay-strfry.md
 !/docs/design-spec.md
+!/docs/adr/
+!/docs/adr/**
 
 # OS junk — must follow docs/ops un-ignore or .DS_Store reappears as untracked
 **/.DS_Store
