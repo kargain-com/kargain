@@ -6,6 +6,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import yaml from "js-yaml";
 
 import {
   CI_GATE_SCRIPTS,
@@ -108,32 +109,165 @@ export function readNodeVersionOwner(): string {
   return raw.trim();
 }
 
-/** setup-node with: block must use node-version-file and omit node-version. */
-export function setupNodeVersionDefect(yaml: string): string | null {
-  if (!/actions\/setup-node@/.test(yaml)) {
+type SetupNodeStep = {
+  uses?: string;
+  with?: Record<string, unknown>;
+};
+
+/** Collect every actions/setup-node step (jobs.*.steps or a bare steps list). */
+export function collectSetupNodeSteps(yamlText: string): SetupNodeStep[] {
+  const doc = yaml.load(yamlText);
+  const out: SetupNodeStep[] = [];
+
+  function scanSteps(steps: unknown): void {
+    if (!Array.isArray(steps)) return;
+    for (const step of steps) {
+      if (!step || typeof step !== "object") continue;
+      const uses = (step as SetupNodeStep).uses;
+      if (typeof uses === "string" && uses.startsWith("actions/setup-node@")) {
+        out.push(step as SetupNodeStep);
+      }
+    }
+  }
+
+  function walk(node: unknown): void {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      scanSteps(node);
+      for (const item of node) walk(item);
+      return;
+    }
+    const obj = node as Record<string, unknown>;
+    if (Array.isArray(obj.steps)) scanSteps(obj.steps);
+    if (obj.jobs && typeof obj.jobs === "object") {
+      for (const job of Object.values(obj.jobs as Record<string, unknown>)) {
+        walk(job);
+      }
+    }
+  }
+
+  walk(doc);
+  return out;
+}
+
+/**
+ * Every setup-node step must set node-version-file: .node-version in its own
+ * with: block and must not set node-version: (setup-node prefers the latter).
+ */
+export function setupNodeVersionDefect(yamlText: string): string | null {
+  if (!/actions\/setup-node@/.test(yamlText)) {
     return null;
   }
-  if (!/node-version-file:\s*\.node-version\b/.test(yaml)) {
+  const steps = collectSetupNodeSteps(yamlText);
+  if (steps.length === 0) {
     return "setup-node must set node-version-file: .node-version";
   }
-  if (/^\s*node-version:\s*/m.test(yaml)) {
-    return "setup-node must not set node-version:";
+  for (const step of steps) {
+    const w = step.with;
+    if (!w || typeof w !== "object" || Array.isArray(w)) {
+      return "setup-node must set node-version-file: .node-version";
+    }
+    if (w["node-version-file"] !== ".node-version") {
+      return "setup-node must set node-version-file: .node-version";
+    }
+    if (Object.prototype.hasOwnProperty.call(w, "node-version")) {
+      return "setup-node must not set node-version:";
+    }
   }
   return null;
 }
 
-/** Dockerfile FROM node: must equal owner x.y.z-alpine (no floating major). */
+type ParsedFrom = {
+  /** Image path with registry normalized away when it is Docker Hub library. */
+  image: string;
+  tag: string | null;
+  digest: string | null;
+};
+
+/** True when the image reference names the Node official image. */
+export function isNodeImageName(image: string): boolean {
+  const parts = image.split("/").filter(Boolean);
+  if (parts.length === 0) return false;
+  if (parts[parts.length - 1] !== "node") return false;
+  if (parts.length === 1) return true;
+  if (parts.length === 2 && parts[0] === "library") return true;
+  if (
+    parts.length === 3 &&
+    parts[0] === "docker.io" &&
+    parts[1] === "library"
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Parse one Dockerfile FROM line: drop --flags and optional AS name; split
+ * image into name / tag / digest.
+ */
+export function parseDockerfileFromLine(line: string): ParsedFrom | null {
+  const trimmed = line.trim();
+  if (!/^FROM\s+/i.test(trimmed)) return null;
+  const tokens = trimmed.replace(/^FROM\s+/i, "").split(/\s+/);
+  let i = 0;
+  while (i < tokens.length && tokens[i]!.startsWith("--")) i += 1;
+  const ref = tokens[i];
+  if (!ref) return null;
+  i += 1;
+  if (i < tokens.length && /^AS$/i.test(tokens[i]!)) {
+    // skip stage name
+  }
+
+  let digest: string | null = null;
+  let nameAndTag = ref;
+  const at = ref.indexOf("@");
+  if (at >= 0) {
+    digest = ref.slice(at + 1);
+    nameAndTag = ref.slice(0, at);
+  }
+
+  let image = nameAndTag;
+  let tag: string | null = null;
+  const colon = nameAndTag.lastIndexOf(":");
+  if (colon >= 0) {
+    const after = nameAndTag.slice(colon + 1);
+    // tag, not registry:port — no slash in the tag segment
+    if (!after.includes("/")) {
+      tag = after;
+      image = nameAndTag.slice(0, colon);
+    }
+  }
+  return { image, tag, digest };
+}
+
+export function dockerfileNodeFromLines(dockerfile: string): ParsedFrom[] {
+  const out: ParsedFrom[] = [];
+  for (const line of dockerfile.split("\n")) {
+    if (!/^\s*FROM\s+/i.test(line)) continue;
+    const parsed = parseDockerfileFromLine(line);
+    if (parsed && isNodeImageName(parsed.image)) out.push(parsed);
+  }
+  return out;
+}
+
+/**
+ * Every FROM whose image is node must be exactly node:<owner>-alpine.
+ * Non-node bases are ignored. Digest form is red. Empty node set is red when
+ * this helper is used on a planted node Dockerfile; live scan counts globally.
+ */
 export function dockerfileNodeFromDefect(
   dockerfile: string,
   ownerXyz: string,
 ): string | null {
-  const m = dockerfile.match(/^FROM\s+node:(\S+)\s*$/m);
-  if (!m) {
+  const expected = `${ownerXyz}-alpine`;
+  const nodeFroms = dockerfileNodeFromLines(dockerfile);
+  if (nodeFroms.length === 0) {
     return "Dockerfile must have FROM node:<tag>";
   }
-  const expected = `${ownerXyz}-alpine`;
-  if (m[1] !== expected) {
-    return `Dockerfile FROM node tag must be ${expected}`;
+  for (const from of nodeFroms) {
+    if (from.digest !== null || from.tag !== expected) {
+      return `Dockerfile FROM node tag must be ${expected}`;
+    }
   }
   return null;
 }
@@ -166,13 +300,9 @@ export function typesNodeMajorDefect(
   return null;
 }
 
-function rootNodeDockerfiles(): string[] {
+function rootDockerfiles(): string[] {
   return readdirSync(ROOT)
     .filter((name) => name.startsWith("Dockerfile"))
-    .filter((name) => {
-      const body = readFileSync(join(ROOT, name), "utf8");
-      return /^FROM\s+node:/m.test(body);
-    })
     .sort();
 }
 
@@ -273,27 +403,42 @@ deploy:
     const names = workflowsUsingSetupNode();
     assert.ok(names.length > 0, "at least one workflow must use setup-node");
     for (const name of names) {
-      const yaml = readFileSync(join(WORKFLOWS_DIR, name), "utf8");
+      const text = readFileSync(join(WORKFLOWS_DIR, name), "utf8");
       assert.equal(
-        setupNodeVersionDefect(yaml),
+        setupNodeVersionDefect(text),
         null,
         `${name} must pin Node via .node-version`,
+      );
+      assert.ok(
+        collectSetupNodeSteps(text).length > 0,
+        `${name} must expose at least one setup-node step to the per-step scan`,
       );
     }
   });
 
-  it("root node Dockerfiles pin FROM node:<owner>-alpine", () => {
+  it("root Dockerfiles pin every node FROM to node:<owner>-alpine", () => {
     const owner = readNodeVersionOwner();
-    const names = rootNodeDockerfiles();
-    assert.ok(names.length > 0, "at least one root Dockerfile must use FROM node:");
+    const names = rootDockerfiles();
+    assert.ok(names.length > 0, "at least one root Dockerfile* must exist");
+    let nodeFromCount = 0;
     for (const name of names) {
       const df = readFileSync(join(ROOT, name), "utf8");
+      const nodeFroms = dockerfileNodeFromLines(df);
+      nodeFromCount += nodeFroms.length;
+      if (nodeFroms.length === 0) {
+        // Non-node bases (e.g. Dockerfile.strfry on alpine) stay allowed.
+        continue;
+      }
       assert.equal(
         dockerfileNodeFromDefect(df, owner),
         null,
-        `${name} must match .node-version`,
+        `${name} must match .node-version on every node FROM`,
       );
     }
+    assert.ok(
+      nodeFromCount > 0,
+      "at least one root Dockerfile FROM must use the node image",
+    );
   });
 
   it("engines.node major matches .node-version", () => {
@@ -328,13 +473,89 @@ deploy:
     );
   });
 
+  it("constructed: Dockerfile FROM --platform node:20-alpine is red", () => {
+    const owner = readNodeVersionOwner();
+    assert.equal(
+      dockerfileNodeFromDefect(
+        "FROM --platform=linux/amd64 node:20-alpine\n",
+        owner,
+      ),
+      `Dockerfile FROM node tag must be ${owner}-alpine`,
+    );
+  });
+
+  it("constructed: Dockerfile FROM docker.io/library/node:20-alpine is red", () => {
+    const owner = readNodeVersionOwner();
+    assert.equal(
+      dockerfileNodeFromDefect(
+        "FROM docker.io/library/node:20-alpine\n",
+        owner,
+      ),
+      `Dockerfile FROM node tag must be ${owner}-alpine`,
+    );
+  });
+
+  it("constructed: Dockerfile FROM node@sha256 digest is red", () => {
+    const owner = readNodeVersionOwner();
+    const digest =
+      "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    assert.equal(
+      dockerfileNodeFromDefect(`FROM node@${digest}\n`, owner),
+      `Dockerfile FROM node tag must be ${owner}-alpine`,
+    );
+  });
+
+  it("constructed: Dockerfile second stage FROM node:20-alpine is red", () => {
+    const owner = readNodeVersionOwner();
+    const planted = `FROM node:${owner}-alpine AS build\nFROM node:20-alpine AS run\n`;
+    assert.equal(
+      dockerfileNodeFromDefect(planted, owner),
+      `Dockerfile FROM node tag must be ${owner}-alpine`,
+    );
+  });
+
   it("constructed: workflow with literal node-version is red", () => {
     const planted = `
+jobs:
+  gates:
+    steps:
       - name: Setup Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: "22"
           package-manager-cache: false
+`;
+    assert.equal(
+      setupNodeVersionDefect(planted),
+      "setup-node must set node-version-file: .node-version",
+    );
+  });
+
+  it("constructed: setup-node with both version keys is red", () => {
+    const planted = `
+jobs:
+  gates:
+    steps:
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .node-version
+          node-version: "22"
+`;
+    assert.equal(
+      setupNodeVersionDefect(planted),
+      "setup-node must not set node-version:",
+    );
+  });
+
+  it("constructed: second setup-node step without with: is red", () => {
+    const planted = `
+jobs:
+  gates:
+    steps:
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .node-version
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
 `;
     assert.equal(
       setupNodeVersionDefect(planted),
