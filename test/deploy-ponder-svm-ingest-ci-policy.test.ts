@@ -209,7 +209,7 @@ deploy:
     assert.ok(lastGateIdx > firstGateIdx, "CI gates ordered");
     assert.ok(buildIdx > lastGateIdx, "build after CI gates");
     assert.doesNotMatch(yaml, /appleboy\/ssh-action/);
-    assert.doesNotMatch(yaml, /secrets\./);
+    // secrets locality: sole owner test/deploy-vps-secret-policy.test.ts
     // Per-caller group — shared ci-${{ github.ref }} dropped Deploy svm-ingest runs.
     assert.match(yaml, /group:\s*\$\{\{\s*github\.workflow\s*\}\}-\$\{\{\s*github\.ref\s*\}\}/);
     assert.doesNotMatch(yaml, /group:\s*ci-\$\{\{/);
@@ -334,22 +334,14 @@ jobs:
     }
   });
 
-  it("both deploy workflows need gates that call ci.yml before SSH", () => {
+  it("both deploy workflows place SSH under the deploy job", () => {
+    // gates uses ci.yml, needs: gates, and deploy.if: sole owner
+    // test/deploy-vps-secret-policy.test.ts (YAML parse).
     for (const [label, path] of [
       ["ponder", PONDER_WF],
       ["svm-ingest", SVM_WF],
     ] as const) {
       const yaml = readFileSync(path, "utf8");
-      assert.match(
-        yaml,
-        /gates:\s*\n\s*uses:\s*\.\/\.github\/workflows\/ci\.yml/,
-        `${label}: missing gates job uses ci.yml`,
-      );
-      assert.match(
-        yaml,
-        /deploy:\s*\n\s*needs:\s*gates/,
-        `${label}: deploy must needs: gates`,
-      );
       const deployIdx = yaml.indexOf("\n  deploy:");
       const sshIdx = yaml.indexOf("appleboy/ssh-action");
       assert.ok(deployIdx >= 0, `${label}: deploy job missing`);

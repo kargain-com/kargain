@@ -1,11 +1,13 @@
 /**
- * VPS deploy secrets and triggers: locality, allowlisted events, needs: gates.
+ * VPS deploy secrets and triggers: secrets context locality, allowlisted
+ * events, gates via reusable ci.yml before deploy.
  * Negative controls plant under a temporary .github/ copy — never the live tree.
  */
 import assert from "node:assert/strict";
 import {
   cpSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -24,14 +26,24 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const GITHUB_DIR = ".github";
 const WORKFLOWS_DIR = join(GITHUB_DIR, "workflows");
 
-const ALLOWED_DEPLOY_WORKFLOWS = new Set([
-  "deploy-ponder.yml",
-  "deploy-svm-ingest.yml",
+const ALLOWED_DEPLOY_WORKFLOW_PATHS = new Set([
+  ".github/workflows/deploy-ponder.yml",
+  ".github/workflows/deploy-svm-ingest.yml",
 ]);
 const ALLOWED_TRIGGERS = new Set(["push", "workflow_dispatch"]);
-const VPS_SECRET_MARKER = "secrets.VPS_";
+const ALLOWED_PUSH_KEYS = new Set(["branches", "paths", "paths-ignore"]);
+const GATES_USES = "./.github/workflows/ci.yml";
+
+/** secrets as a context identifier inside ${{ … }} (case-insensitive). */
+const SECRETS_CONTEXT_IN_EXPR =
+  /(^|[^A-Za-z0-9_])secrets(?=[^A-Za-z0-9_]|$)/i;
+const EXPR_RE = /\$\{\{([\s\S]*?)\}\}/g;
 
 type YamlDoc = Record<string, unknown>;
+
+type LoadResult =
+  | { ok: true; doc: YamlDoc }
+  | { ok: false; reason: string };
 
 function githubRoot(repoRoot: string): string {
   return join(repoRoot, GITHUB_DIR);
@@ -55,67 +67,112 @@ function isYamlPath(filePath: string): boolean {
   return filePath.endsWith(".yml") || filePath.endsWith(".yaml");
 }
 
-function loadYamlFile(filePath: string): YamlDoc {
-  const raw = readFileSync(filePath, "utf8");
-  const doc = yaml.load(raw);
-  if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
-    return {};
-  }
-  return doc as YamlDoc;
+function toPosixRel(repoRoot: string, abs: string): string {
+  return relative(repoRoot, abs).split("\\").join("/");
 }
 
-/** Collect dotted paths whose string values contain secrets.VPS_. */
-function collectVpsSecretPaths(
-  value: unknown,
-  path: readonly string[] = [],
-): string[] {
-  if (typeof value === "string") {
-    return value.includes(VPS_SECRET_MARKER) ? [path.join(".") || "(root)"] : [];
+function loadYamlFile(filePath: string): LoadResult {
+  let raw: string;
+  try {
+    raw = readFileSync(filePath, "utf8");
+  } catch {
+    return { ok: false, reason: "unreadable" };
   }
+  let doc: unknown;
+  try {
+    doc = yaml.load(raw);
+  } catch {
+    return { ok: false, reason: "parse error" };
+  }
+  if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
+    return { ok: false, reason: "non-mapping document" };
+  }
+  return { ok: true, doc: doc as YamlDoc };
+}
+
+function stringReferencesSecretsContext(s: string): boolean {
+  EXPR_RE.lastIndex = 0;
+  for (const m of s.matchAll(EXPR_RE)) {
+    if (SECRETS_CONTEXT_IN_EXPR.test(m[1]!)) return true;
+  }
+  return false;
+}
+
+function valueReferencesSecretsContext(value: unknown): boolean {
+  if (typeof value === "string") return stringReferencesSecretsContext(value);
   if (Array.isArray(value)) {
-    return value.flatMap((item, i) =>
-      collectVpsSecretPaths(item, [...path, String(i)]),
-    );
+    return value.some(valueReferencesSecretsContext);
   }
   if (value && typeof value === "object") {
-    return Object.entries(value as Record<string, unknown>).flatMap(([k, v]) =>
-      collectVpsSecretPaths(v, [...path, k]),
+    return Object.values(value as Record<string, unknown>).some(
+      valueReferencesSecretsContext,
     );
   }
-  return [];
+  return false;
 }
 
-function secretPathAllowed(fileName: string, dottedPath: string): boolean {
-  if (!ALLOWED_DEPLOY_WORKFLOWS.has(fileName)) return false;
-  return dottedPath === "jobs.deploy" || dottedPath.startsWith("jobs.deploy.");
+function jobHasSecretsKey(job: Record<string, unknown>): boolean {
+  return Object.keys(job).some((k) => k.toLowerCase() === "secrets");
+}
+
+function secretUseAllowed(relPath: string, jobId: string): boolean {
+  return ALLOWED_DEPLOY_WORKFLOW_PATHS.has(relPath) && jobId === "deploy";
 }
 
 /**
- * secrets.VPS_ may appear only inside jobs.deploy of the two deploy workflows.
- * Returns human-readable violation lines (empty = green).
+ * The secrets context and job-level secrets: may appear only inside
+ * jobs.deploy of the two deploy workflow paths.
  */
 export function vpsSecretLocalityViolations(repoRoot: string): string[] {
   const gh = githubRoot(repoRoot);
   const violations: string[] = [];
+  const seen = new Set<string>();
+
+  function add(msg: string): void {
+    if (!seen.has(msg)) {
+      seen.add(msg);
+      violations.push(msg);
+    }
+  }
+
   for (const abs of listFilesRecursive(gh)) {
-    const rel = relative(repoRoot, abs).split("\\").join("/");
-    const base = abs.split(/[/\\]/).pop() ?? abs;
-    if (!isYamlPath(abs)) {
-      const text = readFileSync(abs, "utf8");
-      if (text.includes(VPS_SECRET_MARKER)) {
-        violations.push(
-          `secrets.VPS_ outside allowed deploy jobs: ${rel}`,
-        );
-      }
+    if (!isYamlPath(abs)) continue;
+    const rel = toPosixRel(repoRoot, abs);
+    const loaded = loadYamlFile(abs);
+    if (!loaded.ok) {
+      add(`secrets check fail-closed (${loaded.reason}): ${rel}`);
       continue;
     }
-    const doc = loadYamlFile(abs);
-    for (const dotted of collectVpsSecretPaths(doc)) {
-      if (!secretPathAllowed(base, dotted)) {
-        violations.push(
-          `secrets.VPS_ outside allowed deploy jobs: ${rel}`,
-        );
-        break;
+    const doc = loaded.doc;
+
+    // Non-job strings that reference secrets (workflow-level env, etc.).
+    for (const [key, value] of Object.entries(doc)) {
+      if (key === "jobs") continue;
+      if (valueReferencesSecretsContext(value)) {
+        add(`secrets context outside allowed deploy jobs: ${rel}`);
+      }
+    }
+
+    const jobs = doc.jobs;
+    if (jobs === undefined) continue;
+    if (!jobs || typeof jobs !== "object" || Array.isArray(jobs)) {
+      add(`secrets check fail-closed (jobs not a mapping): ${rel}`);
+      continue;
+    }
+
+    for (const [jobId, jobVal] of Object.entries(
+      jobs as Record<string, unknown>,
+    )) {
+      if (!jobVal || typeof jobVal !== "object" || Array.isArray(jobVal)) {
+        continue;
+      }
+      const job = jobVal as Record<string, unknown>;
+      const allowed = secretUseAllowed(rel, jobId);
+      if (jobHasSecretsKey(job) && !allowed) {
+        add(`secrets: key outside allowed deploy jobs: ${rel}`);
+      }
+      if (valueReferencesSecretsContext(job) && !allowed) {
+        add(`secrets context outside allowed deploy jobs: ${rel}`);
       }
     }
   }
@@ -131,41 +188,86 @@ function pushBranchList(push: unknown): string[] | null {
   return null;
 }
 
+function checkPushConfig(
+  label: string,
+  push: unknown,
+  violations: string[],
+): void {
+  if (push === null || push === undefined || typeof push !== "object") {
+    violations.push(`${label} push trigger lacks branch filter`);
+    return;
+  }
+  if (Array.isArray(push)) {
+    violations.push(`${label} push trigger lacks branch filter`);
+    return;
+  }
+  const cfg = push as Record<string, unknown>;
+  for (const key of Object.keys(cfg)) {
+    if (!ALLOWED_PUSH_KEYS.has(key)) {
+      violations.push(`${label} push trigger forbids key ${key}`);
+    }
+  }
+  const branches = pushBranchList(push);
+  if (!branches || branches.length !== 1 || branches[0] !== "master") {
+    violations.push(`${label} push trigger must target only master`);
+  }
+}
+
+function checkOnEvent(
+  label: string,
+  event: string,
+  config: unknown,
+  violations: string[],
+): void {
+  if (!ALLOWED_TRIGGERS.has(event)) {
+    violations.push(`${label} declares forbidden trigger ${event}`);
+    return;
+  }
+  if (event === "push") {
+    checkPushConfig(label, config, violations);
+  }
+}
+
 /**
  * Deploy workflows may only use push→master and/or workflow_dispatch.
+ * on.push keys ⊆ {branches, paths, paths-ignore}; branches exactly [master].
  */
 export function deployTriggerViolations(repoRoot: string): string[] {
   const violations: string[] = [];
-  for (const name of ALLOWED_DEPLOY_WORKFLOWS) {
-    const abs = join(repoRoot, WORKFLOWS_DIR, name);
+  for (const rel of ALLOWED_DEPLOY_WORKFLOW_PATHS) {
+    const abs = join(repoRoot, rel);
+    const label = rel.split("/").pop()!;
     if (!existsSync(abs)) {
-      violations.push(`${name} missing`);
+      violations.push(`${label} missing`);
       continue;
     }
-    const doc = loadYamlFile(abs);
-    const on = doc.on;
+    const loaded = loadYamlFile(abs);
+    if (!loaded.ok) {
+      violations.push(`${label} fail-closed (${loaded.reason})`);
+      continue;
+    }
+    const on = loaded.doc.on;
     if (typeof on === "string") {
-      if (on === "workflow_dispatch") continue;
-      violations.push(`${name} declares forbidden trigger ${on}`);
+      checkOnEvent(label, on, null, violations);
       continue;
     }
-    if (!on || typeof on !== "object" || Array.isArray(on)) {
-      violations.push(`${name} missing on:`);
+    if (Array.isArray(on)) {
+      for (const item of on) {
+        if (typeof item !== "string") {
+          violations.push(`${label} missing on:`);
+          continue;
+        }
+        checkOnEvent(label, item, null, violations);
+      }
+      continue;
+    }
+    if (!on || typeof on !== "object") {
+      violations.push(`${label} missing on:`);
       continue;
     }
     const events = on as Record<string, unknown>;
-    for (const event of Object.keys(events)) {
-      if (!ALLOWED_TRIGGERS.has(event)) {
-        violations.push(`${name} declares forbidden trigger ${event}`);
-      }
-    }
-    if (Object.prototype.hasOwnProperty.call(events, "push")) {
-      const branches = pushBranchList(events.push);
-      if (!branches || branches.length !== 1 || branches[0] !== "master") {
-        violations.push(
-          `${name} push trigger must target only master`,
-        );
-      }
+    for (const [event, config] of Object.entries(events)) {
+      checkOnEvent(label, event, config, violations);
     }
   }
   return violations;
@@ -177,33 +279,64 @@ function needsIncludesGates(needs: unknown): boolean {
   return false;
 }
 
+function gatesJobExact(gates: unknown): boolean {
+  if (!gates || typeof gates !== "object" || Array.isArray(gates)) return false;
+  const keys = Object.keys(gates as Record<string, unknown>);
+  if (keys.length !== 1 || keys[0] !== "uses") return false;
+  return (gates as Record<string, unknown>).uses === GATES_USES;
+}
+
+function jobHasIfKey(job: Record<string, unknown>): boolean {
+  return Object.keys(job).some((k) => k.toLowerCase() === "if");
+}
+
 /**
- * Each deploy workflow's deploy job must needs: gates.
+ * Each deploy workflow: gates is exactly reusable ci.yml; deploy needs gates
+ * and has no if.
  */
-export function deployNeedsGatesViolations(repoRoot: string): string[] {
+export function deployGatesViolations(repoRoot: string): string[] {
   const violations: string[] = [];
-  for (const name of ALLOWED_DEPLOY_WORKFLOWS) {
-    const abs = join(repoRoot, WORKFLOWS_DIR, name);
+  for (const rel of ALLOWED_DEPLOY_WORKFLOW_PATHS) {
+    const abs = join(repoRoot, rel);
+    const label = rel.split("/").pop()!;
     if (!existsSync(abs)) {
-      violations.push(`${name} missing`);
+      violations.push(`${label} missing`);
       continue;
     }
-    const doc = loadYamlFile(abs);
-    const jobs = doc.jobs;
+    const loaded = loadYamlFile(abs);
+    if (!loaded.ok) {
+      violations.push(`${label} fail-closed (${loaded.reason})`);
+      continue;
+    }
+    const jobs = loaded.doc.jobs;
     if (!jobs || typeof jobs !== "object" || Array.isArray(jobs)) {
-      violations.push(`${name} deploy job missing needs: gates`);
+      violations.push(`${label} gates job must be exactly uses ci.yml`);
+      violations.push(`${label} deploy job missing needs: gates`);
       continue;
     }
-    const deploy = (jobs as Record<string, unknown>).deploy;
+    const jobMap = jobs as Record<string, unknown>;
+    if (!gatesJobExact(jobMap.gates)) {
+      violations.push(`${label} gates job must be exactly uses ci.yml`);
+    }
+    const deploy = jobMap.deploy;
     if (!deploy || typeof deploy !== "object" || Array.isArray(deploy)) {
-      violations.push(`${name} deploy job missing needs: gates`);
+      violations.push(`${label} deploy job missing needs: gates`);
       continue;
     }
-    if (!needsIncludesGates((deploy as Record<string, unknown>).needs)) {
-      violations.push(`${name} deploy job missing needs: gates`);
+    const deployJob = deploy as Record<string, unknown>;
+    if (!needsIncludesGates(deployJob.needs)) {
+      violations.push(`${label} deploy job missing needs: gates`);
+    }
+    if (jobHasIfKey(deployJob)) {
+      violations.push(`${label} deploy job must not set if`);
     }
   }
   return violations;
+}
+
+/** @deprecated alias — prefer deployGatesViolations */
+export function deployNeedsGatesViolations(repoRoot: string): string[] {
+  return deployGatesViolations(repoRoot);
 }
 
 function withTempGithub(
@@ -222,7 +355,37 @@ function withTempGithub(
   }
 }
 
-const PLANTED_PR_TARGET_WORKFLOW = `name: planted-vps-secret-leak
+function writePlantedWorkflow(tmp: string, name: string, body: string): void {
+  writeFileSync(join(tmp, WORKFLOWS_DIR, name), body);
+}
+
+function loadDeployPonder(tmp: string): { abs: string; doc: YamlDoc } {
+  const abs = join(tmp, ".github/workflows/deploy-ponder.yml");
+  const loaded = loadYamlFile(abs);
+  assert.equal(loaded.ok, true, "live deploy-ponder.yml must parse");
+  return { abs, doc: (loaded as { ok: true; doc: YamlDoc }).doc };
+}
+
+describe("deploy-vps-secret-policy", () => {
+  it("live .github keeps secrets context inside deploy jobs only", () => {
+    assert.deepEqual(vpsSecretLocalityViolations(ROOT), []);
+  });
+
+  it("live deploy workflows allow only push to master and workflow_dispatch", () => {
+    assert.deepEqual(deployTriggerViolations(ROOT), []);
+  });
+
+  it("live deploy jobs need exact gates via ci.yml and no if", () => {
+    assert.deepEqual(deployGatesViolations(ROOT), []);
+  });
+
+  it("constructed: secrets.VPS_ under pull_request_target is red", () => {
+    withTempGithub(
+      (tmp) => {
+        writePlantedWorkflow(
+          tmp,
+          "plant-pr-target.yml",
+          `name: planted-vps-secret-leak
 on:
   pull_request_target:
 jobs:
@@ -231,47 +394,141 @@ jobs:
     steps:
       - name: leak
         run: echo "\${{ secrets.VPS_SSH_KEY }}"
-`;
-
-describe("deploy-vps-secret-policy", () => {
-  it("live .github keeps secrets.VPS_ inside deploy jobs only", () => {
-    assert.deepEqual(vpsSecretLocalityViolations(ROOT), []);
-  });
-
-  it("live deploy workflows allow only push to master and workflow_dispatch", () => {
-    assert.deepEqual(deployTriggerViolations(ROOT), []);
-  });
-
-  it("live deploy jobs need gates", () => {
-    assert.deepEqual(deployNeedsGatesViolations(ROOT), []);
-  });
-
-  it("constructed: secrets.VPS_ under pull_request_target is red", () => {
-    withTempGithub(
-      (tmp) => {
-        writeFileSync(
-          join(tmp, WORKFLOWS_DIR, "plant-pr-target.yml"),
-          PLANTED_PR_TARGET_WORKFLOW,
+`,
         );
       },
       (tmp) => {
         const hits = vpsSecretLocalityViolations(tmp);
         assert.ok(
           hits.includes(
-            "secrets.VPS_ outside allowed deploy jobs: .github/workflows/plant-pr-target.yml",
+            "secrets context outside allowed deploy jobs: .github/workflows/plant-pr-target.yml",
           ),
-          "secrets.VPS_ outside allowed deploy jobs: .github/workflows/plant-pr-target.yml",
+          "secrets context outside allowed deploy jobs: .github/workflows/plant-pr-target.yml",
         );
       },
     );
     assert.deepEqual(vpsSecretLocalityViolations(ROOT), []);
   });
 
+  it("constructed: lowercase secrets.vps_ssh_key is red", () => {
+    withTempGithub(
+      (tmp) => {
+        writePlantedWorkflow(
+          tmp,
+          "plant-secrets-case.yml",
+          `name: planted-case
+on:
+  pull_request_target:
+jobs:
+  steal:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "\${{ secrets.vps_ssh_key }}"
+`,
+        );
+      },
+      (tmp) => {
+        const hits = vpsSecretLocalityViolations(tmp);
+        assert.ok(
+          hits.includes(
+            "secrets context outside allowed deploy jobs: .github/workflows/plant-secrets-case.yml",
+          ),
+          "secrets context outside allowed deploy jobs: .github/workflows/plant-secrets-case.yml",
+        );
+      },
+    );
+  });
+
+  it("constructed: secrets['VPS_SSH_KEY'] is red", () => {
+    withTempGithub(
+      (tmp) => {
+        writePlantedWorkflow(
+          tmp,
+          "plant-secrets-bracket.yml",
+          `name: planted-bracket
+on:
+  pull_request_target:
+jobs:
+  steal:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "\${{ secrets['VPS_SSH_KEY'] }}"
+`,
+        );
+      },
+      (tmp) => {
+        const hits = vpsSecretLocalityViolations(tmp);
+        assert.ok(
+          hits.includes(
+            "secrets context outside allowed deploy jobs: .github/workflows/plant-secrets-bracket.yml",
+          ),
+          "secrets context outside allowed deploy jobs: .github/workflows/plant-secrets-bracket.yml",
+        );
+      },
+    );
+  });
+
+  it("constructed: toJSON(secrets) is red", () => {
+    withTempGithub(
+      (tmp) => {
+        writePlantedWorkflow(
+          tmp,
+          "plant-secrets-tojson.yml",
+          `name: planted-tojson
+on:
+  pull_request_target:
+jobs:
+  steal:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "\${{ toJSON(secrets) }}"
+`,
+        );
+      },
+      (tmp) => {
+        const hits = vpsSecretLocalityViolations(tmp);
+        assert.ok(
+          hits.includes(
+            "secrets context outside allowed deploy jobs: .github/workflows/plant-secrets-tojson.yml",
+          ),
+          "secrets context outside allowed deploy jobs: .github/workflows/plant-secrets-tojson.yml",
+        );
+      },
+    );
+  });
+
+  it("constructed: secrets: inherit on a non-deploy job is red", () => {
+    withTempGithub(
+      (tmp) => {
+        writePlantedWorkflow(
+          tmp,
+          "plant-secrets-inherit.yml",
+          `name: planted-inherit
+on:
+  pull_request_target:
+jobs:
+  steal:
+    uses: octo-org/example/.github/workflows/called.yml@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    secrets: inherit
+`,
+        );
+      },
+      (tmp) => {
+        const hits = vpsSecretLocalityViolations(tmp);
+        assert.ok(
+          hits.includes(
+            "secrets: key outside allowed deploy jobs: .github/workflows/plant-secrets-inherit.yml",
+          ),
+          "secrets: key outside allowed deploy jobs: .github/workflows/plant-secrets-inherit.yml",
+        );
+      },
+    );
+  });
+
   it("constructed: workflow_run on deploy-ponder.yml is red", () => {
     withTempGithub(
       (tmp) => {
-        const abs = join(tmp, WORKFLOWS_DIR, "deploy-ponder.yml");
-        const doc = loadYamlFile(abs);
+        const { abs, doc } = loadDeployPonder(tmp);
         const on =
           doc.on && typeof doc.on === "object" && !Array.isArray(doc.on)
             ? (doc.on as Record<string, unknown>)
@@ -294,24 +551,126 @@ describe("deploy-vps-secret-policy", () => {
     assert.deepEqual(deployTriggerViolations(ROOT), []);
   });
 
+  it("constructed: push.tags on deploy-ponder.yml is red", () => {
+    withTempGithub(
+      (tmp) => {
+        const { abs, doc } = loadDeployPonder(tmp);
+        const on = doc.on as Record<string, unknown>;
+        const push = on.push as Record<string, unknown>;
+        push.tags = ["*"];
+        writeFileSync(abs, yaml.dump(doc));
+      },
+      (tmp) => {
+        const hits = deployTriggerViolations(tmp);
+        assert.ok(
+          hits.includes("deploy-ponder.yml push trigger forbids key tags"),
+          "deploy-ponder.yml push trigger forbids key tags",
+        );
+      },
+    );
+  });
+
+  it("constructed: on sequence [push] without branch filter is red", () => {
+    withTempGithub(
+      (tmp) => {
+        const { abs, doc } = loadDeployPonder(tmp);
+        doc.on = ["push"];
+        writeFileSync(abs, yaml.dump(doc));
+      },
+      (tmp) => {
+        const hits = deployTriggerViolations(tmp);
+        assert.ok(
+          hits.includes("deploy-ponder.yml push trigger lacks branch filter"),
+          "deploy-ponder.yml push trigger lacks branch filter",
+        );
+      },
+    );
+  });
+
   it("constructed: deploy job without needs: gates is red", () => {
     withTempGithub(
       (tmp) => {
-        const abs = join(tmp, WORKFLOWS_DIR, "deploy-ponder.yml");
-        const doc = loadYamlFile(abs);
+        const { abs, doc } = loadDeployPonder(tmp);
         const jobs = doc.jobs as Record<string, unknown>;
         const deploy = jobs.deploy as Record<string, unknown>;
         delete deploy.needs;
         writeFileSync(abs, yaml.dump(doc));
       },
       (tmp) => {
-        const hits = deployNeedsGatesViolations(tmp);
+        const hits = deployGatesViolations(tmp);
         assert.ok(
           hits.includes("deploy-ponder.yml deploy job missing needs: gates"),
           "deploy-ponder.yml deploy job missing needs: gates",
         );
       },
     );
-    assert.deepEqual(deployNeedsGatesViolations(ROOT), []);
+    assert.deepEqual(deployGatesViolations(ROOT), []);
+  });
+
+  it("constructed: deploy job if: always() is red", () => {
+    withTempGithub(
+      (tmp) => {
+        const { abs, doc } = loadDeployPonder(tmp);
+        const jobs = doc.jobs as Record<string, unknown>;
+        const deploy = jobs.deploy as Record<string, unknown>;
+        deploy.if = "always()";
+        writeFileSync(abs, yaml.dump(doc));
+      },
+      (tmp) => {
+        const hits = deployGatesViolations(tmp);
+        assert.ok(
+          hits.includes("deploy-ponder.yml deploy job must not set if"),
+          "deploy-ponder.yml deploy job must not set if",
+        );
+      },
+    );
+  });
+
+  it("constructed: no-op gates job is red", () => {
+    withTempGithub(
+      (tmp) => {
+        const { abs, doc } = loadDeployPonder(tmp);
+        const jobs = doc.jobs as Record<string, unknown>;
+        jobs.gates = { "runs-on": "ubuntu-latest", steps: [] };
+        writeFileSync(abs, yaml.dump(doc));
+      },
+      (tmp) => {
+        const hits = deployGatesViolations(tmp);
+        assert.ok(
+          hits.includes("deploy-ponder.yml gates job must be exactly uses ci.yml"),
+          "deploy-ponder.yml gates job must be exactly uses ci.yml",
+        );
+      },
+    );
+  });
+
+  it("constructed: deploy-ponder.yml outside workflows/ is red", () => {
+    withTempGithub(
+      (tmp) => {
+        const dir = join(tmp, ".github/ISSUE_TEMPLATE");
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(
+          join(dir, "deploy-ponder.yml"),
+          `name: planted-basename
+on:
+  pull_request_target:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "\${{ secrets.VPS_SSH_KEY }}"
+`,
+        );
+      },
+      (tmp) => {
+        const hits = vpsSecretLocalityViolations(tmp);
+        assert.ok(
+          hits.includes(
+            "secrets context outside allowed deploy jobs: .github/ISSUE_TEMPLATE/deploy-ponder.yml",
+          ),
+          "secrets context outside allowed deploy jobs: .github/ISSUE_TEMPLATE/deploy-ponder.yml",
+        );
+      },
+    );
   });
 });
