@@ -146,72 +146,103 @@ function encodeIrysSolanaSignatureBase58HeadBug(bytes: Uint8Array): string {
 }
 
 /**
- * This suite uses no random source. Names are assembled from parts so the
- * file does not self-match. Detects crypto module loads and common RNGs.
+ * This suite uses no random source. One table owns every banned form: hit
+ * name, needle, and plant snippet. Detector and plants both iterate it.
+ * Strings are assembled from parts so the live file does not self-match.
  */
-function suiteRandomnessViolations(source: string): string[] {
+type BannedRandomnessForm = {
+  hit: string;
+  needle: string;
+  plant: string;
+};
+
+function bannedRandomnessForms(): BannedRandomnessForm[] {
   const nodeCrypto = ["node", ":", "crypto"].join("");
   const bareCrypto = ["cry", "pto"].join("");
   const mathRandom = ["Math", ".", "random"].join("");
   const webCryptoRand = ["get", "Random", "Values"].join("");
   const solanaKeygen = ["Keypair", ".", "generate"].join("");
+  const cryptoDot = ["cry", "pto", "."].join("");
+  const globalCrypto = ["globalThis", ".", "cry", "pto"].join("");
+  const randomUuid = ["random", "UUID"].join("");
 
-  const hits: string[] = [];
+  const forms: BannedRandomnessForm[] = [];
 
-  const moduleForms = (spec: string): { name: string; needle: string }[] => [
-    { name: `from "${spec}"`, needle: `from "${spec}"` },
-    { name: `from '${spec}'`, needle: `from '${spec}'` },
-    { name: `require("${spec}")`, needle: `require("${spec}")` },
-    { name: `require('${spec}')`, needle: `require('${spec}')` },
-    { name: `import("${spec}")`, needle: `import("${spec}")` },
-    { name: `import('${spec}')`, needle: `import('${spec}')` },
-  ];
+  const addModule = (spec: string) => {
+    const quoted = [
+      { hit: `from "${spec}"`, open: 'from "', close: '"' },
+      { hit: `from '${spec}'`, open: "from '", close: "'" },
+      { hit: `require("${spec}")`, open: 'require("', close: '")' },
+      { hit: `require('${spec}')`, open: "require('", close: "')" },
+      { hit: `import("${spec}")`, open: 'import("', close: '")' },
+      { hit: `import('${spec}')`, open: "import('", close: "')" },
+    ] as const;
+    for (const q of quoted) {
+      const needle = `${q.open}${spec}${q.close}`;
+      forms.push({
+        hit: q.hit,
+        needle,
+        plant: `${needle};\n`,
+      });
+    }
+  };
 
-  for (const form of moduleForms(nodeCrypto)) {
-    if (source.includes(form.needle)) hits.push(form.name);
-  }
-  for (const form of moduleForms(bareCrypto)) {
-    if (source.includes(form.needle)) hits.push(form.name);
-  }
-  if (source.includes(mathRandom)) hits.push(mathRandom);
-  if (source.includes(webCryptoRand)) hits.push(webCryptoRand);
-  if (source.includes(solanaKeygen)) hits.push(solanaKeygen);
-  return hits;
+  addModule(nodeCrypto);
+  addModule(bareCrypto);
+
+  forms.push({
+    hit: mathRandom,
+    needle: mathRandom,
+    plant: ["const x = ", mathRandom, "();\n"].join(""),
+  });
+  forms.push({
+    hit: webCryptoRand,
+    needle: webCryptoRand,
+    plant: ["void ", webCryptoRand, "(new Uint8Array(1));\n"].join(""),
+  });
+  forms.push({
+    hit: solanaKeygen,
+    needle: solanaKeygen,
+    plant: ["const k = ", solanaKeygen, "();\n"].join(""),
+  });
+  forms.push({
+    hit: cryptoDot,
+    needle: cryptoDot,
+    plant: [cryptoDot, randomUuid, "();\n"].join(""),
+  });
+  forms.push({
+    hit: globalCrypto,
+    needle: globalCrypto,
+    plant: ["void ", globalCrypto, ";\n"].join(""),
+  });
+
+  return forms;
 }
 
-/** Six plant forms: each must turn red with its own named hit. */
-function randomnessPlantSnippets(): { hit: string; snippet: string }[] {
-  const nodeCrypto = ["node", ":", "crypto"].join("");
-  const bareCrypto = ["cry", "pto"].join("");
-  const mathRandom = ["Math", ".", "random"].join("");
-  const webCryptoRand = ["get", "Random", "Values"].join("");
-  const solanaKeygen = ["Keypair", ".", "generate"].join("");
-  return [
-    {
-      hit: `from "${nodeCrypto}"`,
-      snippet: ["import { createHash } from \"", nodeCrypto, "\";\n"].join(""),
-    },
-    {
-      hit: `from "${bareCrypto}"`,
-      snippet: ["import { createHash } from \"", bareCrypto, "\";\n"].join(""),
-    },
-    {
-      hit: `require("${nodeCrypto}")`,
-      snippet: ["const c = require(\"", nodeCrypto, "\");\n"].join(""),
-    },
-    {
-      hit: mathRandom,
-      snippet: ["const x = ", mathRandom, "();\n"].join(""),
-    },
-    {
-      hit: webCryptoRand,
-      snippet: ["globalThis.", webCryptoRand, "(new Uint8Array(1));\n"].join(""),
-    },
-    {
-      hit: solanaKeygen,
-      snippet: ["const k = ", solanaKeygen, "();\n"].join(""),
-    },
-  ];
+/** Global Web Crypto property access: bare identifier + dot, word-bounded. */
+function sourceHasCryptoPropertyAccess(source: string, cryptoDot: string): boolean {
+  let from = 0;
+  for (;;) {
+    const idx = source.indexOf(cryptoDot, from);
+    if (idx < 0) return false;
+    const prev = idx === 0 ? "" : source[idx - 1]!;
+    if (idx === 0 || !/[A-Za-z0-9_$]/.test(prev)) return true;
+    from = idx + cryptoDot.length;
+  }
+}
+
+function bannedFormMatches(source: string, form: BannedRandomnessForm): boolean {
+  const cryptoDot = ["cry", "pto", "."].join("");
+  if (form.needle === cryptoDot) {
+    return sourceHasCryptoPropertyAccess(source, cryptoDot);
+  }
+  return source.includes(form.needle);
+}
+
+function suiteRandomnessViolations(source: string): string[] {
+  return bannedRandomnessForms()
+    .filter((form) => bannedFormMatches(source, form))
+    .map((form) => form.hit);
 }
 
 const DEVNET_PLAN = {
@@ -397,26 +428,22 @@ describe("Irys adapter consumes signature owner", () => {
 describe("suite has no randomness", () => {
   it("live source is green; each banned form planted separately is red", () => {
     const live = readFileSync(fileURLToPath(import.meta.url), "utf8");
+    const forms = bannedRandomnessForms();
+    assert.ok(forms.length > 0, "banned-forms table must not be empty");
     assert.deepEqual(
       suiteRandomnessViolations(live),
       [],
       "suite must use no random source",
     );
 
-    const plants = randomnessPlantSnippets();
-    assert.equal(plants.length, 6);
-    for (const plant of plants) {
-      const planted = `${live}\n${plant.snippet}`;
-      const hits = suiteRandomnessViolations(planted);
-      assert.ok(
-        hits.includes(plant.hit),
-        `plant for ${plant.hit} must be red; got ${JSON.stringify(hits)}`,
-      );
+    for (const form of forms) {
+      const planted = `${live}\n${form.plant}`;
       assert.deepEqual(
-        hits,
-        [plant.hit],
-        `plant for ${plant.hit} must report only that hit`,
+        suiteRandomnessViolations(planted),
+        [form.hit],
+        `plant for ${form.hit} must report only that hit`,
       );
     }
   });
 });
+
