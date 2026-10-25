@@ -1029,9 +1029,10 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "deploy-ponder-svm-ingest-ci",
     owner:
       ".github/workflows/ci.yml · .github/workflows/deploy-ponder.yml · .github/workflows/deploy-svm-ingest.yml · lib/architecture/ci-verify-partition.ts",
-    rule: "Trunk CI (ci.yml) runs compile/typecheck/lint/every CI_GATE_SCRIPTS member/build (sole owner lib/architecture/ci-verify-partition); Install includes svm/lab frozen-lockfile (svm/tsconfig paths); deploy workflows needs: gates via workflow_call; test:ci = test:verify ∖ DEPLOY_MACHINE_VERIFY_SUITES; TOOLCHAIN_GATES (svm/svm-stand/svm-ingest/e2e) are named exclusions not trunk CI; Ponder never lists svm-ingest paths; svm-ingest never builds ponder; ponder deploy probes /ready and skips recreate on unchanged executable fingerprint",
+    rule: "Trunk CI (ci.yml) runs compile/typecheck/lint/every CI_GATE_SCRIPTS member/build (sole owner lib/architecture/ci-verify-partition); Install includes svm/lab frozen-lockfile (svm/tsconfig paths); deploy workflows needs: gates via workflow_call; test:ci = test:verify ∖ DEPLOY_MACHINE_VERIFY_SUITES; TOOLCHAIN_GATES (svm/svm-stand/svm-ingest/e2e) are named exclusions not trunk CI; Ponder never lists svm-ingest paths; svm-ingest never builds ponder; ponder deploy probes /ready and skips recreate on unchanged executable fingerprint; secrets.VPS_ only inside the deploy job of deploy-ponder.yml and deploy-svm-ingest.yml; those workflows allow only push to master and workflow_dispatch; each deploy job needs: gates",
     guardTests: [
       "deploy-ponder-svm-ingest-ci-policy.test.ts",
+      "deploy-vps-secret-policy.test.ts",
       "ensure-svm-lab-modules.test.ts",
     ],
   },
