@@ -34,20 +34,14 @@ const ALLOWED_TRIGGERS = new Set(["push", "workflow_dispatch"]);
 const ALLOWED_PUSH_KEYS = new Set(["branches", "paths", "paths-ignore"]);
 const GATES_USES = "./.github/workflows/ci.yml";
 
-/** secrets as a context identifier inside ${{ … }} (case-insensitive). */
-const SECRETS_CONTEXT_IN_EXPR =
-  /(^|[^A-Za-z0-9_])secrets(?=[^A-Za-z0-9_]|$)/i;
-const EXPR_RE = /\$\{\{([\s\S]*?)\}\}/g;
+/** Whole-word `secrets` (case-insensitive) — no ${{ … }} tokenizer. */
+const SECRETS_WORD = /(^|[^A-Za-z0-9_])secrets(?=[^A-Za-z0-9_]|$)/i;
 
 type YamlDoc = Record<string, unknown>;
 
 type LoadResult =
   | { ok: true; doc: YamlDoc }
   | { ok: false; reason: string };
-
-function githubRoot(repoRoot: string): string {
-  return join(repoRoot, GITHUB_DIR);
-}
 
 function listFilesRecursive(dir: string): string[] {
   const out: string[] = [];
@@ -63,7 +57,8 @@ function listFilesRecursive(dir: string): string[] {
   return out;
 }
 
-function isYamlPath(filePath: string): boolean {
+/** Lowercase .yml / .yaml only — any other extension under workflows/ is a violation. */
+function isAllowedWorkflowExtension(filePath: string): boolean {
   return filePath.endsWith(".yml") || filePath.endsWith(".yaml");
 }
 
@@ -90,22 +85,18 @@ function loadYamlFile(filePath: string): LoadResult {
   return { ok: true, doc: doc as YamlDoc };
 }
 
-function stringReferencesSecretsContext(s: string): boolean {
-  EXPR_RE.lastIndex = 0;
-  for (const m of s.matchAll(EXPR_RE)) {
-    if (SECRETS_CONTEXT_IN_EXPR.test(m[1]!)) return true;
-  }
-  return false;
+function stringContainsSecretsWord(s: string): boolean {
+  return SECRETS_WORD.test(s);
 }
 
-function valueReferencesSecretsContext(value: unknown): boolean {
-  if (typeof value === "string") return stringReferencesSecretsContext(value);
+function valueContainsSecretsWord(value: unknown): boolean {
+  if (typeof value === "string") return stringContainsSecretsWord(value);
   if (Array.isArray(value)) {
-    return value.some(valueReferencesSecretsContext);
+    return value.some(valueContainsSecretsWord);
   }
   if (value && typeof value === "object") {
     return Object.values(value as Record<string, unknown>).some(
-      valueReferencesSecretsContext,
+      valueContainsSecretsWord,
     );
   }
   return false;
@@ -120,11 +111,12 @@ function secretUseAllowed(relPath: string, jobId: string): boolean {
 }
 
 /**
- * The secrets context and job-level secrets: may appear only inside
- * jobs.deploy of the two deploy workflow paths.
+ * Under .github/workflows/**, the word `secrets` and job-level secrets: may
+ * appear only inside jobs.deploy of the two deploy workflow paths.
+ * No ${{ … }} scan — whole-word match fails closed past quote-tricked `}}`.
  */
 export function vpsSecretLocalityViolations(repoRoot: string): string[] {
-  const gh = githubRoot(repoRoot);
+  const workflowsRoot = join(repoRoot, WORKFLOWS_DIR);
   const violations: string[] = [];
   const seen = new Set<string>();
 
@@ -135,9 +127,12 @@ export function vpsSecretLocalityViolations(repoRoot: string): string[] {
     }
   }
 
-  for (const abs of listFilesRecursive(gh)) {
-    if (!isYamlPath(abs)) continue;
+  for (const abs of listFilesRecursive(workflowsRoot)) {
     const rel = toPosixRel(repoRoot, abs);
+    if (!isAllowedWorkflowExtension(abs)) {
+      add(`workflow file must use lowercase .yml/.yaml: ${rel}`);
+      continue;
+    }
     const loaded = loadYamlFile(abs);
     if (!loaded.ok) {
       add(`secrets check fail-closed (${loaded.reason}): ${rel}`);
@@ -145,10 +140,10 @@ export function vpsSecretLocalityViolations(repoRoot: string): string[] {
     }
     const doc = loaded.doc;
 
-    // Non-job strings that reference secrets (workflow-level env, etc.).
+    // Non-job values that contain the word secrets (workflow-level env, etc.).
     for (const [key, value] of Object.entries(doc)) {
       if (key === "jobs") continue;
-      if (valueReferencesSecretsContext(value)) {
+      if (valueContainsSecretsWord(value)) {
         add(`secrets context outside allowed deploy jobs: ${rel}`);
       }
     }
@@ -171,7 +166,7 @@ export function vpsSecretLocalityViolations(repoRoot: string): string[] {
       if (jobHasSecretsKey(job) && !allowed) {
         add(`secrets: key outside allowed deploy jobs: ${rel}`);
       }
-      if (valueReferencesSecretsContext(job) && !allowed) {
+      if (valueContainsSecretsWord(job) && !allowed) {
         add(`secrets context outside allowed deploy jobs: ${rel}`);
       }
     }
@@ -332,11 +327,6 @@ export function deployGatesViolations(repoRoot: string): string[] {
     }
   }
   return violations;
-}
-
-/** @deprecated alias — prefer deployGatesViolations */
-export function deployNeedsGatesViolations(repoRoot: string): string[] {
-  return deployGatesViolations(repoRoot);
 }
 
 function withTempGithub(
@@ -525,6 +515,64 @@ jobs:
     );
   });
 
+  it("constructed: quoted }} hiding secrets word is red", () => {
+    withTempGithub(
+      (tmp) => {
+        writePlantedWorkflow(
+          tmp,
+          "plant-secrets-quoted-end.yml",
+          `name: planted-quoted-end
+on:
+  pull_request_target:
+jobs:
+  steal:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "\${{ ('}}' && secrets.VPS_SSH_KEY) }}"
+`,
+        );
+      },
+      (tmp) => {
+        const hits = vpsSecretLocalityViolations(tmp);
+        assert.ok(
+          hits.includes(
+            "secrets context outside allowed deploy jobs: .github/workflows/plant-secrets-quoted-end.yml",
+          ),
+          "secrets context outside allowed deploy jobs: .github/workflows/plant-secrets-quoted-end.yml",
+        );
+      },
+    );
+  });
+
+  it("constructed: non-lowercase .YML extension is red", () => {
+    withTempGithub(
+      (tmp) => {
+        writePlantedWorkflow(
+          tmp,
+          "a.YML",
+          `name: planted-ext
+on:
+  pull_request_target:
+jobs:
+  steal:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "\${{ secrets.VPS_SSH_KEY }}"
+`,
+        );
+      },
+      (tmp) => {
+        const hits = vpsSecretLocalityViolations(tmp);
+        assert.ok(
+          hits.includes(
+            "workflow file must use lowercase .yml/.yaml: .github/workflows/a.YML",
+          ),
+          "workflow file must use lowercase .yml/.yaml: .github/workflows/a.YML",
+        );
+      },
+    );
+  });
+
   it("constructed: workflow_run on deploy-ponder.yml is red", () => {
     withTempGithub(
       (tmp) => {
@@ -644,10 +692,10 @@ jobs:
     );
   });
 
-  it("constructed: deploy-ponder.yml outside workflows/ is red", () => {
+  it("constructed: deploy-ponder.yml nested under workflows/ is red", () => {
     withTempGithub(
       (tmp) => {
-        const dir = join(tmp, ".github/ISSUE_TEMPLATE");
+        const dir = join(tmp, ".github/workflows/nested");
         mkdirSync(dir, { recursive: true });
         writeFileSync(
           join(dir, "deploy-ponder.yml"),
@@ -666,9 +714,9 @@ jobs:
         const hits = vpsSecretLocalityViolations(tmp);
         assert.ok(
           hits.includes(
-            "secrets context outside allowed deploy jobs: .github/ISSUE_TEMPLATE/deploy-ponder.yml",
+            "secrets context outside allowed deploy jobs: .github/workflows/nested/deploy-ponder.yml",
           ),
-          "secrets context outside allowed deploy jobs: .github/ISSUE_TEMPLATE/deploy-ponder.yml",
+          "secrets context outside allowed deploy jobs: .github/workflows/nested/deploy-ponder.yml",
         );
       },
     );
