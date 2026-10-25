@@ -99,6 +99,7 @@ jobs:
 
             git fetch https://github.com/kargain-com/kargain.git master
             git checkout --force "$DEPLOY_SHA"
+            DEPLOYED_COMMIT=$(git rev-parse HEAD)
 
             STATE_FILE=/opt/kargain/.ponder-deploy-fingerprints
             STORED_EXEC=""
@@ -113,7 +114,9 @@ jobs:
               echo "Ponder executable inputs unchanged — leaving running service alone"
               echo "identity=$IDENTITY_DIGEST executable=$EXECUTABLE_DIGEST"
               IMAGE_ID=$(docker compose images -q ponder)
-              NODE_VER=$(docker run --rm --entrypoint node "$IMAGE_ID" --version)
+              NODE_VER=$(docker compose exec -T ponder node --version)
+              # Host scripts mount: probe scripts are not executable-fingerprint inputs,
+              # so the image copy can lag the checkout on the unchanged path.
               READY_STATUS=$(docker run --rm --network host \
                 -v /opt/kargain/scripts:/app/scripts:ro \
                 --entrypoint node "$IMAGE_ID" \
@@ -139,9 +142,9 @@ jobs:
             docker compose up -d ponder
 
             # Probe via the image's node (host may lack tsx). --network host → published :42069.
-            # Mount host scripts so the checked-out probe stdout contract is used.
+            # Host scripts mount: same as unchanged — keeps probe version aligned with checkout.
             IMAGE_ID=$(docker compose images -q ponder)
-            NODE_VER=$(docker run --rm --entrypoint node "$IMAGE_ID" --version)
+            NODE_VER=$(docker compose exec -T ponder node --version)
             READY_STATUS=$(docker run --rm --network host \
               -v /opt/kargain/scripts:/app/scripts:ro \
               --entrypoint node "$IMAGE_ID" \
@@ -153,6 +156,6 @@ jobs:
             docker compose ps
 
             echo "deploy_evidence outcome=recreated"
-            echo "deploy_evidence commit=$DEPLOY_SHA"
+            echo "deploy_evidence commit=$DEPLOYED_COMMIT"
             echo "deploy_evidence node=$NODE_VER"
             echo "deploy_evidence ready=ponder status=$READY_STATUS"

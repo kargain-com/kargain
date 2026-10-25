@@ -4,9 +4,11 @@
  * Success = reserved GET /ready answered with HTTP 200 (caught up). Any other
  * answered status is not success — keep polling until the deadline, then fail
  * with classifySvmIngestReadySurface + payload status. Failure with no answer
- * = timeout (crash-loop / dead process).
+ * = timeout (crash-loop / dead process). A malformed body is named
+ * (`payload_malformed: …`) and never classified from invented fields.
  */
 import {
+  assertSvmIngestReadyServedFacts,
   classifySvmIngestReadySurface,
   type SvmIngestReadyPayload,
 } from "../../src/svm-ingest/http-health.js";
@@ -29,11 +31,18 @@ export type SvmIngestReadyProbeResult =
       lastHttpStatus: number | null;
       classification: SvmIngestReadyClassification | null;
       payloadStatus: SvmIngestReadyPayload["status"] | null;
+      payloadMalformed: string | null;
     };
 
 export function svmIngestDidNotBecomeReadyMessage(
   result: Extract<SvmIngestReadyProbeResult, { ok: false }>,
 ): string {
+  if (result.payloadMalformed != null) {
+    return (
+      `svm_ingest_did_not_become_ready: ${result.payloadMalformed} ` +
+      `http_status=${result.lastHttpStatus} within ${result.timeoutMs}ms`
+    );
+  }
   if (result.classification != null && result.payloadStatus != null) {
     return (
       `svm_ingest_did_not_become_ready: classification=${result.classification} ` +
@@ -52,35 +61,99 @@ export type SvmIngestReadyProbeDeps = {
   now?: () => number;
 };
 
-function parseReadyPayload(body: string): SvmIngestReadyPayload | null {
+type ParseReadyResult =
+  | { ok: true; payload: SvmIngestReadyPayload }
+  | { ok: false; reason: string };
+
+/**
+ * Validate /ready JSON with the surface owner (declared facts) and type-check
+ * each field. Never invent defaults for missing or mistyped values.
+ */
+export function parseSvmIngestReadyPayload(body: string): ParseReadyResult {
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(body);
-    if (parsed == null || typeof parsed !== "object") return null;
-    const rec = parsed as Record<string, unknown>;
-    if (rec.status !== "ready" && rec.status !== "not_ready") return null;
-    return {
-      status: rec.status,
-      bootstrapState:
-        rec.bootstrapState === null || typeof rec.bootstrapState === "string"
-          ? (rec.bootstrapState as string | null)
-          : null,
-      incident:
-        rec.incident === null || typeof rec.incident === "string"
-          ? (rec.incident as string | null)
-          : null,
-      lagSlots: typeof rec.lagSlots === "number" ? rec.lagSlots : 0,
-      lastContiguousSlot:
-        typeof rec.lastContiguousSlot === "number" ? rec.lastContiguousSlot : 0,
-    };
+    parsed = JSON.parse(body);
   } catch {
-    return null;
+    return { ok: false, reason: "payload_malformed: invalid_json" };
   }
+  if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, reason: "payload_malformed: not_object" };
+  }
+  const rec = parsed as Record<string, unknown>;
+  try {
+    assertSvmIngestReadyServedFacts(rec);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, reason: `payload_malformed: ${msg}` };
+  }
+  if (rec.status !== "ready" && rec.status !== "not_ready") {
+    return { ok: false, reason: "payload_malformed: status" };
+  }
+  if (
+    !(rec.bootstrapState === null || typeof rec.bootstrapState === "string")
+  ) {
+    return { ok: false, reason: "payload_malformed: bootstrapState" };
+  }
+  if (!(rec.incident === null || typeof rec.incident === "string")) {
+    return { ok: false, reason: "payload_malformed: incident" };
+  }
+  if (typeof rec.lagSlots !== "number" || !Number.isFinite(rec.lagSlots)) {
+    return { ok: false, reason: "payload_malformed: lagSlots" };
+  }
+  if (
+    typeof rec.lastContiguousSlot !== "number" ||
+    !Number.isFinite(rec.lastContiguousSlot)
+  ) {
+    return { ok: false, reason: "payload_malformed: lastContiguousSlot" };
+  }
+  return {
+    ok: true,
+    payload: {
+      status: rec.status,
+      bootstrapState: rec.bootstrapState,
+      incident: rec.incident,
+      lagSlots: rec.lagSlots,
+      lastContiguousSlot: rec.lastContiguousSlot,
+    },
+  };
+}
+
+function timeoutFailure(args: {
+  url: string;
+  timeoutMs: number;
+  elapsedMs: number;
+  lastHttpStatus: number | null;
+  lastPayload: SvmIngestReadyPayload | null;
+  lastMalformed: string | null;
+}): Extract<SvmIngestReadyProbeResult, { ok: false }> {
+  // Prefer a valid last payload for classification; otherwise name the malformation.
+  if (args.lastPayload != null) {
+    return {
+      ok: false,
+      url: args.url,
+      timeoutMs: args.timeoutMs,
+      elapsedMs: args.elapsedMs,
+      lastHttpStatus: args.lastHttpStatus,
+      classification: classifySvmIngestReadySurface(args.lastPayload),
+      payloadStatus: args.lastPayload.status,
+      payloadMalformed: null,
+    };
+  }
+  return {
+    ok: false,
+    url: args.url,
+    timeoutMs: args.timeoutMs,
+    elapsedMs: args.elapsedMs,
+    lastHttpStatus: args.lastHttpStatus,
+    classification: null,
+    payloadStatus: null,
+    payloadMalformed: args.lastMalformed,
+  };
 }
 
 /**
- * Poll until /ready returns HTTP 200, or the timeout expires.
- * Non-200 answers are not readiness — keep polling; on timeout classify the
- * last payload. Connection refused / network errors continue until timeout.
+ * Poll until /ready returns HTTP 200 with a valid payload, or the timeout
+ * expires. Non-200 answers and malformed bodies are not readiness.
  */
 export async function waitForSvmIngestReady(
   opts?: {
@@ -100,55 +173,54 @@ export async function waitForSvmIngestReady(
 
   let lastHttpStatus: number | null = null;
   let lastPayload: SvmIngestReadyPayload | null = null;
+  let lastMalformed: string | null = null;
 
   const started = now();
   for (;;) {
     const elapsedMs = now() - started;
     if (elapsedMs >= timeoutMs) {
-      return {
-        ok: false,
+      return timeoutFailure({
         url,
         timeoutMs,
         elapsedMs,
         lastHttpStatus,
-        classification:
-          lastPayload != null
-            ? classifySvmIngestReadySurface(lastPayload)
-            : null,
-        payloadStatus: lastPayload?.status ?? null,
-      };
+        lastPayload,
+        lastMalformed,
+      });
     }
     try {
       const res = await fetchFn(url, { method: "GET", redirect: "manual" });
       lastHttpStatus = res.status;
       const body = await res.text();
-      const payload = parseReadyPayload(body);
-      if (payload != null) lastPayload = payload;
-      if (res.status === 200) {
-        return {
-          ok: true,
-          status: res.status,
-          url,
-          elapsedMs: now() - started,
-        };
+      const parsed = parseSvmIngestReadyPayload(body);
+      if (!parsed.ok) {
+        lastMalformed = parsed.reason;
+        // Do not classify invented fields; keep lastPayload unchanged.
+      } else {
+        lastPayload = parsed.payload;
+        lastMalformed = null;
+        if (res.status === 200) {
+          return {
+            ok: true,
+            status: res.status,
+            url,
+            elapsedMs: now() - started,
+          };
+        }
       }
     } catch {
       // Not listening yet — keep polling until deadline.
     }
     const remaining = timeoutMs - (now() - started);
     if (remaining <= 0) {
-      return {
-        ok: false,
+      return timeoutFailure({
         url,
         timeoutMs,
         elapsedMs: now() - started,
         lastHttpStatus,
-        classification:
-          lastPayload != null
-            ? classifySvmIngestReadySurface(lastPayload)
-            : null,
-        payloadStatus: lastPayload?.status ?? null,
-      };
+        lastPayload,
+        lastMalformed,
+      });
     }
     await sleep(Math.min(intervalMs, remaining));
   }

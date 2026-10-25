@@ -10,12 +10,13 @@ import {
   type SvmIngestReadyPayload,
 } from "../src/svm-ingest/http-health.ts";
 import {
+  parseSvmIngestReadyPayload,
   svmIngestDidNotBecomeReadyMessage,
   waitForSvmIngestReady,
 } from "../scripts/lib/svm-ingest-readiness-probe.ts";
 
-function jsonResponse(status: number, payload: SvmIngestReadyPayload): Response {
-  return new Response(JSON.stringify(payload), {
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json" },
   });
@@ -73,6 +74,7 @@ describe("svm-ingest-readiness-probe", () => {
     if (result.ok) throw new Error("unreachable");
     assert.equal(result.classification, "bootstrap_incomplete");
     assert.equal(result.payloadStatus, "not_ready");
+    assert.equal(result.payloadMalformed, null);
     const msg = svmIngestDidNotBecomeReadyMessage(result);
     assert.match(msg, /classification=bootstrap_incomplete/);
     assert.match(msg, /payload_status=not_ready/);
@@ -90,6 +92,7 @@ describe("svm-ingest-readiness-probe", () => {
     if (result.ok) throw new Error("unreachable");
     assert.equal(result.classification, "incident");
     assert.equal(result.payloadStatus, "not_ready");
+    assert.equal(result.payloadMalformed, null);
     const msg = svmIngestDidNotBecomeReadyMessage(result);
     assert.match(msg, /classification=incident/);
   });
@@ -107,9 +110,41 @@ describe("svm-ingest-readiness-probe", () => {
     if (result.ok) throw new Error("unreachable");
     assert.equal(result.classification, null);
     assert.equal(result.payloadStatus, null);
+    assert.equal(result.payloadMalformed, null);
     assert.equal(
       svmIngestDidNotBecomeReadyMessage(result),
       `svm_ingest_did_not_become_ready: GET ${result.url} did not answer within ${result.timeoutMs}ms`,
     );
+  });
+
+  it("malformed 503 body → payload_malformed, no invented classification", async () => {
+    const missingSlot = {
+      status: "not_ready",
+      bootstrapState: "historical_backfill",
+      incident: null,
+      lagSlots: 0,
+      // lastContiguousSlot missing — owner refuses; must not default to 0
+    };
+    const parsed = parseSvmIngestReadyPayload(JSON.stringify(missingSlot));
+    assert.equal(parsed.ok, false);
+    if (parsed.ok) throw new Error("unreachable");
+    assert.match(parsed.reason, /^payload_malformed:/);
+    assert.match(parsed.reason, /lastContiguousSlot/);
+
+    const result = await waitForSvmIngestReady({
+      timeoutMs: 80,
+      intervalMs: 10,
+      sleep: async () => {},
+      fetch: async () => jsonResponse(503, missingSlot),
+    });
+    assert.equal(result.ok, false);
+    if (result.ok) throw new Error("unreachable");
+    assert.equal(result.classification, null);
+    assert.equal(result.payloadStatus, null);
+    assert.ok(result.payloadMalformed);
+    assert.match(result.payloadMalformed!, /^payload_malformed:/);
+    const msg = svmIngestDidNotBecomeReadyMessage(result);
+    assert.match(msg, /payload_malformed:/);
+    assert.doesNotMatch(msg, /classification=/);
   });
 });

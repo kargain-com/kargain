@@ -56,13 +56,15 @@ jobs:
 
             git fetch https://github.com/kargain-com/kargain.git master
             git checkout --force "$DEPLOY_SHA"
+            DEPLOYED_COMMIT=$(git rev-parse HEAD)
 
             docker compose build svm-ingest
             docker compose up -d --force-recreate svm-ingest
 
             # Probe via the image's node (host may lack tsx). --network host → published :42100.
+            # Host scripts mount: keeps probe version aligned with the checked-out commit.
             IMAGE_ID=$(docker compose images -q svm-ingest)
-            NODE_VER=$(docker run --rm --entrypoint node "$IMAGE_ID" --version)
+            NODE_VER=$(docker compose exec -T svm-ingest node --version)
             READY_STATUS=$(docker run --rm --network host \
               -v /opt/kargain/scripts:/app/scripts:ro \
               --entrypoint node "$IMAGE_ID" \
@@ -72,6 +74,6 @@ jobs:
             docker compose ps
 
             echo "deploy_evidence outcome=recreated"
-            echo "deploy_evidence commit=$DEPLOY_SHA"
+            echo "deploy_evidence commit=$DEPLOYED_COMMIT"
             echo "deploy_evidence node=$NODE_VER"
             echo "deploy_evidence ready=svm-ingest status=$READY_STATUS"
