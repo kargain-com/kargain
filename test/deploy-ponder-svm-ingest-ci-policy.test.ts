@@ -210,15 +210,16 @@ concurrency:
       /pnpm --dir svm\/lab install --frozen-lockfile/,
       "CI must install svm/lab so svm/tsconfig can resolve @solana/spl-token",
     );
-    assert.match(yaml, /actions\/checkout@v5/);
-    assert.match(yaml, /actions\/setup-node@v5/);
+    // Pin expectation: mutable tags replaced by full commit SHAs (issue #17).
+    assert.match(yaml, /actions\/checkout@[0-9a-f]{40}/);
+    assert.match(yaml, /actions\/setup-node@[0-9a-f]{40}/);
   });
 
   it("ci.yml checkout is deep so append-only can load published-trunk baseline", () => {
     const yaml = readFileSync(CI_WF, "utf8");
     assert.match(
       yaml,
-      /actions\/checkout@v5[\s\S]*?fetch-depth:\s*0/,
+      /actions\/checkout@[0-9a-f]{40}[\s\S]*?fetch-depth:\s*0/,
       "CI checkout must use fetch-depth: 0 for git show <before|base>:manifest",
     );
     assert.match(
@@ -231,7 +232,7 @@ concurrency:
   it("constructed: shallow CI checkout is red vs live deep checkout", () => {
     const planted = `
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@0000000000000000000000000000000000000000
 `;
     assert.doesNotMatch(planted, /fetch-depth:\s*0/);
     const live = readFileSync(CI_WF, "utf8");

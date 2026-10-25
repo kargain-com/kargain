@@ -1,0 +1,35 @@
+# Path-scoped allowlists for existing test fixtures only.
+# Secrets found in new paths or rules outside these entries stay red.
+
+title = "kargain"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Hardhat account #0 private key fixture used by profile attestation tests"
+paths = ['''(^|/)test/profile-attestation\.test\.ts$''']
+
+[[allowlists]]
+description = "Hardhat account #0 private key fixture used by attested-profile resolver tests"
+paths = ['''(^|/)test/resolve-attested-profile\.test\.ts$''']
+
+[[allowlists]]
+description = "Synthetic hex private-key fixtures for Vincent commons review tests"
+paths = ['''(^|/)test/vincent-commons-review\.test\.ts$''']
+
+[[allowlists]]
+description = "Synthetic hex private-key fixtures for Vincent commons confirmation tests"
+paths = ['''(^|/)test/vincent-commons-confirmation\.test\.ts$''']
+
+[[allowlists]]
+description = "Synthetic hex private-key fixtures for Vincent commons assemble tests"
+paths = ['''(^|/)test/vincent-commons-assemble\.test\.ts$''']
+
+[[allowlists]]
+description = "Synthetic NWC secret hex fixture for URI parsing tests"
+paths = ['''(^|/)test/nwc-uri\.test\.ts$''']
+
+[[allowlists]]
+description = "Function-name tokens match generic-api-key; no secret material in the file"
+paths = ['''(^|/)test/personal-sign-identity-policy\.test\.ts$''']

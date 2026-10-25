@@ -13,6 +13,11 @@ on:
       - "Dockerfile.svm-ingest"
       - ".github/workflows/deploy-svm-ingest.yml"
 
+# Least privilege for GITHUB_TOKEN. Deploy uses repository secrets over SSH;
+# secrets access is not controlled by this block. No job needs write.
+permissions:
+  contents: read
+
 jobs:
   gates:
     uses: ./.github/workflows/ci.yml
@@ -22,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Deploy svm-ingest to VPS
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: ${{ secrets.VPS_SSH_HOST }}
           username: ${{ secrets.VPS_SSH_USER }}

@@ -1,0 +1,39 @@
+# Default owner for every path.
+* @digirayc
+
+# Design-pause areas (contracts, programs, CI/deploy, indexer schema/projection).
+/contracts/ @digirayc
+/svm/ @digirayc
+/.github/ @digirayc
+
+# Ponder schema and SVM projection / ingest.
+/ponder.schema.ts @digirayc
+/ponder.config.ts @digirayc
+/src/lib/svm-raw-writer.ts @digirayc
+/src/lib/svm-projection-writer.ts @digirayc
+/src/svm-ingest/ @digirayc
+
+# Deploy evidence and artifact owners.
+/scripts/lib/load-deployment.ts @digirayc
+/scripts/lib/deployment-build-info.ts @digirayc
+/scripts/lib/assert-deploy-evidence.ts @digirayc
+/scripts/lib/assert-commercial-active-manifest.ts @digirayc
+/scripts/lib/verify-from-deploy-evidence.ts @digirayc
+/scripts/lib/svm-deploy-artifact.ts @digirayc
+/scripts/lib/assert-svm-upgrade-authority.ts @digirayc
+/scripts/lib/assert-svm-binary-identity.ts @digirayc
+
+# Money, custody, and commercial registry choke-points.
+/lib/custody/ @digirayc
+/lib/web3/commercial-active.ts @digirayc
+/lib/web3/kargain-namespace.ts @digirayc
+/lib/web3/deployment-addresses.ts @digirayc
+/lib/web3/local-chain.ts @digirayc
+/lib/web3/protocol-address.ts @digirayc
+/lib/web3/native-amount.ts @digirayc
+/lib/web3/declared-weights.ts @digirayc
+/lib/storage/irys-deposit.ts @digirayc
+/lib/storage/irys-deposit-record.ts @digirayc
+/lib/storage/irys-bundler-deposit-post.ts @digirayc
+/lib/storage/irys-client.ts @digirayc
+/hooks/use-irys-deposit-ports.ts @digirayc
