@@ -1,5 +1,7 @@
 /**
  * CLI: poll reserved GET /ready until answered or timeout; exit 1 by name.
+ * On success stdout is only the decimal HTTP status (deploy evidence capture).
+ * Human diagnostics stay on stderr — never parse stderr for status.
  */
 import {
   ponderDidNotBecomeReadyMessage,
@@ -12,6 +14,7 @@ async function main(): Promise<void> {
     process.stderr.write(
       `ponder ready probe ok status=${result.status} elapsedMs=${result.elapsedMs}\n`,
     );
+    process.stdout.write(`${result.status}\n`);
     process.exit(0);
   }
   const msg = ponderDidNotBecomeReadyMessage(result.url, result.timeoutMs);

@@ -2,6 +2,7 @@
  * Trunk CI + deploy workflows: isolation, gates-before-SSH, verify∖CI partition.
  */
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
@@ -92,6 +93,264 @@ export function ponderDeployLacksExecutableSkip(yaml: string): string | null {
     return "deploy path lacks EXECUTABLE_DIGEST comparison";
   }
   return null;
+}
+
+const DEPLOY_WORKFLOW_FILES = [
+  "deploy-ponder.yml",
+  "deploy-svm-ingest.yml",
+] as const;
+
+const EXPECTED_CONCURRENCY_GROUP: Record<
+  (typeof DEPLOY_WORKFLOW_FILES)[number],
+  string
+> = {
+  "deploy-ponder.yml": "deploy-ponder",
+  "deploy-svm-ingest.yml": "deploy-svm-ingest",
+};
+
+const LOCK_FAILURE_MESSAGE =
+  "deploy_lock_not_acquired: waited 900s for .deploy.lock";
+
+const HOST_SCRIPTS_MOUNT = "-v /opt/kargain/scripts:/app/scripts:ro";
+
+/** Non-empty, non-comment lines (order preserved). */
+export function deployScriptActiveLines(script: string): string[] {
+  return script.split("\n").filter((line) => {
+    const t = line.trim();
+    return t.length > 0 && !t.startsWith("#");
+  });
+}
+
+/** Per-service job concurrency with cancel-in-progress: false. */
+export function deployConcurrencyDefect(
+  yamlText: string,
+  expectedGroup: string,
+): string | null {
+  const doc = yaml.load(yamlText);
+  if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
+    return `deploy job lacks concurrency group ${expectedGroup}`;
+  }
+  const jobs = (doc as Record<string, unknown>).jobs;
+  if (!jobs || typeof jobs !== "object" || Array.isArray(jobs)) {
+    return `deploy job lacks concurrency group ${expectedGroup}`;
+  }
+  const deploy = (jobs as Record<string, unknown>).deploy;
+  if (!deploy || typeof deploy !== "object" || Array.isArray(deploy)) {
+    return `deploy job lacks concurrency group ${expectedGroup}`;
+  }
+  const concurrency = (deploy as Record<string, unknown>).concurrency;
+  if (!concurrency || typeof concurrency !== "object" || Array.isArray(concurrency)) {
+    return `deploy job lacks concurrency group ${expectedGroup}`;
+  }
+  const c = concurrency as Record<string, unknown>;
+  if (c.group !== expectedGroup) {
+    return `deploy job lacks concurrency group ${expectedGroup}`;
+  }
+  if (c["cancel-in-progress"] !== false) {
+    return "deploy job concurrency must set cancel-in-progress: false";
+  }
+  return null;
+}
+
+/**
+ * Extracted remote script: set -euo pipefail must be the first active statement.
+ */
+export function deployScriptPipefailDefect(script: string): string | null {
+  const lines = deployScriptActiveLines(script);
+  if (lines[0]?.trim() !== "set -euo pipefail") {
+    return "deploy script lacks set -euo pipefail as first statement";
+  }
+  return null;
+}
+
+/**
+ * Extracted remote script: exec + flock -w 900 + refusal before any git/docker.
+ */
+export function deployScriptLockDefect(script: string): string | null {
+  const lines = deployScriptActiveLines(script);
+  const execIdx = lines.findIndex((l) => /exec 9>\.deploy\.lock/.test(l));
+  const flockIdx = lines.findIndex((l) => /flock -w 900 9/.test(l));
+  const refusalIdx = lines.findIndex((l) => l.includes(LOCK_FAILURE_MESSAGE));
+  if (execIdx < 0 || flockIdx < 0 || refusalIdx < 0) {
+    return "deploy script lacks .deploy.lock flock";
+  }
+  // git/docker at the start of a command, including right after $( …
+  const firstGitOrDocker = lines.findIndex((l) =>
+    /(?:^|\$\()\s*(?:git|docker)\b/.test(l.trim()),
+  );
+  if (
+    firstGitOrDocker >= 0 &&
+    (firstGitOrDocker < execIdx ||
+      firstGitOrDocker < flockIdx ||
+      firstGitOrDocker < refusalIdx)
+  ) {
+    return "deploy script acquires lock after git or docker";
+  }
+  return null;
+}
+
+export function deployScriptGitPullDefect(script: string): string | null {
+  if (/\bgit\s+pull\b/.test(script)) {
+    return "deploy script must not use git pull";
+  }
+  return null;
+}
+
+/**
+ * command_timeout: 30m must sit on each appleboy SSH step's own with: block.
+ */
+export function deploySshCommandTimeoutDefect(yamlText: string): string | null {
+  const doc = yaml.load(yamlText);
+  if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
+    return "deploy SSH step lacks command_timeout: 30m";
+  }
+  const jobs = (doc as Record<string, unknown>).jobs;
+  if (!jobs || typeof jobs !== "object" || Array.isArray(jobs)) {
+    return "deploy SSH step lacks command_timeout: 30m";
+  }
+  const deploy = (jobs as Record<string, unknown>).deploy;
+  if (!deploy || typeof deploy !== "object" || Array.isArray(deploy)) {
+    return "deploy SSH step lacks command_timeout: 30m";
+  }
+  const steps = (deploy as Record<string, unknown>).steps;
+  if (!Array.isArray(steps)) {
+    return "deploy SSH step lacks command_timeout: 30m";
+  }
+  let sshSteps = 0;
+  for (const step of steps) {
+    if (!step || typeof step !== "object" || Array.isArray(step)) continue;
+    const uses = (step as Record<string, unknown>).uses;
+    const isSsh =
+      typeof uses === "string" && uses.includes("appleboy/ssh-action");
+    if (!isSsh) continue;
+    sshSteps += 1;
+    const withBlock = (step as Record<string, unknown>).with;
+    if (!withBlock || typeof withBlock !== "object" || Array.isArray(withBlock)) {
+      return "deploy SSH step lacks command_timeout: 30m";
+    }
+    if ((withBlock as Record<string, unknown>).command_timeout !== "30m") {
+      return "deploy SSH step lacks command_timeout: 30m";
+    }
+  }
+  if (sshSteps === 0) {
+    return "deploy SSH step lacks command_timeout: 30m";
+  }
+  return null;
+}
+
+/** Evidence lines on the extracted script: shapes + ready=status not ready=ok. */
+export function deployScriptEvidenceDefect(
+  script: string,
+  opts: { requireUnchanged: boolean; service: "ponder" | "svm-ingest" },
+): string | null {
+  if (/ready=\S+\s+ok\b/.test(script)) {
+    return "deploy evidence must use ready=<service> status=<code> not ready=… ok";
+  }
+  if (!/deploy_evidence outcome=recreated/.test(script)) {
+    return "deploy script lacks deploy_evidence outcome=recreated";
+  }
+  if (
+    opts.requireUnchanged &&
+    !/deploy_evidence outcome=unchanged/.test(script)
+  ) {
+    return "deploy script lacks deploy_evidence outcome=unchanged";
+  }
+  const readyRe = new RegExp(
+    `deploy_evidence ready=${opts.service} status=`,
+  );
+  if (!readyRe.test(script)) {
+    return `deploy script lacks deploy_evidence ready=${opts.service} status=`;
+  }
+  return null;
+}
+
+/**
+ * commit= and node= must be measured: git rev-parse HEAD after checkout;
+ * docker compose exec -T <service> node --version (not a fresh docker run).
+ */
+export function deployScriptEvidenceSourcesDefect(
+  script: string,
+  service: "ponder" | "svm-ingest",
+): string | null {
+  if (/deploy_evidence commit=\$DEPLOY_SHA\b/.test(script)) {
+    return "deploy evidence commit must come from git rev-parse HEAD";
+  }
+  if (!/DEPLOYED_COMMIT=\$\(git rev-parse HEAD\)/.test(script)) {
+    return "deploy evidence commit must come from git rev-parse HEAD";
+  }
+  if (!/deploy_evidence commit=\$DEPLOYED_COMMIT\b/.test(script)) {
+    return "deploy evidence commit must come from git rev-parse HEAD";
+  }
+  const execRe = new RegExp(
+    String.raw`NODE_VER=\$\(docker compose exec -T ${service} node --version\)`,
+  );
+  if (!execRe.test(script)) {
+    return `deploy evidence node must come from docker compose exec -T ${service}`;
+  }
+  if (/NODE_VER=\$\(docker run\b/.test(script)) {
+    return `deploy evidence node must come from docker compose exec -T ${service}`;
+  }
+  return null;
+}
+
+/**
+ * Every readiness probe docker run must mount the host checkout scripts over
+ * /app/scripts so the probe version cannot drift from the deployed commit.
+ */
+export function deployScriptScriptsMountDefect(script: string): string | null {
+  const runs = script.match(
+    /docker run[\s\S]*?--import tsx \/app\/scripts\/\S*ready-probe\.ts/g,
+  );
+  if (!runs || runs.length === 0) {
+    return "deploy probe invocations must mount host scripts over /app/scripts";
+  }
+  for (const run of runs) {
+    if (!run.includes(HOST_SCRIPTS_MOUNT)) {
+      return "deploy probe invocations must mount host scripts over /app/scripts";
+    }
+  }
+  return null;
+}
+
+/** Extract appleboy remote `script:` bodies from a deploy workflow. */
+export function extractDeployRemoteScripts(yamlText: string): string[] {
+  const doc = yaml.load(yamlText);
+  if (!doc || typeof doc !== "object" || Array.isArray(doc)) return [];
+  const jobs = (doc as Record<string, unknown>).jobs;
+  if (!jobs || typeof jobs !== "object" || Array.isArray(jobs)) return [];
+  const deploy = (jobs as Record<string, unknown>).deploy;
+  if (!deploy || typeof deploy !== "object" || Array.isArray(deploy)) return [];
+  const steps = (deploy as Record<string, unknown>).steps;
+  if (!Array.isArray(steps)) return [];
+  const out: string[] = [];
+  for (const step of steps) {
+    if (!step || typeof step !== "object" || Array.isArray(step)) continue;
+    const withBlock = (step as Record<string, unknown>).with;
+    if (!withBlock || typeof withBlock !== "object" || Array.isArray(withBlock)) {
+      continue;
+    }
+    const script = (withBlock as Record<string, unknown>).script;
+    if (typeof script === "string" && script.trim().length > 0) {
+      out.push(script);
+    }
+  }
+  return out;
+}
+
+export function bashSyntaxDefect(script: string): string | null {
+  const result = spawnSync("bash", ["-n"], {
+    input: script,
+    encoding: "utf8",
+  });
+  if (result.status === 0) return null;
+  const detail = (result.stderr || result.stdout || "bash -n failed").trim();
+  return `deploy remote script fails bash -n: ${detail}`;
+}
+
+export function listDeployWorkflowFiles(): string[] {
+  return DEPLOY_WORKFLOW_FILES.filter((name) =>
+    readdirSync(WORKFLOWS_DIR).includes(name),
+  );
 }
 
 /** Owner file must be exact x.y.z (optional trailing newline). */
@@ -363,6 +622,280 @@ deploy:
       ponderDeployLacksExecutableSkip(planted),
       "deploy path lacks executable-fingerprint skip-recreate branch",
     );
+  });
+
+  it("live deploy workflows enumerate a non-empty set with ADR 0010 serialization", () => {
+    const files = listDeployWorkflowFiles();
+    assert.ok(files.length > 0, "deploy workflow set must be non-empty");
+    for (const name of files) {
+      const yamlText = readFileSync(join(WORKFLOWS_DIR, name), "utf8");
+      const group = EXPECTED_CONCURRENCY_GROUP[name as keyof typeof EXPECTED_CONCURRENCY_GROUP];
+      const service = name === "deploy-ponder.yml" ? "ponder" : "svm-ingest";
+      assert.equal(deployConcurrencyDefect(yamlText, group), null, name);
+      assert.equal(deploySshCommandTimeoutDefect(yamlText), null, name);
+      const scripts = extractDeployRemoteScripts(yamlText);
+      assert.ok(scripts.length > 0, `${name} must expose a remote script`);
+      for (const script of scripts) {
+        assert.equal(deployScriptPipefailDefect(script), null, name);
+        assert.equal(deployScriptLockDefect(script), null, name);
+        assert.equal(deployScriptGitPullDefect(script), null, name);
+        assert.equal(
+          deployScriptEvidenceDefect(script, {
+            requireUnchanged: name === "deploy-ponder.yml",
+            service,
+          }),
+          null,
+          name,
+        );
+        assert.equal(
+          deployScriptEvidenceSourcesDefect(script, service),
+          null,
+          name,
+        );
+        assert.equal(deployScriptScriptsMountDefect(script), null, name);
+        assert.equal(bashSyntaxDefect(script), null, name);
+      }
+    }
+  });
+
+  it("constructed: deploy job without its per-service concurrency group is red", () => {
+    const planted = `
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps: []
+`;
+    assert.equal(
+      deployConcurrencyDefect(planted, "deploy-ponder"),
+      "deploy job lacks concurrency group deploy-ponder",
+    );
+  });
+
+  it("constructed: deploy script without the lock is red", () => {
+    const planted = `set -euo pipefail
+git checkout --force "$DEPLOY_SHA"
+`;
+    assert.equal(
+      deployScriptLockDefect(planted),
+      "deploy script lacks .deploy.lock flock",
+    );
+  });
+
+  it("constructed: lock after git fetch is red", () => {
+    const planted = `set -euo pipefail
+cd /opt/kargain
+git fetch https://github.com/kargain-com/kargain.git master
+exec 9>.deploy.lock
+if ! flock -w 900 9; then
+  echo "deploy_lock_not_acquired: waited 900s for .deploy.lock"
+  exit 1
+fi
+`;
+    assert.equal(
+      deployScriptLockDefect(planted),
+      "deploy script acquires lock after git or docker",
+    );
+  });
+
+  it("constructed: git inside command substitution before the lock is red", () => {
+    const planted = `set -euo pipefail
+cd /opt/kargain
+X=$(git rev-parse HEAD)
+exec 9>.deploy.lock
+if ! flock -w 900 9; then
+  echo "deploy_lock_not_acquired: waited 900s for .deploy.lock"
+  exit 1
+fi
+`;
+    assert.equal(
+      deployScriptLockDefect(planted),
+      "deploy script acquires lock after git or docker",
+    );
+  });
+
+  it("constructed: lock present only in a comment is red", () => {
+    const planted = `set -euo pipefail
+cd /opt/kargain
+# exec 9>.deploy.lock
+# if ! flock -w 900 9; then
+#   echo "deploy_lock_not_acquired: waited 900s for .deploy.lock"
+#   exit 1
+# fi
+git fetch https://github.com/kargain-com/kargain.git master
+`;
+    assert.equal(
+      deployScriptLockDefect(planted),
+      "deploy script lacks .deploy.lock flock",
+    );
+  });
+
+  it("constructed: deploy script using git pull is red", () => {
+    const planted = `set -euo pipefail
+git pull https://github.com/kargain-com/kargain.git master
+`;
+    assert.equal(
+      deployScriptGitPullDefect(planted),
+      "deploy script must not use git pull",
+    );
+  });
+
+  it("constructed: deploy script without set -euo pipefail as first statement is red", () => {
+    const planted = `cd /opt/kargain
+exec 9>.deploy.lock
+if ! flock -w 900 9; then
+  echo "deploy_lock_not_acquired: waited 900s for .deploy.lock"
+  exit 1
+fi
+`;
+    assert.equal(
+      deployScriptPipefailDefect(planted),
+      "deploy script lacks set -euo pipefail as first statement",
+    );
+  });
+
+  it("constructed: set -euo pipefail only in another step is red for the remote script", () => {
+    const plantedYaml = `
+jobs:
+  deploy:
+    steps:
+      - name: Require master
+        run: set -euo pipefail
+      - name: Deploy
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262
+        with:
+          command_timeout: 30m
+          script: |
+            cd /opt/kargain
+            exec 9>.deploy.lock
+            if ! flock -w 900 9; then
+              echo "deploy_lock_not_acquired: waited 900s for .deploy.lock"
+              exit 1
+            fi
+`;
+    const scripts = extractDeployRemoteScripts(plantedYaml);
+    assert.equal(scripts.length, 1);
+    assert.equal(
+      deployScriptPipefailDefect(scripts[0]!),
+      "deploy script lacks set -euo pipefail as first statement",
+    );
+  });
+
+  it("constructed: deploy without evidence lines is red", () => {
+    const planted = `set -euo pipefail
+exec 9>.deploy.lock
+flock -w 900 9
+`;
+    assert.equal(
+      deployScriptEvidenceDefect(planted, {
+        requireUnchanged: true,
+        service: "ponder",
+      }),
+      "deploy script lacks deploy_evidence outcome=recreated",
+    );
+  });
+
+  it("constructed: ready=… ok instead of ready=<service> status=<code> is red", () => {
+    const planted = `set -euo pipefail
+echo "deploy_evidence outcome=recreated"
+echo "deploy_evidence outcome=unchanged"
+echo "deploy_evidence ready=ponder ok"
+`;
+    assert.equal(
+      deployScriptEvidenceDefect(planted, {
+        requireUnchanged: true,
+        service: "ponder",
+      }),
+      "deploy evidence must use ready=<service> status=<code> not ready=… ok",
+    );
+  });
+
+  it("constructed: evidence commit echoes DEPLOY_SHA is red", () => {
+    const planted = `set -euo pipefail
+DEPLOYED_COMMIT=$(git rev-parse HEAD)
+NODE_VER=$(docker compose exec -T ponder node --version)
+echo "deploy_evidence outcome=recreated"
+echo "deploy_evidence commit=$DEPLOY_SHA"
+echo "deploy_evidence node=$NODE_VER"
+echo "deploy_evidence ready=ponder status=$READY_STATUS"
+`;
+    assert.equal(
+      deployScriptEvidenceSourcesDefect(planted, "ponder"),
+      "deploy evidence commit must come from git rev-parse HEAD",
+    );
+  });
+
+  it("constructed: evidence node from docker run instead of compose exec is red", () => {
+    const planted = `set -euo pipefail
+DEPLOYED_COMMIT=$(git rev-parse HEAD)
+NODE_VER=$(docker run --rm --entrypoint node "$IMAGE_ID" --version)
+echo "deploy_evidence outcome=recreated"
+echo "deploy_evidence commit=$DEPLOYED_COMMIT"
+echo "deploy_evidence node=$NODE_VER"
+echo "deploy_evidence ready=ponder status=$READY_STATUS"
+`;
+    assert.equal(
+      deployScriptEvidenceSourcesDefect(planted, "ponder"),
+      "deploy evidence node must come from docker compose exec -T ponder",
+    );
+  });
+
+  it("constructed: probe without host scripts mount is red", () => {
+    const planted = `set -euo pipefail
+READY_STATUS=$(docker run --rm --network host \\
+  --entrypoint node "$IMAGE_ID" \\
+  --import tsx /app/scripts/ponder-ready-probe.ts)
+`;
+    assert.equal(
+      deployScriptScriptsMountDefect(planted),
+      "deploy probe invocations must mount host scripts over /app/scripts",
+    );
+  });
+
+  it("constructed: command_timeout on a different step is red", () => {
+    const planted = `
+jobs:
+  deploy:
+    steps:
+      - name: Other
+        run: echo hi
+        with:
+          command_timeout: 30m
+      - name: Deploy
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262
+        with:
+          host: example
+          script: |
+            set -euo pipefail
+`;
+    assert.equal(
+      deploySshCommandTimeoutDefect(planted),
+      "deploy SSH step lacks command_timeout: 30m",
+    );
+  });
+
+  it("constructed: missing command_timeout on SSH step is red", () => {
+    const planted = `
+jobs:
+  deploy:
+    steps:
+      - name: Deploy
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262
+        with:
+          host: example
+          script: |
+            set -euo pipefail
+`;
+    assert.equal(
+      deploySshCommandTimeoutDefect(planted),
+      "deploy SSH step lacks command_timeout: 30m",
+    );
+  });
+
+  it("constructed: remote script that fails bash -n is red", () => {
+    const planted = "if then fi\n";
+    const defect = bashSyntaxDefect(planted);
+    assert.ok(defect, "planted script must fail bash -n");
+    assert.match(defect!, /^deploy remote script fails bash -n:/);
   });
 
   it("svm-ingest workflow exists and never builds or restarts ponder", () => {

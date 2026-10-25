@@ -1034,12 +1034,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "deploy-ponder-svm-ingest-ci",
     owner:
-      ".github/workflows/ci.yml · .github/workflows/deploy-ponder.yml · .github/workflows/deploy-svm-ingest.yml · lib/architecture/ci-verify-partition.ts",
-    rule: "Trunk CI (ci.yml) runs compile/typecheck/lint/every CI_GATE_SCRIPTS member/build (sole owner lib/architecture/ci-verify-partition); Install includes svm/lab frozen-lockfile (svm/tsconfig paths); deploy workflows needs: gates via workflow_call; test:ci = test:verify ∖ DEPLOY_MACHINE_VERIFY_SUITES; TOOLCHAIN_GATES (svm/svm-stand/svm-ingest/e2e) are named exclusions not trunk CI; Ponder never lists svm-ingest paths; svm-ingest never builds ponder; ponder deploy probes /ready and skips recreate on unchanged executable fingerprint; secrets context and job-level secrets: only inside jobs.deploy of .github/workflows/deploy-ponder.yml and deploy-svm-ingest.yml (sole owner deploy-vps-secret-policy); those workflows allow only push to master (push keys ⊆ branches|paths|paths-ignore) and workflow_dispatch; each gates job is exactly uses ./.github/workflows/ci.yml; each deploy job needs: gates and has no if",
+      ".github/workflows/ci.yml · .github/workflows/deploy-ponder.yml · .github/workflows/deploy-svm-ingest.yml · lib/architecture/ci-verify-partition.ts · scripts/lib/ponder-readiness-probe.ts · scripts/lib/svm-ingest-readiness-probe.ts",
+    rule: "Trunk CI (ci.yml) runs compile/typecheck/lint/every CI_GATE_SCRIPTS member/build (sole owner lib/architecture/ci-verify-partition); Install includes svm/lab frozen-lockfile (svm/tsconfig paths); deploy workflows needs: gates via workflow_call; test:ci = test:verify ∖ DEPLOY_MACHINE_VERIFY_SUITES; TOOLCHAIN_GATES (svm/svm-stand/svm-ingest/e2e) are named exclusions not trunk CI; Ponder never lists svm-ingest paths; svm-ingest never builds ponder; ponder deploy probes /ready and skips recreate on unchanged executable fingerprint; svm-ingest deploy probes /ready via scripts/lib/svm-ingest-readiness-probe.ts (HTTP 200 only); secrets context and job-level secrets: only inside jobs.deploy of .github/workflows/deploy-ponder.yml and deploy-svm-ingest.yml (sole owner deploy-vps-secret-policy); those workflows allow only push to master (push keys ⊆ branches|paths|paths-ignore) and workflow_dispatch; each gates job is exactly uses ./.github/workflows/ci.yml; each deploy job needs: gates and has no if; per-service concurrency + server .deploy.lock flock; SHA-pinned checkout; deploy_evidence lines",
     guardTests: [
       "deploy-ponder-svm-ingest-ci-policy.test.ts",
       "deploy-vps-secret-policy.test.ts",
       "ensure-svm-lab-modules.test.ts",
+      "svm-ingest-readiness-probe.test.ts",
     ],
   },
   {
