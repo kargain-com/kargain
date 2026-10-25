@@ -53,7 +53,11 @@ Serialize each deploy, pin it to the triggering commit, and make every successfu
     run: test "$GITHUB_REF" = "refs/heads/master"
   ```
 
-- **Evidence**, printed after every path that finishes the script successfully, in these exact formats so a policy can assert them. Readiness runs on both outcomes (on `unchanged`, against the already-running container; read-only).
+- **Evidence**, printed after every path that finishes the script successfully, in these exact formats so a policy can assert them. Readiness runs on both outcomes (on `unchanged`, against the already-running container; read-only). One ready shape for both services — the HTTP status the check observed, not the word `ok` — because Ponder succeeds on any answered status (200 or 503) while svm-ingest succeeds on 200 only:
+
+  ```text
+  deploy_evidence ready=<ponder|svm-ingest> status=<http status>
+  ```
 
   **recreated** (new image built and started; svm-ingest always takes this path):
 
@@ -61,7 +65,7 @@ Serialize each deploy, pin it to the triggering commit, and make every successfu
   deploy_evidence outcome=recreated
   deploy_evidence commit=<sha the new image was built from>
   deploy_evidence node=<node --version from the new container>
-  deploy_evidence ready=<ponder|svm-ingest> ok
+  deploy_evidence ready=<ponder|svm-ingest> status=<http status>
   ```
 
   **unchanged** (Ponder skip-on-unchanged-executable; checkout may be at `github.sha` while the running image is older):
@@ -70,7 +74,7 @@ Serialize each deploy, pin it to the triggering commit, and make every successfu
   deploy_evidence outcome=unchanged
   deploy_evidence executable=<stored executable digest>
   deploy_evidence node=<node --version from the running container>
-  deploy_evidence ready=ponder ok
+  deploy_evidence ready=ponder status=<http status>
   ```
 
 - **svm-ingest readiness** (implementation must match this contract):
@@ -96,7 +100,7 @@ One concurrency group shared by both deploy jobs. Rejected: under the one-pendin
   - a deploy script without `set -euo pipefail`;
   - `workflow_dispatch` without the master guard;
   - a master guard that interpolates `${{ github.ref }}` into `run:`;
-  - a deploy without the evidence lines (including both `outcome=recreated` and `outcome=unchanged` shapes where applicable).
+  - a deploy without the evidence lines (including both `outcome=recreated` and `outcome=unchanged` shapes where applicable, and `ready=<service> status=<http status>` rather than `ready=… ok`).
 - #24 builds on this: `gates` path filters must not skip the svm-ingest gate when called from the svm-ingest deploy.
 
 ## Status
