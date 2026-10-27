@@ -2,24 +2,18 @@
  * CLI: print identity + executable digests as GITHUB_OUTPUT lines (and JSON).
  * No environment values are printed.
  *
- * Commercial RPC URL lists and getLogs windows are required by buildPonderRuntime
- * but are outside the identity payload (name+id only). Placeholders are installed
- * by the identity fingerprint owner when unset.
+ * Identity reads only the indexing assembly (chain ids, contracts, schema,
+ * sources) — commercial RPC lists and getLogs windows are not required.
  */
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { computePonderExecutableFingerprint } from "./lib/ponder-executable-fingerprint.js";
-import {
-  computePonderIdentityFingerprint,
-  ensureCommercialRpcEnvForIdentityFingerprint,
-} from "./lib/ponder-identity-fingerprint.js";
+import { computePonderIdentityFingerprint } from "./lib/ponder-identity-fingerprint.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 function main(): void {
-  ensureCommercialRpcEnvForIdentityFingerprint();
-
   const identity = computePonderIdentityFingerprint(ROOT);
   const executable = computePonderExecutableFingerprint(ROOT);
 

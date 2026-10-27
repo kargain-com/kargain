@@ -217,13 +217,51 @@ export function resolveCommercialRpcUrls(
   return parts;
 }
 
+export type PonderIndexingChain = { id: number };
+
 export type PonderChainConfig = {
   id: number;
   rpc: string | string[];
   ethGetLogsBlockRange?: number;
 };
 
-export function buildPonderRuntime() {
+export type PonderIndexingConfig = {
+  chains: Record<string, PonderIndexingChain>;
+  addresses: PonderAddressBundle;
+  ethereumSepoliaAddresses: PonderAddressBundle | null;
+  localAddresses: PonderAddressBundle | null;
+  localOnly: boolean;
+  optionalAddresses: {
+    FixedPriceConsignment: `0x${string}` | undefined;
+    AscendingConsignment: `0x${string}` | undefined;
+    KarPassportBridgeGateway: `0x${string}` | undefined;
+  };
+  contractEntry: (
+    hubAddress: `0x${string}`,
+    contract: ContractBlockKey,
+    opts?: {
+      ethereumSepoliaAddress?: `0x${string}`;
+      localAddress?: `0x${string}`;
+    },
+  ) =>
+    | {
+        chain: "localhost" | "baseSepolia";
+        address: `0x${string}`;
+        startBlock: number | "latest";
+      }
+    | {
+        chain: Record<
+          string,
+          { address: `0x${string}`; startBlock: number | "latest" }
+        >;
+      };
+};
+
+/**
+ * Indexing assembly only: chain names/ids, addresses, start blocks, contracts.
+ * No RPC URLs or eth_getLogs windows — those are transport and outside build_id.
+ */
+export function buildPonderIndexingConfig(): PonderIndexingConfig {
   const enableLocal = process.env.PONDER_ENABLE_LOCAL === "1";
   // Local-dev-only: index just the Hardhat chain (skip commercial backfill).
   // Used by the E2E harness so `/ready` does not wait on a public RPC.
@@ -233,26 +271,15 @@ export function buildPonderRuntime() {
 
   const ethereumSepolia = localOnly ? null : loadEthereumSepoliaBundle();
 
-  const chains: Record<string, PonderChainConfig> = {};
+  const chains: Record<string, PonderIndexingChain> = {};
 
   if (!localOnly) {
-    chains.baseSepolia = {
-      id: SEPOLIA_CHAIN_ID,
-      rpc: resolveCommercialRpcUrls(SEPOLIA_CHAIN_ID),
-      ethGetLogsBlockRange: resolveGetLogsBlockRange(SEPOLIA_CHAIN_ID),
-    };
-    chains.ethereumSepolia = {
-      id: SPOKE_CHAIN_ID,
-      rpc: resolveCommercialRpcUrls(SPOKE_CHAIN_ID),
-      ethGetLogsBlockRange: resolveGetLogsBlockRange(SPOKE_CHAIN_ID),
-    };
+    chains.baseSepolia = { id: SEPOLIA_CHAIN_ID };
+    chains.ethereumSepolia = { id: SPOKE_CHAIN_ID };
   }
 
   if (enableLocal && localAddresses) {
-    chains.localhost = {
-      id: LOCALHOST_CHAIN_ID,
-      rpc: process.env.PONDER_RPC_URL_31337 ?? "http://127.0.0.1:8545",
-    };
+    chains.localhost = { id: LOCALHOST_CHAIN_ID };
   }
 
   /**
@@ -338,8 +365,69 @@ export function buildPonderRuntime() {
     localOnly,
     optionalAddresses,
     contractEntry,
+  };
+}
+
+/**
+ * Full Ponder runtime: indexing + transport (rpc list, getLogs window) + database.
+ */
+export function buildPonderRuntime() {
+  const indexing = buildPonderIndexingConfig();
+  const enableLocal = process.env.PONDER_ENABLE_LOCAL === "1";
+
+  const chains: Record<string, PonderChainConfig> = {};
+
+  for (const [name, chain] of Object.entries(indexing.chains)) {
+    if (name === "localhost") {
+      chains.localhost = {
+        id: chain.id,
+        rpc: process.env.PONDER_RPC_URL_31337 ?? "http://127.0.0.1:8545",
+      };
+      continue;
+    }
+    chains[name] = {
+      id: chain.id,
+      rpc: resolveCommercialRpcUrls(chain.id),
+      ethGetLogsBlockRange: resolveGetLogsBlockRange(chain.id),
+    };
+  }
+
+  return {
+    ...indexing,
+    chains,
     database: resolvePonderDatabase(enableLocal),
   };
+}
+
+/**
+ * Registry contract addresses indexed by Ponder for a commercial chain
+ * (required trio + present optionals). Used by the RPC capability probe.
+ */
+export function commercialPonderRegistryAddresses(
+  chainId: number,
+): `0x${string}`[] {
+  const bundle =
+    chainId === SEPOLIA_CHAIN_ID
+      ? ponderSepoliaAddresses()
+      : chainId === SPOKE_CHAIN_ID
+        ? loadEthereumSepoliaBundle().addresses
+        : null;
+  if (!bundle) {
+    throw new Error(`Unsupported commercial Ponder chain id: ${chainId}`);
+  }
+  const addresses: `0x${string}`[] = [
+    bundle.karPassport,
+    bundle.karProPass,
+    bundle.karProStaking,
+  ];
+  if (bundle.bridgeGateway) addresses.push(bundle.bridgeGateway);
+  if (bundle.fixedPriceConsignment) {
+    addresses.push(bundle.fixedPriceConsignment);
+  }
+  if (bundle.ascendingConsignment) {
+    addresses.push(bundle.ascendingConsignment);
+  }
+  return addresses;
 }
 
 /**

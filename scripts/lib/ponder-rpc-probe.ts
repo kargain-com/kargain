@@ -2,8 +2,8 @@
  * Sole owner of Ponder RPC capability probing.
  * Maintainer runs this before any commercial `.env` RPC / getLogs window change.
  */
-import { requireEvmCommercialActive } from "../../lib/web3/commercial-active.js";
 import {
+  commercialPonderRegistryAddresses,
   resolveChainStartBlock,
   resolveCommercialRpcUrls,
   resolveGetLogsBlockRange,
@@ -16,7 +16,10 @@ export type PonderRpcProbeVerdict =
   | "history_pruned"
   | "window_rejected"
   | "rate_limited"
-  | "log_set_mismatch";
+  | "log_set_mismatch"
+  | "unreachable"
+  | "rpc_error"
+  | "empty_reference";
 
 export type PonderRpcProviderResult = {
   url: string;
@@ -29,7 +32,7 @@ export type PonderRpcProbeResult = {
   chainId: number;
   startBlock: number;
   window: number;
-  address: `0x${string}`;
+  addresses: `0x${string}`[];
   providers: PonderRpcProviderResult[];
   ok: boolean;
 };
@@ -65,6 +68,18 @@ function canonicalizeLogs(logs: unknown): string {
   return JSON.stringify(normalized);
 }
 
+const WINDOW_REJECTED_PATTERNS = [
+  /limited to a \d+ range/i,
+  /exceeded max allowed range/i,
+  /maximum allowed number of requested blocks/i,
+  /block range limit exceeded/i,
+  /ranges over .+ not supported/i,
+] as const;
+
+export function isWindowRejectedMessage(message: string): boolean {
+  return WINDOW_REJECTED_PATTERNS.some((re) => re.test(message));
+}
+
 async function jsonRpc(
   fetchFn: typeof globalThis.fetch,
   url: string,
@@ -88,30 +103,41 @@ async function jsonRpc(
   return { httpStatus: res.status, body };
 }
 
+/**
+ * Classify a JSON-RPC / HTTP failure. Never defaults to window_rejected —
+ * that verdict is reserved for explicit range-limit messages.
+ */
 function classifyRpcFailure(
   httpStatus: number,
   body: JsonRpcResponse,
-): Exclude<PonderRpcProbeVerdict, "ok" | "log_set_mismatch" | "chain_mismatch"> {
-  const msg = (body.error?.message ?? "").toLowerCase();
+): Exclude<
+  PonderRpcProbeVerdict,
+  "ok" | "log_set_mismatch" | "chain_mismatch" | "empty_reference"
+> {
+  const msg = body.error?.message ?? "";
+  const msgLower = msg.toLowerCase();
   const code = body.error?.code;
   if (
     httpStatus === 429 ||
-    msg.includes("rate") ||
-    msg.includes("too many") ||
+    msgLower.includes("rate") ||
+    msgLower.includes("too many") ||
     code === 429
   ) {
     return "rate_limited";
   }
   if (
-    msg.includes("prun") ||
-    msg.includes("history") ||
-    msg.includes("missing trie") ||
-    msg.includes("not available") ||
-    msg.includes("first available")
+    msgLower.includes("prun") ||
+    msgLower.includes("history") ||
+    msgLower.includes("missing trie") ||
+    msgLower.includes("not available") ||
+    msgLower.includes("first available")
   ) {
     return "history_pruned";
   }
-  return "window_rejected";
+  if (isWindowRejectedMessage(msg)) {
+    return "window_rejected";
+  }
+  return "rpc_error";
 }
 
 export function commercialPonderProbeChainIds(): readonly number[] {
@@ -120,7 +146,7 @@ export function commercialPonderProbeChainIds(): readonly number[] {
 
 /**
  * Probe every provider in `PONDER_RPC_URLS_<chainId>` at the configured
- * getLogs window against the commercial karPassport address and chain start.
+ * getLogs window against all commercial Ponder registry addresses.
  */
 export async function probePonderRpcCapability(
   chainId: number,
@@ -129,8 +155,7 @@ export async function probePonderRpcCapability(
   const env = deps?.env ?? process.env;
   const fetchFn = deps?.fetch ?? globalThis.fetch.bind(globalThis);
 
-  const stack = requireEvmCommercialActive(chainId);
-  const address = stack.karPassport;
+  const addresses = commercialPonderRegistryAddresses(chainId);
   const startRaw = resolveChainStartBlock(chainId);
   if (startRaw === "latest" || typeof startRaw !== "number") {
     throw new Error(
@@ -153,16 +178,8 @@ export async function probePonderRpcCapability(
     try {
       const chainRes = await jsonRpc(fetchFn, url, "eth_chainId", []);
       if (chainRes.httpStatus === 429 || chainRes.body.error) {
-        if (
-          chainRes.httpStatus === 429 ||
-          (chainRes.body.error?.message ?? "").toLowerCase().includes("rate")
-        ) {
-          verdict = "rate_limited";
-          detail = chainRes.body.error?.message ?? `http ${chainRes.httpStatus}`;
-        } else {
-          verdict = classifyRpcFailure(chainRes.httpStatus, chainRes.body);
-          detail = chainRes.body.error?.message ?? `http ${chainRes.httpStatus}`;
-        }
+        verdict = classifyRpcFailure(chainRes.httpStatus, chainRes.body);
+        detail = chainRes.body.error?.message ?? `http ${chainRes.httpStatus}`;
       } else {
         const reported = Number.parseInt(String(chainRes.body.result), 16);
         if (reported !== chainId) {
@@ -200,7 +217,7 @@ export async function probePonderRpcCapability(
           {
             fromBlock: toHexBlock(startBlock),
             toBlock: toHexBlock(toBlock),
-            address,
+            address: addresses,
           },
         ]);
         if (logsRes.httpStatus === 429) {
@@ -210,14 +227,18 @@ export async function probePonderRpcCapability(
           verdict = classifyRpcFailure(logsRes.httpStatus, logsRes.body);
           detail = logsRes.body.error.message;
         } else if (!Array.isArray(logsRes.body.result)) {
-          verdict = "window_rejected";
+          verdict = "rpc_error";
           detail = "eth_getLogs result is not an array";
+        } else if (logsRes.body.result.length === 0) {
+          verdict = "empty_reference";
+          detail = "eth_getLogs returned no logs for registry addresses";
+          logSet = canonicalizeLogs(logsRes.body.result);
         } else {
           logSet = canonicalizeLogs(logsRes.body.result);
         }
       }
     } catch (err) {
-      verdict = "window_rejected";
+      verdict = "unreachable";
       detail = err instanceof Error ? err.message : String(err);
     }
 
@@ -228,6 +249,14 @@ export async function probePonderRpcCapability(
         verdict = "log_set_mismatch";
         detail = "eth_getLogs result differs from first provider in the list";
       }
+    }
+
+    // First successful empty set already marked empty_reference; later empty
+    // against a non-empty reference is a mismatch; later empty with no prior
+    // ok reference stays empty_reference.
+    if (verdict === "empty_reference" && referenceLogSet !== undefined) {
+      verdict = "log_set_mismatch";
+      detail = "eth_getLogs empty while prior provider returned logs";
     }
 
     providers.push({
@@ -242,7 +271,7 @@ export async function probePonderRpcCapability(
     chainId,
     startBlock,
     window,
-    address,
+    addresses,
     providers,
     ok: providers.every((p) => p.verdict === "ok"),
   };

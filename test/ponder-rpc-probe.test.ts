@@ -7,7 +7,6 @@ import { describe, it } from "node:test";
 import { probePonderRpcCapability } from "../scripts/lib/ponder-rpc-probe.ts";
 
 const CHAIN = 11155111;
-const ADDR = "0x1FFdEC27d14567B34548BA63269c0745227f1949";
 const START = 11_591_966;
 const WINDOW = 1000;
 const URL_A = "https://rpc-a.example";
@@ -57,6 +56,12 @@ function makeFetch(handlers: Record<string, RpcHandler>): typeof fetch {
   };
 }
 
+function makeThrowingFetch(message: string): typeof fetch {
+  return async () => {
+    throw new Error(message);
+  };
+}
+
 function happyHandler(overrides?: {
   chainIdHex?: string;
   blockNumberHex?: string;
@@ -64,9 +69,13 @@ function happyHandler(overrides?: {
   getLogsError?: { code?: number; message?: string };
   getLogsStatus?: number;
   blockNull?: boolean;
+  chainError?: { code?: number; message?: string };
 }): RpcHandler {
-  return (method) => {
+  return (method, params) => {
     if (method === "eth_chainId") {
+      if (overrides?.chainError) {
+        return { error: overrides.chainError };
+      }
       return { result: overrides?.chainIdHex ?? `0x${CHAIN.toString(16)}` };
     }
     if (method === "eth_getBlockByNumber") {
@@ -78,27 +87,42 @@ function happyHandler(overrides?: {
       };
     }
     if (method === "eth_getLogs") {
+      const filter = params[0] as { address?: unknown };
+      assert.ok(Array.isArray(filter.address), "probe must pass address array");
+      assert.ok(
+        (filter.address as unknown[]).length >= 3,
+        "probe must include all registry addresses",
+      );
       if (overrides?.getLogsError) {
         return {
           httpStatus: overrides.getLogsStatus,
           error: overrides.getLogsError,
         };
       }
-      return { result: overrides?.logs ?? [{ address: ADDR, logIndex: "0x0" }] };
+      return {
+        result:
+          overrides?.logs ??
+          [
+            {
+              address: "0x1ffdec27d14567b34548ba63269c0745227f1949",
+              logIndex: "0x0",
+            },
+          ],
+      };
     }
     return { error: { message: `unexpected ${method}` } };
   };
 }
 
 describe("ponder-rpc-probe", () => {
-  it("verdict ok when chain, history, and window succeed", async () => {
+  it("verdict ok when chain, history, and non-empty window succeed", async () => {
     const result = await probePonderRpcCapability(CHAIN, {
       env: baseEnv(),
       fetch: makeFetch({ [URL_A]: happyHandler() }),
     });
     assert.equal(result.ok, true);
     assert.equal(result.providers[0]?.verdict, "ok");
-    assert.equal(result.address.toLowerCase(), ADDR.toLowerCase());
+    assert.ok(result.addresses.length >= 3);
     assert.equal(result.startBlock, START);
     assert.equal(result.window, WINDOW);
   });
@@ -125,7 +149,7 @@ describe("ponder-rpc-probe", () => {
     assert.equal(result.providers[0]?.verdict, "history_pruned");
   });
 
-  it("verdict window_rejected on getLogs range error", async () => {
+  it("verdict window_rejected on explicit range error", async () => {
     const result = await probePonderRpcCapability(CHAIN, {
       env: baseEnv(),
       fetch: makeFetch({
@@ -155,19 +179,6 @@ describe("ponder-rpc-probe", () => {
     assert.equal(result.providers[0]?.verdict, "rate_limited");
   });
 
-  it("verdict rate_limited when message names rate limit", async () => {
-    const result = await probePonderRpcCapability(CHAIN, {
-      env: baseEnv(),
-      fetch: makeFetch({
-        [URL_A]: happyHandler({
-          getLogsError: { message: "rate limit exceeded" },
-        }),
-      }),
-    });
-    assert.equal(result.ok, false);
-    assert.equal(result.providers[0]?.verdict, "rate_limited");
-  });
-
   it("verdict history_pruned when getLogs message names prune", async () => {
     const result = await probePonderRpcCapability(CHAIN, {
       env: baseEnv(),
@@ -181,6 +192,41 @@ describe("ponder-rpc-probe", () => {
     assert.equal(result.providers[0]?.verdict, "history_pruned");
   });
 
+  it("verdict rpc_error for unrecognized provider errors", async () => {
+    const result = await probePonderRpcCapability(CHAIN, {
+      env: baseEnv(),
+      fetch: makeFetch({
+        [URL_A]: happyHandler({
+          getLogsError: { message: "Apikey not found" },
+        }),
+      }),
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.providers[0]?.verdict, "rpc_error");
+    assert.match(result.providers[0]?.detail ?? "", /Apikey not found/);
+  });
+
+  it("verdict unreachable on network failure", async () => {
+    const result = await probePonderRpcCapability(CHAIN, {
+      env: baseEnv(),
+      fetch: makeThrowingFetch("fetch failed"),
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.providers[0]?.verdict, "unreachable");
+    assert.match(result.providers[0]?.detail ?? "", /fetch failed/);
+  });
+
+  it("verdict empty_reference when logs are empty", async () => {
+    const result = await probePonderRpcCapability(CHAIN, {
+      env: baseEnv(),
+      fetch: makeFetch({
+        [URL_A]: happyHandler({ logs: [] }),
+      }),
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.providers[0]?.verdict, "empty_reference");
+  });
+
   it("verdict log_set_mismatch when providers disagree", async () => {
     const env = baseEnv({
       [`PONDER_RPC_URLS_${CHAIN}`]: `${URL_A},${URL_B}`,
@@ -189,10 +235,10 @@ describe("ponder-rpc-probe", () => {
       env,
       fetch: makeFetch({
         [URL_A]: happyHandler({
-          logs: [{ address: ADDR, logIndex: "0x0" }],
+          logs: [{ address: "0xaaa", logIndex: "0x0" }],
         }),
         [URL_B]: happyHandler({
-          logs: [{ address: ADDR, logIndex: "0x1" }],
+          logs: [{ address: "0xbbb", logIndex: "0x1" }],
         }),
       }),
     });
