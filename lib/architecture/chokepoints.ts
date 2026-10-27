@@ -1099,6 +1099,16 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     rule: "FixedPrice/Ascending/Gateway handlers register via onOptionalContractEvent; event name binds ABI args (ContractEventArgsFromTopics); no unbound eventArgs",
     guardTests: ["ponder-optional-contract-on-policy.test.ts"],
   },
+  {
+    id: "ponder-rpc-capability",
+    owner:
+      "scripts/lib/ponder-rpc-probe.ts · scripts/lib/ponder-env.ts",
+    rule: "Commercial Ponder RPC is PONDER_RPC_URLS_<chainId> (https list) plus required PONDER_GETLOGS_BLOCK_RANGE_<chainId>; no URL defaults; capability probed by ponder-rpc-probe before .env change; no maxRequestsPerSecond",
+    guardTests: [
+      "ponder-rpc-probe.test.ts",
+      "ponder-rpc-runtime-policy.test.ts",
+    ],
+  },
 ] as const;
 
 export const ARCHITECTURAL_CHOKEPOINT_IDS: readonly string[] =

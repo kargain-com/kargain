@@ -17,8 +17,8 @@ Without reindex, new columns stay empty on historical passports and trust UX (G2
 | Solana | `COMMERCIAL_ACTIVE[2000040168]` — start cursor `min(blocks.*)` (staking floor **490463509**); writer = `svm-ingest` |
 | Hub start block | `PONDER_START_BLOCK_84532=46119704` |
 | Eth start block | `PONDER_START_BLOCK_11155111=11591966` |
-| Hub RPC | `PONDER_RPC_URL_84532` (prefer `https://base-sepolia-rpc.publicnode.com`) |
-| Eth RPC | `PONDER_RPC_URL_11155111` (Alchemy/Infura/QuickNode; PublicNode often 403) · `PONDER_MAX_RPS_11155111` default **5** |
+| Hub RPC | `PONDER_RPC_URLS_84532` (comma-separated https; required; no default) · `PONDER_GETLOGS_BLOCK_RANGE_84532` |
+| Eth RPC | `PONDER_RPC_URLS_11155111` · `PONDER_GETLOGS_BLOCK_RANGE_11155111` — probe with `pnpm ponder:rpc-probe` before any `.env` change |
 | Address resolution | Per-chain `COMMERCIAL_ACTIVE` in git (`lib/web3/commercial-active.ts`); optional local `deployments/<chainId>.json` on deploy machine only |
 | Docker | `docker compose build ponder` / `svm-ingest` after code pull + post-build prune |
 
@@ -135,19 +135,30 @@ Rollback (canonical detail: [ops/deploys/s9-b-solana-cutover.md](../ops/deploys/
 4. A later intentional rebuild (drop both SVM schemas, restart from evidence `min(deploySlot)`) is a new enable — not rollback.
 
 
-### Recommended VPS `.env` (Nuclear steady state)
+### Recommended VPS `.env` (RPC profiles)
+
+Commercial RPC is a **list** plus an explicit `eth_getLogs` window. There is no default URL and no singular `PONDER_RPC_URL_<chainId>` for 84532 / 11155111. Every provider in a list must pass `pnpm ponder:rpc-probe` at the configured window before the `.env` change.
+
+**Profiles** (`.env` edit + `docker compose up -d --force-recreate ponder`; no reindex — `chains` RPC/window are outside Ponder `build_id`):
+
+| Profile | When | Example |
+|---------|------|---------|
+| **backfill** | History catch-up | History-serving providers only; large window |
+| **steady** | After `/ready` **200** | More providers allowed; window = smallest maximum among them |
 
 ```bash
-PONDER_RPC_URL_84532=https://base-sepolia-rpc.publicnode.com
-PONDER_RPC_URL_11155111=<Alchemy/Infura/QuickNode Sepolia HTTPS>
+# backfill example
+PONDER_RPC_URLS_84532=https://base-sepolia.gateway.tenderly.co
+PONDER_GETLOGS_BLOCK_RANGE_84532=50000
+PONDER_RPC_URLS_11155111=https://rpc.sepolia.ethpandaops.io
+PONDER_GETLOGS_BLOCK_RANGE_11155111=30000
 PONDER_START_BLOCK_84532=46119704
 PONDER_START_BLOCK_11155111=11591966
-# Optional per-chain RPS (defaults 10 / 5):
-# PONDER_MAX_RPS_84532=10
-# PONDER_MAX_RPS_11155111=5
-```
 
-Optional: Alchemy/QuickNode for heavy backfills. Bare `https://base-sepolia.publicnode.com` (no `-rpc` path / token) may **403** on archive `eth_getLogs`.
+# steady example (Base), after /ready 200 and probe pass:
+# PONDER_RPC_URLS_84532=https://base-sepolia.gateway.tenderly.co,https://84532.rpc.thirdweb.com,https://sepolia.base.org
+# PONDER_GETLOGS_BLOCK_RANGE_84532=200
+```
 
 ### Start block — keep numeric values after sync
 
@@ -235,7 +246,7 @@ Examples that **do not** require reindex:
 
 - SSH access to the VPS with the repo and `docker-compose.yml`
 - **`git pull`** so Ponder uses committed `COMMERCIAL_ACTIVE` (84532 + 11155111) from `lib/web3/commercial-active.ts`
-- **`PONDER_RPC_URL_84532`** + **`PONDER_RPC_URL_11155111`** and both numeric start blocks (see Nuclear steady state above)
+- **`PONDER_RPC_URLS_84532`** + **`PONDER_RPC_URLS_11155111`**, matching **`PONDER_GETLOGS_BLOCK_RANGE_*`**, and both numeric start blocks (see RPC profiles above); confirm with `pnpm ponder:rpc-probe`
 - Remove stale `deployments/<chainId>.json` on the VPS if present (gitignored local artifacts override committed — `pnpm ponder:config` warns on drift)
 
 ---
@@ -361,15 +372,15 @@ pnpm ponder:config
 
 Contract addresses resolve automatically **per chain** (SPEC §I.12.12): optional `PONDER_*` env (84532 debug) → local `deployments/<chainId>.json` → **`COMMERCIAL_ACTIVE[chainId]`** in [`lib/web3/commercial-active.ts`](../../lib/web3/commercial-active.ts). After a Nuclear redeploy, update `COMMERCIAL_ACTIVE` + SPEC I.9.x in git and **`git pull` on the VPS** — do not paste address exports into `.env`, and do not require copying gitignored manifests onto the server.
 
-**VPS `.env` — infrastructure only (Nuclear steady state):**
+**VPS `.env` — infrastructure only (Nuclear backfill profile):**
 
 ```bash
-PONDER_RPC_URL_84532=https://base-sepolia-rpc.publicnode.com
-PONDER_RPC_URL_11155111=<Alchemy/Infura/QuickNode Sepolia HTTPS>
+PONDER_RPC_URLS_84532=https://base-sepolia.gateway.tenderly.co
+PONDER_GETLOGS_BLOCK_RANGE_84532=50000
+PONDER_RPC_URLS_11155111=https://rpc.sepolia.ethpandaops.io
+PONDER_GETLOGS_BLOCK_RANGE_11155111=30000
 PONDER_START_BLOCK_84532=46119704
 PONDER_START_BLOCK_11155111=11591966
-# PONDER_MAX_RPS_84532=10
-# PONDER_MAX_RPS_11155111=5
 DATABASE_URL=...                    # Postgres for Ponder
 ```
 
@@ -384,7 +395,7 @@ For G1 schema-only updates (same contract addresses), keep existing infra env; s
 ```bash
 docker compose up -d --force-recreate ponder
 
-docker compose exec ponder printenv PONDER_RPC_URL_84532 PONDER_START_BLOCK_84532 PONDER_RPC_URL_11155111 PONDER_START_BLOCK_11155111
+docker compose exec ponder printenv PONDER_RPC_URLS_84532 PONDER_GETLOGS_BLOCK_RANGE_84532 PONDER_START_BLOCK_84532 PONDER_RPC_URLS_11155111 PONDER_GETLOGS_BLOCK_RANGE_11155111 PONDER_START_BLOCK_11155111
 docker inspect kargain-ponder-1 --format '{{json .HostConfig.LogConfig}}'
 ```
 
@@ -541,15 +552,15 @@ Local agent auction lifecycle (chain + Ponder phase polls) is covered by `./scri
 
 | Symptom | Action |
 |---------|--------|
-| `403` / "Archive requests require a personal token" on Base `eth_getLogs` | Set `PONDER_RPC_URL_84532=https://sepolia.base.org` (or PublicNode with token); `docker compose up -d --force-recreate ponder` |
-| `403` on Ethereum Sepolia PublicNode | Set `PONDER_RPC_URL_11155111` to Alchemy/Infura/QuickNode Sepolia (not PublicNode without token) |
-| `404` HTML from `rpc.sepolia.org` | Endpoint is dead — use a real Sepolia JSON-RPC URL |
-| `Unable to find available JSON-RPC provider` / `rate_limit` on `ethereumSepolia` | Lower `PONDER_MAX_RPS_11155111` (default 5) below provider capacity, or upgrade RPC plan |
+| `eth_getLogs` window rejected / 26-block shrink / rate limits on public RPC | Run `pnpm ponder:rpc-probe`; switch to the **backfill** profile (history-serving providers + large window); recreate ponder |
+| Provider `history_pruned` / `window_rejected` / `rate_limited` | Remove that URL from `PONDER_RPC_URLS_*` or lower `PONDER_GETLOGS_BLOCK_RANGE_*` to the provider maximum that passes the probe |
+| `404` HTML from `rpc.sepolia.org` | Endpoint is dead — use a real Sepolia JSON-RPC URL in `PONDER_RPC_URLS_11155111` |
+| `Unable to find available JSON-RPC provider` | Every URL in the list failed; probe and replace with providers that pass at the configured window |
 | `Cannot read properties of undefined (reading 'id')` in handlers | Ensure image has `context.chain.id` indexing (not `event.chain`) — pull + rebuild |
 | `MigrationError` / "different Ponder app" | Run `ponder-reindex.sql`, then backfill again. **If data already synced:** do not switch start block to `latest` — revert to the numeric block used at backfill |
 | `MigrationError` immediately after `git pull` + new image | Expected when `ponder.schema.ts` changed — run step 3 (SQL) before starting new container |
 | Ponder exits on start (“build_id”) | Run full `ponder-reindex.sql`, not table truncate only |
-| Slow / stalled sync on `sepolia.base.org` | Retry; optional Alchemy/QuickNode for backfill only |
+| Slow / stalled Base backfill | Use backfill profile (e.g. Tenderly + large window); do not rely on pruned public endpoints for history |
 | Empty `fuelType` on old rows | Expected until metadata URIs are re-fetched during replay; ensure Arweave reachable from VPS |
 | API shows v1 `passport id 0` after v2 deploy | Rebuild ponder image + `ponder-reindex.sh`; confirm `pnpm ponder:config` → v2 karPassport |
 | API 404 for passport | Token minted on deprecated pre-v1.1 contract — not in current index |
@@ -564,10 +575,11 @@ Local agent auction lifecycle (chain + Ponder phase polls) is covered by `./scri
 | `scripts/ponder-reindex.sh` | Stop ponder + run SQL on Docker Postgres |
 | `scripts/ponder-reindex.sql` | DROP SCHEMA kargain + ponder_sync |
 | `scripts/ponder-config.ts` | Read-only stack diagnostic (`pnpm ponder:config`) |
+| `scripts/ponder-rpc-probe.ts` | CLI: probe every commercial RPC at the configured getLogs window (`pnpm ponder:rpc-probe`) |
+| `scripts/lib/ponder-rpc-probe.ts` | Sole owner of RPC capability verdicts |
 | `scripts/lib/resolve-sepolia-stack.ts` | `resolveCommercialStack`: env → manifest → `COMMERCIAL_ACTIVE` |
 | `Dockerfile.ponder` | Copy `patches/` before `pnpm install` (Docker build on VPS) |
-| `scripts/lib/ponder-env.ts` | Dual-chain RPC + contract start blocks + per-chain RPS |
-| `scripts/lib/ponder-max-rps.ts` | `PONDER_MAX_RPS_<chainId>` parser + defaults |
+| `scripts/lib/ponder-env.ts` | Dual-chain RPC lists, getLogs windows, contract start blocks |
 | `scripts/verify.ts` | Basescan verify active Sepolia stack |
 | `scripts/deploy.ts` | Nuclear commercial deploy (84532 / 11155111) |
 | `lib/web3/commercial-active.ts` | **Committed** per-chain stacks (VPS / CI fallback) |

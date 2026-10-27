@@ -10,7 +10,6 @@ import {
   SPOKE_CHAIN_ID,
   type PonderAddressBundle,
 } from "./load-deployment.js";
-import { resolveMaxRequestsPerSecond } from "./ponder-max-rps.js";
 
 export type ContractBlockKey = keyof DeploymentBlocks;
 
@@ -142,8 +141,87 @@ function resolvePonderDatabase(enableLocal: boolean): PonderDatabaseConfig {
   return { kind: "postgres", connectionString };
 }
 
-const ETHEREUM_SEPOLIA_PUBLIC_RPC =
-  "https://ethereum-sepolia-rpc.publicnode.com" as const;
+/**
+ * Required eth_getLogs window for a commercial chain.
+ * Env: `PONDER_GETLOGS_BLOCK_RANGE_<chainId>` — positive integer, no default.
+ */
+export function resolveGetLogsBlockRange(
+  chainId: number,
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const key = `PONDER_GETLOGS_BLOCK_RANGE_${chainId}`;
+  const raw = env[key];
+  const trimmed = raw?.trim();
+  if (!trimmed) {
+    throw new Error(
+      `missing_getlogs_block_range: set ${key} to a positive integer (no default)`,
+    );
+  }
+  if (!/^\d+$/.test(trimmed)) {
+    throw new Error(
+      `missing_getlogs_block_range: set ${key} to a positive integer (no default)`,
+    );
+  }
+  const n = Number.parseInt(trimmed, 10);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(
+      `missing_getlogs_block_range: set ${key} to a positive integer (no default)`,
+    );
+  }
+  return n;
+}
+
+/**
+ * Required comma-separated HTTPS RPC list for a commercial chain.
+ * Env: `PONDER_RPC_URLS_<chainId>` — no default, no singular fallback.
+ */
+export function resolveCommercialRpcUrls(
+  chainId: number,
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const key = `PONDER_RPC_URLS_${chainId}`;
+  const raw = env[key];
+  const trimmed = raw?.trim();
+  if (!trimmed) {
+    throw new Error(
+      `missing_rpc_urls: set ${key} to a comma-separated list of https URLs (no default)`,
+    );
+  }
+  const parts = trimmed
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  if (parts.length === 0) {
+    throw new Error(
+      `empty_rpc_urls: set ${key} to a comma-separated list of https URLs (no default)`,
+    );
+  }
+  const seen = new Set<string>();
+  for (const url of parts) {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new Error(`invalid_rpc_url: ${key} entry is not a valid URL: ${url}`);
+    }
+    if (parsed.protocol !== "https:") {
+      throw new Error(
+        `invalid_rpc_url: ${key} entry must be https: ${url}`,
+      );
+    }
+    if (seen.has(url)) {
+      throw new Error(`duplicate_rpc_url: ${key} lists ${url} more than once`);
+    }
+    seen.add(url);
+  }
+  return parts;
+}
+
+export type PonderChainConfig = {
+  id: number;
+  rpc: string | string[];
+  ethGetLogsBlockRange?: number;
+};
 
 export function buildPonderRuntime() {
   const enableLocal = process.env.PONDER_ENABLE_LOCAL === "1";
@@ -155,18 +233,18 @@ export function buildPonderRuntime() {
 
   const ethereumSepolia = localOnly ? null : loadEthereumSepoliaBundle();
 
-  const chains: Record<string, { id: number; rpc: string; maxRequestsPerSecond?: number }> = {};
+  const chains: Record<string, PonderChainConfig> = {};
 
   if (!localOnly) {
     chains.baseSepolia = {
       id: SEPOLIA_CHAIN_ID,
-      rpc: process.env.PONDER_RPC_URL_84532 ?? "https://base-sepolia-rpc.publicnode.com",
-      maxRequestsPerSecond: resolveMaxRequestsPerSecond(SEPOLIA_CHAIN_ID),
+      rpc: resolveCommercialRpcUrls(SEPOLIA_CHAIN_ID),
+      ethGetLogsBlockRange: resolveGetLogsBlockRange(SEPOLIA_CHAIN_ID),
     };
     chains.ethereumSepolia = {
       id: SPOKE_CHAIN_ID,
-      rpc: process.env.PONDER_RPC_URL_11155111 ?? ETHEREUM_SEPOLIA_PUBLIC_RPC,
-      maxRequestsPerSecond: resolveMaxRequestsPerSecond(SPOKE_CHAIN_ID),
+      rpc: resolveCommercialRpcUrls(SPOKE_CHAIN_ID),
+      ethGetLogsBlockRange: resolveGetLogsBlockRange(SPOKE_CHAIN_ID),
     };
   }
 
@@ -174,7 +252,6 @@ export function buildPonderRuntime() {
     chains.localhost = {
       id: LOCALHOST_CHAIN_ID,
       rpc: process.env.PONDER_RPC_URL_31337 ?? "http://127.0.0.1:8545",
-      maxRequestsPerSecond: resolveMaxRequestsPerSecond(LOCALHOST_CHAIN_ID),
     };
   }
 

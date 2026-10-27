@@ -14,7 +14,31 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
+import { SEPOLIA_CHAIN_ID, SPOKE_CHAIN_ID } from "./load-deployment.js";
 import { buildPonderRuntime } from "./ponder-env.js";
+
+/** Throwaway commercial RPC/window when unset — values never enter the identity digest. */
+const IDENTITY_PLACEHOLDER_RPC = "https://ponder-fingerprint.invalid";
+
+/**
+ * Identity assembly needs buildPonderRuntime for chain ids / contracts, but
+ * commercial RPC lists and getLogs windows are outside the digest. Install
+ * placeholders only when unset so live fingerprinting works without a VPS `.env`.
+ */
+export function ensureCommercialRpcEnvForIdentityFingerprint(
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  for (const chainId of [SEPOLIA_CHAIN_ID, SPOKE_CHAIN_ID]) {
+    const urlsKey = `PONDER_RPC_URLS_${chainId}`;
+    const rangeKey = `PONDER_GETLOGS_BLOCK_RANGE_${chainId}`;
+    if (!env[urlsKey]?.trim()) {
+      env[urlsKey] = IDENTITY_PLACEHOLDER_RPC;
+    }
+    if (!env[rangeKey]?.trim()) {
+      env[rangeKey] = "1";
+    }
+  }
+}
 
 export type PonderIdentityChain = { name: string; id: number };
 
@@ -147,6 +171,8 @@ export function buildPonderIdentityPayload(
   },
 ): PonderIdentityPayload {
   if (opts?.payload) return opts.payload;
+
+  ensureCommercialRpcEnvForIdentityFingerprint();
 
   const {
     chains,

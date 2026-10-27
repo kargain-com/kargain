@@ -12,11 +12,18 @@ import { buildPonderRuntime } from "./scripts/lib/ponder-env.js";
 /**
  * Indexing is configured via server .env (never committed):
  *
- *   PONDER_START_BLOCK_84532=<N>       — Base Sepolia backfill (Nuclear hub indexFromBlock 44434865)
- *   PONDER_START_BLOCK_11155111=<N>    — Ethereum Sepolia backfill (Nuclear indexFromBlock 11319840)
+ *   PONDER_START_BLOCK_84532=<N>       — Base Sepolia backfill
+ *   PONDER_START_BLOCK_11155111=<N>    — Ethereum Sepolia backfill
  *   PONDER_START_BLOCK_31337=0         — local Hardhat replay
- *   PONDER_RPC_URL_84532               — default: base-sepolia-rpc.publicnode.com
- *   PONDER_RPC_URL_11155111            — default: ethereum-sepolia-rpc.publicnode.com
+ *   PONDER_RPC_URLS_84532              — comma-separated https list (required; no default)
+ *   PONDER_RPC_URLS_11155111           — comma-separated https list (required; no default)
+ *   PONDER_GETLOGS_BLOCK_RANGE_84532   — eth_getLogs window (required; no default)
+ *   PONDER_GETLOGS_BLOCK_RANGE_11155111
+ *   PONDER_RPC_URL_31337               — local Hardhat only
+ *
+ * Every provider in a commercial list must pass `pnpm ponder:rpc-probe` at the
+ * configured window. RPC lists and windows are outside Ponder build_id — profile
+ * switches are `.env` + container recreate, no reindex.
  *
  * Addresses (SPEC §I.12.12): per chainId via resolveCommercialStack —
  *   optional PONDER_* env (84532 debug) → deployments/<chainId>.json → COMMERCIAL_ACTIVE
