@@ -1,5 +1,6 @@
 /**
  * Reindex vs projection isolation — both directions (S7c-2).
+ * ADR 0011: reindex drops kargain only; never ponder_sync or ponder_rpc_cache_1.
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -15,9 +16,19 @@ const PROJECTION_WRITER = path.join(ROOT, "src/lib/svm-projection-writer.ts");
 function assertReindexIsolation(sql: string): void {
   const upper = sql.toUpperCase();
   assert.ok(upper.includes("DROP SCHEMA IF EXISTS KARGAIN"), "must drop kargain");
-  assert.ok(upper.includes("DROP SCHEMA IF EXISTS PONDER_SYNC"), "must drop ponder_sync");
+  assert.ok(
+    !upper.includes("DROP SCHEMA IF EXISTS PONDER_SYNC"),
+    "must not drop ponder_sync",
+  );
+  assert.ok(
+    !upper.includes("DROP SCHEMA IF EXISTS PONDER_RPC_CACHE_1"),
+    "must not drop ponder_rpc_cache_1",
+  );
   assert.ok(!sql.includes("kargain_svm_raw"), "must not reference kargain_svm_raw");
-  assert.ok(!sql.includes("kargain_svm_projection"), "must not reference kargain_svm_projection");
+  assert.ok(
+    !sql.includes("kargain_svm_projection"),
+    "must not reference kargain_svm_projection",
+  );
 }
 
 function assertProjectionRebuildIsolation(rebuildSrc: string, writerSrc: string): void {
@@ -34,8 +45,18 @@ describe("ponder reindex svm isolation policy", () => {
   const rebuildSrc = fs.readFileSync(PROJECTION_REBUILD, "utf8");
   const writerSrc = fs.readFileSync(PROJECTION_WRITER, "utf8");
 
-  it("drops kargain and ponder_sync only", () => {
+  it("drops kargain only; never ponder_sync or ponder_rpc_cache_1", () => {
     assertReindexIsolation(sql);
+  });
+
+  it("constructed violation: dropping ponder_sync in reindex fails", () => {
+    const dirty = `${sql}\nDROP SCHEMA IF EXISTS ponder_sync CASCADE;`;
+    assert.throws(() => assertReindexIsolation(dirty), /ponder_sync/);
+  });
+
+  it("constructed violation: dropping ponder_rpc_cache_1 in reindex fails", () => {
+    const dirty = `${sql}\nDROP SCHEMA IF EXISTS ponder_rpc_cache_1 CASCADE;`;
+    assert.throws(() => assertReindexIsolation(dirty), /ponder_rpc_cache_1/);
   });
 
   it("constructed violation: dropping svm projection in reindex fails", () => {
