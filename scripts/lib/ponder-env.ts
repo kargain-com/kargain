@@ -10,7 +10,6 @@ import {
   SPOKE_CHAIN_ID,
   type PonderAddressBundle,
 } from "./load-deployment.js";
-import { resolveMaxRequestsPerSecond } from "./ponder-max-rps.js";
 
 export type ContractBlockKey = keyof DeploymentBlocks;
 
@@ -142,10 +141,127 @@ function resolvePonderDatabase(enableLocal: boolean): PonderDatabaseConfig {
   return { kind: "postgres", connectionString };
 }
 
-const ETHEREUM_SEPOLIA_PUBLIC_RPC =
-  "https://ethereum-sepolia-rpc.publicnode.com" as const;
+/**
+ * Required eth_getLogs window for a commercial chain.
+ * Env: `PONDER_GETLOGS_BLOCK_RANGE_<chainId>` — positive integer, no default.
+ */
+export function resolveGetLogsBlockRange(
+  chainId: number,
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const key = `PONDER_GETLOGS_BLOCK_RANGE_${chainId}`;
+  const raw = env[key];
+  const trimmed = raw?.trim();
+  if (!trimmed) {
+    throw new Error(
+      `missing_getlogs_block_range: set ${key} to a positive integer (no default)`,
+    );
+  }
+  if (!/^\d+$/.test(trimmed)) {
+    throw new Error(
+      `missing_getlogs_block_range: set ${key} to a positive integer (no default)`,
+    );
+  }
+  const n = Number.parseInt(trimmed, 10);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(
+      `missing_getlogs_block_range: set ${key} to a positive integer (no default)`,
+    );
+  }
+  return n;
+}
 
-export function buildPonderRuntime() {
+/**
+ * Required comma-separated HTTPS RPC list for a commercial chain.
+ * Env: `PONDER_RPC_URLS_<chainId>` — no default, no singular fallback.
+ */
+export function resolveCommercialRpcUrls(
+  chainId: number,
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const key = `PONDER_RPC_URLS_${chainId}`;
+  const raw = env[key];
+  const trimmed = raw?.trim();
+  if (!trimmed) {
+    throw new Error(
+      `missing_rpc_urls: set ${key} to a comma-separated list of https URLs (no default)`,
+    );
+  }
+  const parts = trimmed
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  if (parts.length === 0) {
+    throw new Error(
+      `empty_rpc_urls: set ${key} to a comma-separated list of https URLs (no default)`,
+    );
+  }
+  const seen = new Set<string>();
+  for (const url of parts) {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new Error(`invalid_rpc_url: ${key} entry is not a valid URL: ${url}`);
+    }
+    if (parsed.protocol !== "https:") {
+      throw new Error(
+        `invalid_rpc_url: ${key} entry must be https: ${url}`,
+      );
+    }
+    if (seen.has(url)) {
+      throw new Error(`duplicate_rpc_url: ${key} lists ${url} more than once`);
+    }
+    seen.add(url);
+  }
+  return parts;
+}
+
+export type PonderIndexingChain = { id: number };
+
+export type PonderChainConfig = {
+  id: number;
+  rpc: string | string[];
+  ethGetLogsBlockRange?: number;
+};
+
+export type PonderIndexingConfig = {
+  chains: Record<string, PonderIndexingChain>;
+  addresses: PonderAddressBundle;
+  ethereumSepoliaAddresses: PonderAddressBundle | null;
+  localAddresses: PonderAddressBundle | null;
+  localOnly: boolean;
+  optionalAddresses: {
+    FixedPriceConsignment: `0x${string}` | undefined;
+    AscendingConsignment: `0x${string}` | undefined;
+    KarPassportBridgeGateway: `0x${string}` | undefined;
+  };
+  contractEntry: (
+    hubAddress: `0x${string}`,
+    contract: ContractBlockKey,
+    opts?: {
+      ethereumSepoliaAddress?: `0x${string}`;
+      localAddress?: `0x${string}`;
+    },
+  ) =>
+    | {
+        chain: "localhost" | "baseSepolia";
+        address: `0x${string}`;
+        startBlock: number | "latest";
+      }
+    | {
+        chain: Record<
+          string,
+          { address: `0x${string}`; startBlock: number | "latest" }
+        >;
+      };
+};
+
+/**
+ * Indexing assembly only: chain names/ids, addresses, start blocks, contracts.
+ * No RPC URLs or eth_getLogs windows — those are transport and outside build_id.
+ */
+export function buildPonderIndexingConfig(): PonderIndexingConfig {
   const enableLocal = process.env.PONDER_ENABLE_LOCAL === "1";
   // Local-dev-only: index just the Hardhat chain (skip commercial backfill).
   // Used by the E2E harness so `/ready` does not wait on a public RPC.
@@ -155,27 +271,15 @@ export function buildPonderRuntime() {
 
   const ethereumSepolia = localOnly ? null : loadEthereumSepoliaBundle();
 
-  const chains: Record<string, { id: number; rpc: string; maxRequestsPerSecond?: number }> = {};
+  const chains: Record<string, PonderIndexingChain> = {};
 
   if (!localOnly) {
-    chains.baseSepolia = {
-      id: SEPOLIA_CHAIN_ID,
-      rpc: process.env.PONDER_RPC_URL_84532 ?? "https://base-sepolia-rpc.publicnode.com",
-      maxRequestsPerSecond: resolveMaxRequestsPerSecond(SEPOLIA_CHAIN_ID),
-    };
-    chains.ethereumSepolia = {
-      id: SPOKE_CHAIN_ID,
-      rpc: process.env.PONDER_RPC_URL_11155111 ?? ETHEREUM_SEPOLIA_PUBLIC_RPC,
-      maxRequestsPerSecond: resolveMaxRequestsPerSecond(SPOKE_CHAIN_ID),
-    };
+    chains.baseSepolia = { id: SEPOLIA_CHAIN_ID };
+    chains.ethereumSepolia = { id: SPOKE_CHAIN_ID };
   }
 
   if (enableLocal && localAddresses) {
-    chains.localhost = {
-      id: LOCALHOST_CHAIN_ID,
-      rpc: process.env.PONDER_RPC_URL_31337 ?? "http://127.0.0.1:8545",
-      maxRequestsPerSecond: resolveMaxRequestsPerSecond(LOCALHOST_CHAIN_ID),
-    };
+    chains.localhost = { id: LOCALHOST_CHAIN_ID };
   }
 
   /**
@@ -261,8 +365,69 @@ export function buildPonderRuntime() {
     localOnly,
     optionalAddresses,
     contractEntry,
+  };
+}
+
+/**
+ * Full Ponder runtime: indexing + transport (rpc list, getLogs window) + database.
+ */
+export function buildPonderRuntime() {
+  const indexing = buildPonderIndexingConfig();
+  const enableLocal = process.env.PONDER_ENABLE_LOCAL === "1";
+
+  const chains: Record<string, PonderChainConfig> = {};
+
+  for (const [name, chain] of Object.entries(indexing.chains)) {
+    if (name === "localhost") {
+      chains.localhost = {
+        id: chain.id,
+        rpc: process.env.PONDER_RPC_URL_31337 ?? "http://127.0.0.1:8545",
+      };
+      continue;
+    }
+    chains[name] = {
+      id: chain.id,
+      rpc: resolveCommercialRpcUrls(chain.id),
+      ethGetLogsBlockRange: resolveGetLogsBlockRange(chain.id),
+    };
+  }
+
+  return {
+    ...indexing,
+    chains,
     database: resolvePonderDatabase(enableLocal),
   };
+}
+
+/**
+ * Registry contract addresses indexed by Ponder for a commercial chain
+ * (required trio + present optionals). Used by the RPC capability probe.
+ */
+export function commercialPonderRegistryAddresses(
+  chainId: number,
+): `0x${string}`[] {
+  const bundle =
+    chainId === SEPOLIA_CHAIN_ID
+      ? ponderSepoliaAddresses()
+      : chainId === SPOKE_CHAIN_ID
+        ? loadEthereumSepoliaBundle().addresses
+        : null;
+  if (!bundle) {
+    throw new Error(`Unsupported commercial Ponder chain id: ${chainId}`);
+  }
+  const addresses: `0x${string}`[] = [
+    bundle.karPassport,
+    bundle.karProPass,
+    bundle.karProStaking,
+  ];
+  if (bundle.bridgeGateway) addresses.push(bundle.bridgeGateway);
+  if (bundle.fixedPriceConsignment) {
+    addresses.push(bundle.fixedPriceConsignment);
+  }
+  if (bundle.ascendingConsignment) {
+    addresses.push(bundle.ascendingConsignment);
+  }
+  return addresses;
 }
 
 /**

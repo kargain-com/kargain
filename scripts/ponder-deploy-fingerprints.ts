@@ -1,6 +1,9 @@
 /**
  * CLI: print identity + executable digests as GITHUB_OUTPUT lines (and JSON).
  * No environment values are printed.
+ *
+ * Identity reads only the indexing assembly (chain ids, contracts, schema,
+ * sources) — commercial RPC lists and getLogs windows are not required.
  */
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

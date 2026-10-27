@@ -14,7 +14,7 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
-import { buildPonderRuntime } from "./ponder-env.js";
+import { buildPonderIndexingConfig } from "./ponder-env.js";
 
 export type PonderIdentityChain = { name: string; id: number };
 
@@ -133,7 +133,7 @@ type DualContract =
   | "ascendingConsignment";
 
 /**
- * Build the identity payload from the same runtime owner ponder.config.ts uses.
+ * Build the identity payload from the indexing owner (no RPC / getLogs window).
  * Schema / indexing / ABI artifact are digests so tests can inject overrides.
  */
 export function buildPonderIdentityPayload(
@@ -155,7 +155,7 @@ export function buildPonderIdentityPayload(
     localAddresses,
     optionalAddresses,
     contractEntry,
-  } = buildPonderRuntime();
+  } = buildPonderIndexingConfig();
 
   function dualEntry(
     hubAddress: `0x${string}`,
