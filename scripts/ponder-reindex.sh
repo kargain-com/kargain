@@ -19,7 +19,7 @@ SQL="$ROOT/scripts/ponder-reindex.sql"
 echo "Stopping Ponder..."
 docker compose -f "$ROOT/docker-compose.yml" stop ponder
 
-echo "Truncating indexed tables and ponder_sync cache..."
+echo "Dropping schema kargain only (active cache ponder_rpc_cache_1 and leftover ponder_sync are never dropped)..."
 docker compose -f "$ROOT/docker-compose.yml" exec -T postgres \
   psql -U ponder -d kargain_ponder -v ON_ERROR_STOP=1 < "$SQL"
 

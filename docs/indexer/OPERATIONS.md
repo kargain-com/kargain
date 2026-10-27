@@ -362,7 +362,7 @@ docker compose exec -T postgres \
   < scripts/ponder-reindex.sql
 ```
 
-This drops and recreates the `kargain` and `ponder_sync` schemas (truncate alone is **not** enough when start block or contract config changes).
+This drops schema `kargain` only (truncate alone is **not** enough when start block or contract config changes). The active RPC cache schema `ponder_rpc_cache_1` is never dropped; leftover `ponder_sync` is also left untouched.
 
 ### 4. Verify stack and environment
 
@@ -573,7 +573,7 @@ Local agent auction lifecycle (chain + Ponder phase polls) is covered by `./scri
 | File | Purpose |
 |------|---------|
 | `scripts/ponder-reindex.sh` | Stop ponder + run SQL on Docker Postgres |
-| `scripts/ponder-reindex.sql` | DROP SCHEMA kargain + ponder_sync |
+| `scripts/ponder-reindex.sql` | DROP SCHEMA kargain only (`ponder_rpc_cache_1` / `ponder_sync` never dropped) |
 | `scripts/ponder-config.ts` | Read-only stack diagnostic (`pnpm ponder:config`) |
 | `scripts/ponder-rpc-probe.ts` | CLI: probe every commercial RPC at the configured getLogs window (`pnpm ponder:rpc-probe`) |
 | `scripts/lib/ponder-rpc-probe.ts` | Sole owner of RPC capability verdicts |

@@ -19,8 +19,8 @@
 --
 -- Schema: kargain (set via DATABASE_SCHEMA in docker-compose.yml)
 --
--- Drops and recreates Ponder schemas (required when start block or contract
--- config changes — truncate alone leaves a stale build_id and Ponder will refuse to start).
+-- Drops schema kargain only (required when start block or contract config
+-- changes — truncate alone leaves a stale build_id and Ponder will refuse to start).
+-- Never drop the active RPC cache schema ponder_rpc_cache_1, or leftover ponder_sync.
 
 DROP SCHEMA IF EXISTS kargain CASCADE;
-DROP SCHEMA IF EXISTS ponder_sync CASCADE;

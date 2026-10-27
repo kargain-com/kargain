@@ -12,7 +12,7 @@
 
 ## SVM raw ingest (S7c-1)
 
-Separate Node service — **not** inside the Ponder image. Append-only Postgres schema **`kargain_svm_raw`** (`structured_payload`, `ingest_refusal`, `ingest_cursor`). Sole INSERT owner: [`src/lib/svm-raw-writer.ts`](../../src/lib/svm-raw-writer.ts). Ponder reindex (`scripts/ponder-reindex.sql`) drops only `kargain` + `ponder_sync` — raw survives (policy: `test/ponder-reindex-svm-isolation-policy.test.ts`).
+Separate Node service — **not** inside the Ponder image. Append-only Postgres schema **`kargain_svm_raw`** (`structured_payload`, `ingest_refusal`, `ingest_cursor`). Sole INSERT owner: [`src/lib/svm-raw-writer.ts`](../../src/lib/svm-raw-writer.ts). Ponder reindex (`scripts/ponder-reindex.sql`) drops `kargain` only — raw survives; active cache `ponder_rpc_cache_1` (and leftover `ponder_sync`) are never dropped (policy: `test/ponder-reindex-svm-isolation-policy.test.ts`).
 
 | Item | Value |
 |------|--------|
