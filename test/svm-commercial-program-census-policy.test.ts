@@ -139,7 +139,7 @@ describe("svm commercial program census (registry runtime)", () => {
         ),
       (err: unknown) => {
         assert.ok(err instanceof MissingCommercialProgramError);
-        assert.ok(err.missingEvidenceKeys.includes("kar_fixed_price"));
+        assert.ok(err.evidenceKeys!.includes("kar_fixed_price"));
         assert.match(err.message, /kar_fixed_price/);
         return true;
       },
@@ -186,8 +186,8 @@ describe("svm commercial program census (registry runtime)", () => {
       () => assertSvmCommercialEvidence(planted),
       (err: unknown) => {
         assert.ok(err instanceof MissingCommercialProgramError);
-        assert.ok(err.missingEvidenceKeys.includes("kar_fixed_price"));
-        assert.ok(err.missingEvidenceKeys.includes("kar_ascending"));
+        assert.ok(err.evidenceKeys!.includes("kar_fixed_price"));
+        assert.ok(err.evidenceKeys!.includes("kar_ascending"));
         return true;
       },
     );
@@ -225,7 +225,7 @@ describe("svm commercial program census (registry runtime)", () => {
       () => resolveIngestStartSlot(missingSlot),
       (err: unknown) => {
         assert.ok(err instanceof MissingCommercialProgramError);
-        assert.ok(err.missingEvidenceKeys.includes("kar_ascending"));
+        assert.ok(err.evidenceKeys!.includes("kar_ascending"));
         return true;
       },
     );
@@ -282,18 +282,15 @@ describe("svm commercial program census (registry runtime)", () => {
       () => assertSvmCommercialEvidence(four),
       (err: unknown) => {
         assert.ok(err instanceof MissingCommercialProgramError);
-        assert.ok(err.missingEvidenceKeys.includes("kar_fixed_price"));
-        assert.ok(err.missingEvidenceKeys.includes("kar_ascending"));
+        assert.ok(err.evidenceKeys!.includes("kar_fixed_price"));
+        assert.ok(err.evidenceKeys!.includes("kar_ascending"));
         return true;
       },
     );
   });
 
-  it("assertSvmCommercialStack only at ingest entry (and owner)", () => {
-    const allowed = new Set([
-      "lib/svm/ingest-config.ts",
-      "src/svm-ingest/main.ts",
-    ]);
+  it("assertSvmCommercialStack only in ingest-config owner; main uses buildSvmIngestRuntime", () => {
+    const allowed = new Set(["lib/svm/ingest-config.ts"]);
     const hits: string[] = [];
 
     function walk(dir: string) {
@@ -327,14 +324,19 @@ describe("svm commercial program census (registry runtime)", () => {
     assert.deepEqual(
       hits,
       [],
-      `assertSvmCommercialStack must not be called outside ingest entry + owner:\n${hits.join("\n")}`,
+      `assertSvmCommercialStack must not be called outside ingest-config owner:\n${hits.join("\n")}`,
     );
 
     const ingestMain = readFileSync(join(ROOT, "src/svm-ingest/main.ts"), "utf8");
     assert.match(
       ingestMain,
+      /\bbuildSvmIngestRuntime\s*\(/,
+      "ingest entry must call buildSvmIngestRuntime (sole runtime-config owner)",
+    );
+    assert.doesNotMatch(
+      ingestMain,
       /\bassertSvmCommercialStack\s*\(/,
-      "ingest entry must call assertSvmCommercialStack (sole hard census gate)",
+      "ingest entry must not call assertSvmCommercialStack directly",
     );
     assert.doesNotMatch(
       ingestMain,

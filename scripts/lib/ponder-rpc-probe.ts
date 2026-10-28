@@ -4,11 +4,15 @@
  */
 import {
   commercialPonderRegistryAddresses,
-  resolveChainStartBlock,
+  PonderEnvRefusalError,
+  resolveChainStartBlockWithKey,
   resolveCommercialRpcUrls,
   resolveGetLogsBlockRange,
 } from "./ponder-env.js";
 import { SEPOLIA_CHAIN_ID, SPOKE_CHAIN_ID } from "./load-deployment.js";
+
+/** Per-request bound for probe JSON-RPC (ADR 0012). */
+export const PONDER_RPC_PROBE_TIMEOUT_MS = 10_000;
 
 export type PonderRpcProbeVerdict =
   | "ok"
@@ -90,6 +94,7 @@ async function jsonRpc(
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+    signal: AbortSignal.timeout(PONDER_RPC_PROBE_TIMEOUT_MS),
   });
   const text = await res.text();
   let body: JsonRpcResponse;
@@ -156,9 +161,12 @@ export async function probePonderRpcCapability(
   const fetchFn = deps?.fetch ?? globalThis.fetch.bind(globalThis);
 
   const addresses = commercialPonderRegistryAddresses(chainId);
-  const startRaw = resolveChainStartBlock(chainId);
+  const { startBlock: startRaw, envKey: startEnvKey } =
+    resolveChainStartBlockWithKey(chainId);
   if (startRaw === "latest" || typeof startRaw !== "number") {
-    throw new Error(
+    throw new PonderEnvRefusalError(
+      "probe_requires_numeric_start_block",
+      startEnvKey,
       `probe_requires_numeric_start_block: chain ${chainId} start is ${String(startRaw)}`,
     );
   }

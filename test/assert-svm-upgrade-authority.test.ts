@@ -130,7 +130,7 @@ describe("assertSvmUpgradeAuthority (S9-0-close-2)", () => {
       () => assertSvmCommercialEvidence(evidence),
       (err: unknown) => {
         assert.ok(err instanceof MissingCommercialProgramError);
-        assert.deepEqual([...err.missingEvidenceKeys], ["kar_ascending"]);
+        assert.deepEqual([...(err.evidenceKeys ?? [])], ["kar_ascending"]);
         return true;
       },
     );

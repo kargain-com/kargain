@@ -31,6 +31,9 @@ on:
       - "scripts/ponder-deploy-fingerprints.ts"
       - "scripts/ponder-ready-probe.ts"
       - "scripts/lib/ponder-env.ts"
+      - "scripts/lib/ponder-rpc-probe.ts"
+      - "scripts/ponder-deploy-preflight.ts"
+      - "scripts/lib/deploy-preflight-output.ts"
 
 # Least privilege for GITHUB_TOKEN. Deploy uses repository secrets over SSH;
 # secrets access is not controlled by this block. No job needs write.
@@ -139,6 +142,10 @@ jobs:
             echo "prior_executable=${STORED_EXEC:-none} new_executable=$EXECUTABLE_DIGEST"
 
             docker compose build ponder
+            if ! docker compose run --rm --no-deps --entrypoint node ponder --import tsx scripts/ponder-deploy-preflight.ts; then
+              echo "deploy_evidence outcome=refused"
+              exit 1
+            fi
             docker compose up -d ponder
 
             # Probe via the image's node (host may lack tsx). --network host → published :42069.
@@ -159,3 +166,4 @@ jobs:
             echo "deploy_evidence commit=$DEPLOYED_COMMIT"
             echo "deploy_evidence node=$NODE_VER"
             echo "deploy_evidence ready=ponder status=$READY_STATUS"
+            echo "deploy_evidence preflight=ok"
