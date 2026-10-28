@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 
 import {
@@ -34,10 +34,14 @@ import {
   SVM_INGEST_PREFLIGHT_TIMEOUT_MS,
 } from "../scripts/svm-ingest-deploy-preflight.ts";
 import { SEPOLIA_CHAIN_ID, SPOKE_CHAIN_ID } from "../scripts/lib/load-deployment.ts";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PLANTED_HOST = "planted-provider.example";
 const PLANTED_HTTPS = `https://${PLANTED_HOST}/rpc`;
+const RPC_A = "https://rpc-a.example";
+const RPC_B = "https://rpc-b.example";
 
 function captureWrite(): { lines: string[]; write: (line: string) => void } {
   const lines: string[] = [];
@@ -129,6 +133,126 @@ function hangingFetch(): typeof fetch {
       });
     });
     throw new Error("unreachable");
+  };
+}
+
+/** Start-block resolution reads process.env, not the probe deps env. */
+function withNumericStartBlocks<T>(fn: () => Promise<T>): Promise<T> {
+  const prev84532 = process.env.PONDER_START_BLOCK_84532;
+  const prev11155111 = process.env.PONDER_START_BLOCK_11155111;
+  process.env.PONDER_START_BLOCK_84532 = "100";
+  process.env.PONDER_START_BLOCK_11155111 = "200";
+  return fn().finally(() => {
+    if (prev84532 === undefined) delete process.env.PONDER_START_BLOCK_84532;
+    else process.env.PONDER_START_BLOCK_84532 = prev84532;
+    if (prev11155111 === undefined) {
+      delete process.env.PONDER_START_BLOCK_11155111;
+    } else {
+      process.env.PONDER_START_BLOCK_11155111 = prev11155111;
+    }
+  });
+}
+
+type RpcOut = {
+  httpStatus?: number;
+  result?: unknown;
+  error?: { code?: number; message?: string };
+};
+
+function jsonRpcResponse(out: RpcOut): Response {
+  return new Response(
+    JSON.stringify(
+      out.error
+        ? { jsonrpc: "2.0", id: 1, error: out.error }
+        : { jsonrpc: "2.0", id: 1, result: out.result },
+    ),
+    {
+      status: out.httpStatus ?? 200,
+      headers: { "content-type": "application/json" },
+    },
+  );
+}
+
+function chainIdForUrl(url: string): number {
+  if (url.includes("rpc-b") || url.includes("spoke")) return SPOKE_CHAIN_ID;
+  return SEPOLIA_CHAIN_ID;
+}
+
+function startHexForUrl(url: string): string {
+  const start = chainIdForUrl(url) === SPOKE_CHAIN_ID ? 200 : 100;
+  return `0x${start.toString(16)}`;
+}
+
+function sampleLog(address = "0x0000000000000000000000000000000000000001") {
+  return {
+    address,
+    topics: [] as string[],
+    data: "0x",
+    blockNumber: "0x64",
+    transactionHash: "0xabc",
+    logIndex: "0x0",
+  };
+}
+
+/** Happy path for one URL, with optional per-method overrides. */
+function providerFetch(
+  handlers: Record<
+    string,
+    (method: string, params: unknown[]) => RpcOut | "throw"
+  >,
+): typeof fetch {
+  return async (input, init) => {
+    const url = String(input);
+    const body = JSON.parse(String(init?.body ?? "{}")) as {
+      method: string;
+      params: unknown[];
+    };
+    const handler = handlers[url];
+    if (!handler) {
+      return jsonRpcResponse({ error: { message: `unknown url ${url}` } });
+    }
+    const out = handler(body.method, body.params ?? []);
+    if (out === "throw") throw new Error(`unreachable ${url}`);
+    return jsonRpcResponse(out);
+  };
+}
+
+function happyProvider(url: string, overrides?: {
+  chainIdHex?: string;
+  blockNull?: boolean;
+  logs?: unknown;
+  getLogsError?: { code?: number; message?: string };
+  getLogsStatus?: number;
+  rateLimitAll?: boolean;
+}): (method: string, params: unknown[]) => RpcOut | "throw" {
+  return (method) => {
+    if (overrides?.rateLimitAll) {
+      return {
+        httpStatus: 429,
+        error: { message: "Too Many Requests" },
+      };
+    }
+    if (method === "eth_chainId") {
+      return {
+        result:
+          overrides?.chainIdHex ??
+          `0x${chainIdForUrl(url).toString(16)}`,
+      };
+    }
+    if (method === "eth_getBlockByNumber") {
+      if (overrides?.blockNull) return { result: null };
+      return { result: { number: startHexForUrl(url) } };
+    }
+    if (method === "eth_getLogs") {
+      if (overrides?.getLogsError) {
+        return {
+          httpStatus: overrides.getLogsStatus,
+          error: overrides.getLogsError,
+        };
+      }
+      return { result: overrides?.logs ?? [sampleLog()] };
+    }
+    return { error: { message: `unexpected ${method}` } };
   };
 }
 
@@ -347,11 +471,7 @@ describe("deploy-preflight ponder script", () => {
 
   it("green path prints ok provider lines and exits 0", async () => {
     const { lines, write } = captureWrite();
-    const prev84532 = process.env.PONDER_START_BLOCK_84532;
-    const prev11155111 = process.env.PONDER_START_BLOCK_11155111;
-    process.env.PONDER_START_BLOCK_84532 = "100";
-    process.env.PONDER_START_BLOCK_11155111 = "200";
-    try {
+    await withNumericStartBlocks(async () => {
       const code = await runPonderDeployPreflight({
         evaluateConfig: async () => ({}),
         env: baseCommercialEnv(),
@@ -369,14 +489,240 @@ describe("deploy-preflight ponder script", () => {
           /^deploy_preflight service=ponder chain=\d+ provider=\d+ verdict=ok\n$/,
         );
       }
+    });
+  });
+});
+
+describe("ADR 0013 preflight refuses on provider evidence", () => {
+  async function runWithFetch(fetchFn: typeof fetch, env?: NodeJS.ProcessEnv) {
+    const { lines, write } = captureWrite();
+    const code = await withNumericStartBlocks(() =>
+      runPonderDeployPreflight({
+        evaluateConfig: async () => ({}),
+        env: env ?? baseCommercialEnv(),
+        fetch: fetchFn,
+        stdoutWrite: write,
+      }),
+    );
+    return { code, lines, joined: lines.join("") };
+  }
+
+  it("every provider rate_limited exits 0 with verdict lines and no refusal", async () => {
+    const { code, joined, lines } = await runWithFetch(
+      providerFetch({
+        [RPC_A]: happyProvider(RPC_A, { rateLimitAll: true }),
+        [RPC_B]: happyProvider(RPC_B, { rateLimitAll: true }),
+      }),
+    );
+    assert.equal(code, 0);
+    assert.doesNotMatch(joined, /refused/);
+    assert.doesNotMatch(joined, /rpc_probe_failed/);
+    for (const line of lines) {
+      assert.match(
+        line,
+        /^deploy_preflight service=ponder chain=\d+ provider=\d+ verdict=rate_limited\n$/,
+      );
+    }
+    assert.ok(lines.length >= 2, "expected one line per commercial provider");
+  });
+
+  it("chain_mismatch refuses with rpc_probe_failed", async () => {
+    const { code, joined } = await runWithFetch(
+      providerFetch({
+        [RPC_A]: happyProvider(RPC_A, { chainIdHex: "0x1" }),
+        [RPC_B]: happyProvider(RPC_B, { rateLimitAll: true }),
+      }),
+    );
+    assert.equal(code, 1);
+    assert.match(joined, /verdict=chain_mismatch/);
+    assert.match(
+      joined,
+      /deploy_preflight service=ponder verdict=refused reason=rpc_probe_failed/,
+    );
+  });
+
+  it("history_pruned refuses with rpc_probe_failed", async () => {
+    const { code, joined } = await runWithFetch(
+      providerFetch({
+        [RPC_A]: happyProvider(RPC_A, { blockNull: true }),
+        [RPC_B]: happyProvider(RPC_B, { rateLimitAll: true }),
+      }),
+    );
+    assert.equal(code, 1);
+    assert.match(joined, /verdict=history_pruned/);
+    assert.match(
+      joined,
+      /deploy_preflight service=ponder verdict=refused reason=rpc_probe_failed/,
+    );
+  });
+
+  it("window_rejected refuses with rpc_probe_failed", async () => {
+    const { code, joined } = await runWithFetch(
+      providerFetch({
+        [RPC_A]: happyProvider(RPC_A, {
+          getLogsError: {
+            code: -32012,
+            message: "getLogs request exceeded max allowed range",
+          },
+        }),
+        [RPC_B]: happyProvider(RPC_B, { rateLimitAll: true }),
+      }),
+    );
+    assert.equal(code, 1);
+    assert.match(joined, /verdict=window_rejected/);
+    assert.match(
+      joined,
+      /deploy_preflight service=ponder verdict=refused reason=rpc_probe_failed/,
+    );
+  });
+
+  it("log_set_mismatch refuses with rpc_probe_failed", async () => {
+    const rpcA2 = "https://rpc-a2.example";
+    const { code, joined } = await runWithFetch(
+      providerFetch({
+        [RPC_A]: happyProvider(RPC_A, {
+          logs: [sampleLog("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")],
+        }),
+        [rpcA2]: happyProvider(rpcA2, {
+          logs: [sampleLog("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")],
+        }),
+        [RPC_B]: happyProvider(RPC_B, { rateLimitAll: true }),
+      }),
+      baseCommercialEnv({
+        [`PONDER_RPC_URLS_${SEPOLIA_CHAIN_ID}`]: `${RPC_A},${rpcA2}`,
+      }),
+    );
+    assert.equal(code, 1);
+    assert.match(joined, /verdict=log_set_mismatch/);
+    assert.match(
+      joined,
+      /deploy_preflight service=ponder verdict=refused reason=rpc_probe_failed/,
+    );
+  });
+
+  it("empty_reference refuses with rpc_probe_failed", async () => {
+    const { code, joined } = await runWithFetch(
+      providerFetch({
+        [RPC_A]: happyProvider(RPC_A, { logs: [] }),
+        [RPC_B]: happyProvider(RPC_B, { rateLimitAll: true }),
+      }),
+    );
+    assert.equal(code, 1);
+    assert.match(joined, /verdict=empty_reference/);
+    assert.match(
+      joined,
+      /deploy_preflight service=ponder verdict=refused reason=rpc_probe_failed/,
+    );
+  });
+
+  it("unreachable refuses with rpc_probe_failed", async () => {
+    const { code, joined } = await runWithFetch(
+      providerFetch({
+        [RPC_A]: () => "throw",
+        [RPC_B]: happyProvider(RPC_B, { rateLimitAll: true }),
+      }),
+    );
+    assert.equal(code, 1);
+    assert.match(joined, /verdict=unreachable/);
+    assert.match(
+      joined,
+      /deploy_preflight service=ponder verdict=refused reason=rpc_probe_failed/,
+    );
+  });
+
+  it("rpc_error refuses with rpc_probe_failed", async () => {
+    const { code, joined } = await runWithFetch(
+      providerFetch({
+        [RPC_A]: happyProvider(RPC_A, {
+          getLogsError: { message: "Apikey not found" },
+        }),
+        [RPC_B]: happyProvider(RPC_B, { rateLimitAll: true }),
+      }),
+    );
+    assert.equal(code, 1);
+    assert.match(joined, /verdict=rpc_error/);
+    assert.match(
+      joined,
+      /deploy_preflight service=ponder verdict=refused reason=rpc_probe_failed/,
+    );
+  });
+
+  it("rate_limited with window_rejected in the same run refuses", async () => {
+    const { code, joined } = await runWithFetch(
+      providerFetch({
+        [RPC_A]: happyProvider(RPC_A, { rateLimitAll: true }),
+        [RPC_B]: happyProvider(RPC_B, {
+          getLogsError: {
+            code: -32012,
+            message: "getLogs request exceeded max allowed range",
+          },
+        }),
+      }),
+    );
+    assert.equal(code, 1);
+    assert.match(joined, /verdict=rate_limited/);
+    assert.match(joined, /verdict=window_rejected/);
+    assert.match(
+      joined,
+      /deploy_preflight service=ponder verdict=refused reason=rpc_probe_failed/,
+    );
+  });
+
+  it("maintainer CLI child process exits 1 when a provider answers 429", () => {
+    // CLI has no fetch dep; preload patches global fetch before the probe runs.
+    const dir = mkdtempSync(join(tmpdir(), "ponder-rpc-probe-429-"));
+    const preload = join(dir, "fetch-429.mjs");
+    writeFileSync(
+      preload,
+      [
+        "globalThis.fetch = async () =>",
+        "  new Response(",
+        "    JSON.stringify({",
+        "      jsonrpc: '2.0',",
+        "      id: 1,",
+        "      error: { message: 'Too Many Requests' },",
+        "    }),",
+        "    { status: 429, headers: { 'content-type': 'application/json' } },",
+        "  );",
+        "",
+      ].join("\n"),
+    );
+    try {
+      const env: NodeJS.ProcessEnv = { ...process.env };
+      env[`PONDER_RPC_URLS_${SEPOLIA_CHAIN_ID}`] = RPC_A;
+      env[`PONDER_RPC_URLS_${SPOKE_CHAIN_ID}`] = RPC_B;
+      env[`PONDER_GETLOGS_BLOCK_RANGE_${SEPOLIA_CHAIN_ID}`] = "1000";
+      env[`PONDER_GETLOGS_BLOCK_RANGE_${SPOKE_CHAIN_ID}`] = "1000";
+      env.PONDER_START_BLOCK_84532 = "100";
+      env.PONDER_START_BLOCK_11155111 = "200";
+      delete env.PONDER_ENABLE_LOCAL;
+      const result = spawnSync(
+        process.execPath,
+        [
+          "--import",
+          pathToFileURL(preload).href,
+          "--import",
+          "tsx",
+          "scripts/ponder-rpc-probe.ts",
+        ],
+        {
+          cwd: ROOT,
+          encoding: "utf8",
+          env,
+          timeout: 60_000,
+        },
+      );
+      assert.equal(
+        result.status,
+        1,
+        `expected exit 1 on rate_limited; stdout=${result.stdout} stderr=${result.stderr}`,
+      );
+      assert.match(
+        `${result.stdout ?? ""}${result.stderr ?? ""}`,
+        /verdict=rate_limited/,
+      );
     } finally {
-      if (prev84532 === undefined) delete process.env.PONDER_START_BLOCK_84532;
-      else process.env.PONDER_START_BLOCK_84532 = prev84532;
-      if (prev11155111 === undefined) {
-        delete process.env.PONDER_START_BLOCK_11155111;
-      } else {
-        process.env.PONDER_START_BLOCK_11155111 = prev11155111;
-      }
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

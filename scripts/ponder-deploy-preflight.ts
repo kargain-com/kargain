@@ -5,6 +5,7 @@
  */
 import { PonderEnvRefusalError } from "./lib/ponder-env.js";
 import {
+  ponderRpcProbeVerdictRefusesDeploy,
   probeAllCommercialPonderRpcs,
   type PonderRpcProbeDeps,
 } from "./lib/ponder-rpc-probe.js";
@@ -45,8 +46,10 @@ export async function runPonderDeployPreflight(
         });
       });
     }
-    const allOk = results.every((r) => r.ok);
-    if (!allOk) {
+    const refusesDeploy = results.some((r) =>
+      r.providers.some((p) => ponderRpcProbeVerdictRefusesDeploy(p.verdict)),
+    );
+    if (refusesDeploy) {
       print.refused("ponder", "rpc_probe_failed");
       return 1;
     }
