@@ -1,6 +1,7 @@
 /**
  * Deploy preflight for svm-ingest (ADR 0012): build runtime, then check every
- * followed program account exists and is executable. ADR §4 lines only.
+ * followed program account exists and is executable. Prints only ADR §4
+ * `deploy_preflight` lines — never URLs, messages, or `deploy_evidence`.
  */
 import {
   buildSvmIngestRuntime,
@@ -12,7 +13,12 @@ import {
   postSolanaJsonRpc,
   type SolanaJsonRpcPost,
 } from "../lib/svm/solana-json-rpc.js";
-import { printRefusal } from "./lib/deploy-preflight-output.js";
+import {
+  createDeployPreflightPrinter,
+  type DeployPreflightPrinter,
+  type DeployPreflightWriter,
+  type SvmProgramPreflightVerdict,
+} from "./lib/deploy-preflight-output.js";
 
 /** Per-request bound for program account checks (ADR 0012). */
 export const SVM_INGEST_PREFLIGHT_TIMEOUT_MS = 10_000;
@@ -23,18 +29,43 @@ type AccountInfoInner = {
   owner?: string;
 };
 
-export type SvmProgramCheckVerdict =
-  | "ok"
-  | "account_missing"
-  | "not_executable"
-  | "unreachable";
+export type SvmProgramCheckVerdict = SvmProgramPreflightVerdict;
 
 export type SvmIngestDeployPreflightDeps = {
   env?: NodeJS.ProcessEnv;
   buildRuntime?: (env: NodeJS.ProcessEnv) => SvmIngestRuntime;
   postRpc?: SolanaJsonRpcPost;
-  stdoutWrite?: (line: string) => void;
+  stdoutWrite?: DeployPreflightWriter;
 };
+
+/**
+ * ADR: `unreachable` = timed out or otherwise could not reach the RPC.
+ * An HTTP / JSON-RPC answered error is not unreachable.
+ */
+export function isSolanaRpcUnreachableError(err: unknown): boolean {
+  if (err instanceof DOMException) {
+    return err.name === "TimeoutError" || err.name === "AbortError";
+  }
+  if (err instanceof TypeError) {
+    return true;
+  }
+  if (err instanceof Error) {
+    if (err.name === "TimeoutError" || err.name === "AbortError") {
+      return true;
+    }
+    if (
+      /fetch failed|ECONNREFUSED|ENOTFOUND|ECONNRESET|ETIMEDOUT|EAI_AGAIN|network/i.test(
+        err.message,
+      )
+    ) {
+      return true;
+    }
+    if (err.cause !== undefined) {
+      return isSolanaRpcUnreachableError(err.cause);
+    }
+  }
+  return false;
+}
 
 async function checkProgram(
   rpcUrl: string,
@@ -55,8 +86,12 @@ async function checkProgram(
       return "not_executable";
     }
     return "ok";
-  } catch {
-    return "unreachable";
+  } catch (err) {
+    if (isSolanaRpcUnreachableError(err)) {
+      return "unreachable";
+    }
+    // Answered HTTP / JSON-RPC error — not unreachable; outer catch → preflight_error.
+    throw err;
   }
 }
 
@@ -79,11 +114,7 @@ function reasonForVerdict(
 export async function runSvmIngestDeployPreflight(
   deps?: SvmIngestDeployPreflightDeps,
 ): Promise<number> {
-  const write =
-    deps?.stdoutWrite ??
-    ((line: string) => {
-      process.stdout.write(line);
-    });
+  const print = createDeployPreflightPrinter(deps?.stdoutWrite);
   const env = deps?.env ?? process.env;
   const build = deps?.buildRuntime ?? buildSvmIngestRuntime;
   const postRpc = deps?.postRpc ?? postSolanaJsonRpc;
@@ -93,35 +124,34 @@ export async function runSvmIngestDeployPreflight(
     let refusedReason: string | undefined;
     for (const program of rt.followedPrograms) {
       const verdict = await checkProgram(rt.rpcUrl, program, postRpc);
-      write(
-        `deploy_preflight service=svm-ingest program=${program.evidenceKey} verdict=${verdict}\n`,
-      );
+      print.svmProgram({
+        evidenceKey: program.evidenceKey,
+        verdict,
+      });
       if (verdict !== "ok" && refusedReason === undefined) {
         refusedReason = reasonForVerdict(verdict);
       }
     }
     if (refusedReason !== undefined) {
-      write(
-        `deploy_preflight service=svm-ingest verdict=refused reason=${refusedReason}\n`,
-      );
-      write(`deploy_evidence outcome=refused\n`);
+      print.refused("svm-ingest", refusedReason);
       return 1;
     }
     return 0;
   } catch (err) {
-    if (err instanceof SvmIngestRuntimeRefusalError) {
-      write(
-        `deploy_preflight service=svm-ingest verdict=refused reason=${err.code}\n`,
-      );
-      write(`deploy_evidence outcome=refused\n`);
-      return 1;
-    }
-    write(
-      `deploy_preflight service=svm-ingest verdict=refused reason=preflight_error\n`,
-    );
-    write(`deploy_evidence outcome=refused\n`);
+    return refuseSvmIngest(err, print);
+  }
+}
+
+function refuseSvmIngest(
+  err: unknown,
+  print: DeployPreflightPrinter,
+): number {
+  if (err instanceof SvmIngestRuntimeRefusalError) {
+    print.refused("svm-ingest", err.code);
     return 1;
   }
+  print.refused("svm-ingest", "preflight_error");
+  return 1;
 }
 
 function isExecutedAsCli(): boolean {
@@ -133,8 +163,8 @@ function isExecutedAsCli(): boolean {
 if (isExecutedAsCli()) {
   runSvmIngestDeployPreflight()
     .then((code) => process.exit(code))
-    .catch(() => {
-      printRefusal("svm-ingest", "preflight_error");
+    .catch((err) => {
+      refuseSvmIngest(err, createDeployPreflightPrinter());
       process.exit(1);
     });
 }

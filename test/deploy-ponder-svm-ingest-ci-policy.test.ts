@@ -320,12 +320,25 @@ export function deployScriptPreflightAdjacencyDefect(
   return null;
 }
 
-/** ADR 0012: refusal evidence line present on the failure path. */
+/**
+ * ADR 0012: the preflight `if ! …; then` branch must print
+ * `deploy_evidence outcome=refused` and `exit 1` before `fi` (stops before `up`).
+ */
 export function deployScriptPreflightRefusalDefect(
   script: string,
 ): string | null {
-  if (!/deploy_evidence outcome=refused/.test(script)) {
+  const branchRe =
+    /if ! docker compose run --rm --no-deps --entrypoint node \S+ --import tsx scripts\/\S+-deploy-preflight\.ts; then\r?\n([\s\S]*?)\r?\n\s*fi\b/;
+  const match = script.match(branchRe);
+  if (!match) {
+    return "deploy script lacks preflight refusal then-branch";
+  }
+  const body = match[1]!;
+  if (!/echo ["']deploy_evidence outcome=refused["']/.test(body)) {
     return "deploy script lacks deploy_evidence outcome=refused";
+  }
+  if (!/^\s*exit 1\s*$/m.test(body)) {
+    return "deploy script preflight refusal branch must exit 1 before up";
   }
   return null;
 }
@@ -912,13 +925,30 @@ docker compose run --rm --no-deps --entrypoint node ponder --import tsx scripts/
   it("constructed: deploy script without refusal evidence line is red", () => {
     const planted = `set -euo pipefail
 docker compose build ponder
-docker compose run --rm --no-deps --entrypoint node ponder --import tsx scripts/ponder-deploy-preflight.ts
+if ! docker compose run --rm --no-deps --entrypoint node ponder --import tsx scripts/ponder-deploy-preflight.ts; then
+  exit 1
+fi
 docker compose up -d ponder
 echo "deploy_evidence preflight=ok"
 `;
     assert.equal(
       deployScriptPreflightRefusalDefect(planted),
       "deploy script lacks deploy_evidence outcome=refused",
+    );
+  });
+
+  it("constructed: preflight refusal branch without exit 1 is red", () => {
+    const planted = `set -euo pipefail
+docker compose build ponder
+if ! docker compose run --rm --no-deps --entrypoint node ponder --import tsx scripts/ponder-deploy-preflight.ts; then
+  echo "deploy_evidence outcome=refused"
+fi
+docker compose up -d ponder
+echo "deploy_evidence preflight=ok"
+`;
+    assert.equal(
+      deployScriptPreflightRefusalDefect(planted),
+      "deploy script preflight refusal branch must exit 1 before up",
     );
   });
 

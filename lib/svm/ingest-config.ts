@@ -95,20 +95,6 @@ export type FollowedProgram = {
   deploySlot: number;
 };
 
-export class MissingCommercialProgramError extends Error {
-  readonly missingEvidenceKeys: readonly string[];
-
-  constructor(missingEvidenceKeys: readonly string[]) {
-    const list = missingEvidenceKeys.join(", ");
-    super(
-      `SVM commercial stack missing required program(s): ${list} — ` +
-        `each of six needs programId + deploySlot in COMMERCIAL_ACTIVE.blocks`,
-    );
-    this.name = "MissingCommercialProgramError";
-    this.missingEvidenceKeys = missingEvidenceKeys;
-  }
-}
-
 export type SvmIngestRuntimeRefusalCode =
   | "missing_solana_rpc_url"
   | "missing_database_url"
@@ -134,6 +120,26 @@ export class SvmIngestRuntimeRefusalError extends Error {
     this.code = code;
     this.envKey = opts?.envKey;
     this.evidenceKeys = opts?.evidenceKeys;
+  }
+}
+
+/**
+ * Census gap refusal — same typed refusal as the rest of the runtime owner
+ * (`missing_commercial_program`), with `missingEvidenceKeys` for deploy-machine callers.
+ */
+export class MissingCommercialProgramError extends SvmIngestRuntimeRefusalError {
+  readonly missingEvidenceKeys: readonly string[];
+
+  constructor(missingEvidenceKeys: readonly string[]) {
+    const list = missingEvidenceKeys.join(", ");
+    super(
+      "missing_commercial_program",
+      `SVM commercial stack missing required program(s): ${list} — ` +
+        `each of six needs programId + deploySlot in COMMERCIAL_ACTIVE.blocks`,
+      { evidenceKeys: missingEvidenceKeys },
+    );
+    this.name = "MissingCommercialProgramError";
+    this.missingEvidenceKeys = missingEvidenceKeys;
   }
 }
 
@@ -266,17 +272,23 @@ export function resolveIngestStartSlot(stack: SvmCommercialActiveStack): number 
   return min;
 }
 
+/** Sole default for SVM_INGEST_EID when unset (LayerZero Solana Devnet EID). */
+export const DEFAULT_SVM_INGEST_EID = 40168;
+
 /**
  * Resolve the live SVM commercial stack for ingest.
  * EID → reserved namespace → COMMERCIAL_ACTIVE; optional SVM_INGEST_NAMESPACE confirm.
+ * Owns the EID default; callers pass `env` rather than reading `process.env` here.
  */
 export function resolveIngestCommercialStack(opts?: {
   eid?: number;
   namespaceEnv?: string | undefined;
+  env?: NodeJS.ProcessEnv;
 }): SvmCommercialActiveStack {
+  const env = opts?.env ?? process.env;
   const eid =
     opts?.eid ??
-    Number(process.env.SVM_INGEST_EID?.trim() ?? "40168");
+    Number(unsetEnv(env.SVM_INGEST_EID) ?? String(DEFAULT_SVM_INGEST_EID));
   if (!Number.isInteger(eid) || eid <= 0) {
     throw new SvmIngestRuntimeRefusalError(
       "invalid_svm_ingest_eid",
@@ -290,7 +302,7 @@ export function resolveIngestCommercialStack(opts?: {
   const envRaw =
     opts?.namespaceEnv !== undefined
       ? unsetEnv(opts.namespaceEnv)
-      : unsetEnv(process.env.SVM_INGEST_NAMESPACE);
+      : unsetEnv(env.SVM_INGEST_NAMESPACE);
   const envParsed =
     envRaw && Number.isInteger(Number(envRaw)) ? Number(envRaw) : undefined;
   const stackNs = Number(stack.namespace);
@@ -386,22 +398,9 @@ export function buildSvmIngestRuntime(
     );
   }
 
-  const stack = resolveIngestCommercialStack({
-    eid: Number(unsetEnv(env.SVM_INGEST_EID) ?? "40168"),
-    namespaceEnv: env.SVM_INGEST_NAMESPACE,
-  });
-
-  const gaps = commercialProgramCensusGaps(stack);
-  if (gaps.length > 0) {
-    const keys = gaps.map((g) => g.key);
-    throw new SvmIngestRuntimeRefusalError(
-      "missing_commercial_program",
-      `SVM commercial stack missing required program(s): ${keys.join(", ")} — ` +
-        `each of six needs programId + deploySlot in COMMERCIAL_ACTIVE.blocks`,
-      { evidenceKeys: keys },
-    );
-  }
-
+  const stack = resolveIngestCommercialStack({ env });
+  // Census gate: assertSvmCommercialStack via followedProgramsFromStack (one type).
+  const followedPrograms = followedProgramsFromStack(stack);
   const port = Number(unsetEnv(env.SVM_INGEST_PORT) ?? "42100");
 
   return {
@@ -413,6 +412,6 @@ export function buildSvmIngestRuntime(
     maxLagSlots: resolveCatchupMaxLagSlots(env),
     maxRps: resolveIngestMaxRps(env),
     port,
-    followedPrograms: followedProgramsFromStack(stack),
+    followedPrograms,
   };
 }

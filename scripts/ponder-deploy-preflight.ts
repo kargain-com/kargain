@@ -1,36 +1,27 @@
 /**
  * Deploy preflight for ponder (ADR 0012): evaluate ponder.config.ts, then probe
- * every commercial RPC provider. Prints only ADR §4 lines — never URLs or messages.
+ * every commercial RPC provider. Prints only ADR §4 `deploy_preflight` lines —
+ * never URLs, messages, or `deploy_evidence` (workflow owns evidence).
  */
 import { PonderEnvRefusalError } from "./lib/ponder-env.js";
 import {
   probeAllCommercialPonderRpcs,
   type PonderRpcProbeDeps,
-  type PonderRpcProbeResult,
 } from "./lib/ponder-rpc-probe.js";
-import { printRefusal } from "./lib/deploy-preflight-output.js";
+import {
+  createDeployPreflightPrinter,
+  type DeployPreflightPrinter,
+  type DeployPreflightWriter,
+} from "./lib/deploy-preflight-output.js";
 
 export type PonderDeployPreflightDeps = PonderRpcProbeDeps & {
   /** Override config evaluation (tests). Default: import ponder.config.ts. */
   evaluateConfig?: () => Promise<unknown>;
-  stdoutWrite?: (line: string) => void;
+  stdoutWrite?: DeployPreflightWriter;
 };
 
 async function evaluatePonderConfig(): Promise<unknown> {
   return import("../ponder.config.ts");
-}
-
-function emitProviderLines(
-  results: PonderRpcProbeResult[],
-  write: (line: string) => void,
-): void {
-  for (const result of results) {
-    result.providers.forEach((p, index) => {
-      write(
-        `deploy_preflight service=ponder chain=${result.chainId} provider=${index} verdict=${p.verdict}\n`,
-      );
-    });
-  }
 }
 
 /**
@@ -39,40 +30,39 @@ function emitProviderLines(
 export async function runPonderDeployPreflight(
   deps?: PonderDeployPreflightDeps,
 ): Promise<number> {
-  const write =
-    deps?.stdoutWrite ??
-    ((line: string) => {
-      process.stdout.write(line);
-    });
+  const print = createDeployPreflightPrinter(deps?.stdoutWrite);
   const evaluate = deps?.evaluateConfig ?? evaluatePonderConfig;
 
   try {
     await evaluate();
     const results = await probeAllCommercialPonderRpcs(deps);
-    emitProviderLines(results, write);
+    for (const result of results) {
+      result.providers.forEach((p, index) => {
+        print.ponderProvider({
+          chainId: result.chainId,
+          providerIndex: index,
+          verdict: p.verdict,
+        });
+      });
+    }
     const allOk = results.every((r) => r.ok);
     if (!allOk) {
-      write(
-        `deploy_preflight service=ponder verdict=refused reason=rpc_probe_failed\n`,
-      );
-      write(`deploy_evidence outcome=refused\n`);
+      print.refused("ponder", "rpc_probe_failed");
       return 1;
     }
     return 0;
   } catch (err) {
-    if (err instanceof PonderEnvRefusalError) {
-      write(
-        `deploy_preflight service=ponder verdict=refused reason=${err.code}\n`,
-      );
-      write(`deploy_evidence outcome=refused\n`);
-      return 1;
-    }
-    write(
-      `deploy_preflight service=ponder verdict=refused reason=preflight_error\n`,
-    );
-    write(`deploy_evidence outcome=refused\n`);
+    return refusePonder(err, print);
+  }
+}
+
+function refusePonder(err: unknown, print: DeployPreflightPrinter): number {
+  if (err instanceof PonderEnvRefusalError) {
+    print.refused("ponder", err.code);
     return 1;
   }
+  print.refused("ponder", "preflight_error");
+  return 1;
 }
 
 function isExecutedAsCli(): boolean {
@@ -84,8 +74,8 @@ function isExecutedAsCli(): boolean {
 if (isExecutedAsCli()) {
   runPonderDeployPreflight()
     .then((code) => process.exit(code))
-    .catch(() => {
-      printRefusal("ponder", "preflight_error");
+    .catch((err) => {
+      refusePonder(err, createDeployPreflightPrinter());
       process.exit(1);
     });
 }
