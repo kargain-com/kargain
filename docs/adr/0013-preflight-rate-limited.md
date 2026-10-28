@@ -33,9 +33,13 @@ nl -ba docs/indexer/OPERATIONS.md | sed -n '138,140p'
 
 ## Decision
 
-This ADR replaces these two sentences of [ADR 0012](./0012-deploy-preflight.md) §2 (`docs/adr/0012-deploy-preflight.md:63`):
+This ADR replaces three passages of [ADR 0012](./0012-deploy-preflight.md) §2. ADR 0012 itself is not edited.
 
-> Every provider must return `ok`, with no retry. A provider that cannot serve the probe's three requests cannot serve the indexer.
+| ADR 0012 line | Replaced text | Replacement |
+|---------------|---------------|-------------|
+| `:63` | "Every provider must return `ok`, with no retry. A provider that cannot serve the probe's three requests cannot serve the indexer." | The deploy refuses only on verdicts classified as "refuses deploy" in the table below; `rate_limited` does not refuse. |
+| `:84` | "**Ponder RPC probe failure** (any provider verdict other than `ok` — not a config refusal)" | "**Ponder RPC probe failure** (any provider verdict that refuses deploy per the table below — not a config refusal)" |
+| `:88` | "`rpc_probe_failed` \| At least one provider returned a non-`ok` verdict; per-provider lines carry the verdict" | "`rpc_probe_failed` \| At least one provider returned a verdict that refuses deploy (table below); per-provider lines carry the verdict" |
 
 1. **Refuse on evidence, not on missing evidence.** The deploy refuses only on verdicts that are evidence the configured provider is wrong or unusable. `rate_limited` means unverified, not wrong. The preflight prints its line and does not refuse on it. This holds even when every provider of a chain is `rate_limited`; that chain's provider lines show it.
 
@@ -51,7 +55,7 @@ This ADR replaces these two sentences of [ADR 0012](./0012-deploy-preflight.md) 
    | `unreachable` | refuses |
    | `rpc_error` | refuses |
 
-2. **One owner of the classification.** `scripts/lib/ponder-rpc-probe.ts` exports one total classification of `PonderRpcProbeVerdict` into "refuses deploy" and "does not refuse". It is written as an exhaustive `switch` with a `never` check, so a new verdict cannot be added without classifying it. The preflight uses only that classification. The refusal reason stays `rpc_probe_failed`. Per-provider lines are unchanged.
+2. **One owner of the classification.** `scripts/lib/ponder-rpc-probe.ts` exports one total classification of `PonderRpcProbeVerdict` into "refuses deploy" and "does not refuse". It is written as an exhaustive `switch` with a `never` check, so a new verdict cannot be added without classifying it. The preflight uses only that classification. The refusal reason stays `rpc_probe_failed` with the meaning above. Per-provider lines are unchanged.
 
 3. **The maintainer CLI stays strict.** `pnpm ponder:rpc-probe` keeps exit 0 only when every provider is `ok`. It is the verification step for a `.env` change, where a new provider must be proven, not merely not disproven.
 
