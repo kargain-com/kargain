@@ -7,15 +7,7 @@ import { createRequire } from "node:module";
 
 import pg from "pg";
 
-import {
-  assertSvmCommercialStack,
-  followedProgramsFromStack,
-  resolveCatchupMaxLagSlots,
-  resolveIngestCommercialStack,
-  resolveIngestMaxRps,
-  resolveIngestNamespace,
-  resolveIngestStartSlot,
-} from "../../lib/svm/ingest-config.js";
+import { buildSvmIngestRuntime } from "../../lib/svm/ingest-config.js";
 import { applySvmRawSchema, createSvmRawWriter } from "../lib/svm-raw-writer.js";
 import {
   applySvmProjectionSchema,
@@ -35,37 +27,22 @@ try {
 }
 
 async function main(): Promise<void> {
-  const rpcUrl = process.env.SOLANA_RPC_URL?.trim();
-  if (!rpcUrl) {
-    throw new Error("SOLANA_RPC_URL required for svm-ingest");
-  }
-  const databaseUrl =
-    process.env.SVM_INGEST_DATABASE_URL?.trim() ??
-    process.env.DATABASE_URL?.trim();
-  if (!databaseUrl) {
-    throw new Error("SVM_INGEST_DATABASE_URL or DATABASE_URL required");
-  }
+  const rt = buildSvmIngestRuntime();
 
-  const stack = resolveIngestCommercialStack();
-  assertSvmCommercialStack(stack);
-  const namespace = resolveIngestNamespace(stack);
-  const startSlot = resolveIngestStartSlot(stack);
-  const followedPrograms = followedProgramsFromStack(stack);
-
-  const pool = new pg.Pool({ connectionString: databaseUrl });
+  const pool = new pg.Pool({ connectionString: rt.databaseUrl });
   await applySvmRawSchema(pool);
   await applySvmProjectionSchema(pool);
   const writer = createSvmRawWriter(pool);
   const projectionWriter = createSvmProjectionWriter(pool);
   const projector = createProjectionProjector(pool, projectionWriter);
-  const rpc = createSolanaRpcClient(rpcUrl, {
-    maxRps: resolveIngestMaxRps(),
+  const rpc = createSolanaRpcClient(rt.rpcUrl, {
+    maxRps: rt.maxRps,
   });
   const loop = createIngestLoop({
-    namespace,
-    startSlot,
-    maxLagSlots: resolveCatchupMaxLagSlots(),
-    followedPrograms,
+    namespace: rt.namespace,
+    startSlot: rt.startSlot,
+    maxLagSlots: rt.maxLagSlots,
+    followedPrograms: rt.followedPrograms,
     writer,
     rpc,
     projector,
@@ -74,9 +51,8 @@ async function main(): Promise<void> {
   await loop.initCursor();
   await loop.catchUpToHead();
 
-  const port = Number(process.env.SVM_INGEST_PORT?.trim() ?? "42100");
   const health = createSvmIngestHealthServer({
-    port,
+    port: rt.port,
     getSnapshot: () => {
       const s = loop.getState();
       return {
@@ -117,7 +93,7 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => void shutdown().then(() => process.exit(0)));
 
   console.log(
-    `svm-ingest listening health=:${port} namespace=${namespace} startSlot=${startSlot} programs=${followedPrograms.length} maxRps=${resolveIngestMaxRps()} discovery=signatures`,
+    `svm-ingest listening health=:${rt.port} namespace=${rt.namespace} startSlot=${rt.startSlot} programs=${rt.followedPrograms.length} maxRps=${rt.maxRps} discovery=signatures`,
   );
 }
 

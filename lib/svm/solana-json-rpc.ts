@@ -14,12 +14,14 @@ export type SolanaJsonRpcPost = <T>(
   rpcUrl: string,
   method: string,
   params: unknown[],
+  timeoutMs?: number,
 ) => Promise<T>;
 
 export const postSolanaJsonRpc: SolanaJsonRpcPost = async <T>(
   rpcUrl: string,
   method: string,
   params: unknown[],
+  timeoutMs?: number,
 ): Promise<T> => {
   const response = await fetch(rpcUrl, {
     method: "POST",
@@ -30,6 +32,9 @@ export const postSolanaJsonRpc: SolanaJsonRpcPost = async <T>(
       method,
       params,
     }),
+    ...(timeoutMs !== undefined
+      ? { signal: AbortSignal.timeout(timeoutMs) }
+      : {}),
   });
   if (!response.ok) {
     throw new Error(`Solana RPC request failed: ${response.status}`);

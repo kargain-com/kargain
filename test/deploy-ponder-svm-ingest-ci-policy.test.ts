@@ -261,6 +261,72 @@ export function deployScriptEvidenceDefect(
   if (!readyRe.test(script)) {
     return `deploy script lacks deploy_evidence ready=${opts.service} status=`;
   }
+  if (!/deploy_evidence preflight=ok/.test(script)) {
+    return "deploy script lacks deploy_evidence preflight=ok";
+  }
+  return null;
+}
+
+/**
+ * ADR 0012: preflight between `docker compose build <service>` and `up`,
+ * exact compose run shape, no host scripts mount on the preflight.
+ */
+export function deployScriptPreflightAdjacencyDefect(
+  script: string,
+  service: "ponder" | "svm-ingest",
+): string | null {
+  const lines = deployScriptActiveLines(script);
+  const buildRe = new RegExp(
+    String.raw`^docker compose build ${service}\b`,
+  );
+  const preflightRe = new RegExp(
+    String.raw`docker compose run --rm --no-deps --entrypoint node ${service} --import tsx scripts/${service}-deploy-preflight\.ts`,
+  );
+  const upRe =
+    service === "ponder"
+      ? /^docker compose up -d ponder\b/
+      : /^docker compose up -d --force-recreate svm-ingest\b/;
+
+  let buildIdx = -1;
+  let preflightIdx = -1;
+  let upIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (buildIdx < 0 && buildRe.test(line)) buildIdx = i;
+    if (preflightIdx < 0 && preflightRe.test(line)) preflightIdx = i;
+    if (upIdx < 0 && upRe.test(line)) upIdx = i;
+  }
+  if (buildIdx < 0) {
+    return `deploy script lacks docker compose build ${service}`;
+  }
+  if (preflightIdx < 0) {
+    return `deploy script lacks preflight between build and up for ${service}`;
+  }
+  if (upIdx < 0) {
+    return `deploy script lacks docker compose up for ${service}`;
+  }
+  if (!(buildIdx < preflightIdx && preflightIdx < upIdx)) {
+    return `deploy script must run preflight between build and up for ${service}`;
+  }
+  // Preflight must not mount host scripts (image copy only).
+  const preflightWindow = lines.slice(buildIdx, upIdx + 1).join("\n");
+  if (
+    preflightWindow.includes("deploy-preflight") &&
+    preflightWindow.includes(HOST_SCRIPTS_MOUNT) &&
+    /deploy-preflight[\s\S]*?\/opt\/kargain\/scripts/.test(preflightWindow)
+  ) {
+    return `deploy preflight for ${service} must not mount host scripts`;
+  }
+  return null;
+}
+
+/** ADR 0012: refusal evidence line present on the failure path. */
+export function deployScriptPreflightRefusalDefect(
+  script: string,
+): string | null {
+  if (!/deploy_evidence outcome=refused/.test(script)) {
+    return "deploy script lacks deploy_evidence outcome=refused";
+  }
   return null;
 }
 
@@ -652,6 +718,12 @@ deploy:
           null,
           name,
         );
+        assert.equal(
+          deployScriptPreflightAdjacencyDefect(script, service),
+          null,
+          name,
+        );
+        assert.equal(deployScriptPreflightRefusalDefect(script), null, name);
         assert.equal(deployScriptScriptsMountDefect(script), null, name);
         assert.equal(bashSyntaxDefect(script), null, name);
       }
@@ -799,6 +871,7 @@ flock -w 900 9
 echo "deploy_evidence outcome=recreated"
 echo "deploy_evidence outcome=unchanged"
 echo "deploy_evidence ready=ponder ok"
+echo "deploy_evidence preflight=ok"
 `;
     assert.equal(
       deployScriptEvidenceDefect(planted, {
@@ -806,6 +879,46 @@ echo "deploy_evidence ready=ponder ok"
         service: "ponder",
       }),
       "deploy evidence must use ready=<service> status=<code> not ready=… ok",
+    );
+  });
+
+  it("constructed: deploy without preflight=ok evidence is red", () => {
+    const planted = `set -euo pipefail
+echo "deploy_evidence outcome=recreated"
+echo "deploy_evidence outcome=unchanged"
+echo "deploy_evidence ready=ponder status=$READY_STATUS"
+`;
+    assert.equal(
+      deployScriptEvidenceDefect(planted, {
+        requireUnchanged: true,
+        service: "ponder",
+      }),
+      "deploy script lacks deploy_evidence preflight=ok",
+    );
+  });
+
+  it("constructed: deploy script with up before preflight is red", () => {
+    const planted = `set -euo pipefail
+docker compose build ponder
+docker compose up -d ponder
+docker compose run --rm --no-deps --entrypoint node ponder --import tsx scripts/ponder-deploy-preflight.ts
+`;
+    assert.equal(
+      deployScriptPreflightAdjacencyDefect(planted, "ponder"),
+      "deploy script must run preflight between build and up for ponder",
+    );
+  });
+
+  it("constructed: deploy script without refusal evidence line is red", () => {
+    const planted = `set -euo pipefail
+docker compose build ponder
+docker compose run --rm --no-deps --entrypoint node ponder --import tsx scripts/ponder-deploy-preflight.ts
+docker compose up -d ponder
+echo "deploy_evidence preflight=ok"
+`;
+    assert.equal(
+      deployScriptPreflightRefusalDefect(planted),
+      "deploy script lacks deploy_evidence outcome=refused",
     );
   });
 

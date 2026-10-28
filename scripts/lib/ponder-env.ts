@@ -13,12 +13,41 @@ import {
 
 export type ContractBlockKey = keyof DeploymentBlocks;
 
-function parseStartBlock(raw: string | undefined): number | "latest" | undefined {
+export type PonderEnvRefusalCode =
+  | "invalid_start_block"
+  | "missing_getlogs_block_range"
+  | "missing_rpc_urls"
+  | "empty_rpc_urls"
+  | "invalid_rpc_url"
+  | "duplicate_rpc_url"
+  | "probe_requires_numeric_start_block";
+
+/** Typed config refusal: closed code + env key. Preflight reads `.code` / `.envKey` only. */
+export class PonderEnvRefusalError extends Error {
+  readonly code: PonderEnvRefusalCode;
+  readonly envKey: string;
+
+  constructor(code: PonderEnvRefusalCode, envKey: string, message: string) {
+    super(message);
+    this.name = "PonderEnvRefusalError";
+    this.code = code;
+    this.envKey = envKey;
+  }
+}
+
+function parseStartBlock(
+  envKey: string,
+  raw: string | undefined,
+): number | "latest" | undefined {
   const trimmed = raw?.trim();
   if (!trimmed || trimmed === "latest") return "latest";
   const block = Number.parseInt(trimmed, 10);
   if (!Number.isFinite(block) || block < 0) {
-    throw new Error(`Invalid start block value: ${raw}`);
+    throw new PonderEnvRefusalError(
+      "invalid_start_block",
+      envKey,
+      `Invalid start block value: ${raw}`,
+    );
   }
   return block;
 }
@@ -40,30 +69,58 @@ function loadEthereumSepoliaBundle(): CommercialChainBundle {
   return loaded;
 }
 
-/** Per-chain start block — decouples commercial chains from localhost. */
-export function resolveChainStartBlock(chainId: number): number | "latest" {
+/**
+ * Per-chain start block with the env key that supplied (or should supply) it.
+ * Used by the RPC probe precondition so `probe_requires_numeric_start_block`
+ * names the correct key (legacy `PONDER_START_BLOCK` when that won on Base Sepolia).
+ */
+export function resolveChainStartBlockWithKey(chainId: number): {
+  startBlock: number | "latest";
+  envKey: string;
+} {
   if (chainId === LOCALHOST_CHAIN_ID) {
-    const parsed = parseStartBlock(process.env.PONDER_START_BLOCK_31337);
-    return parsed === "latest" || parsed === undefined ? 0 : parsed;
+    const envKey = "PONDER_START_BLOCK_31337";
+    const parsed = parseStartBlock(envKey, process.env[envKey]);
+    return {
+      startBlock: parsed === "latest" || parsed === undefined ? 0 : parsed,
+      envKey,
+    };
   }
 
   if (chainId === SEPOLIA_CHAIN_ID) {
-    const specific = parseStartBlock(process.env.PONDER_START_BLOCK_84532);
-    if (specific !== undefined && specific !== "latest") return specific;
+    const specificKey = "PONDER_START_BLOCK_84532";
+    const specific = parseStartBlock(specificKey, process.env[specificKey]);
+    if (specific !== undefined && specific !== "latest") {
+      return { startBlock: specific, envKey: specificKey };
+    }
 
-    const legacy = parseStartBlock(process.env.PONDER_START_BLOCK);
-    if (legacy !== undefined && legacy !== "latest") return legacy;
+    const legacyKey = "PONDER_START_BLOCK";
+    const legacy = parseStartBlock(legacyKey, process.env[legacyKey]);
+    if (legacy !== undefined && legacy !== "latest") {
+      return { startBlock: legacy, envKey: legacyKey };
+    }
 
-    return sepoliaIndexFromBlock();
+    return { startBlock: sepoliaIndexFromBlock(), envKey: specificKey };
   }
 
   if (chainId === SPOKE_CHAIN_ID) {
-    const specific = parseStartBlock(process.env.PONDER_START_BLOCK_11155111);
-    if (specific !== undefined && specific !== "latest") return specific;
-    return loadEthereumSepoliaBundle().indexFromBlock;
+    const envKey = "PONDER_START_BLOCK_11155111";
+    const specific = parseStartBlock(envKey, process.env[envKey]);
+    if (specific !== undefined && specific !== "latest") {
+      return { startBlock: specific, envKey };
+    }
+    return {
+      startBlock: loadEthereumSepoliaBundle().indexFromBlock,
+      envKey,
+    };
   }
 
   throw new Error(`Unsupported Ponder chain id: ${chainId}`);
+}
+
+/** Per-chain start block — decouples commercial chains from localhost. */
+export function resolveChainStartBlock(chainId: number): number | "latest" {
+  return resolveChainStartBlockWithKey(chainId).startBlock;
 }
 
 function resolveCommercialContractStartBlock(
@@ -153,18 +210,24 @@ export function resolveGetLogsBlockRange(
   const raw = env[key];
   const trimmed = raw?.trim();
   if (!trimmed) {
-    throw new Error(
+    throw new PonderEnvRefusalError(
+      "missing_getlogs_block_range",
+      key,
       `missing_getlogs_block_range: set ${key} to a positive integer (no default)`,
     );
   }
   if (!/^\d+$/.test(trimmed)) {
-    throw new Error(
+    throw new PonderEnvRefusalError(
+      "missing_getlogs_block_range",
+      key,
       `missing_getlogs_block_range: set ${key} to a positive integer (no default)`,
     );
   }
   const n = Number.parseInt(trimmed, 10);
   if (!Number.isFinite(n) || n <= 0) {
-    throw new Error(
+    throw new PonderEnvRefusalError(
+      "missing_getlogs_block_range",
+      key,
       `missing_getlogs_block_range: set ${key} to a positive integer (no default)`,
     );
   }
@@ -183,7 +246,9 @@ export function resolveCommercialRpcUrls(
   const raw = env[key];
   const trimmed = raw?.trim();
   if (!trimmed) {
-    throw new Error(
+    throw new PonderEnvRefusalError(
+      "missing_rpc_urls",
+      key,
       `missing_rpc_urls: set ${key} to a comma-separated list of https URLs (no default)`,
     );
   }
@@ -192,7 +257,9 @@ export function resolveCommercialRpcUrls(
     .map((p) => p.trim())
     .filter((p) => p.length > 0);
   if (parts.length === 0) {
-    throw new Error(
+    throw new PonderEnvRefusalError(
+      "empty_rpc_urls",
+      key,
       `empty_rpc_urls: set ${key} to a comma-separated list of https URLs (no default)`,
     );
   }
@@ -202,15 +269,25 @@ export function resolveCommercialRpcUrls(
     try {
       parsed = new URL(url);
     } catch {
-      throw new Error(`invalid_rpc_url: ${key} entry is not a valid URL: ${url}`);
+      throw new PonderEnvRefusalError(
+        "invalid_rpc_url",
+        key,
+        `invalid_rpc_url: ${key} entry is not a valid URL: ${url}`,
+      );
     }
     if (parsed.protocol !== "https:") {
-      throw new Error(
+      throw new PonderEnvRefusalError(
+        "invalid_rpc_url",
+        key,
         `invalid_rpc_url: ${key} entry must be https: ${url}`,
       );
     }
     if (seen.has(url)) {
-      throw new Error(`duplicate_rpc_url: ${key} lists ${url} more than once`);
+      throw new PonderEnvRefusalError(
+        "duplicate_rpc_url",
+        key,
+        `duplicate_rpc_url: ${key} lists ${url} more than once`,
+      );
     }
     seen.add(url);
   }

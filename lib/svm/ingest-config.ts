@@ -109,6 +109,39 @@ export class MissingCommercialProgramError extends Error {
   }
 }
 
+export type SvmIngestRuntimeRefusalCode =
+  | "missing_solana_rpc_url"
+  | "missing_database_url"
+  | "invalid_svm_ingest_eid"
+  | "svm_ingest_namespace_mismatch"
+  | "invalid_catchup_max_lag_slots"
+  | "invalid_ingest_max_rps"
+  | "missing_commercial_program";
+
+/** Typed svm-ingest runtime refusal: closed code + env key (when applicable). */
+export class SvmIngestRuntimeRefusalError extends Error {
+  readonly code: SvmIngestRuntimeRefusalCode;
+  readonly envKey: string | undefined;
+  readonly evidenceKeys: readonly string[] | undefined;
+
+  constructor(
+    code: SvmIngestRuntimeRefusalCode,
+    message: string,
+    opts?: { envKey?: string; evidenceKeys?: readonly string[] },
+  ) {
+    super(message);
+    this.name = "SvmIngestRuntimeRefusalError";
+    this.code = code;
+    this.envKey = opts?.envKey;
+    this.evidenceKeys = opts?.evidenceKeys;
+  }
+}
+
+function unsetEnv(raw: string | undefined): string | undefined {
+  const trimmed = raw?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 function isValidDeploySlot(slot: unknown): slot is number {
   return typeof slot === "number" && Number.isInteger(slot) && slot >= 0;
 }
@@ -245,22 +278,28 @@ export function resolveIngestCommercialStack(opts?: {
     opts?.eid ??
     Number(process.env.SVM_INGEST_EID?.trim() ?? "40168");
   if (!Number.isInteger(eid) || eid <= 0) {
-    throw new Error(`SVM_INGEST_EID must be a positive integer (got ${eid})`);
+    throw new SvmIngestRuntimeRefusalError(
+      "invalid_svm_ingest_eid",
+      `SVM_INGEST_EID must be a positive integer (got ${eid})`,
+      { envKey: "SVM_INGEST_EID" },
+    );
   }
   const namespace = namespaceFromLayerZeroEid(eid);
   const stack = requireSvmCommercialActive(namespace);
 
   const envRaw =
     opts?.namespaceEnv !== undefined
-      ? opts.namespaceEnv?.trim()
-      : process.env.SVM_INGEST_NAMESPACE?.trim();
+      ? unsetEnv(opts.namespaceEnv)
+      : unsetEnv(process.env.SVM_INGEST_NAMESPACE);
   const envParsed =
     envRaw && Number.isInteger(Number(envRaw)) ? Number(envRaw) : undefined;
   const stackNs = Number(stack.namespace);
   if (envParsed !== undefined && envParsed !== stackNs) {
-    throw new Error(
+    throw new SvmIngestRuntimeRefusalError(
+      "svm_ingest_namespace_mismatch",
       `SVM ingest namespace mismatch: SVM_INGEST_NAMESPACE=${envParsed} ` +
         `COMMERCIAL_ACTIVE.namespace=${stackNs}`,
+      { envKey: "SVM_INGEST_NAMESPACE" },
     );
   }
   return stack;
@@ -277,12 +316,18 @@ export const DEFAULT_CATCHUP_MAX_LAG_SLOTS = 216_000;
 /** Shared RPC budget for signature pages + getBlock (public Devnet ~40/10s/method). */
 export const DEFAULT_INGEST_MAX_RPS = 3;
 
-export function resolveCatchupMaxLagSlots(): number {
-  const raw = process.env.SVM_INGEST_CATCHUP_MAX_LAG_SLOTS?.trim();
+export function resolveCatchupMaxLagSlots(
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const raw = unsetEnv(env.SVM_INGEST_CATCHUP_MAX_LAG_SLOTS);
   if (!raw) return DEFAULT_CATCHUP_MAX_LAG_SLOTS;
   const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error("SVM_INGEST_CATCHUP_MAX_LAG_SLOTS must be a positive integer");
+    throw new SvmIngestRuntimeRefusalError(
+      "invalid_catchup_max_lag_slots",
+      "SVM_INGEST_CATCHUP_MAX_LAG_SLOTS must be a positive integer",
+      { envKey: "SVM_INGEST_CATCHUP_MAX_LAG_SLOTS" },
+    );
   }
   return parsed;
 }
@@ -290,11 +335,84 @@ export function resolveCatchupMaxLagSlots(): number {
 export function resolveIngestMaxRps(
   env: NodeJS.ProcessEnv = process.env,
 ): number {
-  const raw = env.SVM_INGEST_MAX_RPS?.trim();
+  const raw = unsetEnv(env.SVM_INGEST_MAX_RPS);
   if (!raw) return DEFAULT_INGEST_MAX_RPS;
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error("SVM_INGEST_MAX_RPS must be a positive number");
+    throw new SvmIngestRuntimeRefusalError(
+      "invalid_ingest_max_rps",
+      "SVM_INGEST_MAX_RPS must be a positive number",
+      { envKey: "SVM_INGEST_MAX_RPS" },
+    );
   }
   return parsed;
+}
+
+export type SvmIngestRuntime = {
+  rpcUrl: string;
+  databaseUrl: string;
+  stack: SvmCommercialActiveStack;
+  namespace: number;
+  startSlot: number;
+  maxLagSlots: number;
+  maxRps: number;
+  port: number;
+  followedPrograms: FollowedProgram[];
+};
+
+/**
+ * Sole runtime-config owner for svm-ingest: everything `main.ts` and the
+ * deploy preflight need. Empty/whitespace env values count as unset.
+ */
+export function buildSvmIngestRuntime(
+  env: NodeJS.ProcessEnv = process.env,
+): SvmIngestRuntime {
+  const rpcUrl = unsetEnv(env.SOLANA_RPC_URL);
+  if (!rpcUrl) {
+    throw new SvmIngestRuntimeRefusalError(
+      "missing_solana_rpc_url",
+      "SOLANA_RPC_URL required for svm-ingest",
+      { envKey: "SOLANA_RPC_URL" },
+    );
+  }
+
+  const databaseUrl =
+    unsetEnv(env.SVM_INGEST_DATABASE_URL) ?? unsetEnv(env.DATABASE_URL);
+  if (!databaseUrl) {
+    throw new SvmIngestRuntimeRefusalError(
+      "missing_database_url",
+      "SVM_INGEST_DATABASE_URL or DATABASE_URL required",
+      { envKey: "SVM_INGEST_DATABASE_URL" },
+    );
+  }
+
+  const stack = resolveIngestCommercialStack({
+    eid: Number(unsetEnv(env.SVM_INGEST_EID) ?? "40168"),
+    namespaceEnv: env.SVM_INGEST_NAMESPACE,
+  });
+
+  const gaps = commercialProgramCensusGaps(stack);
+  if (gaps.length > 0) {
+    const keys = gaps.map((g) => g.key);
+    throw new SvmIngestRuntimeRefusalError(
+      "missing_commercial_program",
+      `SVM commercial stack missing required program(s): ${keys.join(", ")} — ` +
+        `each of six needs programId + deploySlot in COMMERCIAL_ACTIVE.blocks`,
+      { evidenceKeys: keys },
+    );
+  }
+
+  const port = Number(unsetEnv(env.SVM_INGEST_PORT) ?? "42100");
+
+  return {
+    rpcUrl,
+    databaseUrl,
+    stack,
+    namespace: resolveIngestNamespace(stack),
+    startSlot: resolveIngestStartSlot(stack),
+    maxLagSlots: resolveCatchupMaxLagSlots(env),
+    maxRps: resolveIngestMaxRps(env),
+    port,
+    followedPrograms: followedProgramsFromStack(stack),
+  };
 }
