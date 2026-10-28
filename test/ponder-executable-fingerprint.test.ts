@@ -143,4 +143,50 @@ describe("ponder-executable-fingerprint", () => {
     assert.ok(payload.files.some((f) => f.path === "Dockerfile.ponder"));
     assert.equal(payload.packageRuntime.ponderStart, "ponder start");
   });
+
+  it("planted: relative .js import resolves to .ts source in the graph", () => {
+    const files = new Map<string, string>([
+      ["entry.ts", 'import "./a.js";\nexport {};\n'],
+      ["a.ts", "export const a = 1;\n"],
+    ]);
+    const graph = collectPonderExecutableGraphFiles(ROOT, {
+      entries: ["entry.ts"],
+      fileContents: files,
+    });
+    assert.ok(
+      graph.includes("a.ts"),
+      "planted ./a.js → a.ts edge must be included in the graph",
+    );
+  });
+
+  it("planted: unresolved relative import throws with file and specifier", () => {
+    const files = new Map<string, string>([
+      ["entry.ts", 'import "./missing.js";\nexport {};\n'],
+    ]);
+    assert.throws(
+      () =>
+        collectPonderExecutableGraphFiles(ROOT, {
+          entries: ["entry.ts"],
+          fileContents: files,
+        }),
+      (err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        assert.match(msg, /entry\.ts/);
+        assert.match(msg, /\.\/missing\.js/);
+        return true;
+      },
+    );
+  });
+
+  it("live graph includes ponder-env.ts and custody/fold.ts", () => {
+    const graph = collectPonderExecutableGraphFiles(ROOT);
+    assert.ok(
+      graph.includes("scripts/lib/ponder-env.ts"),
+      "live graph must include scripts/lib/ponder-env.ts (red on 66cdc6b)",
+    );
+    assert.ok(
+      graph.includes("lib/custody/fold.ts"),
+      "live graph must include lib/custody/fold.ts (red on 66cdc6b)",
+    );
+  });
 });

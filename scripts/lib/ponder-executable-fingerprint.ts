@@ -111,17 +111,26 @@ function extractStaticSpecs(source: string): string[] {
   return specs;
 }
 
+function isLocalSpecifier(spec: string): boolean {
+  return (
+    spec.startsWith("@/") ||
+    spec.startsWith("./") ||
+    spec.startsWith("../")
+  );
+}
+
 function resolveLocalImport(
   fromFile: string,
   spec: string,
   root: string,
+  planted?: Map<string, string>,
 ): string | null {
   if (spec.startsWith("@/")) {
-    return tryResolveFile(join(root, spec.slice(2)));
+    return tryResolveFile(join(root, spec.slice(2)), root, planted);
   }
   if (!(spec.startsWith("./") || spec.startsWith("../"))) return null;
   const base = resolve(dirname(fromFile), spec);
-  return tryResolveFile(base);
+  return tryResolveFile(base, root, planted);
 }
 
 function isReadableFile(path: string): boolean {
@@ -132,8 +141,39 @@ function isReadableFile(path: string): boolean {
   }
 }
 
-function tryResolveFile(base: string): string | null {
+/** Candidate exists on disk or (for planted graphs) as a key in fileContents. */
+function candidateExists(
+  abs: string,
+  root: string,
+  planted?: Map<string, string>,
+): boolean {
+  if (planted) {
+    const rel = relative(root, abs).replace(/\\/g, "/");
+    if (planted.has(rel)) return true;
+  }
+  return isReadableFile(abs);
+}
+
+/**
+ * TypeScript ESM: a relative/@/ specifier ending in .js/.mjs/.cjs resolves to
+ * the .ts/.mts/.cts source when that file exists, before the literal file.
+ */
+function tryResolveFile(
+  base: string,
+  root: string,
+  planted?: Map<string, string>,
+): string | null {
+  const tsEsmRemap: string[] = [];
+  if (base.endsWith(".mjs")) {
+    tsEsmRemap.push(`${base.slice(0, -".mjs".length)}.mts`);
+  } else if (base.endsWith(".cjs")) {
+    tsEsmRemap.push(`${base.slice(0, -".cjs".length)}.cts`);
+  } else if (base.endsWith(".js")) {
+    tsEsmRemap.push(`${base.slice(0, -".js".length)}.ts`);
+  }
+
   const candidates = [
+    ...tsEsmRemap,
     base,
     `${base}.ts`,
     `${base}.tsx`,
@@ -144,7 +184,7 @@ function tryResolveFile(base: string): string | null {
     join(base, "index.js"),
   ];
   for (const c of candidates) {
-    if (isReadableFile(c)) return c;
+    if (candidateExists(c, root, planted)) return c;
   }
   return null;
 }
@@ -152,6 +192,8 @@ function tryResolveFile(base: string): string | null {
 /**
  * Walk static imports from process entries. Excludes src/svm-ingest/**.
  * Injectable fileContents map lets tests plant a graph without touching live src.
+ * Relative and `@/` imports that resolve to no file throw (fail closed).
+ * Bare package specifiers stay outside the graph.
  */
 export function collectPonderExecutableGraphFiles(
   root: string,
@@ -182,9 +224,19 @@ export function collectPonderExecutableGraphFiles(
     }
 
     for (const spec of extractStaticSpecs(source)) {
+      if (!isLocalSpecifier(spec)) continue;
       const absFrom = join(root, rel);
-      const resolved = resolveLocalImport(absFrom, spec, root);
-      if (!resolved) continue;
+      const resolved = resolveLocalImport(
+        absFrom,
+        spec,
+        root,
+        opts?.fileContents,
+      );
+      if (!resolved) {
+        throw new Error(
+          `Unresolved local import ${JSON.stringify(spec)} from ${rel}`,
+        );
+      }
       const nextRel = relative(root, resolved).replace(/\\/g, "/");
       if (isExcludedGraphPath(nextRel)) continue;
       if (opts?.fileContents && !opts.fileContents.has(nextRel)) {
