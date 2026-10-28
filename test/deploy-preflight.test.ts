@@ -13,7 +13,11 @@ import {
   type FollowedProgram,
   type SvmIngestRuntime,
 } from "../lib/svm/ingest-config.ts";
-import { postSolanaJsonRpc } from "../lib/svm/solana-json-rpc.ts";
+import {
+  isSolanaRpcUnreachableError,
+  postSolanaJsonRpc,
+  type SolanaJsonRpcPost,
+} from "../lib/svm/solana-json-rpc.ts";
 import {
   PonderEnvRefusalError,
   resolveCommercialRpcUrls,
@@ -26,12 +30,10 @@ import {
 } from "../scripts/lib/ponder-rpc-probe.ts";
 import { runPonderDeployPreflight } from "../scripts/ponder-deploy-preflight.ts";
 import {
-  isSolanaRpcUnreachableError,
   runSvmIngestDeployPreflight,
   SVM_INGEST_PREFLIGHT_TIMEOUT_MS,
 } from "../scripts/svm-ingest-deploy-preflight.ts";
 import { SEPOLIA_CHAIN_ID, SPOKE_CHAIN_ID } from "../scripts/lib/load-deployment.ts";
-import type { SolanaJsonRpcPost } from "../lib/svm/solana-json-rpc.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PLANTED_HOST = "planted-provider.example";
@@ -453,13 +455,26 @@ describe("deploy-preflight svm-ingest script", () => {
   it("timeout / network maps to unreachable; answered RPC error to preflight_error", async () => {
     assert.equal(
       isSolanaRpcUnreachableError(
-        Object.assign(new Error("aborted"), { name: "TimeoutError" }),
+        new DOMException("The operation was aborted", "TimeoutError"),
       ),
       true,
     );
     assert.equal(
+      isSolanaRpcUnreachableError(new TypeError("fetch failed")),
+      true,
+    );
+    // Message text alone never decides — including answered RPC wording.
+    assert.equal(
       isSolanaRpcUnreachableError(
         new Error("Solana RPC getAccountInfo failed: Internal error"),
+      ),
+      false,
+    );
+    assert.equal(
+      isSolanaRpcUnreachableError(
+        new Error(
+          "Solana RPC getAccountInfo failed: network congestion / fetch failed",
+        ),
       ),
       false,
     );
@@ -467,10 +482,7 @@ describe("deploy-preflight svm-ingest script", () => {
     const { lines: hangLines, write: hangWrite } = captureWrite();
     const hangPost = (async (_url, _method, _params, timeoutMs) => {
       assert.equal(timeoutMs, SVM_INGEST_PREFLIGHT_TIMEOUT_MS);
-      const err = Object.assign(new Error("The operation was aborted"), {
-        name: "TimeoutError",
-      });
-      throw err;
+      throw new DOMException("The operation was aborted", "TimeoutError");
     }) as SolanaJsonRpcPost;
     const hangCode = await runSvmIngestDeployPreflight({
       buildRuntime: () => fakeRuntime(),
@@ -483,7 +495,9 @@ describe("deploy-preflight svm-ingest script", () => {
 
     const { lines: ansLines, write: ansWrite } = captureWrite();
     const answeredPost = (async () => {
-      throw new Error("Solana RPC getAccountInfo failed: Internal error");
+      throw new Error(
+        "Solana RPC getAccountInfo failed: network congestion / fetch failed",
+      );
     }) as SolanaJsonRpcPost;
     const ansCode = await runSvmIngestDeployPreflight({
       buildRuntime: () => fakeRuntime(),
@@ -493,7 +507,8 @@ describe("deploy-preflight svm-ingest script", () => {
     assert.equal(ansCode, 1);
     assert.match(ansLines.join(""), /reason=preflight_error/);
     assert.doesNotMatch(ansLines.join(""), /unreachable/);
-    assert.doesNotMatch(ansLines.join(""), /Internal error/);
+    assert.doesNotMatch(ansLines.join(""), /network congestion/);
+    assert.doesNotMatch(ansLines.join(""), /fetch failed/);
   });
 
   it("executable programs exit 0 with ok lines", async () => {
@@ -526,7 +541,10 @@ describe("postSolanaJsonRpc timeout", () => {
             [],
             200,
           ),
-        (err: unknown) => isSolanaRpcUnreachableError(err) || err instanceof Error,
+        (err: unknown) => {
+          assert.equal(isSolanaRpcUnreachableError(err), true);
+          return true;
+        },
       );
       const elapsed = Date.now() - started;
       assert.ok(elapsed < 2_000, `elapsed ${elapsed}ms — timeout did not fire`);

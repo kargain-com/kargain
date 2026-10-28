@@ -17,6 +17,25 @@ export type SolanaJsonRpcPost = <T>(
   timeoutMs?: number,
 ) => Promise<T>;
 
+/**
+ * Classify transport failures only — never by message text.
+ * Answered HTTP / JSON-RPC errors from {@link postSolanaJsonRpc} are plain
+ * `Error`s and are not unreachable, even when the RPC text says "network".
+ *
+ * Unreachable: `DOMException` named `TimeoutError`/`AbortError`, and the
+ * `TypeError` `fetch` throws on network failure (follow `cause`).
+ */
+export function isSolanaRpcUnreachableError(err: unknown): boolean {
+  if (err instanceof DOMException) {
+    return err.name === "TimeoutError" || err.name === "AbortError";
+  }
+  if (err instanceof TypeError) {
+    // fetch network failure (`TypeError: fetch failed`, often with a `cause`).
+    return true;
+  }
+  return false;
+}
+
 export const postSolanaJsonRpc: SolanaJsonRpcPost = async <T>(
   rpcUrl: string,
   method: string,

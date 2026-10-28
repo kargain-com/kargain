@@ -10,6 +10,7 @@ import {
   type SvmIngestRuntime,
 } from "../lib/svm/ingest-config.js";
 import {
+  isSolanaRpcUnreachableError,
   postSolanaJsonRpc,
   type SolanaJsonRpcPost,
 } from "../lib/svm/solana-json-rpc.js";
@@ -37,35 +38,6 @@ export type SvmIngestDeployPreflightDeps = {
   postRpc?: SolanaJsonRpcPost;
   stdoutWrite?: DeployPreflightWriter;
 };
-
-/**
- * ADR: `unreachable` = timed out or otherwise could not reach the RPC.
- * An HTTP / JSON-RPC answered error is not unreachable.
- */
-export function isSolanaRpcUnreachableError(err: unknown): boolean {
-  if (err instanceof DOMException) {
-    return err.name === "TimeoutError" || err.name === "AbortError";
-  }
-  if (err instanceof TypeError) {
-    return true;
-  }
-  if (err instanceof Error) {
-    if (err.name === "TimeoutError" || err.name === "AbortError") {
-      return true;
-    }
-    if (
-      /fetch failed|ECONNREFUSED|ENOTFOUND|ECONNRESET|ETIMEDOUT|EAI_AGAIN|network/i.test(
-        err.message,
-      )
-    ) {
-      return true;
-    }
-    if (err.cause !== undefined) {
-      return isSolanaRpcUnreachableError(err.cause);
-    }
-  }
-  return false;
-}
 
 async function checkProgram(
   rpcUrl: string,

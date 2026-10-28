@@ -139,7 +139,7 @@ describe("svm commercial program census (registry runtime)", () => {
         ),
       (err: unknown) => {
         assert.ok(err instanceof MissingCommercialProgramError);
-        assert.ok(err.missingEvidenceKeys.includes("kar_fixed_price"));
+        assert.ok(err.evidenceKeys!.includes("kar_fixed_price"));
         assert.match(err.message, /kar_fixed_price/);
         return true;
       },
@@ -186,8 +186,8 @@ describe("svm commercial program census (registry runtime)", () => {
       () => assertSvmCommercialEvidence(planted),
       (err: unknown) => {
         assert.ok(err instanceof MissingCommercialProgramError);
-        assert.ok(err.missingEvidenceKeys.includes("kar_fixed_price"));
-        assert.ok(err.missingEvidenceKeys.includes("kar_ascending"));
+        assert.ok(err.evidenceKeys!.includes("kar_fixed_price"));
+        assert.ok(err.evidenceKeys!.includes("kar_ascending"));
         return true;
       },
     );
@@ -225,7 +225,7 @@ describe("svm commercial program census (registry runtime)", () => {
       () => resolveIngestStartSlot(missingSlot),
       (err: unknown) => {
         assert.ok(err instanceof MissingCommercialProgramError);
-        assert.ok(err.missingEvidenceKeys.includes("kar_ascending"));
+        assert.ok(err.evidenceKeys!.includes("kar_ascending"));
         return true;
       },
     );
@@ -282,8 +282,8 @@ describe("svm commercial program census (registry runtime)", () => {
       () => assertSvmCommercialEvidence(four),
       (err: unknown) => {
         assert.ok(err instanceof MissingCommercialProgramError);
-        assert.ok(err.missingEvidenceKeys.includes("kar_fixed_price"));
-        assert.ok(err.missingEvidenceKeys.includes("kar_ascending"));
+        assert.ok(err.evidenceKeys!.includes("kar_fixed_price"));
+        assert.ok(err.evidenceKeys!.includes("kar_ascending"));
         return true;
       },
     );

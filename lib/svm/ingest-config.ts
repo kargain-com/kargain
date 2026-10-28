@@ -125,21 +125,19 @@ export class SvmIngestRuntimeRefusalError extends Error {
 
 /**
  * Census gap refusal — same typed refusal as the rest of the runtime owner
- * (`missing_commercial_program`), with `missingEvidenceKeys` for deploy-machine callers.
+ * (`missing_commercial_program`). Missing keys live only on inherited
+ * {@link SvmIngestRuntimeRefusalError.evidenceKeys}.
  */
 export class MissingCommercialProgramError extends SvmIngestRuntimeRefusalError {
-  readonly missingEvidenceKeys: readonly string[];
-
-  constructor(missingEvidenceKeys: readonly string[]) {
-    const list = missingEvidenceKeys.join(", ");
+  constructor(evidenceKeys: readonly string[]) {
+    const list = evidenceKeys.join(", ");
     super(
       "missing_commercial_program",
       `SVM commercial stack missing required program(s): ${list} — ` +
         `each of six needs programId + deploySlot in COMMERCIAL_ACTIVE.blocks`,
-      { evidenceKeys: missingEvidenceKeys },
+      { evidenceKeys },
     );
     this.name = "MissingCommercialProgramError";
-    this.missingEvidenceKeys = missingEvidenceKeys;
   }
 }
 
