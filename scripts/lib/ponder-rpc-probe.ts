@@ -25,6 +25,32 @@ export type PonderRpcProbeVerdict =
   | "rpc_error"
   | "empty_reference";
 
+/**
+ * Sole owner of ADR 0013 deploy-refusal classification for probe verdicts.
+ * Exhaustive: a new verdict must be classified here.
+ */
+export function ponderRpcProbeVerdictRefusesDeploy(
+  verdict: PonderRpcProbeVerdict,
+): boolean {
+  switch (verdict) {
+    case "ok":
+    case "rate_limited":
+      return false;
+    case "chain_mismatch":
+    case "history_pruned":
+    case "window_rejected":
+    case "log_set_mismatch":
+    case "empty_reference":
+    case "unreachable":
+    case "rpc_error":
+      return true;
+    default: {
+      const _exhaustive: never = verdict;
+      return _exhaustive;
+    }
+  }
+}
+
 export type PonderRpcProviderResult = {
   url: string;
   chainId: number;
