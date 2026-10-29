@@ -46,7 +46,9 @@ function ports(partial: Partial<AppendOnlyBaselinePorts> & {
     eventName: partial.eventName,
     event: partial.event ?? null,
     inActions: partial.inActions ?? false,
+    ref: partial.ref,
     headSha: partial.headSha ?? (() => null),
+    firstParentOfHead: partial.firstParentOfHead ?? (() => null),
     mergeBaseWithOriginMaster:
       partial.mergeBaseWithOriginMaster ?? (() => null),
     commitExists: partial.commitExists ?? (() => true),
@@ -128,6 +130,67 @@ describe("ix append-only baseline resolver", () => {
       }),
     );
     assert.deepEqual(r, { ok: false, cause: "baseline_ci_event_unresolved" });
+  });
+
+  it("Actions + workflow_dispatch of master → dispatch_first_parent (HEAD^1)", () => {
+    const parent = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const head = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const r = resolveAppendOnlyBaseline(
+      ports({
+        inActions: true,
+        eventName: "workflow_dispatch",
+        ref: "refs/heads/master",
+        headSha: () => head,
+        firstParentOfHead: () => parent,
+        commitExists: (sha) => sha === parent,
+      }),
+    );
+    assert.equal(r.ok, true);
+    if (r.ok) {
+      assert.equal(r.commit, parent);
+      assert.equal(r.source, "dispatch_first_parent");
+    }
+  });
+
+  it("Actions + workflow_dispatch of non-master ref → baseline_ci_event_unresolved", () => {
+    const r = resolveAppendOnlyBaseline(
+      ports({
+        inActions: true,
+        eventName: "workflow_dispatch",
+        ref: "refs/heads/other",
+        firstParentOfHead: () => "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        mergeBaseWithOriginMaster: () => "cccccccccccccccccccccccccccccccccccccccc",
+      }),
+    );
+    assert.deepEqual(r, { ok: false, cause: "baseline_ci_event_unresolved" });
+  });
+
+  it("Actions + workflow_dispatch of master with absent parent → baseline_commit_absent", () => {
+    const r = resolveAppendOnlyBaseline(
+      ports({
+        inActions: true,
+        eventName: "workflow_dispatch",
+        ref: "refs/heads/master",
+        headSha: () => "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        firstParentOfHead: () => null,
+      }),
+    );
+    assert.deepEqual(r, { ok: false, cause: "baseline_commit_absent" });
+  });
+
+  it("Actions + workflow_dispatch of master where parent equals HEAD → baseline_is_head", () => {
+    const same = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+    const r = resolveAppendOnlyBaseline(
+      ports({
+        inActions: true,
+        eventName: "workflow_dispatch",
+        ref: "refs/heads/master",
+        headSha: () => same,
+        firstParentOfHead: () => same,
+        commitExists: (sha) => sha === same,
+      }),
+    );
+    assert.deepEqual(r, { ok: false, cause: "baseline_is_head" });
   });
 
   it("Actions + resolved baseline equal to HEAD → baseline_is_head", () => {

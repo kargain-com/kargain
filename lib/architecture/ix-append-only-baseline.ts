@@ -5,10 +5,15 @@
  * Authority is the tip this change is measured against — not local HEAD:
  * - CI push → event.before (non-zero)
  * - CI pull_request → event.pull_request.base.sha
+ * - CI workflow_dispatch of refs/heads/master → first parent of HEAD
+ *   (`dispatch_first_parent`)
  * - else (local only) → git merge-base HEAD origin/master
  *
+ * Invariant: master advances one first-parent step per merge. The maintainer
+ * sets the repository merge method to squash only so that holds.
+ *
  * Inside GitHub Actions, merge-base is not a valid source (`baseline_ci_event_unresolved`).
- * A called workflow inherits the caller's push/PR context — it does not need merge-base.
+ * A called workflow inherits the caller's push/PR/dispatch context — it does not need merge-base.
  * When Actions resolves a baseline equal to HEAD → `baseline_is_head` (vacuous compare).
  * Local baseline == HEAD remains valid (working tree vs published tip).
  *
@@ -31,6 +36,7 @@ export type AppendOnlyBaselineCause =
 export type AppendOnlyBaselineSource =
   | "push_before"
   | "pull_request_base"
+  | "dispatch_first_parent"
   | "merge_base_origin_master";
 
 export type AppendOnlyBaselineOk = {
@@ -57,8 +63,15 @@ export type AppendOnlyBaselinePorts = {
   event: AppendOnlyGitHubEvent | null;
   /** True when running under GitHub Actions (injected; never read env here). */
   inActions: boolean;
+  /**
+   * Git ref for this run (injected; e.g. `refs/heads/master`).
+   * Used only by the workflow_dispatch source — never read from env here.
+   */
+  ref: string | undefined;
   /** `git rev-parse HEAD` → full sha, or null when unresolvable. */
   headSha: () => string | null;
+  /** First parent of HEAD (`HEAD^1`) → sha or null when unresolvable. */
+  firstParentOfHead: () => string | null;
   /** git merge-base HEAD origin/master → sha or null when unresolvable. Local only. */
   mergeBaseWithOriginMaster: () => string | null;
   /** True when `git cat-file -e <sha>^{commit}` would succeed. */
@@ -115,6 +128,21 @@ export function resolveAppendOnlyBaseline(
         source: "pull_request_base",
       });
     }
+  }
+
+  if (ports.eventName === "workflow_dispatch") {
+    if (ports.ref === "refs/heads/master") {
+      const commit = ports.firstParentOfHead();
+      if (commit == null || commit.length === 0 || !ports.commitExists(commit)) {
+        return { ok: false, cause: "baseline_commit_absent" };
+      }
+      return refuseIfBaselineIsHead(ports, {
+        ok: true,
+        commit,
+        source: "dispatch_first_parent",
+      });
+    }
+    return { ok: false, cause: "baseline_ci_event_unresolved" };
   }
 
   if (ports.inActions) {

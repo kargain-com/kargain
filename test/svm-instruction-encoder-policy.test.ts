@@ -2,7 +2,8 @@
  * Commercial instruction wire — TS encoder vs committed Rust goldens.
  *
  * Append-only authority: published trunk tip this change is measured against
- * (CI push `before` / PR base; local `merge-base HEAD origin/master`) via
+ * (CI push `before` / PR base / dispatch of master → HEAD^1; local
+ * `merge-base HEAD origin/master`) via
  * `lib/architecture/ix-append-only-baseline` — not `git show HEAD`.
  * Actions never uses merge-base (would be identity on master checkout).
  *
@@ -87,7 +88,9 @@ function loadPublishedTrunkManifest(): IxManifest {
     eventName: process.env.GITHUB_EVENT_NAME,
     event: readGitHubEvent(),
     inActions: process.env.GITHUB_ACTIONS === "true",
+    ref: process.env.GITHUB_REF,
     headSha: () => gitOk(["rev-parse", "HEAD"]),
+    firstParentOfHead: () => gitOk(["rev-parse", "HEAD^1"]),
     mergeBaseWithOriginMaster: () =>
       gitOk(["merge-base", "HEAD", "origin/master"]),
     commitExists,
