@@ -755,32 +755,45 @@ execute_actions() {
         drop_schema_via_owner "$(action_field schema)"
         ;;
       retention)
-        run_node -e '
-          const fs = require("fs");
-          const a = JSON.parse(fs.readFileSync("/work/action.json", "utf8"));
-          fs.writeFileSync("/work/retention-drop.json", JSON.stringify(a.drop || []) + "\n");
-        '
+        # Host-side extract: same Docker Desktop bind-mount race as action_field.
+        (
+          cd "$ROOT"
+          node --import tsx -e '
+            const fs = require("fs");
+            const a = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            fs.writeFileSync(process.argv[2], JSON.stringify(a.drop || []) + "\n");
+          ' "$WORK/action.json" "$WORK/retention-drop.json"
+        )
         local drop_list schema
-        drop_list="$(run_node -e '
-          const d = JSON.parse(require("fs").readFileSync("/work/retention-drop.json", "utf8"));
-          process.stdout.write(d.join("\n"));
-        ')"
+        drop_list="$(
+          cd "$ROOT"
+          node --import tsx -e '
+            const d = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            process.stdout.write(d.join("\n"));
+          ' "$WORK/retention-drop.json"
+        )"
         while IFS= read -r schema || [ -n "$schema" ]; do
           [ -z "$schema" ] && continue
           stop_writers_for_schema "$schema"
         done <<<"$drop_list"
         local sql
-        sql="$(run_node "${C_SCRIPTS}/ponder-deploy-retention-cli.ts" \
-          --state "${C_STATE}" --drop-schemas-file "${C_WORK}/retention-drop.json")"
+        sql="$(
+          cd "$ROOT"
+          node --import tsx scripts/ponder-deploy-retention-cli.ts \
+            --state "$STATE_FILE" --drop-schemas-file "$WORK/retention-drop.json"
+        )"
         if [ -n "$(printf '%s' "$sql" | tr -d '[:space:]')" ]; then
           printf '%s\n' "$sql" | docker compose exec -T postgres \
             psql -U ponder -d kargain_ponder -v ON_ERROR_STOP=1
         fi
         ;;
       write_state)
-        # C3: only through state owner CLI.
-        run_node "${C_SCRIPTS}/ponder-deploy-state-cli.ts" \
-          --action-state-write "${C_WORK}/action.json" "${C_STATE}"
+        # C3: only through state owner CLI (host-side; same mount-race avoidance).
+        (
+          cd "$ROOT"
+          node --import tsx scripts/ponder-deploy-state-cli.ts \
+            --action-state-write "$WORK/action.json" "$STATE_FILE"
+        )
         ;;
       check_schema_absent)
         local schema exists
