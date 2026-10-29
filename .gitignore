@@ -42,6 +42,7 @@ ponder/.ponder
 .ponder-upstream.conf
 .ponder-slot-*.env
 .ponder-deploy-work/
+ops/rehearsal/.generated-pre-cutover.yml
 .deploy.lock
 
 # vincent commons derivation output (pnpm vincent:derive)

@@ -221,6 +221,25 @@ export function phaseObservationDefect(shellSrc: string): string | null {
   return null;
 }
 
+/**
+ * Ponder `COPY . .` build context must exclude rehearsal/deploy work and
+ * local target trees (disk exhaustion otherwise).
+ */
+export function ponderDockerignoreDefect(dockerignore: string): string | null {
+  const required = [
+    ".ponder-rehearsal-out/",
+    ".ponder-deploy-work/",
+    "svm/**/target",
+    "**/target",
+  ] as const;
+  for (const line of required) {
+    if (!dockerignore.split("\n").some((l) => l.trim() === line)) {
+      return `Dockerfile.ponder build context must exclude ${line}`;
+    }
+  }
+  return null;
+}
+
 const DEPLOY_WORKFLOW_FILES = [
   "deploy-ponder.yml",
   "deploy-svm-ingest.yml",
@@ -875,6 +894,12 @@ describe("deploy-ponder-svm-ingest-ci-policy", () => {
         "pre_cutover_observed() {\n  docker compose ps -q ponder\n}\n",
       ),
       "phase observation must filter com.docker.compose.project",
+    );
+    const dockerignore = readFileSync(join(ROOT, ".dockerignore"), "utf8");
+    assert.equal(ponderDockerignoreDefect(dockerignore), null);
+    assert.equal(
+      ponderDockerignoreDefect("node_modules\n.next\n"),
+      "Dockerfile.ponder build context must exclude .ponder-rehearsal-out/",
     );
     const plantedViews = "DATABASE_VIEWS_SCHEMA=kargain\n";
     assert.equal(

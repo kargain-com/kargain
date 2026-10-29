@@ -6,3 +6,8 @@ artifacts
 cache
 coverage
 .git
+.ponder-rehearsal-out/
+.ponder-deploy-work/
+ops/rehearsal/.generated-pre-cutover.yml
+svm/**/target
+**/target

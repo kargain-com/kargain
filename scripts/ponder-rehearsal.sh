@@ -5,12 +5,14 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-OUT="${PONDER_REHEARSAL_OUT:-$ROOT/.ponder-rehearsal-out}"
+
+# Output + scratch outside every Docker build context (repo root COPY . .).
+OUT="${PONDER_REHEARSAL_OUT:-${TMPDIR:-/tmp}/kargain-ponder-rehearsal-$$}"
 LOG="$OUT/rehearsal.log"
 mkdir -p "$OUT"
 exec > >(tee -a "$LOG") 2>&1
 
-echo "=== ponder rehearsal start $(date -u +%Y-%m-%dT%H:%M:%SZ) root=$ROOT ==="
+echo "=== ponder rehearsal start $(date -u +%Y-%m-%dT%H:%M:%SZ) root=$ROOT out=$OUT ==="
 echo "head=$(git rev-parse HEAD)"
 
 export PONDER_DEPLOY_ROOT="$ROOT"
@@ -19,28 +21,51 @@ export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-rehearsal}"
 export DATABASE_URL="postgresql://ponder:${POSTGRES_PASSWORD}@postgres:5432/kargain_ponder"
 export PONDER_ENABLE_LOCAL=1
 export PONDER_LOCAL_ONLY=1
-# Host Hardhat for deploy + window discovery; container writers use docker DNS.
 export PONDER_RPC_URL_31337="${PONDER_RPC_URL_31337:-http://127.0.0.1:8545}"
-# Probe owner requires PONDER_RPC_URLS_<id> (no invented default). Slot preflight
-# runs inside Compose, so list the docker-reachable URL.
 export PONDER_RPC_URLS_31337="${PONDER_RPC_URLS_31337:-http://host.docker.internal:8545}"
 # One Compose project for legacy writer + new stack (Amendment rule 6).
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-kargain-rehearsal}"
 
-# Relative paths — absolute COMPOSE_FILE with ':' is treated as one path on some Compose builds.
+# Relative compose paths only (absolute COMPOSE_FILE + ':' is unsafe on some builds).
+# Generated pre-cutover override is relative and dockerignored.
+PRE_CUTOVER_REL="ops/rehearsal/.generated-pre-cutover.yml"
+
 use_compose() {
   export COMPOSE_FILE="$1"
   echo "COMPOSE_FILE=$COMPOSE_FILE COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME"
 }
 
-# Postgres bootstrap before start/window are known — base compose only.
-use_compose "docker-compose.yml"
-
-step_dir() {
-  local n="$1"
-  mkdir -p "$OUT/step-$n"
-  echo "$OUT/step-$n"
+# Remove only this Compose project's containers, volumes, and locally-built images.
+cleanup_compose_project() {
+  echo "=== cleanup compose project=$COMPOSE_PROJECT_NAME ==="
+  docker compose --project-name "$COMPOSE_PROJECT_NAME" down \
+    --volumes --remove-orphans --rmi local </dev/null 2>/dev/null || true
 }
+
+SCRATCH=""
+SCRATCH2=""
+HEAD_SHA=""
+cleanup_all() {
+  cleanup_compose_project
+  if [ -n "${SCRATCH2:-}" ]; then
+    git worktree remove --force "$SCRATCH2" 2>/dev/null || true
+    rm -rf "$SCRATCH2"
+    if [ -n "${HEAD_SHA:-}" ]; then
+      git branch -D "rehearsal-second-$HEAD_SHA" 2>/dev/null || true
+    fi
+  fi
+  if [ -n "${SCRATCH:-}" ]; then
+    git worktree remove --force "$SCRATCH" 2>/dev/null || true
+    rm -rf "$SCRATCH"
+  fi
+  rm -f "$ROOT/$PRE_CUTOVER_REL"
+}
+trap cleanup_all EXIT
+
+# Start clean: only this project.
+cleanup_compose_project
+
+use_compose "docker-compose.yml"
 
 capture() {
   local dir="$1"
@@ -64,6 +89,25 @@ run_deploy() {
   "$ROOT/scripts/ponder-deploy.sh"
 }
 
+report_slot_image_size() {
+  local tag="$1"
+  local bytes
+  bytes="$(docker image inspect "$tag" --format '{{.Size}}' 2>/dev/null || true)"
+  if [ -z "$bytes" ]; then
+    echo "slot_image_size tag=$tag missing"
+    return 1
+  fi
+  # Human-readable via awk (no bc dependency).
+  local human
+  human="$(awk -v b="$bytes" 'BEGIN{
+    split("B KB MB GB TB", u, " ");
+    s=b+0; i=1;
+    while (s>=1024 && i<5) { s/=1024; i++ }
+    printf "%.2f%s", s, u[i]
+  }')"
+  echo "slot_image_size tag=$tag bytes=$bytes human=$human"
+}
+
 echo "=== bootstrap legacy writer @ 25689e1 ==="
 docker compose up -d postgres
 for i in $(seq 1 30); do
@@ -73,27 +117,18 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
-# Worktree outside the repo so leftover trees cannot trip lint/typecheck walks.
 SCRATCH="${TMPDIR:-/tmp}/kargain-rehearsal-scratch-$$"
 rm -rf "$SCRATCH"
 git worktree remove --force "$SCRATCH" 2>/dev/null || true
 git worktree add --detach "$SCRATCH" 25689e1d
-SCRATCH2=""
-cleanup_rehearsal_worktrees() {
-  if [ -n "${SCRATCH2:-}" ]; then
-    git worktree remove --force "$SCRATCH2" 2>/dev/null || true
-    rm -rf "$SCRATCH2"
-    git branch -D "rehearsal-second-$HEAD_SHA" 2>/dev/null || true
-  fi
-  git worktree remove --force "$SCRATCH" 2>/dev/null || true
-  rm -rf "$SCRATCH"
-}
-trap cleanup_rehearsal_worktrees EXIT
 (
   cd "$SCRATCH"
+  # Current dockerignore so the legacy build context stays lean.
+  cp "$ROOT/.dockerignore" .dockerignore
   printf 'POSTGRES_PASSWORD=%s\n' "$POSTGRES_PASSWORD" >.env
   docker build -f Dockerfile.ponder -t "kargain-ponder:legacy-base" .
 )
+report_slot_image_size "kargain-ponder:legacy-base" | tee "$OUT/legacy-image-size.txt"
 
 if ! curl -sf -X POST -H 'content-type: application/json' \
   --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' \
@@ -113,7 +148,6 @@ fi
 
 echo "=== deploy local stack; set start/window from registry deployment blocks ==="
 pnpm deploy:local
-# Host-reachable URL for creation-block discovery against Hardhat.
 PONDER_RPC_URL_31337=http://127.0.0.1:8545 \
   eval "$(node --import tsx scripts/rehearsal-local-window.ts)"
 : "${PONDER_START_BLOCK_31337:?PONDER_START_BLOCK_31337 unset after local window}"
@@ -121,11 +155,9 @@ PONDER_RPC_URL_31337=http://127.0.0.1:8545 \
 export PONDER_START_BLOCK_31337 PONDER_GETLOGS_BLOCK_RANGE_31337
 echo "PONDER_START_BLOCK_31337=$PONDER_START_BLOCK_31337"
 echo "PONDER_GETLOGS_BLOCK_RANGE_31337=$PONDER_GETLOGS_BLOCK_RANGE_31337"
-# Writers inside Compose reach Hardhat via docker DNS; keep singular in sync.
 export PONDER_RPC_URL_31337=http://host.docker.internal:8545
 
-PRE_CUTOVER_REL=".ponder-rehearsal-out/docker-compose.pre-cutover.yml"
-cat >"$PRE_CUTOVER_REL" <<EOF
+cat >"$ROOT/$PRE_CUTOVER_REL" <<EOF
 services:
   ponder:
     image: kargain-ponder:legacy-base
@@ -149,7 +181,6 @@ services:
       - kargain
 EOF
 
-# Base + rehearsal slot env + legacy ponder override — one project.
 PRE_CUTOVER_COMPOSE="docker-compose.yml:ops/rehearsal/docker-compose.rehearsal.yml:${PRE_CUTOVER_REL}"
 use_compose "$PRE_CUTOVER_COMPOSE"
 docker compose stop ponder ponder-blue ponder-green 2>/dev/null || true
@@ -175,15 +206,13 @@ capture "$OUT/step-1"
 grep -q 'cutover=awaiting_dispatch' "$OUT/step-1/executor.txt"
 
 step 2 "hold → blue pending then ready"
-# Same project and compose: labelled legacy ponder + rehearsal slot env.
 rm -rf .ponder-upstream.conf
 printf 'set $ponder_upstream http://ponder-blue:42069;\n' >.ponder-upstream.conf
 run_deploy hold workflow_dispatch "$HEAD_SHA" | tee "$OUT/step-2/executor.txt"
 capture "$OUT/step-2"
+report_slot_image_size "kargain-ponder:$HEAD_SHA" | tee -a "$OUT/step-2/executor.txt" | tee "$OUT/slot-image-size.txt"
 
 step 3 "deploy → first switch"
-# Drop the legacy ponder override so up_nginx brings the pinned image; the
-# still-running legacy container keeps compose labels until stop_legacy.
 use_compose "$REHEARSAL_COMPOSE"
 run_deploy deploy workflow_dispatch "$HEAD_SHA" | tee "$OUT/step-3/executor.txt"
 capture "$OUT/step-3"
@@ -213,6 +242,7 @@ SECOND_SHA="$(cat "$OUT/second-sha.txt")"
 docker build -f "$SCRATCH2/Dockerfile.ponder" \
   --build-arg "KARGAIN_PONDER_COMMIT=$SECOND_SHA" \
   -t "kargain-ponder:$SECOND_SHA" "$SCRATCH2"
+report_slot_image_size "kargain-ponder:$SECOND_SHA" | tee -a "$OUT/step-6-image-size.txt"
 export EXECUTABLE_DIGEST="exec-${SECOND_SHA}-2"
 run_deploy deploy workflow_dispatch "$SECOND_SHA" | tee "$OUT/step-6/executor.txt"
 capture "$OUT/step-6"
@@ -257,4 +287,5 @@ cat "$OUT/step-9/executor.txt"
 grep -q 'deploy_state_invalid' "$OUT/step-9/executor.txt"
 test "$ec" -ne 0
 
-echo "=== rehearsal complete head=$HEAD_SHA ==="
+report_slot_image_size "kargain-ponder:$HEAD_SHA" | tee "$OUT/slot-image-size-final.txt"
+echo "=== rehearsal complete head=$HEAD_SHA out=$OUT ==="
