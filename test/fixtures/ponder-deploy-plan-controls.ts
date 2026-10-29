@@ -50,7 +50,9 @@ function baseObs(
     nginxConfigDigest: DIGEST,
     eventName: "workflow_dispatch",
     preCutoverObserved: false,
+    nginxPinnedUp: true,
     legacyImageId: "sha256:legacy",
+    legacyImageTagged: true,
     runningSlots: [],
     slotImages: { blue: null, green: null },
     ...over,
@@ -100,6 +102,8 @@ export function control1_pushPreCutover(): void {
     observations: baseObs({
       eventName: "push",
       preCutoverObserved: true,
+      nginxPinnedUp: false,
+      legacyImageTagged: false,
     }),
   });
   assert.ok(hasEvidence(green, "deploy_evidence cutover=awaiting_dispatch"));
@@ -113,6 +117,8 @@ export function control1_pushPreCutover(): void {
       // force through refuseBadEvent by casting
       eventName: "pull_request" as "push",
       preCutoverObserved: true,
+      nginxPinnedUp: false,
+      legacyImageTagged: false,
     }),
   });
   assert.ok(hasEvidence(red, "deploy_observation_failed: event_name"));
@@ -219,6 +225,10 @@ export function control4_pendingSupersedeOrKeep(): void {
   });
   assert.ok(hasAction(supersede, "stop_slot"));
   assert.ok(hasAction(supersede, "drop_schema"));
+  const supersedeTypes = supersede.actions.map((a) => a.type);
+  const writeIdx = supersedeTypes.indexOf("write_state");
+  const dropIdx = supersedeTypes.indexOf("drop_schema");
+  assert.ok(writeIdx >= 0 && writeIdx < dropIdx, "state before drop on supersede");
 
   const keep = plan({
     loaded: { kind: "post_cutover", state: postState({ pending }) },
@@ -334,15 +344,43 @@ export function control8_rollback(): void {
   assert.ok(hasAction(withPending, "stop_slot"));
   assert.ok(hasAction(withPending, "assert_spare_image"));
   assert.ok(hasEvidence(withPending, `deploy_evidence rollback=ok schema=${spare.schema}`));
-  const write = withPending.actions.find((a) => a.type === "write_state") as
-    | { state: PonderDeployState }
-    | undefined;
-  assert.equal(write?.state.spare, null);
+  const writes = withPending.actions.filter((a) => a.type === "write_state") as {
+    state: PonderDeployState;
+  }[];
+  const finalWrite = writes[writes.length - 1];
+  assert.equal(finalWrite?.state.spare, null);
+  const types = withPending.actions.map((a) => a.type);
+  const firstWrite = types.indexOf("write_state");
+  const firstDrop = types.indexOf("drop_schema");
+  assert.ok(firstWrite < firstDrop, "state before drop on rollback supersede");
   void pending;
 }
 
-/** Control 9: first switch tags legacy, spare is legacy writer. */
+/** Control 9: first hold writes spare null; deploy switch tags legacy then a–h. */
 export function control9_firstSwitch(): void {
+  const hold = plan({
+    loaded: {
+      kind: "pre_cutover",
+      state: { identity: "id", executable: EXEC_A },
+    },
+    operation: "hold",
+    observations: baseObs({
+      preCutoverObserved: true,
+      nginxPinnedUp: false,
+      legacyImageTagged: false,
+      eventName: "workflow_dispatch",
+      legacyImageId: "sha256:legacyimg",
+    }),
+  });
+  assert.ok(!hasAction(hold, "preserve_legacy_image"));
+  assert.ok(!hasAction(hold, "stop_legacy_ponder"));
+  const holdWrite = hold.actions.find((a) => a.type === "write_state") as
+    | { state: PonderDeployState }
+    | undefined;
+  assert.equal(holdWrite?.state.spare, null);
+  assert.equal(holdWrite?.state.live, null);
+  assert.ok(holdWrite?.state.pending);
+
   const result = plan({
     loaded: {
       kind: "pre_cutover",
@@ -351,6 +389,8 @@ export function control9_firstSwitch(): void {
     operation: "deploy",
     observations: baseObs({
       preCutoverObserved: true,
+      nginxPinnedUp: false,
+      legacyImageTagged: false,
       eventName: "workflow_dispatch",
       legacyImageId: "sha256:legacyimg",
     }),
@@ -358,12 +398,21 @@ export function control9_firstSwitch(): void {
   assert.ok(hasAction(result, "preserve_legacy_image"));
   assert.ok(hasAction(result, "stop_legacy_ponder"));
   assert.ok(hasAction(result, "up_nginx"));
-  const write = result.actions.find((a) => a.type === "write_state") as
-    | { state: PonderDeployState }
-    | undefined;
-  assert.equal(write?.state.spare?.schema, "kargain");
-  assert.equal(write?.state.spare?.commit, null);
-  assert.equal(write?.state.spare?.image, "kargain-ponder:legacy");
+  const writes = result.actions.filter((a) => a.type === "write_state") as {
+    state: PonderDeployState;
+  }[];
+  assert.ok(writes.length >= 2);
+  assert.equal(writes[0]?.state.spare, null);
+  const mid = writes.find((w) => w.state.spare?.schema === "kargain");
+  assert.ok(mid);
+  assert.equal(mid?.state.spare?.commit, null);
+  assert.equal(mid?.state.spare?.image, "kargain-ponder:legacy");
+  const liveWrite = writes.find((w) => w.state.live !== null);
+  assert.ok(liveWrite);
+  const types = result.actions.map((a) => a.type);
+  const liveWriteIdx = types.lastIndexOf("write_state");
+  const stopLegacyIdx = types.indexOf("stop_legacy_ponder");
+  assert.ok(stopLegacyIdx >= 0 && stopLegacyIdx < liveWriteIdx);
 }
 
 /** Control 10: retention never selects protected or live/spare/pending. */

@@ -21,11 +21,13 @@ export PONDER_ENABLE_LOCAL=1
 export PONDER_LOCAL_ONLY=1
 export PONDER_RPC_URL_31337="${PONDER_RPC_URL_31337:-http://host.docker.internal:8545}"
 export PONDER_START_BLOCK_31337=0
+# One Compose project for legacy writer + new stack (Amendment rule 6).
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-kargain-rehearsal}"
 
 # Relative paths — absolute COMPOSE_FILE with ':' is treated as one path on some Compose builds.
 use_compose() {
   export COMPOSE_FILE="$1"
-  echo "COMPOSE_FILE=$COMPOSE_FILE"
+  echo "COMPOSE_FILE=$COMPOSE_FILE COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME"
 }
 
 use_compose "docker-compose.yml:ops/rehearsal/docker-compose.rehearsal.yml"
@@ -100,7 +102,9 @@ services:
       - kargain
 EOF
 
-use_compose "docker-compose.yml:${PRE_CUTOVER_REL}"
+# Base + rehearsal slot env + legacy ponder override — one project.
+PRE_CUTOVER_COMPOSE="docker-compose.yml:ops/rehearsal/docker-compose.rehearsal.yml:${PRE_CUTOVER_REL}"
+use_compose "$PRE_CUTOVER_COMPOSE"
 docker compose stop ponder ponder-blue ponder-green 2>/dev/null || true
 docker compose up -d postgres ponder
 printf '%s\n' '{"identity":"rehearsal-identity","executable":"exec-legacy"}' >"$PONDER_STATE_FILE"
@@ -134,19 +138,22 @@ step() {
 }
 
 step 1 "push pre-cutover → awaiting_dispatch"
-use_compose "docker-compose.yml:${PRE_CUTOVER_REL}"
+use_compose "$PRE_CUTOVER_COMPOSE"
 run_deploy deploy push "$HEAD_SHA" | tee "$OUT/step-1/executor.txt"
 capture "$OUT/step-1"
 grep -q 'cutover=awaiting_dispatch' "$OUT/step-1/executor.txt"
 
 step 2 "hold → blue pending then ready"
-use_compose "$REHEARSAL_COMPOSE"
+# Same project and compose: labelled legacy ponder + rehearsal slot env.
 rm -rf .ponder-upstream.conf
 printf 'set $ponder_upstream http://ponder-blue:42069;\n' >.ponder-upstream.conf
 run_deploy hold workflow_dispatch "$HEAD_SHA" | tee "$OUT/step-2/executor.txt"
 capture "$OUT/step-2"
 
 step 3 "deploy → first switch"
+# Drop the legacy ponder override so up_nginx brings the pinned image; the
+# still-running legacy container keeps compose labels until stop_legacy.
+use_compose "$REHEARSAL_COMPOSE"
 run_deploy deploy workflow_dispatch "$HEAD_SHA" | tee "$OUT/step-3/executor.txt"
 capture "$OUT/step-3"
 

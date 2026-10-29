@@ -197,6 +197,30 @@ export function builderPruneDefect(shellSrc: string): string | null {
   return null;
 }
 
+/**
+ * Amendment rule 6: phase from labelled ponder container + pinned nginx image,
+ * not from `docker compose ps` alone.
+ */
+export function phaseObservationDefect(shellSrc: string): string | null {
+  if (!/com\.docker\.compose\.project/.test(shellSrc)) {
+    return "phase observation must filter com.docker.compose.project";
+  }
+  if (!/com\.docker\.compose\.service=ponder/.test(shellSrc)) {
+    return "phase observation must filter com.docker.compose.service=ponder";
+  }
+  if (!/labelled_ponder_id|nginx_pinned_up/.test(shellSrc)) {
+    return "phase observation must use labelled ponder / nginx_pinned_up";
+  }
+  // Planted defect: compose-ps-only phase without labels.
+  if (
+    /pre_cutover_observed\(\)/.test(shellSrc) &&
+    !/com\.docker\.compose\.project/.test(shellSrc)
+  ) {
+    return "phase observation must filter com.docker.compose.project";
+  }
+  return null;
+}
+
 const DEPLOY_WORKFLOW_FILES = [
   "deploy-ponder.yml",
   "deploy-svm-ingest.yml",
@@ -845,6 +869,13 @@ describe("deploy-ponder-svm-ingest-ci-policy", () => {
     assert.equal(rehearsalReferenceDefect(yaml), null);
     assert.equal(rehearsalReferenceDefect(body), null);
     assert.equal(builderPruneDefect(body), null);
+    assert.equal(phaseObservationDefect(body), null);
+    assert.equal(
+      phaseObservationDefect(
+        "pre_cutover_observed() {\n  docker compose ps -q ponder\n}\n",
+      ),
+      "phase observation must filter com.docker.compose.project",
+    );
     const plantedViews = "DATABASE_VIEWS_SCHEMA=kargain\n";
     assert.equal(
       viewsSchemaBanDefect(plantedViews),

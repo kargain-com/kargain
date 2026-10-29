@@ -160,7 +160,7 @@ probe_slot_json() {
 }
 
 probe_nginx_json() {
-  if ! docker compose ps -q ponder 2>/dev/null | grep -q .; then
+  if ! nginx_pinned_up; then
     printf '%s\n' '{"kind":"no_answer"}'
     return 0
   fi
@@ -175,35 +175,65 @@ list_schemas() {
     | tr -d '\r' | sed '/^$/d'
 }
 
-ponder_is_nginx() {
-  local id
-  id="$(docker compose ps -q ponder | head -n1 | tr -d '\r')"
-  [ -n "$id" ] || return 1
-  case "$(docker inspect -f '{{.Config.Image}}' "$id")" in
-    nginx:*) return 0 ;;
-  esac
-  return 1
+# Amendment rule 6: phase from labelled ponder container, not Compose file list.
+compose_project_name() {
+  if [ -n "${COMPOSE_PROJECT_NAME:-}" ]; then
+    printf '%s\n' "$COMPOSE_PROJECT_NAME"
+    return 0
+  fi
+  basename "$ROOT" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-'
 }
 
-# Pre-cutover: ponder service is the legacy writer, not pinned nginx.
+# Pinned nginx image from the repo Compose file (digest pin), not the merged
+# override that may temporarily replace ponder with the legacy writer.
+pinned_nginx_image() {
+  docker compose -f "$ROOT/docker-compose.yml" config --images 2>/dev/null \
+    | grep -E '^nginx:' | head -n1 | tr -d '\r'
+}
+
+labelled_ponder_id() {
+  local project
+  project="$(compose_project_name)"
+  docker ps -aq \
+    --filter "label=com.docker.compose.project=${project}" \
+    --filter "label=com.docker.compose.service=ponder" \
+    | head -n1 | tr -d '\r'
+}
+
+# Post-cutover iff labelled ponder container image is the pinned nginx image.
+nginx_pinned_up() {
+  local id pinned actual
+  id="$(labelled_ponder_id)"
+  [ -n "$id" ] || return 1
+  pinned="$(pinned_nginx_image)"
+  [ -n "$pinned" ] || return 1
+  actual="$(docker inspect -f '{{.Config.Image}}' "$id" | tr -d '\r')"
+  [ "$actual" = "$pinned" ]
+}
+
+# Pre-cutover: labelled ponder exists and is not the pinned nginx image.
 pre_cutover_observed() {
-  if ! docker compose ps -q ponder 2>/dev/null | grep -q .; then
-    return 1
-  fi
-  if ponder_is_nginx; then
+  local id
+  id="$(labelled_ponder_id)"
+  [ -n "$id" ] || return 1
+  if nginx_pinned_up; then
     return 1
   fi
   return 0
 }
 
+legacy_image_tagged() {
+  docker image inspect "$LEGACY_IMAGE_TAG" >/dev/null 2>&1
+}
+
 legacy_image_id() {
   local id
-  id="$(docker compose images -q ponder 2>/dev/null || true)"
-  if [ -n "$id" ] && ! ponder_is_nginx; then
-    printf '%s\n' "$id"
+  id="$(labelled_ponder_id)"
+  if [ -n "$id" ] && ! nginx_pinned_up; then
+    docker inspect -f '{{.Image}}' "$id" | tr -d '\r'
     return 0
   fi
-  if docker image inspect "$LEGACY_IMAGE_TAG" >/dev/null 2>&1; then
+  if legacy_image_tagged; then
     docker image inspect "$LEGACY_IMAGE_TAG" --format '{{.Id}}'
     return 0
   fi
@@ -259,9 +289,13 @@ tear_down_new_pending() {
 }
 
 gather_observations() {
-  local pre=0
+  local pre=0 nginx_up=0 tagged=0
   if pre_cutover_observed; then pre=1; fi
+  if nginx_pinned_up; then nginx_up=1; fi
+  if legacy_image_tagged; then tagged=1; fi
   printf '%s' "$pre" >"$WORK/pre_cutover.txt"
+  printf '%s' "$nginx_up" >"$WORK/nginx_pinned.txt"
+  printf '%s' "$tagged" >"$WORK/legacy_tagged.txt"
 
   probe_slot_json blue >"$WORK/probe-blue.json"
   probe_slot_json green >"$WORK/probe-green.json"
@@ -281,7 +315,7 @@ gather_observations() {
   nginx_config_digest >"$WORK/nginx_dig.txt"
   git rev-parse HEAD >"$WORK/deploy_commit.txt"
 
-  python3 - "$WORK" "$DEPLOY_SHA" "$IDENTITY_DIGEST" "$EXECUTABLE_DIGEST" "$EVENT_NAME" <<'PY'
+  python3 - "$WORK" "$DEPLOY_SHA" "$IDENTITY_DIGEST" "$EXECUTABLE_DIGEST" "$EVENT_NAME" <<'PY' >"$WORK/observations.json"
 import json, pathlib, sys
 work = pathlib.Path(sys.argv[1])
 def read(name):
@@ -289,8 +323,9 @@ def read(name):
 schemas = [s for s in read("schemas.txt").split("\n") if s]
 legacy = read("legacy_id.txt")
 pre = read("pre_cutover.txt") == "1"
+nginx_up = read("nginx_pinned.txt") == "1"
+tagged = read("legacy_tagged.txt") == "1"
 running = []
-# slot running filled by shell via files if present
 for slot in ("blue", "green"):
     p = work / f"running-{slot}.txt"
     if p.exists() and p.read_text().strip() == "1":
@@ -309,11 +344,13 @@ o = {
   "nginxConfigDigest": read("nginx_dig.txt"),
   "eventName": sys.argv[5],
   "preCutoverObserved": pre,
+  "nginxPinnedUp": nginx_up,
   "legacyImageId": legacy if legacy else None,
+  "legacyImageTagged": tagged,
   "runningSlots": running,
   "slotImages": {"blue": None, "green": None},
 }
-(work / "observations.json").write_text(json.dumps(o) + "\n")
+print(json.dumps(o))
 PY
 }
 
@@ -335,12 +372,11 @@ run_node scripts/ponder-deploy-plan-cli.ts \
   --pre-cutover "$PRE" >"$WORK/plan.json"
 
 # Expand actions to jsonl on the host
-python3 - "$WORK/plan.json" "$WORK/actions.jsonl" <<'PY'
+python3 - "$WORK/plan.json" <<'PY' >"$WORK/actions.jsonl"
 import json, sys
 plan = json.load(open(sys.argv[1]))
-with open(sys.argv[2], "w") as out:
-    for a in plan.get("actions") or []:
-        out.write(json.dumps(a) + "\n")
+for a in plan.get("actions") or []:
+    print(json.dumps(a))
 PY
 
 exit_code=0
@@ -429,7 +465,11 @@ for action_line in "${action_lines[@]}"; do
       docker tag "$image_id" "$LEGACY_IMAGE_TAG"
       ;;
     stop_legacy_ponder)
-      docker compose stop ponder </dev/null
+      # Stop the labelled legacy writer by id (Compose file may already be post-cutover).
+      _legacy_id="$(labelled_ponder_id)"
+      if [ -n "$_legacy_id" ]; then
+        docker stop "$_legacy_id" </dev/null
+      fi
       ;;
     wait_answered)
       target="$(action_field target)"
@@ -536,12 +576,11 @@ for action_line in "${action_lines[@]}"; do
       done <"$WORK/rm-images.txt"
       ;;
     write_state)
-      action_field state >"$WORK/next-state.json"
-      # action_field dumps JSON; re-parse via python for pretty write through owner
-      python3 - "$WORK/action.json" "$WORK/next-state.json" <<'PY'
+      # action_field dumps JSON; re-parse via python for write through owner
+      python3 - "$WORK/action.json" <<'PY' >"$WORK/next-state.json"
 import json, sys
 obj = json.load(open(sys.argv[1]))
-open(sys.argv[2], "w").write(json.dumps(obj["state"]) + "\n")
+print(json.dumps(obj["state"]))
 PY
       run_node scripts/ponder-deploy-state-cli.ts --write "$STATE_FILE" <"$WORK/next-state.json"
       ;;

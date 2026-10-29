@@ -889,6 +889,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     rule: "Product raw SQL qualifies writer tables only via DATABASE_SCHEMA owner (^k_[0-9a-f]{40}$|kargain); no kargain. literals in src/**",
     guardTests: [
       "ponder-writer-schema.test.ts",
+      "ponder-writer-schema-policy.test.ts",
       "ponder-kargain-physical-columns-policy.test.ts",
     ],
   },
@@ -897,7 +898,11 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "ponder-deploy-plan",
     owner: "scripts/lib/ponder-deploy-plan.ts",
     rule: "Sole encoder of ADR 0015 deploy sequence (pending precedence, first switch, rollback, retention); executor only runs actions",
-    guardTests: ["ponder-deploy-plan.test.ts", "deploy-ponder-svm-ingest-ci-policy.test.ts"],
+    guardTests: [
+      "ponder-deploy-plan.test.ts",
+      "ponder-deploy-plan-model.test.ts",
+      "deploy-ponder-svm-ingest-ci-policy.test.ts",
+    ],
   },
   {
     id: "ponder-deploy-state",

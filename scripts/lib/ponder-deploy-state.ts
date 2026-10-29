@@ -1,11 +1,12 @@
 /**
- * Sole owner of the Ponder deploy state file (ADR 0015 §i).
+ * Sole owner of the Ponder deploy state file (ADR 0015 §i + Amendment).
  * Fail-closed: unknown fields or bad shapes refuse as deploy_state_invalid.
  * Imports only Node builtins — runnable from a host-mounted scripts/ tree.
  *
- * Pre-cutover is observed (Compose service `ponder` is the legacy writer, not
- * the pinned nginx image). The pre-cutover file shape `{identity, executable}`
- * is accepted only while that observation holds; the first write replaces it.
+ * Phase observation (Amendment rule 6) is the caller's responsibility: the
+ * container labelled compose project + service=ponder is post-cutover iff its
+ * image is the pinned nginx image. Pre-cutover file shape is accepted only
+ * while that observation is pre-cutover.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 
@@ -14,18 +15,26 @@ export const DEPLOY_STATE_INVALID = "deploy_state_invalid";
 /** Deployment schema: k_<40-hex>, or exactly `kargain` (legacy). */
 export const DEPLOYMENT_SCHEMA_RE = /^k_[0-9a-f]{40}$/;
 export const LEGACY_SCHEMA = "kargain";
+export const LEGACY_IMAGE = "kargain-ponder:legacy";
 
 export type PonderDeploySlot = "blue" | "green";
 
+/**
+ * Live or pending ref. `commit` is null exactly when `schema` is `kargain`
+ * (Amendment rule 1).
+ */
 export type PonderLiveOrPendingRef = {
   slot: PonderDeploySlot;
   schema: string;
-  commit: string;
+  commit: string | null;
   executable: string;
   image: string;
 };
 
-/** Spare has no slot; commit is null only for the legacy spare on schema kargain. */
+/**
+ * Spare has no slot. `commit` is null exactly when `schema` is `kargain`
+ * (Amendment rule 1).
+ */
 export type PonderSpareRef = {
   schema: string;
   commit: string | null;
@@ -68,10 +77,8 @@ const POST_KEYS = new Set([
 const PRE_KEYS = new Set(["identity", "executable"]);
 
 function assertString(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new DeployStateInvalidError(`${field} must be a non-empty string`);
-  }
-  return value;
+  if (typeof value === "string" && value.length > 0) return value;
+  throw new DeployStateInvalidError(`${field} must be a non-empty string`);
 }
 
 export function assertDeploymentSchema(value: unknown, field: string): string {
@@ -91,6 +98,57 @@ function assertCommit(value: unknown, field: string): string {
     throw new DeployStateInvalidError(`${field} must be 40 lowercase hex`);
   }
   return s;
+}
+
+/**
+ * `commit` is null exactly when `schema` is `kargain` (Amendment rule 1).
+ */
+export function assertCommitSchemaIff(
+  schema: string,
+  commit: unknown,
+  field: string,
+): string | null {
+  if (schema === LEGACY_SCHEMA) {
+    if (commit !== null) {
+      throw new DeployStateInvalidError(
+        `${field} must be null when schema is kargain`,
+      );
+    }
+    return null;
+  }
+  if (commit === null) {
+    throw new DeployStateInvalidError(
+      `${field} null only allowed when schema is kargain`,
+    );
+  }
+  return assertCommit(commit, field);
+}
+
+export function isLegacySpare(spare: PonderSpareRef): boolean {
+  return (
+    spare.schema === LEGACY_SCHEMA &&
+    spare.commit === null &&
+    spare.image === LEGACY_IMAGE
+  );
+}
+
+/**
+ * First switch in progress (Amendment rule 3): live null, spare = legacy ref,
+ * pending optional. Valid under either phase observation.
+ */
+export function isFirstSwitchInProgress(state: PonderDeployState): boolean {
+  return state.live === null && state.spare !== null && isLegacySpare(state.spare);
+}
+
+function assertLiveNullShape(state: PonderDeployState): void {
+  if (state.live !== null) return;
+  // Valid: abandon / empty; first hold/deploy (spare null, pending optional);
+  // first-switch-in-progress (spare = legacy).
+  if (state.spare === null) return;
+  if (isLegacySpare(state.spare)) return;
+  throw new DeployStateInvalidError(
+    "live null with non-legacy spare is deploy_state_invalid",
+  );
 }
 
 function parseLiveOrPending(
@@ -116,10 +174,11 @@ function parseLiveOrPending(
   if (slot !== "blue" && slot !== "green") {
     throw new DeployStateInvalidError(`${field}.slot must be blue|green`);
   }
+  const schema = assertDeploymentSchema(obj.schema, `${field}.schema`);
   return {
     slot,
-    schema: assertDeploymentSchema(obj.schema, `${field}.schema`),
-    commit: assertCommit(obj.commit, `${field}.commit`),
+    schema,
+    commit: assertCommitSchemaIff(schema, obj.commit, `${field}.commit`),
     executable: assertString(obj.executable, `${field}.executable`),
     image: assertString(obj.image, `${field}.image`),
   };
@@ -150,20 +209,9 @@ function parseSpare(value: unknown): PonderSpareRef | null {
     }
   }
   const schema = assertDeploymentSchema(obj.schema, "spare.schema");
-  let commit: string | null;
-  if (obj.commit === null) {
-    if (schema !== LEGACY_SCHEMA) {
-      throw new DeployStateInvalidError(
-        "spare.commit null only allowed when spare.schema is kargain",
-      );
-    }
-    commit = null;
-  } else {
-    commit = assertCommit(obj.commit, "spare.commit");
-  }
   return {
     schema,
-    commit,
+    commit: assertCommitSchemaIff(schema, obj.commit, "spare.commit"),
     executable: assertString(obj.executable, "spare.executable"),
     image: assertString(obj.image, "spare.image"),
   };
@@ -212,6 +260,7 @@ export function parsePostCutoverState(raw: unknown): PonderDeployState {
         : assertString(obj.nginx_config_digest, "nginx_config_digest"),
   };
   assertDistinctRefs(state);
+  assertLiveNullShape(state);
   return state;
 }
 
@@ -237,8 +286,9 @@ export function parsePreCutoverState(raw: unknown): PonderPreCutoverState {
 }
 
 /**
- * Load state from disk. `preCutoverObserved` must reflect the live observation
- * (ponder service is legacy writer). Pre-cutover shape refused after cutover.
+ * Load state from disk. `preCutoverObserved` must reflect Amendment rule 6.
+ * Pre-cutover shape refused after cutover. First-switch-in-progress post shape
+ * is accepted under either observation.
  */
 export function loadDeployState(
   path: string,
@@ -283,6 +333,7 @@ export function writeDeployState(
   state: PonderDeployState,
 ): void {
   assertDistinctRefs(state);
+  assertLiveNullShape(state);
   const body = `${JSON.stringify(state, null, 2)}\n`;
   writeFileSync(path, body, "utf8");
 }
@@ -305,4 +356,13 @@ export function schemaForCommit(commit: string): string {
 export function freeSlot(live: PonderLiveOrPendingRef | null): PonderDeploySlot {
   if (live === null || live.slot === "green") return "blue";
   return "green";
+}
+
+export function legacySpareRef(executable: string): PonderSpareRef {
+  return {
+    schema: LEGACY_SCHEMA,
+    commit: null,
+    executable,
+    image: LEGACY_IMAGE,
+  };
 }

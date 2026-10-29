@@ -146,3 +146,53 @@ Removing five literals removes the views and all three problems.
 ## Status
 
 Proposed. The maintainer's merge of the PR that adds this file is the acceptance. ADR 0014 then becomes `Superseded by 0015`.
+
+## Amendment
+
+Amends §d, §e, §f, and §i. Source: <https://github.com/kargain-com/kargain/issues/73#issuecomment-6502709142>
+
+The following Decision is quoted verbatim and is the new law for those sections.
+
+**Decision** (approved by the maintainer; amends ADR 0015 §d, §e, §f, §i). It resolves G1–G3, G5 and the rehearsal step 2 observation reported on PR #75.
+
+The rules were checked on an executable model of the plan with a simulated world:
+- crash injection after every action;
+- writers that never answer, readiness timeouts, and failed 200 gates;
+- every sequence of `push`, `hold`, `deploy` (two commits) and `rollback`, up to 7 runs.
+
+Rules 4 and 5 and the abandon branch of rule 3 were found by that model: earlier drafts reached a dropped live or spare schema, two writers on `kargain`, and a stuck pending.
+
+1. **`commit` (G1).** `commit` is null exactly when `schema` is `kargain` (the legacy writer), in any ref (`live` after a rollback to it, or `spare`). No commit is invented.
+2. **Pre-cutover state (G2).**
+   - While the first switch has not completed, `live` is null. The legacy writer is known only by observation.
+   - The first `hold` or `deploy` writes `{live: null, spare: null, pending: <new>}`.
+   - The legacy image is tagged `kargain-ponder:legacy` and recorded as `spare` only when the switch starts (rule 3, step a).
+3. **First switch, in this order (G3).**
+   - (a) tag the legacy image;
+   - (b) write `{live: null, spare: legacy, pending: <new>}`;
+   - (c) stop the legacy container;
+   - (d) write the upstream for the pending slot;
+   - (e) `docker compose up -d ponder`;
+   - (f) 200 through nginx;
+   - (g) write `{live: <new>, spare: legacy, pending: null}`;
+   - (h) retention.
+
+   **"First switch in progress"** is `live: null` with `spare` = the legacy ref, `pending` optional. It is valid under either observation.
+   - `deploy` resumes from the first step not observed done.
+   - `rollback`:
+     - if the legacy container is still running, the switch is abandoned: write `{live: null, spare: null, pending: null}`, then stop the pending and drop its schema;
+     - otherwise, write without `pending`, stop the pending and drop its schema, start the legacy image in a slot on `kargain`, ensure nginx is up on that slot, require 200, then write `{live: legacy-in-slot (commit null), spare: null, pending: null}`.
+
+   Any other post-cutover state with `live: null` is `deploy_state_invalid`.
+4. **Write order (all paths).**
+   - State is written before every destructive step (stop, drop, supersede, teardown, retention).
+   - In a switch or rollback, the state that makes the new writer live is written right after its 200 gate, then the old writer is stopped and retention runs.
+   - A recorded pending whose writer is not running is started again, idempotently, by a run for the same commit, before waiting.
+5. **Deploying the spare's commit.** The spare's schema already belongs to that `build_id`. The spare becomes the pending (`spare: null` written first), and it starts by crash recovery on its own schema. No second ref may share its schema.
+6. **Phase observation (step 2).**
+   - Pre- or post-cutover is read from the container labelled `com.docker.compose.project=<project>` and `com.docker.compose.service=ponder`: post-cutover if and only if its image is the pinned nginx image. Not from the current Compose file's service list.
+   - The rehearsal runs the legacy writer and the new stack under one Compose project, as on the server.
+7. **Local-only preflight (G5).** It probes exactly the chains of the indexing config, using the same probe functions and verdict rules for localhost as for commercial chains. There is no separate verdict path.
+
+**Recording.** PR #75 adds an `Amendment` section to ADR 0015 that quotes this decision verbatim and links this comment. The maintainer's merge of #75 is its acceptance.
+

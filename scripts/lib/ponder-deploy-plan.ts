@@ -1,12 +1,15 @@
 /**
- * Pure deploy planner (ADR 0015 §d–§i / issue #73).
+ * Pure deploy planner (ADR 0015 §d–§i + Amendment / issue #73).
  * Sole encoder of pending precedence, start≠switch, first switch, rollback,
  * retention, and typed probe refusal.
  * Imports only Node builtins + ./ponder-deploy-state.js + ./ponder-deploy-retention.js.
  */
 import {
+  LEGACY_IMAGE,
   LEGACY_SCHEMA,
   freeSlot,
+  isFirstSwitchInProgress,
+  legacySpareRef,
   schemaForCommit,
   type PonderDeploySlot,
   type PonderDeployState,
@@ -44,12 +47,19 @@ export type PonderDeployObservations = {
   nginxConfigDigest: string;
   eventName: "push" | "workflow_dispatch";
   /**
-   * True when Compose service `ponder` is the legacy writer (not pinned nginx).
-   * Observed every run (ADR §f).
+   * True when the labelled ponder container is the legacy writer (not pinned
+   * nginx). Amendment rule 6.
    */
   preCutoverObserved: boolean;
+  /**
+   * True when the labelled ponder container's image is the pinned nginx image.
+   * Amendment rule 6 post-cutover.
+   */
+  nginxPinnedUp: boolean;
   /** Image id of the running legacy writer before first switch; null after. */
   legacyImageId: string | null;
+  /** True when `kargain-ponder:legacy` is already tagged. */
+  legacyImageTagged: boolean;
   /** Running slot containers observed (service names). */
   runningSlots: readonly PonderDeploySlot[];
   /** Image id currently tagged on a slot service, if any. */
@@ -126,6 +136,13 @@ function isReady200(probe: ProbeObservation): boolean {
   return probe.kind === "status" && probe.code === 200;
 }
 
+function slotRunning(
+  observations: PonderDeployObservations,
+  slot: PonderDeploySlot,
+): boolean {
+  return observations.runningSlots.includes(slot);
+}
+
 function refuseProbeFailed(
   observations: PonderDeployObservations,
 ): PlanAction[] | null {
@@ -182,12 +199,25 @@ function switchEvidence(slot: PonderDeploySlot): PlanAction[] {
 
 function outcomeEvidence(args: {
   outcome: "recreated" | "unchanged";
-  commit: string;
+  commit: string | null;
 }): PlanAction[] {
+  const commitText = args.commit ?? "legacy";
   return [
     { type: "evidence", text: `deploy_evidence outcome=${args.outcome}` },
-    { type: "evidence", text: `deploy_evidence commit=${args.commit}` },
+    { type: "evidence", text: `deploy_evidence commit=${commitText}` },
   ];
+}
+
+function ensurePendingRunning(
+  actions: PlanAction[],
+  pending: PonderLiveOrPendingRef,
+  observations: PonderDeployObservations,
+): void {
+  // Amendment rule 4: recorded pending whose writer is not running is started
+  // again, idempotently, before waiting.
+  if (!slotRunning(observations, pending.slot)) {
+    actions.push({ type: "start_slot", slot: pending.slot });
+  }
 }
 
 /**
@@ -205,7 +235,6 @@ export function planPonderDeploy(input: PlanInput): PlanResult {
   const probeFail = refuseProbeFailed(observations);
   if (probeFail) return { actions: [...actions, ...probeFail] };
 
-  // Missing state file after cutover is invalid; pre-cutover may lack post shape.
   if (loaded.kind === "missing") {
     if (!observations.preCutoverObserved) {
       return {
@@ -219,7 +248,6 @@ export function planPonderDeploy(input: PlanInput): PlanResult {
         ],
       };
     }
-    // Treat as empty pre-cutover for first switch path.
     return planFromPreCutover(
       actions,
       { identity: "", executable: "" },
@@ -285,7 +313,6 @@ function planFromPreCutover(
     };
   }
 
-  // Push pre-cutover → awaiting_dispatch, no mutation (ADR §f / control 1).
   if (observations.eventName === "push") {
     return {
       actions: [
@@ -299,23 +326,11 @@ function planFromPreCutover(
     };
   }
 
-  // First hold/deploy via workflow_dispatch.
+  // First hold/deploy: start pending; write {live:null,spare:null,pending}.
+  // Do not tag legacy or set spare until switch starts (Amendment rules 2–3).
   const slot: PonderDeploySlot = "blue";
   const schema = schemaForCommit(observations.deployCommit);
   const image = `kargain-ponder:${observations.deployCommit}`;
-  const legacyImageId = observations.legacyImageId;
-  if (!legacyImageId) {
-    return {
-      actions: [
-        ...actions,
-        {
-          type: "evidence",
-          text: "deploy_observation_failed: legacy_image",
-        },
-        { type: "exit", code: 1 },
-      ],
-    };
-  }
 
   const pending: PonderLiveOrPendingRef = {
     slot,
@@ -324,22 +339,15 @@ function planFromPreCutover(
     executable: observations.executableDigest,
     image,
   };
-  const spare: PonderSpareRef = {
-    schema: LEGACY_SCHEMA,
-    commit: null,
-    executable: pre.executable || observations.identityDigest,
-    image: "kargain-ponder:legacy",
-  };
 
-  const next: PonderDeployState = {
+  const afterStart: PonderDeployState = {
     live: null,
-    spare,
+    spare: null,
     pending,
     nginx_config_digest: observations.nginxConfigDigest,
   };
 
   actions.push(
-    { type: "preserve_legacy_image", imageId: legacyImageId },
     { type: "evidence", text: "deploy_evidence preflight=ok" },
     {
       type: "evidence",
@@ -365,11 +373,11 @@ function planFromPreCutover(
       timeoutMs: READY200_TIMEOUT_MS,
       onTimeout: "pending_exit0",
     },
+    { type: "write_state", state: afterStart },
   );
 
   if (operation === "hold") {
     actions.push(
-      { type: "write_state", state: next },
       {
         type: "evidence",
         text: `deploy_evidence switch=pending schema=${schema}`,
@@ -379,35 +387,113 @@ function planFromPreCutover(
     return { actions };
   }
 
-  // deploy: switch when ready (first switch sequence ADR §f).
+  // deploy: first switch a–h after the spare:null write.
+  return appendFirstSwitch(
+    actions,
+    afterStart,
+    pending,
+    pre.executable || observations.identityDigest,
+    observations,
+  );
+}
+
+/**
+ * First switch steps (a)–(h). Resumes from the first step not observed done.
+ */
+function appendFirstSwitch(
+  actions: PlanAction[],
+  state: PonderDeployState,
+  pending: PonderLiveOrPendingRef,
+  legacyExecutable: string,
+  observations: PonderDeployObservations,
+): PlanResult {
+  const spare = legacySpareRef(legacyExecutable);
+  const mid: PonderDeployState = {
+    live: null,
+    spare,
+    pending,
+    nginx_config_digest: observations.nginxConfigDigest,
+  };
   const liveAfter: PonderDeployState = {
     live: pending,
     spare,
     pending: null,
     nginx_config_digest: observations.nginxConfigDigest,
   };
+
+  const legacyRunning = observations.preCutoverObserved;
+  const nginxUp = observations.nginxPinnedUp;
+  const tagged = observations.legacyImageTagged;
+  const spareRecorded =
+    state.spare !== null && state.spare.image === LEGACY_IMAGE;
+
+  // (a) tag the legacy image
+  if (!tagged || !spareRecorded) {
+    const legacyImageId = observations.legacyImageId;
+    if (!legacyImageId && !tagged) {
+      return {
+        actions: [
+          ...actions,
+          {
+            type: "evidence",
+            text: "deploy_observation_failed: legacy_image",
+          },
+          { type: "exit", code: 1 },
+        ],
+      };
+    }
+    if (!tagged) {
+      actions.push({
+        type: "preserve_legacy_image",
+        imageId: legacyImageId ?? "",
+      });
+    }
+  }
+
+  // (b) write {live:null, spare:legacy, pending}
+  if (!spareRecorded) {
+    actions.push({ type: "write_state", state: mid });
+  }
+
+  // (c) stop the legacy container
+  if (legacyRunning) {
+    actions.push({ type: "stop_legacy_ponder" });
+  }
+
+  // (d) write upstream for pending slot
+  // (e) up nginx
+  if (!nginxUp) {
+    actions.push(
+      { type: "write_upstream", slot: pending.slot, previousUpstream: null },
+      { type: "up_nginx" },
+      {
+        type: "wait_answered",
+        target: "nginx",
+        timeoutMs: ANSWERED_TIMEOUT_MS,
+        onTimeout: "fail",
+      },
+    );
+  }
+
+  // (f) 200 through nginx
+  actions.push({
+    type: "wait_ready200",
+    target: "nginx",
+    schema: pending.schema,
+    timeoutMs: ANSWERED_TIMEOUT_MS,
+    onTimeout: "fail",
+  });
+  actions.push(...switchEvidence(pending.slot));
+
+  // (g) write live — right after 200 (rule 4)
+  actions.push({ type: "write_state", state: liveAfter });
+
+  // (h) retention (legacy already stopped in (c); no old slot to stop)
+  actions.push(...applyRetention(liveAfter, observations.schemas));
   actions.push(
-    { type: "write_upstream", slot, previousUpstream: null },
-    { type: "stop_legacy_ponder" },
-    { type: "up_nginx" },
-    {
-      type: "wait_answered",
-      target: "nginx",
-      timeoutMs: ANSWERED_TIMEOUT_MS,
-      onTimeout: "fail",
-    },
-    {
-      type: "wait_ready200",
-      target: "nginx",
-      schema,
-      timeoutMs: ANSWERED_TIMEOUT_MS,
-      onTimeout: "fail",
-    },
-    ...switchEvidence(slot),
-    { type: "write_state", state: liveAfter },
     ...outcomeEvidence({
       outcome: "recreated",
-      commit: observations.deployCommit,
+      commit: pending.commit,
     }),
     {
       type: "evidence",
@@ -424,7 +510,96 @@ function planPostCutover(
   operation: PonderDeployOperation,
   observations: PonderDeployObservations,
 ): PlanResult {
-  let working: PonderDeployState = { ...state };
+  let working: PonderDeployState = {
+    live: state.live,
+    spare: state.spare,
+    pending: state.pending,
+    nginx_config_digest: state.nginx_config_digest,
+  };
+
+  // First-switch-in-progress (Amendment rule 3).
+  if (isFirstSwitchInProgress(working)) {
+    if (operation === "rollback") {
+      return planRollbackDuringFirstSwitch(actions, working, observations);
+    }
+    if (operation === "hold") {
+      const schema = working.pending?.schema ?? LEGACY_SCHEMA;
+      return {
+        actions: [
+          ...actions,
+          {
+            type: "evidence",
+            text: `deploy_evidence switch=pending schema=${schema}`,
+          },
+          { type: "exit", code: 0 },
+        ],
+      };
+    }
+    if (!working.pending) {
+      return {
+        actions: [
+          ...actions,
+          {
+            type: "evidence",
+            text: "deploy_state_invalid: first_switch_missing_pending",
+          },
+          { type: "exit", code: 1 },
+        ],
+      };
+    }
+    ensurePendingRunning(actions, working.pending, observations);
+    return appendFirstSwitch(
+      actions,
+      working,
+      working.pending,
+      working.spare?.executable ?? observations.identityDigest,
+      observations,
+    );
+  }
+
+  // live null + spare null: abandon result or first-hold write (pending optional).
+  if (working.live === null && working.spare === null) {
+    if (operation === "rollback") {
+      return {
+        actions: [
+          ...actions,
+          {
+            type: "evidence",
+            text: "deploy_rollback_failed: no_spare",
+          },
+          { type: "exit", code: 1 },
+        ],
+      };
+    }
+    if (working.pending) {
+      // Resume pending from first hold; deploy continues to first switch.
+      return planPendingThenMaybeFirstSwitch(
+        actions,
+        working,
+        operation,
+        observations,
+      );
+    }
+    // Empty abandoned state — treat like missing pre-cutover only if still pre.
+    if (observations.preCutoverObserved) {
+      return planFromPreCutover(
+        actions,
+        { identity: "", executable: "" },
+        operation,
+        observations,
+      );
+    }
+    return {
+      actions: [
+        ...actions,
+        {
+          type: "evidence",
+          text: "deploy_state_invalid: empty post_cutover without live",
+        },
+        { type: "exit", code: 1 },
+      ],
+    };
+  }
 
   // Proxy-only recreate when nginx digest changed (control 12).
   if (
@@ -447,7 +622,6 @@ function planPostCutover(
     return planRollback(actions, working, observations);
   }
 
-  // Pending precedence (ADR §d 1).
   const pendingPlan = planPendingPrecedence(
     actions,
     working,
@@ -479,8 +653,14 @@ function planPostCutover(
     return { actions };
   }
 
-  // Live collision: same schema, different executable → restart in place.
   const targetSchema = schemaForCommit(observations.deployCommit);
+
+  // Amendment rule 5: deploying the spare's commit — spare:null first, reuse schema.
+  if (working.spare && working.spare.schema === targetSchema) {
+    return planSpareAsPending(actions, working, operation, observations);
+  }
+
+  // Live collision: same schema, different executable → restart in place.
   if (
     working.live &&
     working.live.schema === targetSchema &&
@@ -527,7 +707,6 @@ function planPostCutover(
     return { actions };
   }
 
-  // Never start a second writer on the live schema (control 7).
   if (working.live && working.live.schema === targetSchema) {
     actions.push(
       ...outcomeEvidence({
@@ -539,6 +718,73 @@ function planPostCutover(
     return { actions };
   }
 
+  return startNewPending(actions, working, operation, observations, targetSchema);
+}
+
+function planSpareAsPending(
+  actions: PlanAction[],
+  state: PonderDeployState,
+  operation: PonderDeployOperation,
+  observations: PonderDeployObservations,
+): PlanResult {
+  const spare = state.spare!;
+  const slot = freeSlot(state.live);
+  const pending: PonderLiveOrPendingRef = {
+    slot,
+    schema: spare.schema,
+    commit: spare.commit,
+    executable: observations.executableDigest,
+    image: spare.image,
+  };
+  // spare:null written first (rule 5), then start recovery on own schema.
+  const cleared: PonderDeployState = {
+    ...state,
+    spare: null,
+    pending,
+    nginx_config_digest: observations.nginxConfigDigest,
+  };
+  actions.push(
+    { type: "write_state", state: { ...state, spare: null, pending: null } },
+    { type: "write_slot_env", slot, schema: spare.schema },
+    { type: "tag_slot_image", slot, commit: spare.commit ?? "legacy" },
+    { type: "start_slot", slot },
+    {
+      type: "wait_answered",
+      target: "slot",
+      slot,
+      timeoutMs: ANSWERED_TIMEOUT_MS,
+      onTimeout: "tear_down_new",
+    },
+    {
+      type: "wait_ready200",
+      target: "slot",
+      slot,
+      schema: spare.schema,
+      timeoutMs: READY200_TIMEOUT_MS,
+      onTimeout: "pending_exit0",
+    },
+    { type: "write_state", state: cleared },
+  );
+  if (operation === "hold") {
+    actions.push(
+      {
+        type: "evidence",
+        text: `deploy_evidence switch=pending schema=${spare.schema}`,
+      },
+      { type: "exit", code: 0 },
+    );
+    return { actions };
+  }
+  return finishSwitch(actions, cleared, pending, observations);
+}
+
+function startNewPending(
+  actions: PlanAction[],
+  working: PonderDeployState,
+  operation: PonderDeployOperation,
+  observations: PonderDeployObservations,
+  targetSchema: string,
+): PlanResult {
   const slot = freeSlot(working.live);
   const image = `kargain-ponder:${observations.deployCommit}`;
   const pending: PonderLiveOrPendingRef = {
@@ -598,6 +844,57 @@ function planPostCutover(
   return finishSwitch(actions, afterStart, pending, observations);
 }
 
+function planPendingThenMaybeFirstSwitch(
+  actions: PlanAction[],
+  state: PonderDeployState,
+  operation: PonderDeployOperation,
+  observations: PonderDeployObservations,
+): PlanResult {
+  const pending = state.pending!;
+  ensurePendingRunning(actions, pending, observations);
+  const probe = probeOf(observations, pending.slot);
+
+  if (operation === "hold") {
+    if (!isReady200(probe)) {
+      actions.push({
+        type: "wait_ready200",
+        target: "slot",
+        slot: pending.slot,
+        schema: pending.schema,
+        timeoutMs: READY200_TIMEOUT_MS,
+        onTimeout: "pending_exit0",
+      });
+    }
+    actions.push(
+      {
+        type: "evidence",
+        text: `deploy_evidence switch=pending schema=${pending.schema}`,
+      },
+      { type: "exit", code: 0 },
+    );
+    return { actions };
+  }
+
+  // deploy: wait for ready if needed, then first switch a–h.
+  if (!isReady200(probe)) {
+    actions.push({
+      type: "wait_ready200",
+      target: "slot",
+      slot: pending.slot,
+      schema: pending.schema,
+      timeoutMs: READY200_TIMEOUT_MS,
+      onTimeout: "pending_exit0",
+    });
+  }
+  return appendFirstSwitch(
+    actions,
+    state,
+    pending,
+    observations.identityDigest,
+    observations,
+  );
+}
+
 function planPendingPrecedence(
   actions: PlanAction[],
   state: PonderDeployState,
@@ -607,12 +904,16 @@ function planPendingPrecedence(
   const pending = state.pending;
   if (!pending) return null;
 
+  // Pre-first-switch pending (live null, spare null) handled elsewhere.
+  if (state.live === null) return null;
+
+  ensurePendingRunning(actions, pending, observations);
+
   const probe = probeOf(observations, pending.slot);
   const incomingSchema = schemaForCommit(observations.deployCommit);
   const sameExecutable = pending.executable === observations.executableDigest;
 
   if (isReady200(probe)) {
-    // Ready pending is switched first (control 3).
     if (operation === "hold") {
       return {
         actions: [
@@ -635,18 +936,12 @@ function planPendingPrecedence(
       pending,
       observations,
     );
-    // If incoming differs, same run then starts it — recursive via continuing
-    // after switch would need a second plan; executor re-invokes. Here we only
-    // switch; if executable differs, append a note via state and exit 0 so the
-    // next dispatch starts. Issue control 3: "If the incoming executable differs,
-    // the same run then starts it." — continue in-plan.
     if (
       !sameExecutable &&
       pending.schema !== incomingSchema &&
       operation === "deploy"
     ) {
       const after = switched.actions;
-      // Re-plan start after switch by appending start of new pending.
       const live = pending;
       const slot = freeSlot(live);
       const image = `kargain-ponder:${observations.deployCommit}`;
@@ -657,7 +952,6 @@ function planPendingPrecedence(
         executable: observations.executableDigest,
         image,
       };
-      // Strip final exit from finishSwitch and continue.
       const withoutExit = after.filter(
         (a, i) => !(a.type === "exit" && i === after.length - 1),
       );
@@ -667,7 +961,6 @@ function planPendingPrecedence(
         pending: null,
         nginx_config_digest: observations.nginxConfigDigest,
       };
-      // finishSwitch already wrote live; continue start.
       withoutExit.push(
         { type: "write_slot_env", slot, schema: incomingSchema },
         { type: "build_image", commit: observations.deployCommit },
@@ -706,29 +999,26 @@ function planPendingPrecedence(
 
   // Not-ready pending.
   if (!sameExecutable) {
-    // Supersede (control 4).
+    // Supersede: state before destructive (rule 4).
     actions.push(
-      { type: "stop_slot", slot: pending.slot },
-      { type: "drop_schema", schema: pending.schema },
       {
         type: "write_state",
         state: { ...state, pending: null },
       },
+      { type: "stop_slot", slot: pending.slot },
+      { type: "drop_schema", schema: pending.schema },
     );
-    return null; // continue with start of incoming
+    return null;
   }
 
-  // Same executable: wait, never tear down (ADR §d 1 / control 4).
-  actions.push(
-    {
-      type: "wait_ready200",
-      target: "slot",
-      slot: pending.slot,
-      schema: pending.schema,
-      timeoutMs: READY200_TIMEOUT_MS,
-      onTimeout: "pending_exit0",
-    },
-  );
+  actions.push({
+    type: "wait_ready200",
+    target: "slot",
+    slot: pending.slot,
+    schema: pending.schema,
+    timeoutMs: READY200_TIMEOUT_MS,
+    onTimeout: "pending_exit0",
+  });
   if (operation === "hold") {
     actions.push(
       {
@@ -739,10 +1029,12 @@ function planPendingPrecedence(
     );
     return { actions };
   }
-  // If ready arrives, switch; wait_ready200 onTimeout pending_exit0 handles miss.
   return finishSwitch(actions, state, pending, observations);
 }
 
+/**
+ * Post-cutover switch: 200 → write live → stop old → retention (rule 4).
+ */
 function finishSwitch(
   actions: PlanAction[],
   state: PonderDeployState,
@@ -782,17 +1074,12 @@ function finishSwitch(
       onTimeout: "fail",
     },
     ...switchEvidence(pending.slot),
+    { type: "write_state", state: next },
   );
   if (previousLive) {
     actions.push({ type: "stop_slot", slot: previousLive.slot });
   }
-  actions.push({ type: "write_state", state: next });
   actions.push(...applyRetention(next, observations.schemas));
-  // Images of live/spare/pending kept; others removed (ADR §g).
-  const keepImages = new Set<string>();
-  if (next.live) keepImages.add(next.live.image);
-  if (next.spare) keepImages.add(next.spare.image);
-  if (next.pending) keepImages.add(next.pending.image);
   actions.push(
     ...outcomeEvidence({
       outcome: "recreated",
@@ -807,21 +1094,48 @@ function finishSwitch(
   return { actions };
 }
 
+function planRollbackDuringFirstSwitch(
+  actions: PlanAction[],
+  state: PonderDeployState,
+  observations: PonderDeployObservations,
+): PlanResult {
+  const pending = state.pending;
+  // Legacy container still running → abandon (rule 3).
+  if (observations.preCutoverObserved) {
+    const cleared = {
+      live: null,
+      spare: null,
+      pending: null,
+      nginx_config_digest: state.nginx_config_digest,
+    };
+    actions.push({ type: "write_state", state: cleared });
+    if (pending) {
+      actions.push(
+        { type: "stop_slot", slot: pending.slot },
+        { type: "drop_schema", schema: pending.schema },
+      );
+    }
+    actions.push(
+      {
+        type: "evidence",
+        text: "deploy_evidence rollback=abandoned",
+      },
+      { type: "exit", code: 0 },
+    );
+    return { actions };
+  }
+
+  // Legacy already stopped: clear pending, start legacy in a slot on kargain.
+  return planRollbackToLegacy(actions, state, observations);
+}
+
 function planRollback(
   actions: PlanAction[],
   state: PonderDeployState,
   observations: PonderDeployObservations,
 ): PlanResult {
-  // Supersede pending first (control 8).
-  if (state.pending) {
-    actions.push(
-      { type: "stop_slot", slot: state.pending.slot },
-      { type: "drop_schema", schema: state.pending.schema },
-    );
-    state = { ...state, pending: null };
-  }
-
-  if (!state.spare) {
+  const spare = state.spare;
+  if (!spare) {
     return {
       actions: [
         ...actions,
@@ -834,38 +1148,50 @@ function planRollback(
     };
   }
 
-  actions.push({ type: "assert_spare_image", image: state.spare.image });
+  // If somehow still in first-switch shape, use that path.
+  if (isFirstSwitchInProgress(state)) {
+    return planRollbackDuringFirstSwitch(actions, state, observations);
+  }
+
+  // Clear pending first: state write then destructive (rule 4).
+  if (state.pending) {
+    const withoutPending: PonderDeployState = { ...state, pending: null };
+    actions.push(
+      { type: "write_state", state: withoutPending },
+      { type: "stop_slot", slot: state.pending.slot },
+      { type: "drop_schema", schema: state.pending.schema },
+    );
+    state = withoutPending;
+  }
+
+  if (spare.schema === LEGACY_SCHEMA) {
+    return planRollbackToLegacy(actions, state, observations);
+  }
+
+  actions.push({ type: "assert_spare_image", image: spare.image });
 
   const slot = freeSlot(state.live);
-  const schema = state.spare.schema;
-  const image = state.spare.image;
-  const pending: PonderLiveOrPendingRef = {
-    slot,
-    schema,
-    commit:
-      state.spare.commit ??
-      "0000000000000000000000000000000000000000",
-    executable: state.spare.executable,
-    image,
-  };
-  // For legacy spare, commit on live ref after switch stays as null-capable via
-  // spare shape; live requires commit string — use zeros only as placeholder for
-  // legacy? ADR says commit null only for legacy spare. Live after rollback of
-  // legacy: the spare runs in the slot — live should record schema kargain.
-  // Use a synthetic commit field: keep spare.commit null by making live from
-  // a dedicated path.
-
+  const schema = spare.schema;
+  const image = spare.image;
   const liveFromSpare: PonderLiveOrPendingRef = {
     slot,
     schema,
-    commit: state.spare.commit ?? observations.deployCommit,
-    executable: state.spare.executable,
+    commit: spare.commit,
+    executable: spare.executable,
     image,
+  };
+
+  const failed = state.live;
+  const next: PonderDeployState = {
+    live: liveFromSpare,
+    spare: null,
+    pending: null,
+    nginx_config_digest: observations.nginxConfigDigest,
   };
 
   actions.push(
     { type: "write_slot_env", slot, schema },
-    { type: "tag_slot_image", slot, commit: state.spare.commit ?? "legacy" },
+    { type: "tag_slot_image", slot, commit: spare.commit ?? "legacy" },
     { type: "start_slot", slot },
     {
       type: "wait_answered",
@@ -882,17 +1208,6 @@ function planRollback(
       timeoutMs: READY200_TIMEOUT_MS,
       onTimeout: "pending_exit0",
     },
-  );
-
-  const failed = state.live;
-  const next: PonderDeployState = {
-    live: liveFromSpare,
-    spare: null,
-    pending: null,
-    nginx_config_digest: observations.nginxConfigDigest,
-  };
-
-  actions.push(
     {
       type: "write_upstream",
       slot,
@@ -907,22 +1222,123 @@ function planRollback(
       onTimeout: "fail",
     },
     ...switchEvidence(slot),
+    // Write live right after 200, then stop old (rule 4).
+    { type: "write_state", state: next },
   );
   if (failed) {
-    actions.push({ type: "stop_slot", slot: failed.slot });
-    actions.push({ type: "drop_schema", schema: failed.schema });
-    actions.push({ type: "remove_images", images: [failed.image] });
+    actions.push(
+      { type: "stop_slot", slot: failed.slot },
+      { type: "drop_schema", schema: failed.schema },
+      { type: "remove_images", images: [failed.image] },
+    );
   }
   actions.push(
-    { type: "write_state", state: next },
     {
       type: "evidence",
       text: `deploy_evidence rollback=ok schema=${schema}`,
     },
     { type: "exit", code: 0 },
   );
-  // silence unused
-  void pending;
+  return { actions };
+}
+
+/**
+ * Rollback to legacy image in a slot on kargain (commit null). Never invents
+ * a commit (Amendment rule 1 / 3).
+ */
+function planRollbackToLegacy(
+  actions: PlanAction[],
+  state: PonderDeployState,
+  observations: PonderDeployObservations,
+): PlanResult {
+  if (state.pending) {
+    const withoutPending: PonderDeployState = { ...state, pending: null };
+    actions.push(
+      { type: "write_state", state: withoutPending },
+      { type: "stop_slot", slot: state.pending.slot },
+      { type: "drop_schema", schema: state.pending.schema },
+    );
+    state = withoutPending;
+  }
+
+  actions.push({ type: "assert_spare_image", image: LEGACY_IMAGE });
+
+  const slot = freeSlot(state.live);
+  const liveFromLegacy: PonderLiveOrPendingRef = {
+    slot,
+    schema: LEGACY_SCHEMA,
+    commit: null,
+    executable: state.spare?.executable ?? observations.identityDigest,
+    image: LEGACY_IMAGE,
+  };
+  const failed = state.live;
+  const next: PonderDeployState = {
+    live: liveFromLegacy,
+    spare: null,
+    pending: null,
+    nginx_config_digest: observations.nginxConfigDigest,
+  };
+
+  actions.push(
+    { type: "write_slot_env", slot, schema: LEGACY_SCHEMA },
+    { type: "tag_slot_image", slot, commit: "legacy" },
+    { type: "start_slot", slot },
+    {
+      type: "wait_answered",
+      target: "slot",
+      slot,
+      timeoutMs: ANSWERED_TIMEOUT_MS,
+      onTimeout: "tear_down_new",
+    },
+    {
+      type: "wait_ready200",
+      target: "slot",
+      slot,
+      schema: LEGACY_SCHEMA,
+      timeoutMs: READY200_TIMEOUT_MS,
+      onTimeout: "pending_exit0",
+    },
+  );
+
+  if (!observations.nginxPinnedUp) {
+    actions.push(
+      { type: "write_upstream", slot, previousUpstream: failed?.slot ?? null },
+      { type: "up_nginx" },
+    );
+  } else {
+    actions.push({
+      type: "write_upstream",
+      slot,
+      previousUpstream: failed?.slot ?? null,
+    });
+    actions.push({ type: "reload_nginx" });
+  }
+
+  actions.push(
+    {
+      type: "wait_ready200",
+      target: "nginx",
+      schema: LEGACY_SCHEMA,
+      timeoutMs: ANSWERED_TIMEOUT_MS,
+      onTimeout: "fail",
+    },
+    ...switchEvidence(slot),
+    { type: "write_state", state: next },
+  );
+  if (failed) {
+    actions.push(
+      { type: "stop_slot", slot: failed.slot },
+      { type: "drop_schema", schema: failed.schema },
+      { type: "remove_images", images: [failed.image] },
+    );
+  }
+  actions.push(
+    {
+      type: "evidence",
+      text: `deploy_evidence rollback=ok schema=${LEGACY_SCHEMA}`,
+    },
+    { type: "exit", code: 0 },
+  );
   return { actions };
 }
 
@@ -931,4 +1347,43 @@ export function planEvidenceTexts(result: PlanResult): string[] {
   return result.actions
     .filter((a): a is Extract<PlanAction, { type: "evidence" }> => a.type === "evidence")
     .map((a) => a.text);
+}
+
+/**
+ * Planted ordering defect helpers for the model test (must fail invariants).
+ * Not used by production plan paths.
+ */
+export function plantedDefectStateAfterDrop(
+  state: PonderDeployState,
+  dropSchema: string,
+): PlanAction[] {
+  return [
+    { type: "drop_schema", schema: dropSchema },
+    { type: "write_state", state },
+  ];
+}
+
+export function plantedDefectRollbackWhileLegacyRuns(
+  state: PonderDeployState,
+  slot: PonderDeploySlot,
+): PlanAction[] {
+  return [
+    { type: "tag_slot_image", slot, commit: "legacy" },
+    { type: "start_slot", slot },
+    {
+      type: "write_state",
+      state: {
+        live: {
+          slot,
+          schema: LEGACY_SCHEMA,
+          commit: null,
+          executable: state.spare?.executable ?? "x",
+          image: LEGACY_IMAGE,
+        },
+        spare: null,
+        pending: null,
+        nginx_config_digest: state.nginx_config_digest,
+      },
+    },
+  ];
 }
