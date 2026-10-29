@@ -553,7 +553,8 @@ export function deployScriptScriptsMountDefect(script: string): string | null {
   return (
     deployScriptHostNodeDefect(script) ??
     deployScriptWriterExecToolingDefect(script) ??
-    deployScriptProbeValidationDefect(script)
+    deployScriptProbeValidationDefect(script) ??
+    deployScriptStateMountDefect(script)
   );
 }
 
@@ -584,25 +585,45 @@ export function deployScriptWriterExecToolingDefect(
 }
 
 /**
- * Probe observation JSON must go through validate_probe_observation.
- * Unvalidated `json.load(...)['kind']` (no helper in the file) is red.
+ * Probe observation JSON must go through ponder-probe-observation-cli
+ * (typed owner). Unvalidated `json.load(open(...))['kind']` is red.
  */
 export function deployScriptProbeValidationDefect(
   script: string,
 ): string | null {
-  const hasHelper = /validate_probe_observation\s*\(/.test(script);
-  const hasBareKind =
-    /json\.load\([^)]*\)\s*\[\s*['"]kind['"]\s*\]/.test(script);
-  if (!hasHelper) {
+  if (!/ponder-probe-observation-cli\.ts/.test(script)) {
     return "probe JSON must be validated before use";
   }
-  // Helper present and used on observation files before kind is read.
+  if (!/validate_probe_observation\s*\(/.test(script)) {
+    return "probe JSON must be validated before use";
+  }
+  // Direct kind read from a probe-* file without the owner is red.
   if (
-    hasBareKind &&
-    !/validate_probe_observation\s+"\$raw"/.test(script) &&
-    !/validate_probe_observation\s+"\$line"/.test(script)
+    /json\.load\(open\([^)]*probe[^)]*\)\)\s*\[\s*['"]kind['"]\s*\]/.test(
+      script,
+    )
   ) {
     return "probe JSON must be validated before use";
+  }
+  return null;
+}
+
+/**
+ * Never bind-mount `$STATE_FILE:$STATE_FILE` — Docker creates a directory when
+ * the host path is missing (EISDIR masks ENOENT for a removed state file).
+ */
+export function deployScriptStateMountDefect(script: string): string | null {
+  if (/-v\s+"\$STATE_FILE:\$STATE_FILE"/.test(script)) {
+    return "ponder-deploy.sh must mount state parent dir, not STATE_FILE path";
+  }
+  if (
+    !/STATE_DIR="\$\(dirname "\$STATE_FILE"\)"/.test(script) &&
+    !/STATE_DIR=\$\(dirname "\$STATE_FILE"\)/.test(script)
+  ) {
+    return "ponder-deploy.sh must mount state parent dir, not STATE_FILE path";
+  }
+  if (!/-v\s+"\$STATE_DIR:\$STATE_DIR"/.test(script)) {
+    return "ponder-deploy.sh must mount state parent dir, not STATE_FILE path";
   }
   return null;
 }
@@ -1032,6 +1053,7 @@ deploy:
             null,
             name,
           );
+          assert.equal(deployScriptStateMountDefect(script), null, name);
         }
         assert.equal(bashSyntaxDefect(script), null, name);
       }
@@ -1308,7 +1330,7 @@ validate_probe_observation() { true; }
 
   it("constructed: unvalidated probe JSON kind access is red", () => {
     const planted = `set -euo pipefail
-kind="$(python3 -c "import json; print(json.load(open('probe.json'))['kind'])")"
+kind="$(python3 -c "import json; print(json.load(open('probe-green.json'))['kind'])")"
 `;
     assert.equal(
       deployScriptProbeValidationDefect(planted),
@@ -1316,6 +1338,19 @@ kind="$(python3 -c "import json; print(json.load(open('probe.json'))['kind'])")"
     );
     const green = readFileSync(PONDER_DEPLOY_SH, "utf8");
     assert.equal(deployScriptProbeValidationDefect(green), null);
+  });
+
+  it("constructed: STATE_FILE bind-mount is red (Docker EISDIR on missing file)", () => {
+    const planted = `set -euo pipefail
+STATE_FILE=/tmp/state.json
+docker compose run -v "$STATE_FILE:$STATE_FILE" deploy-tools true
+`;
+    assert.equal(
+      deployScriptStateMountDefect(planted),
+      "ponder-deploy.sh must mount state parent dir, not STATE_FILE path",
+    );
+    const green = readFileSync(PONDER_DEPLOY_SH, "utf8");
+    assert.equal(deployScriptStateMountDefect(green), null);
   });
 
   it("constructed: command_timeout on a different step is red", () => {

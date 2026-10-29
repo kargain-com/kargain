@@ -21,14 +21,11 @@ import {
   keepSetFromState,
   retentionSchemasToDrop,
 } from "./ponder-deploy-retention.js";
+import type { ProbeObservation } from "./ponder-probe-observation.js";
+
+export type { ProbeObservation } from "./ponder-probe-observation.js";
 
 export type PonderDeployOperation = "deploy" | "hold" | "rollback";
-
-/** Typed probe result. probe_failed refuses before mutation. */
-export type ProbeObservation =
-  | { kind: "status"; code: number }
-  | { kind: "no_answer" }
-  | { kind: "probe_failed"; detail: string };
 
 export type SlotReadyObservation = {
   blue: ProbeObservation;

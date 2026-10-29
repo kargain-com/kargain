@@ -53,15 +53,19 @@ DEPLOYED_COMMIT="$(git rev-parse HEAD)"
 mkdir -p "$WORK"
 
 # Build deploy-tools once (cached). Writer images are separate ("no writer → no writer build").
-docker compose --profile deploy-tools build deploy-tools </dev/null >&2
+docker compose --profile deploy-tools build deploy-tools </dev/null >/dev/null
+
+# Mount state *parent* dir — never `$STATE_FILE:$STATE_FILE`. Docker creates a
+# directory when the host file is missing, which yields EISDIR instead of ENOENT.
+STATE_DIR="$(dirname "$STATE_FILE")"
+mkdir -p "$STATE_DIR" "$WORK"
 
 # Every Node CLI runs in deploy-tools on the Compose network (no host node; no writer exec).
 # Image ENTRYPOINT is node --import tsx; args are script paths under /app.
 run_node() {
   docker compose --profile deploy-tools run --rm --no-deps -T \
-    -v "$STATE_FILE:$STATE_FILE" \
+    -v "$STATE_DIR:$STATE_DIR" \
     -v "$WORK:$WORK" \
-    -v "$ROOT:$ROOT" \
     -e "PONDER_DEPLOY_ROOT=$ROOT" \
     deploy-tools \
     "$@"
@@ -111,36 +115,10 @@ nginx_config_digest() {
   fi
 }
 
-# Validate typed probe JSON. Anything else → deploy_observation_failed:<target>.
+# Validate typed probe JSON via deploy-tools owner. Else deploy_observation_failed:<target>.
 validate_probe_observation() {
   local raw="$1" target="$2"
-  python3 - "$raw" "$target" <<'PY'
-import json, sys
-raw, target = sys.argv[1], sys.argv[2]
-try:
-    obj = json.loads(raw)
-except Exception:
-    print(f"deploy_observation_failed: {target}", file=sys.stderr)
-    sys.exit(1)
-if not isinstance(obj, dict):
-    print(f"deploy_observation_failed: {target}", file=sys.stderr)
-    sys.exit(1)
-kind = obj.get("kind")
-if kind == "status":
-    if not isinstance(obj.get("code"), int):
-        print(f"deploy_observation_failed: {target}", file=sys.stderr)
-        sys.exit(1)
-elif kind == "no_answer":
-    pass
-elif kind == "probe_failed":
-    if not isinstance(obj.get("detail"), str):
-        print(f"deploy_observation_failed: {target}", file=sys.stderr)
-        sys.exit(1)
-else:
-    print(f"deploy_observation_failed: {target}", file=sys.stderr)
-    sys.exit(1)
-print(json.dumps(obj, separators=(",", ":")))
-PY
+  printf '%s\n' "$raw" | run_node scripts/ponder-probe-observation-cli.ts --target "$target"
 }
 
 # Typed probe via deploy-tools → service name on the Compose network.
@@ -343,14 +321,18 @@ gather_observations() {
   probe_slot_json green >"$WORK/probe-green.json"
   probe_nginx_json >"$WORK/probe-nginx.json"
 
-  # probe_failed / malformed refuses before mutation (validated on write + re-check).
+  # probe_failed / malformed refuses before mutation (owner validates; kind from owner output).
   for target in blue green nginx; do
     raw="$(cat "$WORK/probe-$target.json")"
-    if ! validate_probe_observation "$raw" "$target" >/dev/null; then
+    set +e
+    validated="$(validate_probe_observation "$raw" "$target" 2>/dev/null)"
+    vec=$?
+    set -e
+    if [ "$vec" -ne 0 ]; then
       echo "deploy_observation_failed: $target"
       exit 1
     fi
-    kind="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['kind'])" "$WORK/probe-$target.json")"
+    kind="$(printf '%s' "$validated" | python3 -c "import json,sys; print(json.load(sys.stdin)['kind'])")"
     if [ "$kind" = "probe_failed" ]; then
       echo "deploy_observation_failed: $target"
       exit 1
@@ -516,7 +498,7 @@ for action_line in "${action_lines[@]}"; do
       # Stop the labelled legacy writer by id (Compose file may already be post-cutover).
       _legacy_id="$(labelled_ponder_id)"
       if [ -n "$_legacy_id" ]; then
-        docker stop "$_legacy_id" </dev/null
+        docker stop "$_legacy_id" </dev/null >/dev/null
       fi
       ;;
     wait_answered)
@@ -619,7 +601,7 @@ for action_line in "${action_lines[@]}"; do
       python3 -c "import json,sys; print('\n'.join(json.loads(sys.argv[1])))" "$imgs" >"$WORK/rm-images.txt"
       while IFS= read -r img || [ -n "$img" ]; do
         [ -z "$img" ] && continue
-        docker rmi "$img" </dev/null || true
+        docker rmi "$img" </dev/null >/dev/null 2>&1 || true
       done <"$WORK/rm-images.txt"
       ;;
     write_state)

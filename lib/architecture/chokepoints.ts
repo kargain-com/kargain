@@ -917,6 +917,15 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["ponder-deploy-plan.test.ts", "ponder-reindex-svm-isolation-policy.test.ts"],
   },
   {
+    id: "ponder-probe-observation",
+    owner: "scripts/lib/ponder-probe-observation.ts",
+    rule: "Sole owner of typed deploy probe-observation JSON (status|no_answer|probe_failed); executor refuses any other shape via ponder-probe-observation-cli",
+    guardTests: [
+      "ponder-probe-observation.test.ts",
+      "deploy-ponder-svm-ingest-ci-policy.test.ts",
+    ],
+  },
+  {
     id: "passport-custody-fold",
     owner: "lib/custody/fold.ts",
     rule: "Two-stream custody fold is VM-agnostic; adapters outside fold; no cross-writer timestamp order",

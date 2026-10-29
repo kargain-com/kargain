@@ -8,11 +8,13 @@ COPY scripts/ponder-deploy-plan-cli.ts \
      scripts/ponder-deploy-state-cli.ts \
      scripts/ponder-deploy-retention-cli.ts \
      scripts/ponder-ready-probe.ts \
+     scripts/ponder-probe-observation-cli.ts \
      ./scripts/
 COPY scripts/lib/ponder-deploy-plan.ts \
      scripts/lib/ponder-deploy-state.ts \
      scripts/lib/ponder-deploy-retention.ts \
      scripts/lib/ponder-readiness-probe.ts \
+     scripts/lib/ponder-probe-observation.ts \
      ./scripts/lib/
 # Container entrypoint is the only Node binary the executor invokes (no host node).
 ENTRYPOINT ["node", "--import", "tsx"]
