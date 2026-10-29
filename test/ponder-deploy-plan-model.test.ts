@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  modelCurrentRuleSpareDroppedOnWaitTimeout,
   plantedDefectRollbackWhileLegacyRuns,
   plantedDefectStateAfterDrop,
   planPonderDeploy,
@@ -242,15 +243,12 @@ function applyAction(world: SimWorld, action: PlanAction): void {
     case "reload_nginx":
       world.httpServed = true;
       break;
-    case "drop_schema":
-      world.schemas.delete(action.schema);
-      for (const [, c] of world.containers) {
-        if (c.schema === action.schema) c.running = false;
-      }
-      break;
     case "retention":
       for (const s of action.drop) {
         world.schemas.delete(s);
+        for (const [, c] of world.containers) {
+          if (c.schema === s) c.running = false;
+        }
       }
       break;
     case "remove_images":
@@ -267,10 +265,33 @@ function applyAction(world: SimWorld, action: PlanAction): void {
       break;
     case "wait_answered":
     case "wait_ready200": {
+      const timedOut =
+        (action.type === "wait_answered" && world.writerMode === "never_answer") ||
+        (action.type === "wait_ready200" &&
+          world.writerMode === "never_answer") ||
+        (action.type === "wait_ready200" &&
+          world.writerMode === "answered_not_ready" &&
+          action.onTimeout !== "pending_exit0");
       if (action.type === "wait_answered" && world.writerMode === "never_answer") {
         if (action.onTimeout === "tear_down_new" && action.slot) {
-          // tear down handled by plan continuation elsewhere; mark failure via throw
+          const schema = world.slotSchemas[action.slot];
+          if (schema) {
+            world.schemas.delete(schema);
+            const c = world.containers.get(`ponder-${action.slot}`);
+            if (c) c.running = false;
+          }
+          if (world.stateFile.kind === "post_cutover") {
+            world.stateFile = {
+              kind: "post_cutover",
+              state: { ...world.stateFile.state, pending: null },
+            };
+          }
           throw new Error("never_answer");
+        }
+        if (action.onTimeout === "restore_reused" && action.slot) {
+          const c = world.containers.get(`ponder-${action.slot}`);
+          if (c) c.running = false;
+          throw new Error(`restore_reused:${action.failureText ?? "fail"}`);
         }
         throw new Error("never_answer");
       }
@@ -280,6 +301,16 @@ function applyAction(world: SimWorld, action: PlanAction): void {
         action.onTimeout === "pending_exit0"
       ) {
         throw new Error("pending_exit0");
+      }
+      if (
+        action.type === "wait_ready200" &&
+        timedOut &&
+        action.onTimeout === "restore_reused" &&
+        action.slot
+      ) {
+        const c = world.containers.get(`ponder-${action.slot}`);
+        if (c) c.running = false;
+        throw new Error(`restore_reused:${action.failureText ?? "fail"}`);
       }
       if (
         action.type === "wait_ready200" &&
@@ -467,7 +498,7 @@ describe("ponder deploy plan model", () => {
       { ...state, pending: null },
       `k_${COMMIT_B}`,
     );
-    assert.equal(planted[0]?.type, "drop_schema");
+    assert.equal(planted[0]?.type, "retention");
     assert.equal(planted[1]?.type, "write_state");
     // Real supersede plan writes state first.
     const world = emptyWorld({
@@ -531,9 +562,12 @@ describe("ponder deploy plan model", () => {
     });
     const types = plan.actions.map((a) => a.type);
     const writeIdx = types.indexOf("write_state");
-    const dropIdx = types.indexOf("drop_schema");
-    assert.ok(writeIdx >= 0 && writeIdx < dropIdx, "green: state before drop");
-    assert.equal(planted[0]?.type, "drop_schema");
+    const retentionIdx = types.indexOf("retention");
+    assert.ok(
+      writeIdx >= 0 && writeIdx < retentionIdx,
+      "green: state before retention",
+    );
+    assert.equal(planted[0]?.type, "retention");
     assert.equal(planted[1]?.type, "write_state");
     assert.notEqual(
       planted[0]?.type,
@@ -612,6 +646,186 @@ describe("ponder deploy plan model", () => {
       planted.some((a) => a.type === "start_slot"),
       "planted: starts legacy while legacy would still run",
     );
+  });
+
+  it("independent model: current tear_down_new rule drops spare; restore_reused does not", () => {
+    const schemas = new Set([LEGACY_SCHEMA, `k_${COMMIT_A}`, "ponder_sync"]);
+    const bad = modelCurrentRuleSpareDroppedOnWaitTimeout({
+      schemas,
+      spareSchema: LEGACY_SCHEMA,
+      onTimeout: "tear_down_new",
+    });
+    assert.equal(
+      bad.violation,
+      "spare schema missing kargain after wait_answered",
+    );
+    const good = modelCurrentRuleSpareDroppedOnWaitTimeout({
+      schemas,
+      spareSchema: LEGACY_SCHEMA,
+      onTimeout: "restore_reused",
+    });
+    assert.equal(good.violation, null);
+    assert.ok(good.schemas.has(LEGACY_SCHEMA));
+  });
+
+  it("failed rollback / spare redeploy keeps spare schema+image, state, and live served", () => {
+    const live: PonderLiveOrPendingRef = {
+      slot: "blue",
+      schema: `k_${COMMIT_A}`,
+      commit: COMMIT_A,
+      executable: EXEC_A,
+      image: `kargain-ponder:${COMMIT_A}`,
+    };
+    const legacySpare = {
+      schema: LEGACY_SCHEMA,
+      commit: null as string | null,
+      executable: "exec-legacy",
+      image: LEGACY_IMAGE,
+    };
+    const baseWorld = (): SimWorld =>
+      emptyWorld({
+        stateFile: {
+          kind: "post_cutover",
+          state: {
+            live,
+            spare: legacySpare,
+            pending: null,
+            nginx_config_digest: DIGEST,
+          },
+        },
+        containers: new Map([
+          ["ponder", { image: PINNED_NGINX, schema: null, running: true }],
+          [
+            "ponder-blue",
+            {
+              image: `kargain-ponder:${COMMIT_A}`,
+              schema: `k_${COMMIT_A}`,
+              running: true,
+            },
+          ],
+        ]),
+        schemas: new Set([
+          LEGACY_SCHEMA,
+          `k_${COMMIT_A}`,
+          "ponder_sync",
+        ]),
+        images: new Set([
+          PINNED_NGINX,
+          `kargain-ponder:${COMMIT_A}`,
+          LEGACY_IMAGE,
+        ]),
+        legacyTagged: true,
+        httpServed: true,
+        writerMode: "never_answer",
+      });
+
+    // Plan must use restore_reused (rule 1), not tear_down_new.
+    const planWorld = baseWorld();
+    const rollbackPlan = planPonderDeploy({
+      loaded: {
+        kind: "post_cutover",
+        state: {
+          live,
+          spare: legacySpare,
+          pending: null,
+          nginx_config_digest: DIGEST,
+        },
+      },
+      operation: "rollback",
+      observations: observe(planWorld, {
+        operation: "rollback",
+        eventName: "workflow_dispatch",
+        commit: COMMIT_A,
+        executable: EXEC_A,
+      }).observations,
+    });
+    const answered = rollbackPlan.actions.find(
+      (a) => a.type === "wait_answered" && a.target === "slot",
+    );
+    assert.ok(answered && answered.type === "wait_answered");
+    assert.equal(answered.onTimeout, "restore_reused");
+    assert.equal(
+      answered.failureText,
+      "deploy_rollback_failed: spare_not_answering",
+    );
+    assert.ok(
+      !rollbackPlan.actions.some((a) => a.type === "write_state" && a.state.spare === null) ||
+        rollbackPlan.actions.findIndex(
+          (a) => a.type === "wait_answered" && a.target === "slot",
+        ) <
+          rollbackPlan.actions.findIndex(
+            (a) => a.type === "write_state" && a.state.spare === null,
+          ),
+      "spare consumed only after wait",
+    );
+
+    for (const operation of ["rollback", "deploy"] as const) {
+      const world = baseWorld();
+      if (operation === "deploy") {
+        // Spare redeploy of legacy schema is N/A (commit null); use commit spare.
+        world.stateFile = {
+          kind: "post_cutover",
+          state: {
+            live,
+            spare: {
+              schema: `k_${COMMIT_B}`,
+              commit: COMMIT_B,
+              executable: EXEC_B,
+              image: `kargain-ponder:${COMMIT_B}`,
+            },
+            pending: null,
+            nginx_config_digest: DIGEST,
+          },
+        };
+        world.schemas.add(`k_${COMMIT_B}`);
+        world.images.add(`kargain-ponder:${COMMIT_B}`);
+      }
+      const step = {
+        operation,
+        eventName: "workflow_dispatch" as const,
+        commit: operation === "deploy" ? COMMIT_B : COMMIT_A,
+        executable: operation === "deploy" ? EXEC_B : EXEC_A,
+      };
+      world.writerMode = "never_answer";
+      const result = runDispatch(world, step, null);
+      assert.equal(result.exitCode, 1, `${operation}: failed start exits non-zero`);
+      assert.ok(world.schemas.has(LEGACY_SCHEMA) || operation === "deploy");
+      if (operation === "rollback") {
+        assert.ok(
+          world.schemas.has(LEGACY_SCHEMA),
+          "rollback: spare schema kargain must remain",
+        );
+        assert.ok(
+          world.images.has(LEGACY_IMAGE) || world.legacyTagged,
+          "rollback: spare image must remain",
+        );
+        assert.ok(
+          world.stateFile.kind === "post_cutover" &&
+            world.stateFile.state.spare !== null &&
+            world.stateFile.state.spare.schema === LEGACY_SCHEMA,
+          "rollback: spare still recorded in state",
+        );
+        assert.ok(
+          world.stateFile.state.live?.slot === "blue" &&
+            world.containers.get("ponder-blue")?.running === true,
+          "rollback: live writer still running",
+        );
+        assert.equal(world.httpServed, true, "rollback: live still served");
+      }
+      if (operation === "deploy") {
+        assert.ok(
+          world.schemas.has(`k_${COMMIT_B}`),
+          "spare redeploy: spare schema must remain",
+        );
+        assert.ok(
+          world.stateFile.kind === "post_cutover" &&
+            world.stateFile.state.spare !== null &&
+            world.stateFile.state.spare.schema === `k_${COMMIT_B}`,
+          "spare redeploy: spare still recorded",
+        );
+        assert.equal(world.httpServed, true);
+      }
+    }
   });
 
   it("crash-inject + multi-run: push/hold/deploy/rollback recover to served", () => {

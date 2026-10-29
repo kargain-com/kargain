@@ -82,11 +82,22 @@ capture() {
 }
 
 run_deploy() {
-  local op="$1" event="$2" sha="$3"
+  local op="$1" event="$2" sha="$3" ec=0
   export OPERATION="$op" EVENT_NAME="$event" DEPLOY_SHA="$sha"
   export IDENTITY_DIGEST="${IDENTITY_DIGEST:-rehearsal-identity}"
   export EXECUTABLE_DIGEST="${EXECUTABLE_DIGEST:-exec-$sha}"
+  set +e
   "$ROOT/scripts/ponder-deploy.sh"
+  ec=$?
+  set -e
+  # Item 4: on wait failure, rehearsal captures slot logs (not deploy stdout).
+  if [ "$ec" -ne 0 ]; then
+    for slot in blue green; do
+      echo "=== rehearsal capture: docker compose logs --tail 200 ponder-${slot} ==="
+      docker compose logs --tail 200 "ponder-${slot}" 2>&1 || true
+    done
+  fi
+  return "$ec"
 }
 
 report_slot_image_size() {
@@ -157,6 +168,41 @@ echo "PONDER_START_BLOCK_31337=$PONDER_START_BLOCK_31337"
 echo "PONDER_GETLOGS_BLOCK_RANGE_31337=$PONDER_GETLOGS_BLOCK_RANGE_31337"
 export PONDER_RPC_URL_31337=http://host.docker.internal:8545
 
+# Slot env must satisfy the legacy image exactly as ENABLE_LOCAL expects addresses.
+# No rename of PONDER_*_ADDRESS vs 25689e1 — inject from deployments/31337.json.
+eval "$(node --import tsx -e '
+import { readFileSync } from "node:fs";
+const d = JSON.parse(readFileSync("deployments/31337.json", "utf8"));
+const map = [
+  ["PONDER_KAR_PASSPORT_ADDRESS", d.karPassport],
+  ["PONDER_KAR_PRO_PASS_ADDRESS", d.karProPass],
+  ["PONDER_KAR_PRO_STAKING_ADDRESS", d.karProStaking],
+  ["PONDER_USDC_ADDRESS", d.usdc],
+  ["PONDER_NATIVE_FEED_ADDRESS", d.nativeFeed],
+  ["PONDER_TIMELOCK_ADDRESS", d.timelock],
+  ["PONDER_PLATFORM_RECIPIENT_ADDRESS", d.platformRecipient],
+  ["PONDER_FIXED_PRICE_CONSIGNMENT_ADDRESS", d.fixedPriceConsignment],
+  ["PONDER_ASCENDING_CONSIGNMENT_ADDRESS", d.ascendingConsignment],
+  ["PONDER_BRIDGE_GATEWAY_ADDRESS", d.bridgeGateway],
+];
+for (const [k, v] of map) {
+  if (v) console.log(`export ${k}=${JSON.stringify(v)}`);
+}
+')"
+: "${PONDER_KAR_PASSPORT_ADDRESS:?missing from deployments/31337.json}"
+: "${PONDER_KAR_PRO_PASS_ADDRESS:?missing from deployments/31337.json}"
+: "${PONDER_KAR_PRO_STAKING_ADDRESS:?missing from deployments/31337.json}"
+: "${PONDER_USDC_ADDRESS:?missing from deployments/31337.json}"
+: "${PONDER_NATIVE_FEED_ADDRESS:?missing from deployments/31337.json}"
+: "${PONDER_TIMELOCK_ADDRESS:?missing from deployments/31337.json}"
+: "${PONDER_PLATFORM_RECIPIENT_ADDRESS:?missing from deployments/31337.json}"
+export PONDER_KAR_PASSPORT_ADDRESS PONDER_KAR_PRO_PASS_ADDRESS PONDER_KAR_PRO_STAKING_ADDRESS
+export PONDER_USDC_ADDRESS PONDER_NATIVE_FEED_ADDRESS PONDER_TIMELOCK_ADDRESS
+export PONDER_PLATFORM_RECIPIENT_ADDRESS
+export PONDER_FIXED_PRICE_CONSIGNMENT_ADDRESS="${PONDER_FIXED_PRICE_CONSIGNMENT_ADDRESS:-}"
+export PONDER_ASCENDING_CONSIGNMENT_ADDRESS="${PONDER_ASCENDING_CONSIGNMENT_ADDRESS:-}"
+export PONDER_BRIDGE_GATEWAY_ADDRESS="${PONDER_BRIDGE_GATEWAY_ADDRESS:-}"
+
 cat >"$ROOT/$PRE_CUTOVER_REL" <<EOF
 services:
   ponder:
@@ -166,6 +212,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       DATABASE_URL: postgresql://ponder:\${POSTGRES_PASSWORD}@postgres:5432/kargain_ponder
       DATABASE_SCHEMA: kargain
@@ -175,6 +223,16 @@ services:
       PONDER_RPC_URLS_31337: http://host.docker.internal:8545
       PONDER_START_BLOCK_31337: "${PONDER_START_BLOCK_31337}"
       PONDER_GETLOGS_BLOCK_RANGE_31337: "${PONDER_GETLOGS_BLOCK_RANGE_31337}"
+      PONDER_KAR_PASSPORT_ADDRESS: "${PONDER_KAR_PASSPORT_ADDRESS}"
+      PONDER_KAR_PRO_PASS_ADDRESS: "${PONDER_KAR_PRO_PASS_ADDRESS}"
+      PONDER_KAR_PRO_STAKING_ADDRESS: "${PONDER_KAR_PRO_STAKING_ADDRESS}"
+      PONDER_USDC_ADDRESS: "${PONDER_USDC_ADDRESS}"
+      PONDER_NATIVE_FEED_ADDRESS: "${PONDER_NATIVE_FEED_ADDRESS}"
+      PONDER_TIMELOCK_ADDRESS: "${PONDER_TIMELOCK_ADDRESS}"
+      PONDER_PLATFORM_RECIPIENT_ADDRESS: "${PONDER_PLATFORM_RECIPIENT_ADDRESS}"
+      PONDER_FIXED_PRICE_CONSIGNMENT_ADDRESS: "${PONDER_FIXED_PRICE_CONSIGNMENT_ADDRESS}"
+      PONDER_ASCENDING_CONSIGNMENT_ADDRESS: "${PONDER_ASCENDING_CONSIGNMENT_ADDRESS}"
+      PONDER_BRIDGE_GATEWAY_ADDRESS: "${PONDER_BRIDGE_GATEWAY_ADDRESS}"
     ports:
       - "127.0.0.1:42069:42069"
     networks:

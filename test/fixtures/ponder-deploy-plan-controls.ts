@@ -12,10 +12,12 @@ import {
   type PonderDeployObservations,
   type ProbeObservation,
 } from "../../scripts/lib/ponder-deploy-plan.js";
-import type {
-  PonderDeployState,
-  PonderLiveOrPendingRef,
-  PonderSpareRef,
+import {
+  LEGACY_IMAGE,
+  LEGACY_SCHEMA,
+  type PonderDeployState,
+  type PonderLiveOrPendingRef,
+  type PonderSpareRef,
 } from "../../scripts/lib/ponder-deploy-state.js";
 import {
   keepSetFromState,
@@ -224,11 +226,14 @@ export function control4_pendingSupersedeOrKeep(): void {
     }),
   });
   assert.ok(hasAction(supersede, "stop_slot"));
-  assert.ok(hasAction(supersede, "drop_schema"));
+  assert.ok(hasAction(supersede, "retention"));
   const supersedeTypes = supersede.actions.map((a) => a.type);
   const writeIdx = supersedeTypes.indexOf("write_state");
-  const dropIdx = supersedeTypes.indexOf("drop_schema");
-  assert.ok(writeIdx >= 0 && writeIdx < dropIdx, "state before drop on supersede");
+  const retentionIdx = supersedeTypes.indexOf("retention");
+  assert.ok(
+    writeIdx >= 0 && writeIdx < retentionIdx,
+    "state before retention on supersede",
+  );
 
   const keep = plan({
     loaded: { kind: "post_cutover", state: postState({ pending }) },
@@ -244,7 +249,7 @@ export function control4_pendingSupersedeOrKeep(): void {
       },
     }),
   });
-  assert.ok(!hasAction(keep, "drop_schema") || hasAction(keep, "wait_ready200"));
+  assert.ok(!hasAction(keep, "retention") || hasAction(keep, "wait_ready200"));
   assert.ok(
     keep.actions.some(
       (a) => a.type === "wait_ready200" && (a as { onTimeout?: string }).onTimeout === "pending_exit0",
@@ -298,7 +303,7 @@ export function controlPreflightOkAfterSlot(): void {
   );
 }
 
-/** Control 5: teardown only for writer started in this run (tear_down_new on wait_answered). */
+/** Control 5: teardown only for writer started in this run; reused spare restores. */
 export function control5_teardownOnlyNew(): void {
   const result = plan({
     loaded: { kind: "post_cutover", state: postState({ live: liveRef(), pending: null }) },
@@ -318,6 +323,29 @@ export function control5_teardownOnlyNew(): void {
     (a) => a.type === "wait_answered" && (a as { target?: string }).target === "slot",
   ) as { onTimeout?: string } | undefined;
   assert.equal(answered?.onTimeout, "tear_down_new");
+
+  const spare: PonderSpareRef = {
+    schema: LEGACY_SCHEMA,
+    commit: null,
+    executable: "exec-legacy",
+    image: LEGACY_IMAGE,
+  };
+  const rollback = plan({
+    loaded: {
+      kind: "post_cutover",
+      state: postState({ live: liveRef(), spare, pending: null }),
+    },
+    operation: "rollback",
+    observations: baseObs({ legacyImageTagged: true }),
+  });
+  const rbAnswered = rollback.actions.find(
+    (a) => a.type === "wait_answered" && (a as { target?: string }).target === "slot",
+  ) as { onTimeout?: string; failureText?: string } | undefined;
+  assert.equal(rbAnswered?.onTimeout, "restore_reused");
+  assert.equal(
+    rbAnswered?.failureText,
+    "deploy_rollback_failed: spare_not_answering",
+  );
 }
 
 /** Control 6: hold never flips. */
@@ -397,8 +425,15 @@ export function control8_rollback(): void {
   assert.equal(finalWrite?.state.spare, null);
   const types = withPending.actions.map((a) => a.type);
   const firstWrite = types.indexOf("write_state");
-  const firstDrop = types.indexOf("drop_schema");
-  assert.ok(firstWrite < firstDrop, "state before drop on rollback supersede");
+  const firstRetention = types.indexOf("retention");
+  assert.ok(
+    firstWrite < firstRetention,
+    "state before retention on rollback supersede",
+  );
+  const answered = withPending.actions.find(
+    (a) => a.type === "wait_answered" && (a as { target?: string }).target === "slot",
+  ) as { onTimeout?: string } | undefined;
+  assert.equal(answered?.onTimeout, "restore_reused");
   void pending;
 }
 

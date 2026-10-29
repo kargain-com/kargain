@@ -266,26 +266,55 @@ stop_writers_for_schema() {
     if [ -f "$envf" ]; then
       cur="$(grep -E '^DATABASE_SCHEMA=' "$envf" | head -n1 | cut -d= -f2- | tr -d '\r')"
       if [ "$cur" = "$schema" ]; then
-        docker compose stop "ponder-${slot}" </dev/null
+        docker compose stop "ponder-${slot}" </dev/null >/dev/null
       fi
     fi
   done
 }
 
-drop_schema() {
+# Low-level SQL drop — only invoked from retention (item 2). Quiet stdout.
+retention_drop_one() {
   local schema="$1"
   stop_writers_for_schema "$schema"
   printf 'DROP SCHEMA IF EXISTS "%s" CASCADE;\n' "$schema" | docker compose exec -T postgres \
-    psql -U ponder -d kargain_ponder -v ON_ERROR_STOP=1
+    psql -U ponder -d kargain_ponder -v ON_ERROR_STOP=1 -q >/dev/null
+}
+
+retention_apply_from_state() {
+  list_schemas >"$WORK/schemas-retention.txt"
+  PRE=0
+  if pre_cutover_observed; then PRE=1; fi
+  drop_json="$(run_node scripts/ponder-deploy-retention-cli.ts \
+    --drop-list \
+    --state "$STATE_FILE" \
+    --schemas "$WORK/schemas-retention.txt" \
+    --pre-cutover "$PRE")"
+  python3 -c "import json,sys; print('\n'.join(json.loads(sys.argv[1])))" "$drop_json" \
+    >"$WORK/retention-drop.txt"
+  while IFS= read -r sch || [ -n "$sch" ]; do
+    [ -z "$sch" ] && continue
+    retention_drop_one "$sch"
+  done <"$WORK/retention-drop.txt"
 }
 
 tear_down_new_pending() {
-  local slot="$1" schema="$2"
-  docker compose stop "ponder-${slot}" </dev/null
+  local slot="$1"
+  docker compose stop "ponder-${slot}" </dev/null >/dev/null
   PRE=0
   if pre_cutover_observed; then PRE=1; fi
   run_node scripts/ponder-deploy-state-cli.ts --clear-pending "$STATE_FILE" --pre-cutover "$PRE"
-  drop_schema "$schema"
+  # DROP only via retention keep set — refuses kargain while live/spare.
+  retention_apply_from_state
+}
+
+restore_reused_on_timeout() {
+  local slot="$1" failure_text="$2"
+  echo "$failure_text"
+  if [ -n "$slot" ]; then
+    docker compose stop "ponder-${slot}" </dev/null >/dev/null || true
+  fi
+  # State was not mutated to consume the spare; leave nginx/live untouched.
+  exit 1
 }
 
 gather_observations() {
@@ -395,7 +424,8 @@ for action_line in "${action_lines[@]}"; do
     evidence)
       text="$(action_field text)"
       echo "$text"
-      if [[ "$text" == *"outcome=recreated"* ]]; then
+      # Named commit line once from git HEAD (policy pin); never $DEPLOY_SHA.
+      if [[ "$text" == *"outcome=recreated"* ]] || [[ "$text" == *"outcome=unchanged"* ]]; then
         echo "deploy_evidence commit=$DEPLOYED_COMMIT"
       fi
       ;;
@@ -412,8 +442,8 @@ for action_line in "${action_lines[@]}"; do
         --build-arg "KARGAIN_PONDER_COMMIT=$commit" \
         -t "kargain-ponder:$commit" \
         "$ROOT" </dev/null
-      docker builder prune -f --filter until=72h </dev/null
-      docker image prune -f </dev/null
+      docker builder prune -f --filter until=72h </dev/null >&2
+      docker image prune -f </dev/null >&2
       ;;
     tag_slot_image)
       slot="$(action_field slot)"
@@ -443,15 +473,15 @@ for action_line in "${action_lines[@]}"; do
       ;;
     start_slot)
       slot="$(action_field slot)"
-      docker compose up -d --no-build "ponder-$slot" </dev/null
+      docker compose up -d --no-build "ponder-$slot" </dev/null >/dev/null
       ;;
     stop_slot)
       slot="$(action_field slot)"
-      docker compose stop "ponder-$slot" </dev/null
+      docker compose stop "ponder-$slot" </dev/null >/dev/null
       ;;
     restart_slot)
       slot="$(action_field slot)"
-      docker compose up -d --no-build --force-recreate "ponder-$slot" </dev/null
+      docker compose up -d --no-build --force-recreate "ponder-$slot" </dev/null >/dev/null
       ;;
     preserve_legacy_image)
       image_id="$(action_field imageId)"
@@ -475,24 +505,26 @@ for action_line in "${action_lines[@]}"; do
       target="$(action_field target)"
       timeout_ms="$(action_field timeoutMs)"
       on_timeout="$(action_field onTimeout)"
+      failure_text="$(action_field failureText)"
       if [ "$target" = "slot" ]; then
         slot="$(action_field slot)"
-        url="http://127.0.0.1:42069/ready"
-        # Probe the slot via compose exec
+        # Discard probe status digits (item 5); detail stays on stderr.
         if ! docker compose exec -T "ponder-$slot" node --import tsx /app/scripts/ponder-ready-probe.ts \
-          --mode answered --timeout-ms "$timeout_ms" --url "http://127.0.0.1:42069/ready" </dev/null; then
+          --mode answered --timeout-ms "$timeout_ms" --url "http://127.0.0.1:42069/ready" </dev/null >/dev/null; then
           if [ "$on_timeout" = "tear_down_new" ]; then
             echo "ponder_did_not_become_ready"
-            schema="$(grep -E '^DATABASE_SCHEMA=' "$ROOT/.ponder-slot-$slot.env" | head -n1 | cut -d= -f2- | tr -d '\r')"
-            tear_down_new_pending "$slot" "$schema"
+            tear_down_new_pending "$slot"
             exit 1
+          fi
+          if [ "$on_timeout" = "restore_reused" ]; then
+            restore_reused_on_timeout "$slot" "${failure_text:-ponder_did_not_become_ready}"
           fi
           echo "ponder_did_not_become_ready"
           exit 1
         fi
       else
         if ! run_node scripts/ponder-ready-probe.ts \
-          --mode answered --timeout-ms "$timeout_ms" --url "http://127.0.0.1:42069/ready"; then
+          --mode answered --timeout-ms "$timeout_ms" --url "http://127.0.0.1:42069/ready" >/dev/null; then
           echo "ponder_did_not_become_ready"
           exit 1
         fi
@@ -502,20 +534,21 @@ for action_line in "${action_lines[@]}"; do
       target="$(action_field target)"
       timeout_ms="$(action_field timeoutMs)"
       on_timeout="$(action_field onTimeout)"
+      failure_text="$(action_field failureText)"
       schema="$(action_field schema)"
       if [ "$target" = "slot" ]; then
         slot="$(action_field slot)"
         set +e
         out="$(docker compose exec -T "ponder-$slot" node --import tsx /app/scripts/ponder-ready-probe.ts \
           --mode ready200 --timeout-ms "$timeout_ms" --schema "$schema" \
-          --url "http://127.0.0.1:42069/ready" </dev/null)"
+          --url "http://127.0.0.1:42069/ready" </dev/null 2>/dev/null)"
         ec=$?
         set -e
       else
         set +e
         out="$(run_node scripts/ponder-ready-probe.ts \
           --mode ready200 --timeout-ms "$timeout_ms" --schema "$schema" \
-          --url "http://127.0.0.1:42069/ready")"
+          --url "http://127.0.0.1:42069/ready" 2>/dev/null)"
         ec=$?
         set -e
       fi
@@ -523,6 +556,9 @@ for action_line in "${action_lines[@]}"; do
         if [ "$on_timeout" = "pending_exit0" ]; then
           echo "deploy_evidence switch=pending schema=$schema"
           exit 0
+        fi
+        if [ "$on_timeout" = "restore_reused" ]; then
+          restore_reused_on_timeout "${slot:-}" "${failure_text:-ponder_did_not_become_ready}"
         fi
         if [ "$target" = "nginx" ]; then
           echo "deploy_switch_failed: http"
@@ -537,6 +573,7 @@ for action_line in "${action_lines[@]}"; do
         printf '%s\n' "$out"
         exit 0
       fi
+      # Discard bare status digits (item 5).
       ;;
     write_upstream)
       slot="$(action_field slot)"
@@ -544,27 +581,24 @@ for action_line in "${action_lines[@]}"; do
       write_upstream_target "$slot"
       ;;
     reload_nginx)
-      if ! docker compose exec -T ponder nginx -s reload; then
+      if ! docker compose exec -T ponder nginx -s reload >/dev/null; then
         echo "deploy_switch_failed: http"
         restore_upstream_backup
         exit 1
       fi
       ;;
     up_nginx)
-      docker compose up -d --no-build ponder </dev/null
+      docker compose up -d --no-build ponder </dev/null >/dev/null
       ;;
     recreate_nginx)
-      docker compose up -d --no-build --force-recreate ponder </dev/null
-      ;;
-    drop_schema)
-      drop_schema "$(action_field schema)"
+      docker compose up -d --no-build --force-recreate ponder </dev/null >/dev/null
       ;;
     retention)
       drop_json="$(action_field drop)"
       python3 -c "import json,sys; print('\n'.join(json.loads(sys.argv[1])))" "$drop_json" >"$WORK/retention-drop.txt"
       while IFS= read -r sch || [ -n "$sch" ]; do
         [ -z "$sch" ] && continue
-        drop_schema "$sch"
+        retention_drop_one "$sch"
       done <"$WORK/retention-drop.txt"
       ;;
     remove_images)

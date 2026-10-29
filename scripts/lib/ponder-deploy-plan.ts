@@ -82,7 +82,13 @@ export type PlanAction =
       target: "slot" | "nginx";
       slot?: PonderDeploySlot;
       timeoutMs: number;
-      onTimeout: "tear_down_new" | "fail";
+      /**
+       * tear_down_new — schema created this run (ADR 0015 §d.3).
+       * restore_reused — spare/legacy/in-place reused schema; never drop.
+       */
+      onTimeout: "tear_down_new" | "restore_reused" | "fail";
+      /** Required when onTimeout is restore_reused. */
+      failureText?: string;
     }
   | {
       type: "wait_ready200";
@@ -90,7 +96,8 @@ export type PlanAction =
       slot?: PonderDeploySlot;
       schema: string;
       timeoutMs: number;
-      onTimeout: "pending_exit0" | "fail";
+      onTimeout: "pending_exit0" | "restore_reused" | "fail";
+      failureText?: string;
     }
   | {
       type: "write_upstream";
@@ -101,7 +108,6 @@ export type PlanAction =
   | { type: "up_nginx" }
   | { type: "recreate_nginx" }
   | { type: "stop_legacy_ponder" }
-  | { type: "drop_schema"; schema: string }
   | { type: "retention"; drop: readonly string[] }
   | { type: "remove_images"; images: readonly string[] }
   | { type: "write_state"; state: PonderDeployState }
@@ -186,6 +192,52 @@ function applyRetention(
   return [{ type: "retention", drop }];
 }
 
+/** State write then stop + retention for a cleared pending (rule 4 / item 2). */
+function clearPendingActions(
+  actions: PlanAction[],
+  state: PonderDeployState,
+  schemas: readonly string[],
+): PonderDeployState {
+  if (!state.pending) return state;
+  const withoutPending: PonderDeployState = { ...state, pending: null };
+  actions.push(
+    { type: "write_state", state: withoutPending },
+    { type: "stop_slot", slot: state.pending.slot },
+    ...applyRetention(withoutPending, schemas),
+  );
+  return withoutPending;
+}
+
+function waitAnsweredReused(
+  slot: PonderDeploySlot,
+  failureText: string,
+): Extract<PlanAction, { type: "wait_answered" }> {
+  return {
+    type: "wait_answered",
+    target: "slot",
+    slot,
+    timeoutMs: ANSWERED_TIMEOUT_MS,
+    onTimeout: "restore_reused",
+    failureText,
+  };
+}
+
+function waitReady200Reused(
+  slot: PonderDeploySlot,
+  schema: string,
+  failureText: string,
+): Extract<PlanAction, { type: "wait_ready200" }> {
+  return {
+    type: "wait_ready200",
+    target: "slot",
+    slot,
+    schema,
+    timeoutMs: READY200_TIMEOUT_MS,
+    onTimeout: "restore_reused",
+    failureText,
+  };
+}
+
 function switchEvidence(slot: PonderDeploySlot): PlanAction[] {
   return [
     { type: "evidence", text: "deploy_evidence switch=ready status=200" },
@@ -201,10 +253,10 @@ function outcomeEvidence(args: {
   outcome: "recreated" | "unchanged";
   commit: string | null;
 }): PlanAction[] {
-  const commitText = args.commit ?? "legacy";
+  // commit= is printed once by the executor from DEPLOYED_COMMIT=$(git rev-parse HEAD).
+  void args.commit;
   return [
     { type: "evidence", text: `deploy_evidence outcome=${args.outcome}` },
-    { type: "evidence", text: `deploy_evidence commit=${commitText}` },
   ];
 }
 
@@ -736,7 +788,7 @@ function planSpareAsPending(
     executable: observations.executableDigest,
     image: spare.image,
   };
-  // spare:null written first (rule 5), then start recovery on own schema.
+  // Reused spare schema: consume spare in state only after the 200 gate.
   const cleared: PonderDeployState = {
     ...state,
     spare: null,
@@ -744,25 +796,11 @@ function planSpareAsPending(
     nginx_config_digest: observations.nginxConfigDigest,
   };
   actions.push(
-    { type: "write_state", state: { ...state, spare: null, pending: null } },
     { type: "write_slot_env", slot, schema: spare.schema },
     { type: "tag_slot_image", slot, commit: spare.commit ?? "legacy" },
     { type: "start_slot", slot },
-    {
-      type: "wait_answered",
-      target: "slot",
-      slot,
-      timeoutMs: ANSWERED_TIMEOUT_MS,
-      onTimeout: "tear_down_new",
-    },
-    {
-      type: "wait_ready200",
-      target: "slot",
-      slot,
-      schema: spare.schema,
-      timeoutMs: READY200_TIMEOUT_MS,
-      onTimeout: "pending_exit0",
-    },
+    waitAnsweredReused(slot, "ponder_did_not_become_ready"),
+    waitReady200Reused(slot, spare.schema, "ponder_did_not_become_ready"),
     { type: "write_state", state: cleared },
   );
   if (operation === "hold") {
@@ -1000,15 +1038,8 @@ function planPendingPrecedence(
 
   // Not-ready pending.
   if (!sameExecutable) {
-    // Supersede: state before destructive (rule 4).
-    actions.push(
-      {
-        type: "write_state",
-        state: { ...state, pending: null },
-      },
-      { type: "stop_slot", slot: pending.slot },
-      { type: "drop_schema", schema: pending.schema },
-    );
+    // Supersede: state before destructive (rule 4); DROP via retention only.
+    clearPendingActions(actions, state, observations.schemas);
     return null;
   }
 
@@ -1103,7 +1134,7 @@ function planRollbackDuringFirstSwitch(
   const pending = state.pending;
   // Legacy container still running → abandon (rule 3).
   if (observations.preCutoverObserved) {
-    const cleared = {
+    const cleared: PonderDeployState = {
       live: null,
       spare: null,
       pending: null,
@@ -1113,7 +1144,7 @@ function planRollbackDuringFirstSwitch(
     if (pending) {
       actions.push(
         { type: "stop_slot", slot: pending.slot },
-        { type: "drop_schema", schema: pending.schema },
+        ...applyRetention(cleared, observations.schemas),
       );
     }
     actions.push(
@@ -1154,16 +1185,8 @@ function planRollback(
     return planRollbackDuringFirstSwitch(actions, state, observations);
   }
 
-  // Clear pending first: state write then destructive (rule 4).
-  if (state.pending) {
-    const withoutPending: PonderDeployState = { ...state, pending: null };
-    actions.push(
-      { type: "write_state", state: withoutPending },
-      { type: "stop_slot", slot: state.pending.slot },
-      { type: "drop_schema", schema: state.pending.schema },
-    );
-    state = withoutPending;
-  }
+  // Clear pending first: state write then retention (rule 4 / item 2).
+  state = clearPendingActions(actions, state, observations.schemas);
 
   if (spare.schema === LEGACY_SCHEMA) {
     return planRollbackToLegacy(actions, state, observations);
@@ -1194,21 +1217,8 @@ function planRollback(
     { type: "write_slot_env", slot, schema },
     { type: "tag_slot_image", slot, commit: spare.commit ?? "legacy" },
     { type: "start_slot", slot },
-    {
-      type: "wait_answered",
-      target: "slot",
-      slot,
-      timeoutMs: ANSWERED_TIMEOUT_MS,
-      onTimeout: "tear_down_new",
-    },
-    {
-      type: "wait_ready200",
-      target: "slot",
-      slot,
-      schema,
-      timeoutMs: READY200_TIMEOUT_MS,
-      onTimeout: "pending_exit0",
-    },
+    waitAnsweredReused(slot, "deploy_rollback_failed: spare_not_answering"),
+    waitReady200Reused(slot, schema, "deploy_rollback_failed: spare_not_answering"),
     {
       type: "write_upstream",
       slot,
@@ -1223,13 +1233,13 @@ function planRollback(
       onTimeout: "fail",
     },
     ...switchEvidence(slot),
-    // Write live right after 200, then stop old (rule 4).
+    // Write live (consumes spare) only after 200, then stop old (rule 4).
     { type: "write_state", state: next },
   );
   if (failed) {
     actions.push(
       { type: "stop_slot", slot: failed.slot },
-      { type: "drop_schema", schema: failed.schema },
+      ...applyRetention(next, observations.schemas),
       { type: "remove_images", images: [failed.image] },
     );
   }
@@ -1252,15 +1262,7 @@ function planRollbackToLegacy(
   state: PonderDeployState,
   observations: PonderDeployObservations,
 ): PlanResult {
-  if (state.pending) {
-    const withoutPending: PonderDeployState = { ...state, pending: null };
-    actions.push(
-      { type: "write_state", state: withoutPending },
-      { type: "stop_slot", slot: state.pending.slot },
-      { type: "drop_schema", schema: state.pending.schema },
-    );
-    state = withoutPending;
-  }
+  state = clearPendingActions(actions, state, observations.schemas);
 
   actions.push({ type: "assert_spare_image", image: LEGACY_IMAGE });
 
@@ -1284,21 +1286,12 @@ function planRollbackToLegacy(
     { type: "write_slot_env", slot, schema: LEGACY_SCHEMA },
     { type: "tag_slot_image", slot, commit: "legacy" },
     { type: "start_slot", slot },
-    {
-      type: "wait_answered",
-      target: "slot",
+    waitAnsweredReused(slot, "deploy_rollback_failed: spare_not_answering"),
+    waitReady200Reused(
       slot,
-      timeoutMs: ANSWERED_TIMEOUT_MS,
-      onTimeout: "tear_down_new",
-    },
-    {
-      type: "wait_ready200",
-      target: "slot",
-      slot,
-      schema: LEGACY_SCHEMA,
-      timeoutMs: READY200_TIMEOUT_MS,
-      onTimeout: "pending_exit0",
-    },
+      LEGACY_SCHEMA,
+      "deploy_rollback_failed: spare_not_answering",
+    ),
   );
 
   if (!observations.nginxPinnedUp) {
@@ -1329,7 +1322,7 @@ function planRollbackToLegacy(
   if (failed) {
     actions.push(
       { type: "stop_slot", slot: failed.slot },
-      { type: "drop_schema", schema: failed.schema },
+      ...applyRetention(next, observations.schemas),
       { type: "remove_images", images: [failed.image] },
     );
   }
@@ -1359,9 +1352,31 @@ export function plantedDefectStateAfterDrop(
   dropSchema: string,
 ): PlanAction[] {
   return [
-    { type: "drop_schema", schema: dropSchema },
+    { type: "retention", drop: [dropSchema] },
     { type: "write_state", state },
   ];
+}
+
+/**
+ * Independent model of the pre-fix rule: wait_answered tear_down_new drops the
+ * reused spare schema. Reproduces `spare schema missing kargain after wait_answered`.
+ */
+export function modelCurrentRuleSpareDroppedOnWaitTimeout(args: {
+  schemas: Set<string>;
+  spareSchema: string;
+  onTimeout: "tear_down_new" | "restore_reused";
+}): { schemas: Set<string>; violation: string | null } {
+  const schemas = new Set(args.schemas);
+  if (args.onTimeout === "tear_down_new") {
+    schemas.delete(args.spareSchema);
+  }
+  const violation =
+    args.spareSchema === LEGACY_SCHEMA && !schemas.has(LEGACY_SCHEMA)
+      ? "spare schema missing kargain after wait_answered"
+      : !schemas.has(args.spareSchema)
+        ? `spare schema missing ${args.spareSchema} after wait_answered`
+        : null;
+  return { schemas, violation };
 }
 
 export function plantedDefectRollbackWhileLegacyRuns(
