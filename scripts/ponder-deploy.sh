@@ -52,12 +52,19 @@ UPSTREAM_FILE="${ROOT}/.ponder-upstream.conf"
 DEPLOYED_COMMIT="$(git rev-parse HEAD)"
 mkdir -p "$WORK"
 
-# Host Node for CLIs — never builds a writer image for plan/state I/O (#73).
+# Build deploy-tools once (cached). Writer images are separate ("no writer → no writer build").
+docker compose --profile deploy-tools build deploy-tools </dev/null >&2
+
+# Every Node CLI runs in deploy-tools on the Compose network (no host node; no writer exec).
+# Image ENTRYPOINT is node --import tsx; args are script paths under /app.
 run_node() {
-  (
-    cd "$ROOT"
-    node --import tsx "$@"
-  )
+  docker compose --profile deploy-tools run --rm --no-deps -T \
+    -v "$STATE_FILE:$STATE_FILE" \
+    -v "$WORK:$WORK" \
+    -v "$ROOT:$ROOT" \
+    -e "PONDER_DEPLOY_ROOT=$ROOT" \
+    deploy-tools \
+    "$@"
 }
 
 slot_service() {
@@ -104,10 +111,42 @@ nginx_config_digest() {
   fi
 }
 
-# Typed probe: status=<code> | no_answer | probe_failed (via ready-probe JSON).
-probe_url_json() {
-  local url="$1"
-  local out ec
+# Validate typed probe JSON. Anything else → deploy_observation_failed:<target>.
+validate_probe_observation() {
+  local raw="$1" target="$2"
+  python3 - "$raw" "$target" <<'PY'
+import json, sys
+raw, target = sys.argv[1], sys.argv[2]
+try:
+    obj = json.loads(raw)
+except Exception:
+    print(f"deploy_observation_failed: {target}", file=sys.stderr)
+    sys.exit(1)
+if not isinstance(obj, dict):
+    print(f"deploy_observation_failed: {target}", file=sys.stderr)
+    sys.exit(1)
+kind = obj.get("kind")
+if kind == "status":
+    if not isinstance(obj.get("code"), int):
+        print(f"deploy_observation_failed: {target}", file=sys.stderr)
+        sys.exit(1)
+elif kind == "no_answer":
+    pass
+elif kind == "probe_failed":
+    if not isinstance(obj.get("detail"), str):
+        print(f"deploy_observation_failed: {target}", file=sys.stderr)
+        sys.exit(1)
+else:
+    print(f"deploy_observation_failed: {target}", file=sys.stderr)
+    sys.exit(1)
+print(json.dumps(obj, separators=(",", ":")))
+PY
+}
+
+# Typed probe via deploy-tools → service name on the Compose network.
+probe_service_json() {
+  local target="$1" url="$2"
+  local out ec line
   set +e
   out="$(run_node scripts/ponder-ready-probe.ts \
     --mode answered \
@@ -116,15 +155,11 @@ probe_url_json() {
     --timeout-ms 5000 2>/dev/null)"
   ec=$?
   set -e
-  if [ "$ec" -ne 0 ]; then
-    if printf '%s' "$out" | grep -q '"kind"'; then
-      printf '%s\n' "$out" | tail -n 1
-    else
-      printf '%s\n' '{"kind":"probe_failed","detail":"probe_cli_failed"}'
-    fi
-    return 0
+  line="$(printf '%s\n' "$out" | tail -n 1)"
+  if [ "$ec" -ne 0 ] && ! printf '%s' "$line" | grep -q '"kind"'; then
+    line='{"kind":"probe_failed","detail":"probe_cli_failed"}'
   fi
-  printf '%s\n' "$out" | tail -n 1
+  validate_probe_observation "$line" "$target"
 }
 
 probe_slot_json() {
@@ -135,28 +170,7 @@ probe_slot_json() {
     printf '%s\n' '{"kind":"no_answer"}'
     return 0
   fi
-  # Reach slot on the compose network from a one-shot container that already exists
-  # only when a writer image is present; otherwise host cannot resolve the name.
-  # Prefer docker compose exec into the slot itself.
-  if docker compose exec -T "$svc" true >/dev/null 2>&1; then
-    local out ec
-    set +e
-    out="$(docker compose exec -T "$svc" node --import tsx /app/scripts/ponder-ready-probe.ts \
-      --mode answered --format json --url "http://127.0.0.1:42069/ready" --timeout-ms 5000 2>/dev/null)"
-    ec=$?
-    set -e
-    if [ "$ec" -ne 0 ]; then
-      if printf '%s' "$out" | grep -q '"kind"'; then
-        printf '%s\n' "$out" | tail -n 1
-      else
-        printf '%s\n' '{"kind":"probe_failed","detail":"slot_probe_failed"}'
-      fi
-      return 0
-    fi
-    printf '%s\n' "$out" | tail -n 1
-    return 0
-  fi
-  printf '%s\n' '{"kind":"no_answer"}'
+  probe_service_json "$slot" "http://${svc}:42069/ready"
 }
 
 probe_nginx_json() {
@@ -164,8 +178,7 @@ probe_nginx_json() {
     printf '%s\n' '{"kind":"no_answer"}'
     return 0
   fi
-  # Host → published :42069 (no Docker network name literal in the probe URL).
-  probe_url_json "http://127.0.0.1:42069/ready"
+  probe_service_json "nginx" "http://ponder:42069/ready"
 }
 
 list_schemas() {
@@ -330,9 +343,14 @@ gather_observations() {
   probe_slot_json green >"$WORK/probe-green.json"
   probe_nginx_json >"$WORK/probe-nginx.json"
 
-  # probe_failed refuses before mutation
+  # probe_failed / malformed refuses before mutation (validated on write + re-check).
   for target in blue green nginx; do
-    kind="$(python3 -c "import json; print(json.load(open('$WORK/probe-$target.json'))['kind'])")"
+    raw="$(cat "$WORK/probe-$target.json")"
+    if ! validate_probe_observation "$raw" "$target" >/dev/null; then
+      echo "deploy_observation_failed: $target"
+      exit 1
+    fi
+    kind="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['kind'])" "$WORK/probe-$target.json")"
     if [ "$kind" = "probe_failed" ]; then
       echo "deploy_observation_failed: $target"
       exit 1
@@ -508,26 +526,24 @@ for action_line in "${action_lines[@]}"; do
       failure_text="$(action_field failureText)"
       if [ "$target" = "slot" ]; then
         slot="$(action_field slot)"
-        # Discard probe status digits (item 5); detail stays on stderr.
-        if ! docker compose exec -T "ponder-$slot" node --import tsx /app/scripts/ponder-ready-probe.ts \
-          --mode answered --timeout-ms "$timeout_ms" --url "http://127.0.0.1:42069/ready" </dev/null >/dev/null; then
-          if [ "$on_timeout" = "tear_down_new" ]; then
-            echo "ponder_did_not_become_ready"
-            tear_down_new_pending "$slot"
-            exit 1
-          fi
-          if [ "$on_timeout" = "restore_reused" ]; then
-            restore_reused_on_timeout "$slot" "${failure_text:-ponder_did_not_become_ready}"
-          fi
-          echo "ponder_did_not_become_ready"
-          exit 1
-        fi
+        ready_url="http://ponder-${slot}:42069/ready"
       else
-        if ! run_node scripts/ponder-ready-probe.ts \
-          --mode answered --timeout-ms "$timeout_ms" --url "http://127.0.0.1:42069/ready" >/dev/null; then
+        slot=""
+        ready_url="http://ponder:42069/ready"
+      fi
+      # deploy-tools probe by service name; discard status digits on stdout.
+      if ! run_node scripts/ponder-ready-probe.ts \
+        --mode answered --timeout-ms "$timeout_ms" --url "$ready_url" >/dev/null; then
+        if [ "$on_timeout" = "tear_down_new" ]; then
           echo "ponder_did_not_become_ready"
+          tear_down_new_pending "$slot"
           exit 1
         fi
+        if [ "$on_timeout" = "restore_reused" ]; then
+          restore_reused_on_timeout "$slot" "${failure_text:-ponder_did_not_become_ready}"
+        fi
+        echo "ponder_did_not_become_ready"
+        exit 1
       fi
       ;;
     wait_ready200)
@@ -538,20 +554,17 @@ for action_line in "${action_lines[@]}"; do
       schema="$(action_field schema)"
       if [ "$target" = "slot" ]; then
         slot="$(action_field slot)"
-        set +e
-        out="$(docker compose exec -T "ponder-$slot" node --import tsx /app/scripts/ponder-ready-probe.ts \
-          --mode ready200 --timeout-ms "$timeout_ms" --schema "$schema" \
-          --url "http://127.0.0.1:42069/ready" </dev/null 2>/dev/null)"
-        ec=$?
-        set -e
+        ready_url="http://ponder-${slot}:42069/ready"
       else
-        set +e
-        out="$(run_node scripts/ponder-ready-probe.ts \
-          --mode ready200 --timeout-ms "$timeout_ms" --schema "$schema" \
-          --url "http://127.0.0.1:42069/ready" 2>/dev/null)"
-        ec=$?
-        set -e
+        slot=""
+        ready_url="http://ponder:42069/ready"
       fi
+      set +e
+      out="$(run_node scripts/ponder-ready-probe.ts \
+        --mode ready200 --timeout-ms "$timeout_ms" --schema "$schema" \
+        --url "$ready_url" 2>/dev/null)"
+      ec=$?
+      set -e
       if [ "$ec" -ne 0 ]; then
         if [ "$on_timeout" = "pending_exit0" ]; then
           echo "deploy_evidence switch=pending schema=$schema"
@@ -573,7 +586,7 @@ for action_line in "${action_lines[@]}"; do
         printf '%s\n' "$out"
         exit 0
       fi
-      # Discard bare status digits (item 5).
+      # Discard bare status digits.
       ;;
     write_upstream)
       slot="$(action_field slot)"

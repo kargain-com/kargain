@@ -81,16 +81,34 @@ capture() {
   fi
 }
 
+# Mirror production: PATH with no `node` binary (server has none). Host-Node
+# dependency must fail here the same way it would on the deploy host.
+path_without_node() {
+  local d new=""
+  local IFS=':'
+  for d in $PATH; do
+    if [ -e "$d/node" ] || [ -L "$d/node" ]; then
+      continue
+    fi
+    if [ -n "$new" ]; then
+      new="$new:$d"
+    else
+      new="$d"
+    fi
+  done
+  printf '%s' "$new"
+}
+
 run_deploy() {
   local op="$1" event="$2" sha="$3" ec=0
   export OPERATION="$op" EVENT_NAME="$event" DEPLOY_SHA="$sha"
   export IDENTITY_DIGEST="${IDENTITY_DIGEST:-rehearsal-identity}"
   export EXECUTABLE_DIGEST="${EXECUTABLE_DIGEST:-exec-$sha}"
   set +e
-  "$ROOT/scripts/ponder-deploy.sh"
+  env PATH="$(path_without_node)" "$ROOT/scripts/ponder-deploy.sh"
   ec=$?
   set -e
-  # Item 4: on wait failure, rehearsal captures slot logs (not deploy stdout).
+  # On wait failure, rehearsal captures slot logs (not deploy stdout).
   if [ "$ec" -ne 0 ]; then
     for slot in blue green; do
       echo "=== rehearsal capture: docker compose logs --tail 200 ponder-${slot} ==="

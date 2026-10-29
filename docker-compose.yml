@@ -77,6 +77,17 @@ services:
       - path: .ponder-slot-green.env
         required: false
 
+  # Deploy tooling CLIs (plan/state/retention/ready-probe). Profile: never started by `up`.
+  # Built from the checked-out commit on the ADR 0009 Node image. Not a writer.
+  deploy-tools:
+    profiles: ["deploy-tools"]
+    image: kargain-deploy-tools
+    build:
+      context: .
+      dockerfile: Dockerfile.deploy-tools
+    networks:
+      - kargain
+
   cloudflared:
     <<: *default-logging
     image: cloudflare/cloudflared:latest

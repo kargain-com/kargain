@@ -546,23 +546,63 @@ export function deployScriptEvidenceSourcesDefect(
 }
 
 /**
- * Readiness probes must use the checkout's scripts (host run_node or $ROOT mount).
+ * @deprecated Replaced by deploy-tools policies (host node / writer exec / probe JSON).
+ * Kept as a name alias so older call sites fail closed on the new rules.
  */
 export function deployScriptScriptsMountDefect(script: string): string | null {
-  const hasReadyProbe = /ponder-ready-probe\.ts/.test(script);
-  if (!hasReadyProbe) {
-    return "deploy probe invocations must mount host scripts over /app/scripts";
+  return (
+    deployScriptHostNodeDefect(script) ??
+    deployScriptWriterExecToolingDefect(script) ??
+    deployScriptProbeValidationDefect(script)
+  );
+}
+
+/** Bare host `node` / `npx` on an active line (preflight `--entrypoint node` allowed). */
+export function deployScriptHostNodeDefect(script: string): string | null {
+  for (const line of deployScriptActiveLines(script)) {
+    if (/--entrypoint\s+node\b/.test(line)) continue;
+    if (/(^|[\s;|&])node\s/.test(line) || /(^|[\s;|&])npx\s/.test(line)) {
+      return "ponder-deploy.sh must not invoke host node or npx";
+    }
   }
-  if (script.includes("/opt/kargain/scripts:/app/scripts")) {
-    return "deploy probe mounts must use $ROOT/scripts, not literal /opt/kargain/scripts";
-  }
+  return null;
+}
+
+/** No exec of /app/scripts tooling into ponder-blue / ponder-green / ponder-$slot. */
+export function deployScriptWriterExecToolingDefect(
+  script: string,
+): string | null {
+  const lines = deployScriptActiveLines(script).join("\n");
   if (
-    !/node --import tsx scripts\/ponder-ready-probe/.test(script) &&
-    !/run_node scripts\/ponder-ready-probe/.test(script) &&
-    !/\$ROOT\/scripts:\/app\/scripts/.test(script) &&
-    !/"\$ROOT\/scripts:\/app\/scripts:ro"/.test(script)
+    /docker\s+compose\s+exec[\s\S]*?ponder-(?:blue|green|\$\{?slot\}?)[\s\S]*?\/app\/scripts/.test(
+      lines,
+    )
   ) {
-    return "deploy probe invocations must mount host scripts over /app/scripts";
+    return "ponder-deploy.sh must not exec tooling into writer images";
+  }
+  return null;
+}
+
+/**
+ * Probe observation JSON must go through validate_probe_observation.
+ * Unvalidated `json.load(...)['kind']` (no helper in the file) is red.
+ */
+export function deployScriptProbeValidationDefect(
+  script: string,
+): string | null {
+  const hasHelper = /validate_probe_observation\s*\(/.test(script);
+  const hasBareKind =
+    /json\.load\([^)]*\)\s*\[\s*['"]kind['"]\s*\]/.test(script);
+  if (!hasHelper) {
+    return "probe JSON must be validated before use";
+  }
+  // Helper present and used on observation files before kind is read.
+  if (
+    hasBareKind &&
+    !/validate_probe_observation\s+"\$raw"/.test(script) &&
+    !/validate_probe_observation\s+"\$line"/.test(script)
+  ) {
+    return "probe JSON must be validated before use";
   }
   return null;
 }
@@ -981,7 +1021,17 @@ deploy:
         );
         assert.equal(deployScriptPreflightRefusalDefect(script), null, name);
         if (service === "ponder") {
-          assert.equal(deployScriptScriptsMountDefect(script), null, name);
+          assert.equal(deployScriptHostNodeDefect(script), null, name);
+          assert.equal(
+            deployScriptWriterExecToolingDefect(script),
+            null,
+            name,
+          );
+          assert.equal(
+            deployScriptProbeValidationDefect(script),
+            null,
+            name,
+          );
         }
         assert.equal(bashSyntaxDefect(script), null, name);
       }
@@ -1230,16 +1280,42 @@ echo "deploy_evidence ready=ponder status=$READY_STATUS"
     );
   });
 
-  it("constructed: probe without host scripts mount is red", () => {
+  it("constructed: bare host node on an active line is red", () => {
     const planted = `set -euo pipefail
-READY_STATUS=$(docker run --rm --network host \\
-  --entrypoint node "$IMAGE_ID" \\
-  --import tsx /app/scripts/ponder-ready-probe.ts)
+node --import tsx scripts/ponder-ready-probe.ts --format json
+validate_probe_observation() { true; }
 `;
     assert.equal(
-      deployScriptScriptsMountDefect(planted),
-      "deploy probe invocations must mount host scripts over /app/scripts",
+      deployScriptHostNodeDefect(planted),
+      "ponder-deploy.sh must not invoke host node or npx",
     );
+    const green = readFileSync(PONDER_DEPLOY_SH, "utf8");
+    assert.equal(deployScriptHostNodeDefect(green), null);
+  });
+
+  it("constructed: exec tooling into writer image is red", () => {
+    const planted = `set -euo pipefail
+docker compose exec -T ponder-green node --import tsx /app/scripts/ponder-ready-probe.ts
+validate_probe_observation() { true; }
+`;
+    assert.equal(
+      deployScriptWriterExecToolingDefect(planted),
+      "ponder-deploy.sh must not exec tooling into writer images",
+    );
+    const green = readFileSync(PONDER_DEPLOY_SH, "utf8");
+    assert.equal(deployScriptWriterExecToolingDefect(green), null);
+  });
+
+  it("constructed: unvalidated probe JSON kind access is red", () => {
+    const planted = `set -euo pipefail
+kind="$(python3 -c "import json; print(json.load(open('probe.json'))['kind'])")"
+`;
+    assert.equal(
+      deployScriptProbeValidationDefect(planted),
+      "probe JSON must be validated before use",
+    );
+    const green = readFileSync(PONDER_DEPLOY_SH, "utf8");
+    assert.equal(deployScriptProbeValidationDefect(green), null);
   });
 
   it("constructed: command_timeout on a different step is red", () => {
