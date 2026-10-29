@@ -413,4 +413,4 @@ Keep one schema and only remove svm-ingest paths from Ponder’s build inputs (t
 
 ## Status
 
-Accepted. The maintainer’s merge of this ADR PR is the acceptance.
+Superseded by [0015](./0015-per-deployment-ponder-schema-own-reads.md).
