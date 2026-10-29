@@ -19,8 +19,11 @@ export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-rehearsal}"
 export DATABASE_URL="postgresql://ponder:${POSTGRES_PASSWORD}@postgres:5432/kargain_ponder"
 export PONDER_ENABLE_LOCAL=1
 export PONDER_LOCAL_ONLY=1
-export PONDER_RPC_URL_31337="${PONDER_RPC_URL_31337:-http://host.docker.internal:8545}"
-export PONDER_START_BLOCK_31337=0
+# Host Hardhat for deploy + window discovery; container writers use docker DNS.
+export PONDER_RPC_URL_31337="${PONDER_RPC_URL_31337:-http://127.0.0.1:8545}"
+# Probe owner requires PONDER_RPC_URLS_<id> (no invented default). Slot preflight
+# runs inside Compose, so list the docker-reachable URL.
+export PONDER_RPC_URLS_31337="${PONDER_RPC_URLS_31337:-http://host.docker.internal:8545}"
 # One Compose project for legacy writer + new stack (Amendment rule 6).
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-kargain-rehearsal}"
 
@@ -30,7 +33,8 @@ use_compose() {
   echo "COMPOSE_FILE=$COMPOSE_FILE COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME"
 }
 
-use_compose "docker-compose.yml:ops/rehearsal/docker-compose.rehearsal.yml"
+# Postgres bootstrap before start/window are known — base compose only.
+use_compose "docker-compose.yml"
 
 step_dir() {
   local n="$1"
@@ -69,45 +73,27 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
-SCRATCH="$OUT/scratch"
+# Worktree outside the repo so leftover trees cannot trip lint/typecheck walks.
+SCRATCH="${TMPDIR:-/tmp}/kargain-rehearsal-scratch-$$"
 rm -rf "$SCRATCH"
 git worktree remove --force "$SCRATCH" 2>/dev/null || true
 git worktree add --detach "$SCRATCH" 25689e1d
+SCRATCH2=""
+cleanup_rehearsal_worktrees() {
+  if [ -n "${SCRATCH2:-}" ]; then
+    git worktree remove --force "$SCRATCH2" 2>/dev/null || true
+    rm -rf "$SCRATCH2"
+    git branch -D "rehearsal-second-$HEAD_SHA" 2>/dev/null || true
+  fi
+  git worktree remove --force "$SCRATCH" 2>/dev/null || true
+  rm -rf "$SCRATCH"
+}
+trap cleanup_rehearsal_worktrees EXIT
 (
   cd "$SCRATCH"
   printf 'POSTGRES_PASSWORD=%s\n' "$POSTGRES_PASSWORD" >.env
   docker build -f Dockerfile.ponder -t "kargain-ponder:legacy-base" .
 )
-
-PRE_CUTOVER_REL=".ponder-rehearsal-out/docker-compose.pre-cutover.yml"
-cat >"$PRE_CUTOVER_REL" <<EOF
-services:
-  ponder:
-    image: kargain-ponder:legacy-base
-    pull_policy: never
-    restart: "no"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql://ponder:\${POSTGRES_PASSWORD}@postgres:5432/kargain_ponder
-      DATABASE_SCHEMA: kargain
-      PONDER_ENABLE_LOCAL: "1"
-      PONDER_LOCAL_ONLY: "1"
-      PONDER_RPC_URL_31337: \${PONDER_RPC_URL_31337:-http://host.docker.internal:8545}
-      PONDER_START_BLOCK_31337: "0"
-    ports:
-      - "127.0.0.1:42069:42069"
-    networks:
-      - kargain
-EOF
-
-# Base + rehearsal slot env + legacy ponder override — one project.
-PRE_CUTOVER_COMPOSE="docker-compose.yml:ops/rehearsal/docker-compose.rehearsal.yml:${PRE_CUTOVER_REL}"
-use_compose "$PRE_CUTOVER_COMPOSE"
-docker compose stop ponder ponder-blue ponder-green 2>/dev/null || true
-docker compose up -d postgres ponder
-printf '%s\n' '{"identity":"rehearsal-identity","executable":"exec-legacy"}' >"$PONDER_STATE_FILE"
 
 if ! curl -sf -X POST -H 'content-type: application/json' \
   --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' \
@@ -124,6 +110,51 @@ if ! curl -sf -X POST -H 'content-type: application/json' \
     sleep 1
   done
 fi
+
+echo "=== deploy local stack; set start/window from registry deployment blocks ==="
+pnpm deploy:local
+# Host-reachable URL for creation-block discovery against Hardhat.
+PONDER_RPC_URL_31337=http://127.0.0.1:8545 \
+  eval "$(node --import tsx scripts/rehearsal-local-window.ts)"
+: "${PONDER_START_BLOCK_31337:?PONDER_START_BLOCK_31337 unset after local window}"
+: "${PONDER_GETLOGS_BLOCK_RANGE_31337:?PONDER_GETLOGS_BLOCK_RANGE_31337 unset after local window}"
+export PONDER_START_BLOCK_31337 PONDER_GETLOGS_BLOCK_RANGE_31337
+echo "PONDER_START_BLOCK_31337=$PONDER_START_BLOCK_31337"
+echo "PONDER_GETLOGS_BLOCK_RANGE_31337=$PONDER_GETLOGS_BLOCK_RANGE_31337"
+# Writers inside Compose reach Hardhat via docker DNS; keep singular in sync.
+export PONDER_RPC_URL_31337=http://host.docker.internal:8545
+
+PRE_CUTOVER_REL=".ponder-rehearsal-out/docker-compose.pre-cutover.yml"
+cat >"$PRE_CUTOVER_REL" <<EOF
+services:
+  ponder:
+    image: kargain-ponder:legacy-base
+    pull_policy: never
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://ponder:\${POSTGRES_PASSWORD}@postgres:5432/kargain_ponder
+      DATABASE_SCHEMA: kargain
+      PONDER_ENABLE_LOCAL: "1"
+      PONDER_LOCAL_ONLY: "1"
+      PONDER_RPC_URL_31337: http://host.docker.internal:8545
+      PONDER_RPC_URLS_31337: http://host.docker.internal:8545
+      PONDER_START_BLOCK_31337: "${PONDER_START_BLOCK_31337}"
+      PONDER_GETLOGS_BLOCK_RANGE_31337: "${PONDER_GETLOGS_BLOCK_RANGE_31337}"
+    ports:
+      - "127.0.0.1:42069:42069"
+    networks:
+      - kargain
+EOF
+
+# Base + rehearsal slot env + legacy ponder override — one project.
+PRE_CUTOVER_COMPOSE="docker-compose.yml:ops/rehearsal/docker-compose.rehearsal.yml:${PRE_CUTOVER_REL}"
+use_compose "$PRE_CUTOVER_COMPOSE"
+docker compose stop ponder ponder-blue ponder-green 2>/dev/null || true
+docker compose up -d postgres ponder
+printf '%s\n' '{"identity":"rehearsal-identity","executable":"exec-legacy"}' >"$PONDER_STATE_FILE"
 
 HEAD_SHA="$(git rev-parse HEAD)"
 COMMIT2="$(git rev-parse HEAD)"
@@ -166,7 +197,7 @@ run_deploy deploy workflow_dispatch "$HEAD_SHA" | tee "$OUT/step-5/executor.txt"
 capture "$OUT/step-5"
 
 step 6 "second commit → switch + retention"
-SCRATCH2="$OUT/scratch2"
+SCRATCH2="${TMPDIR:-/tmp}/kargain-rehearsal-scratch2-$$"
 rm -rf "$SCRATCH2"
 git worktree remove --force "$SCRATCH2" 2>/dev/null || true
 git worktree add "$SCRATCH2" -b "rehearsal-second-$HEAD_SHA" HEAD

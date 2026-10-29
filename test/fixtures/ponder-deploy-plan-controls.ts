@@ -252,6 +252,52 @@ export function control4_pendingSupersedeOrKeep(): void {
   );
 }
 
+/**
+ * Red then green: preflight=ok only after preflight_slot (not before).
+ * Planted defect prints evidence before the slot preflight action.
+ */
+export function controlPreflightOkAfterSlot(): void {
+  const result = plan({
+    loaded: {
+      kind: "pre_cutover",
+      state: { identity: "id", executable: EXEC_A },
+    },
+    operation: "hold",
+    observations: baseObs({
+      preCutoverObserved: true,
+      nginxPinnedUp: false,
+      legacyImageTagged: false,
+      eventName: "workflow_dispatch",
+      legacyImageId: "sha256:legacyimg",
+    }),
+  });
+  const types = result.actions.map((a) => a.type);
+  const preflightIdx = types.indexOf("preflight_slot");
+  const okIdx = result.actions.findIndex(
+    (a) => a.type === "evidence" && a.text === "deploy_evidence preflight=ok",
+  );
+  assert.ok(preflightIdx >= 0, "green: has preflight_slot");
+  assert.ok(okIdx >= 0, "green: has preflight=ok");
+  assert.ok(preflightIdx < okIdx, "green: preflight=ok after preflight_slot");
+
+  const planted: typeof result = {
+    actions: [
+      { type: "evidence", text: "deploy_evidence preflight=ok" },
+      { type: "preflight_slot", slot: "blue" },
+      ...result.actions,
+    ],
+  };
+  const plantedTypes = planted.actions.map((a) => a.type);
+  const plantedOk = planted.actions.findIndex(
+    (a) => a.type === "evidence" && a.text === "deploy_evidence preflight=ok",
+  );
+  const plantedPre = plantedTypes.indexOf("preflight_slot");
+  assert.ok(
+    plantedOk < plantedPre,
+    "planted defect: preflight=ok before preflight_slot",
+  );
+}
+
 /** Control 5: teardown only for writer started in this run (tear_down_new on wait_answered). */
 export function control5_teardownOnlyNew(): void {
   const result = plan({

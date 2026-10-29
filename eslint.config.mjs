@@ -40,6 +40,7 @@ const eslintConfig = [
     ignores: [
       "node_modules/**",
       ".next/**",
+      ".ponder-rehearsal-out/**",
       "artifacts/**",
       "cache/**",
       "contracts/**",

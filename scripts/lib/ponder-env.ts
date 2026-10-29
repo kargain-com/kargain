@@ -235,12 +235,14 @@ export function resolveGetLogsBlockRange(
 }
 
 /**
- * Required comma-separated HTTPS RPC list for a commercial chain.
+ * Required comma-separated RPC list for a chain.
  * Env: `PONDER_RPC_URLS_<chainId>` — no default, no singular fallback.
+ * Commercial chains require https; localhost (31337) allows http.
  */
-export function resolveCommercialRpcUrls(
+function resolveRpcUrlsForChain(
   chainId: number,
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv,
+  allowHttp: boolean,
 ): string[] {
   const key = `PONDER_RPC_URLS_${chainId}`;
   const raw = env[key];
@@ -249,7 +251,7 @@ export function resolveCommercialRpcUrls(
     throw new PonderEnvRefusalError(
       "missing_rpc_urls",
       key,
-      `missing_rpc_urls: set ${key} to a comma-separated list of https URLs (no default)`,
+      `missing_rpc_urls: set ${key} to a comma-separated list of ${allowHttp ? "http(s)" : "https"} URLs (no default)`,
     );
   }
   const parts = trimmed
@@ -260,7 +262,7 @@ export function resolveCommercialRpcUrls(
     throw new PonderEnvRefusalError(
       "empty_rpc_urls",
       key,
-      `empty_rpc_urls: set ${key} to a comma-separated list of https URLs (no default)`,
+      `empty_rpc_urls: set ${key} to a comma-separated list of ${allowHttp ? "http(s)" : "https"} URLs (no default)`,
     );
   }
   const seen = new Set<string>();
@@ -275,11 +277,16 @@ export function resolveCommercialRpcUrls(
         `invalid_rpc_url: ${key} entry is not a valid URL: ${url}`,
       );
     }
-    if (parsed.protocol !== "https:") {
+    const okProto = allowHttp
+      ? parsed.protocol === "https:" || parsed.protocol === "http:"
+      : parsed.protocol === "https:";
+    if (!okProto) {
       throw new PonderEnvRefusalError(
         "invalid_rpc_url",
         key,
-        `invalid_rpc_url: ${key} entry must be https: ${url}`,
+        allowHttp
+          ? `invalid_rpc_url: ${key} entry must be http or https: ${url}`
+          : `invalid_rpc_url: ${key} entry must be https: ${url}`,
       );
     }
     if (seen.has(url)) {
@@ -292,6 +299,32 @@ export function resolveCommercialRpcUrls(
     seen.add(url);
   }
   return parts;
+}
+
+/**
+ * Required comma-separated HTTPS RPC list for a commercial chain.
+ * Env: `PONDER_RPC_URLS_<chainId>` — no default, no singular fallback.
+ */
+export function resolveCommercialRpcUrls(
+  chainId: number,
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  return resolveRpcUrlsForChain(chainId, env, false);
+}
+
+/**
+ * Probe/indexing RPC list for any Ponder chain (Amendment rule 7).
+ * Same owner shape as commercial: `PONDER_RPC_URLS_<chainId>`, named refusal,
+ * no invented default. Localhost allows http.
+ */
+export function resolvePonderRpcUrls(
+  chainId: number,
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  if (chainId === LOCALHOST_CHAIN_ID) {
+    return resolveRpcUrlsForChain(chainId, env, true);
+  }
+  return resolveCommercialRpcUrls(chainId, env);
 }
 
 export type PonderIndexingChain = { id: number };

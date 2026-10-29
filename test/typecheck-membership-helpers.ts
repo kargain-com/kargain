@@ -21,6 +21,7 @@ export const TYPECHECK_WALK_SKIP_DIRS = new Set([
   "artifacts",
   "cache",
   ".ponder",
+  ".ponder-rehearsal-out",
   "dist",
   "out",
   "typechain-types",

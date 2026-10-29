@@ -23,6 +23,7 @@ import {
   resolveCommercialRpcUrls,
   resolveGetLogsBlockRange,
   resolveChainStartBlockWithKey,
+  resolvePonderRpcUrls,
 } from "../scripts/lib/ponder-env.ts";
 import {
   PONDER_RPC_PROBE_TIMEOUT_MS,
@@ -949,22 +950,53 @@ describe("deploy-preflight ponder probe timeout", () => {
 });
 
 describe("deploy-preflight local-only same probe path (Amendment rule 7)", () => {
+  it("localhost missing RPC / window refuse via ponder-env (red then green)", () => {
+    assert.throws(
+      () => resolvePonderRpcUrls(LOCALHOST_CHAIN_ID, {}),
+      (err: unknown) =>
+        err instanceof PonderEnvRefusalError &&
+        err.code === "missing_rpc_urls" &&
+        err.envKey === `PONDER_RPC_URLS_${LOCALHOST_CHAIN_ID}`,
+    );
+    assert.throws(
+      () => resolveGetLogsBlockRange(LOCALHOST_CHAIN_ID, {}),
+      (err: unknown) =>
+        err instanceof PonderEnvRefusalError &&
+        err.code === "missing_getlogs_block_range" &&
+        err.envKey === `PONDER_GETLOGS_BLOCK_RANGE_${LOCALHOST_CHAIN_ID}`,
+    );
+    // Invented defaults are gone: no silent 127.0.0.1:8545 / || 1.
+    const green = resolvePonderRpcUrls(LOCALHOST_CHAIN_ID, {
+      [`PONDER_RPC_URLS_${LOCALHOST_CHAIN_ID}`]: "http://127.0.0.1:8545",
+    } as NodeJS.ProcessEnv);
+    assert.deepEqual(green, ["http://127.0.0.1:8545"]);
+    assert.equal(
+      resolveGetLogsBlockRange(LOCALHOST_CHAIN_ID, {
+        [`PONDER_GETLOGS_BLOCK_RANGE_${LOCALHOST_CHAIN_ID}`]: "12",
+      } as NodeJS.ProcessEnv),
+      12,
+    );
+  });
+
   it("localhost unreachable refuses deploy via the same verdict owner", async () => {
     const prevLocal = process.env.PONDER_LOCAL_ONLY;
     const prevEnable = process.env.PONDER_ENABLE_LOCAL;
+    const prevStart = process.env.PONDER_START_BLOCK_31337;
     process.env.PONDER_LOCAL_ONLY = "1";
     process.env.PONDER_ENABLE_LOCAL = "1";
+    process.env.PONDER_START_BLOCK_31337 = "1";
     try {
       const chains = ponderPreflightProbeChainIds();
       assert.deepEqual(chains, [LOCALHOST_CHAIN_ID]);
+      const localEnv = {
+        PONDER_LOCAL_ONLY: "1",
+        PONDER_ENABLE_LOCAL: "1",
+        PONDER_RPC_URLS_31337: "http://127.0.0.1:1",
+        PONDER_START_BLOCK_31337: "1",
+        PONDER_GETLOGS_BLOCK_RANGE_31337: "1",
+      } as NodeJS.ProcessEnv;
       const result = await probePonderRpcCapability(LOCALHOST_CHAIN_ID, {
-        env: {
-          PONDER_LOCAL_ONLY: "1",
-          PONDER_ENABLE_LOCAL: "1",
-          PONDER_RPC_URL_31337: "http://127.0.0.1:1",
-          PONDER_START_BLOCK_31337: "0",
-          PONDER_GETLOGS_BLOCK_RANGE_31337: "1",
-        } as NodeJS.ProcessEnv,
+        env: localEnv,
         fetch: async () => {
           throw new TypeError("fetch failed");
         },
@@ -974,17 +1006,10 @@ describe("deploy-preflight local-only same probe path (Amendment rule 7)", () =>
         ponderRpcProbeVerdictRefusesDeploy(result.providers[0]!.verdict),
         true,
       );
-      // Same refuse path as commercial: preflight aggregates via that owner.
       const { lines, write } = captureWrite();
       const code = await runPonderDeployPreflight({
         evaluateConfig: async () => ({}),
-        env: {
-          PONDER_LOCAL_ONLY: "1",
-          PONDER_ENABLE_LOCAL: "1",
-          PONDER_RPC_URL_31337: "http://127.0.0.1:1",
-          PONDER_START_BLOCK_31337: "0",
-          PONDER_GETLOGS_BLOCK_RANGE_31337: "1",
-        } as NodeJS.ProcessEnv,
+        env: localEnv,
         fetch: async () => {
           throw new TypeError("fetch failed");
         },
@@ -997,6 +1022,8 @@ describe("deploy-preflight local-only same probe path (Amendment rule 7)", () =>
       else process.env.PONDER_LOCAL_ONLY = prevLocal;
       if (prevEnable === undefined) delete process.env.PONDER_ENABLE_LOCAL;
       else process.env.PONDER_ENABLE_LOCAL = prevEnable;
+      if (prevStart === undefined) delete process.env.PONDER_START_BLOCK_31337;
+      else process.env.PONDER_START_BLOCK_31337 = prevStart;
     }
   });
 });

@@ -348,7 +348,6 @@ function planFromPreCutover(
   };
 
   actions.push(
-    { type: "evidence", text: "deploy_evidence preflight=ok" },
     {
       type: "evidence",
       text: `deploy_evidence slot=${slot} schema=${schema}`,
@@ -357,6 +356,7 @@ function planFromPreCutover(
     { type: "build_image", commit: observations.deployCommit },
     { type: "tag_slot_image", slot, commit: observations.deployCommit },
     { type: "preflight_slot", slot },
+    { type: "evidence", text: "deploy_evidence preflight=ok" },
     { type: "start_slot", slot },
     {
       type: "wait_answered",
@@ -796,7 +796,6 @@ function startNewPending(
   };
 
   actions.push(
-    { type: "evidence", text: "deploy_evidence preflight=ok" },
     {
       type: "evidence",
       text: `deploy_evidence slot=${slot} schema=${targetSchema}`,
@@ -805,6 +804,7 @@ function startNewPending(
     { type: "build_image", commit: observations.deployCommit },
     { type: "tag_slot_image", slot, commit: observations.deployCommit },
     { type: "preflight_slot", slot },
+    { type: "evidence", text: "deploy_evidence preflight=ok" },
     { type: "start_slot", slot },
     {
       type: "wait_answered",
@@ -966,6 +966,7 @@ function planPendingPrecedence(
         { type: "build_image", commit: observations.deployCommit },
         { type: "tag_slot_image", slot, commit: observations.deployCommit },
         { type: "preflight_slot", slot },
+        { type: "evidence", text: "deploy_evidence preflight=ok" },
         { type: "start_slot", slot },
         {
           type: "wait_answered",

@@ -8,8 +8,8 @@ import {
   commercialPonderRegistryAddresses,
   PonderEnvRefusalError,
   resolveChainStartBlockWithKey,
-  resolveCommercialRpcUrls,
   resolveGetLogsBlockRange,
+  resolvePonderRpcUrls,
 } from "./ponder-env.js";
 import {
   ponderLocalAddresses,
@@ -204,23 +204,6 @@ function probeRegistryAddresses(chainId: number): `0x${string}`[] {
   return commercialPonderRegistryAddresses(chainId);
 }
 
-function probeRpcUrls(
-  chainId: number,
-  env: NodeJS.ProcessEnv,
-): string[] {
-  if (chainId === LOCALHOST_CHAIN_ID) {
-    const singular = env.PONDER_RPC_URL_31337?.trim();
-    if (singular) return [singular];
-    const listKey = `PONDER_RPC_URLS_${LOCALHOST_CHAIN_ID}`;
-    const raw = env[listKey]?.trim();
-    if (raw) {
-      return raw.split(",").map((p) => p.trim()).filter(Boolean);
-    }
-    return ["http://127.0.0.1:8545"];
-  }
-  return resolveCommercialRpcUrls(chainId, env);
-}
-
 export async function probePonderRpcCapability(
   chainId: number,
   deps?: PonderRpcProbeDeps,
@@ -239,11 +222,9 @@ export async function probePonderRpcCapability(
     );
   }
   const startBlock = startRaw;
-  const window =
-    chainId === LOCALHOST_CHAIN_ID
-      ? Number.parseInt(env.PONDER_GETLOGS_BLOCK_RANGE_31337 ?? "1", 10) || 1
-      : resolveGetLogsBlockRange(chainId, env);
-  const urls = probeRpcUrls(chainId, env);
+  // Window + RPC URLs: sole ponder-env owners (no invented localhost defaults).
+  const window = resolveGetLogsBlockRange(chainId, env);
+  const urls = resolvePonderRpcUrls(chainId, env);
   const toBlock = startBlock + window - 1;
 
   const providers: PonderRpcProviderResult[] = [];

@@ -2,13 +2,15 @@
 # or scripts/ponder-deploy.sh (policy-pinned).
 # Selected via: COMPOSE_FILE=docker-compose.yml:ops/rehearsal/docker-compose.rehearsal.yml
 # Real Ponder slots index local Hardhat only — local-only preflight probes that chain.
+# Start/window come from the rehearsal's local deployment (no invented 0/1).
 x-rehearsal-env: &rehearsal-env
   DATABASE_URL: ${DATABASE_URL:-postgresql://ponder:${POSTGRES_PASSWORD}@postgres:5432/kargain_ponder}
   PONDER_ENABLE_LOCAL: "1"
   PONDER_LOCAL_ONLY: "1"
   PONDER_RPC_URL_31337: ${PONDER_RPC_URL_31337:-http://host.docker.internal:8545}
-  PONDER_START_BLOCK: "0"
-  PONDER_START_BLOCK_31337: "0"
+  PONDER_RPC_URLS_31337: ${PONDER_RPC_URLS_31337:-http://host.docker.internal:8545}
+  PONDER_START_BLOCK_31337: ${PONDER_START_BLOCK_31337:?PONDER_START_BLOCK_31337 required}
+  PONDER_GETLOGS_BLOCK_RANGE_31337: ${PONDER_GETLOGS_BLOCK_RANGE_31337:?PONDER_GETLOGS_BLOCK_RANGE_31337 required}
 
 services:
   ponder-blue:
