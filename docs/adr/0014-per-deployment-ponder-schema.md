@@ -8,7 +8,7 @@ Measured on `732a95fc` with Ponder **0.18.2** from the installed package (`node_
 node -p "require('./node_modules/ponder/package.json').version"
 nl -ba node_modules/ponder/src/build/index.ts | sed -n '52p;116,126p;244,271p;291,300p;324,366p;422,487p;567,573p'
 nl -ba node_modules/ponder/src/database/index.ts | sed -n '898,934p'
-nl -ba node_modules/ponder/src/server/index.ts | sed -n '88,101p'
+nl -ba node_modules/ponder/src/server/index.ts | sed -n '88,122p'
 nl -ba node_modules/ponder/src/runtime/omnichain.ts | sed -n '596,619p'
 nl -ba node_modules/ponder/src/bin/ponder.ts | sed -n '88,145p'
 nl -ba node_modules/ponder/src/bin/commands/createViews.ts | sed -n '196,292p'
@@ -68,6 +68,7 @@ Installed version: **0.18.2** (`node -p "require('./node_modules/ponder/package.
 - **MigrationError** (`database/index.ts:898–916`): prior app minor `version` mismatch, or (non-platform) `dev` **or** `previousApp.build_id !== buildId` → `Schema "…" was previously used by a different Ponder app. Drop the schema first, or use a different schema.`
 - **Crash recovery with the same `build_id`:** after version match and unlock, logs `Detected crash recovery` with that `build_id` and resumes from checkpoints (`:929–934` and following). A changed `build_id` never takes this path.
 - **`/ready`:** HTTP **200** when `_ponder_meta.value.is_ready === 1`; otherwise **503** `"Historical indexing is not complete."` (`server/index.ts:88–101`). `is_ready` is set to `1` only after backfill (and optional auto views) (`omnichain.ts:611–619`).
+- **`/status`:** JSON per chain with `block.number` and `block.timestamp` (Unix seconds from the checkpoint) (`server/index.ts:103–122`). Lag for Decision §e is in **seconds**: head block timestamp from the same provider minus that `block.timestamp`.
 - **Reserved sync schemas** (must never be used as indexing or views schema names): `ponder_sync`, `ponder_rpc_cache_1` (`sync-store/schema.ts:36–39`). Active RPC cache after ADR 0011 is `ponder_rpc_cache_1`.
 
 Today’s deploy readiness probe still treats **any** answered HTTP status as success within **90s** (`scripts/lib/ponder-readiness-probe.ts:8–10`; ADR 0010). That proves the process answered, not that indexing reached realtime.
@@ -272,7 +273,22 @@ The Ponder executable-unchanged path (no new schema) is unchanged, except Decisi
 
 Two Ponder processes share the sole Base Sepolia provider (Context §5 / #60, ~66 rate-limited lines/min with one). Dual-serve is expected to roughly double contention. The default model and the fallback are selected by a **measured criterion** before the first production cutover; the chosen model is recorded in the deploy state file (`rollback_model=keep_previous` or `rollback_model=restart_previous`).
 
-**Criterion (must be able to fail):** during a **30-minute** dual-serve window with both writers running, sample every **10 minutes** (three samples; same method as #60): for each commercial chain, Ponder live `/status` block vs `eth_blockNumber` from the same provider. **Pass** only if **every** sample has live lag **≤ 64 blocks** on **both** chains. **Fail** if any sample exceeds 64 blocks on either chain.
+**Lag definition (one unit for both chains):** at a sample, for each commercial chain,
+
+```text
+lag_seconds = head.timestamp − status[chain].block.timestamp
+```
+
+where `status[chain].block.timestamp` comes from live Ponder `/status` (Context §2; `server/index.ts:112–118`) and `head.timestamp` is the `timestamp` field of `eth_getBlockByNumber("latest")` from the **same** provider used for that chain. A negative value is treated as **0**. The bound is in **seconds** and is the **same** number for Base Sepolia and Ethereum Sepolia (block-time asymmetry must not change the pass line).
+
+**Measurement session (same sitting, before first production cutover):**
+
+1. **Single-writer baseline** — only the live deployment writing. Window **30 minutes**, sample every **10 minutes** (three samples). For each sample, record `lag_seconds` on both chains. Let `L_single_max` be the maximum of those six values.
+2. **Dual-serve** — start the previous (or a second) writer beside the live one. Window **30 minutes**, sample every **10 minutes**. Record `lag_seconds` on both chains each time.
+
+**Bound:** `B = L_single_max + M`, with margin `M = max(L_single_max, 30)`. Justification for `M`: Context §5 / #60 — dual-serve roughly doubles contention on the sole Base Sepolia provider; allowing a second full single-writer peak of lag is that doubled budget. The **30s** floor avoids a zero-tolerance bound when single-writer samples were always at head (`L_single_max = 0`), while still failing a multi-minute dual lag that a bare “≤ 64 blocks” would have accepted on Ethereum Sepolia (~12s blocks).
+
+**Pass** only if **every** dual-serve sample has `lag_seconds ≤ B` on **both** chains. **Fail** if any sample on either chain exceeds `B`. Record `L_single_max`, `M`, and `B` next to `rollback_model` in the deploy state file so the bound is auditable.
 
 **Default when the criterion passes — `keep_previous`:** after a successful switch the previous deployment **keeps running** until the next successful switch of a newer commit (then stop that spare and apply retention).
 
@@ -387,11 +403,11 @@ Keep one schema and only remove svm-ingest paths from Ponder’s build inputs (t
   - two deployments; ready-pending switched first then a newer start; not-ready pending superseded;
   - atomic switch under concurrent reads with no query error;
   - **restart the live Ponder container without an nginx reload;** HTTP recovers within the resolver `valid=` bound (10s);
-  - dual-serve lag criterion run (pass → rollback with previous still running within 60s; fail → `restart_previous` rollback path with `/ready` 200 gate);
+  - dual-serve lag criterion: single-writer baseline then dual-serve, lag in **seconds** from `/status` `block.timestamp` vs head timestamp, one bound `B = L_single_max + max(L_single_max, 30)` for both chains (pass → `keep_previous` rollback within 60s; fail → `restart_previous` with `/ready` 200 gate);
   - first-cutover migration and its rollback; same-commit collision; retention dropping only older `k_*` schemas.
 - **Maintainer steps outside the repository, in order:**
   1. Run the Decision §i size SQL; confirm two (briefly three with pending) deployment schemas fit.
-  2. Run the Decision §e dual-serve lag criterion (and optionally the #60 `429` count); record `rollback_model=keep_previous` or `rollback_model=restart_previous` in the deploy state file from the result.
+  2. Run the Decision §e measurement session (single-writer baseline, then dual-serve; optionally the #60 `429` count). Record `L_single_max`, `M`, `B`, and `rollback_model=keep_previous` or `rollback_model=restart_previous` in the deploy state file from the result.
   3. One-time: point tunnel ingress at the nginx publish port (Decision §c).
   4. After the implementation merges: first production cutover under the deploy lock with `ponder_rpc_cache_1` / `ponder_sync` intact (Decision §j).
 
