@@ -979,12 +979,31 @@ describe("deploy-preflight local-only same probe path (Amendment rule 7)", () =>
   });
 
   it("localhost unreachable refuses deploy via the same verdict owner", async () => {
+    // ponderPreflightProbeChainIds → buildPonderIndexingConfig → ponderLocalAddresses.
+    // CI has no local stack manifest (gitignored); env stubs are the sole local source.
+    const localAddressEnv = {
+      PONDER_KAR_PASSPORT_ADDRESS: "0x0000000000000000000000000000000000000001",
+      PONDER_KAR_PRO_PASS_ADDRESS: "0x0000000000000000000000000000000000000002",
+      PONDER_KAR_PRO_STAKING_ADDRESS: "0x0000000000000000000000000000000000000003",
+      PONDER_USDC_ADDRESS: "0x0000000000000000000000000000000000000004",
+      PONDER_NATIVE_FEED_ADDRESS: "0x0000000000000000000000000000000000000005",
+      PONDER_TIMELOCK_ADDRESS: "0x0000000000000000000000000000000000000006",
+      PONDER_PLATFORM_RECIPIENT_ADDRESS:
+        "0x0000000000000000000000000000000000000007",
+    } as const;
+    const addressKeys = Object.keys(localAddressEnv) as Array<
+      keyof typeof localAddressEnv
+    >;
     const prevLocal = process.env.PONDER_LOCAL_ONLY;
     const prevEnable = process.env.PONDER_ENABLE_LOCAL;
     const prevStart = process.env.PONDER_START_BLOCK_31337;
+    const prevAddresses = Object.fromEntries(
+      addressKeys.map((k) => [k, process.env[k]]),
+    );
     process.env.PONDER_LOCAL_ONLY = "1";
     process.env.PONDER_ENABLE_LOCAL = "1";
     process.env.PONDER_START_BLOCK_31337 = "1";
+    for (const k of addressKeys) process.env[k] = localAddressEnv[k];
     try {
       const chains = ponderPreflightProbeChainIds();
       assert.deepEqual(chains, [LOCALHOST_CHAIN_ID]);
@@ -994,6 +1013,7 @@ describe("deploy-preflight local-only same probe path (Amendment rule 7)", () =>
         PONDER_RPC_URLS_31337: "http://127.0.0.1:1",
         PONDER_START_BLOCK_31337: "1",
         PONDER_GETLOGS_BLOCK_RANGE_31337: "1",
+        ...localAddressEnv,
       } as NodeJS.ProcessEnv;
       const result = await probePonderRpcCapability(LOCALHOST_CHAIN_ID, {
         env: localEnv,
@@ -1024,6 +1044,11 @@ describe("deploy-preflight local-only same probe path (Amendment rule 7)", () =>
       else process.env.PONDER_ENABLE_LOCAL = prevEnable;
       if (prevStart === undefined) delete process.env.PONDER_START_BLOCK_31337;
       else process.env.PONDER_START_BLOCK_31337 = prevStart;
+      for (const k of addressKeys) {
+        const prev = prevAddresses[k];
+        if (prev === undefined) delete process.env[k];
+        else process.env[k] = prev;
+      }
     }
   });
 });
