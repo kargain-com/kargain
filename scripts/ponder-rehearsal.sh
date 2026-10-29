@@ -434,14 +434,30 @@ grep -q "k_${NEWER_SHA}" "$OUT/step-8/pg_namespace.txt" \
 
 step 9 "state file removed → deploy_state_invalid"
 rm -f "$PONDER_STATE_FILE"
+# Expected refusal — do not dump writer logs on this named failure.
 set +e
-run_deploy deploy workflow_dispatch "$NEWER_SHA" >"$OUT/step-9/executor.txt" 2>&1
+(
+  export OPERATION=deploy EVENT_NAME=workflow_dispatch DEPLOY_SHA="$NEWER_SHA"
+  git checkout --force "$NEWER_SHA"
+  test "$(git rev-parse HEAD)" = "$NEWER_SHA"
+  load_fingerprints
+  env PATH="$(path_without_node)" "$ROOT/scripts/ponder-deploy.sh"
+) >"$OUT/step-9/executor.txt" 2>&1
 ec=$?
 set -e
+echo "step9_exit=$ec"
 capture "$OUT/step-9"
-cat "$OUT/step-9/executor.txt"
+# Keep the named refusal visible in the rehearsal log (not only the file).
+grep 'deploy_state_invalid' "$OUT/step-9/executor.txt" | head -n 5
 grep -q 'deploy_state_invalid' "$OUT/step-9/executor.txt"
 test "$ec" -ne 0
 
-report_slot_image_size "kargain-ponder:$HEAD_SHA" | tee "$OUT/slot-image-size-final.txt"
+# Prefer the latest writer image still present after retention.
+if docker image inspect "kargain-ponder:$NEWER_SHA" >/dev/null 2>&1; then
+  report_slot_image_size "kargain-ponder:$NEWER_SHA" | tee "$OUT/slot-image-size-final.txt"
+elif docker image inspect "kargain-ponder:$HEAD_SHA" >/dev/null 2>&1; then
+  report_slot_image_size "kargain-ponder:$HEAD_SHA" | tee "$OUT/slot-image-size-final.txt"
+else
+  echo "slot_image_size final skipped (images reclaimed)" | tee "$OUT/slot-image-size-final.txt"
+fi
 echo "=== rehearsal complete head=$ORIGINAL_HEAD out=$OUT ==="
