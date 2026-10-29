@@ -1,17 +1,28 @@
 /**
  * Sole owner of the Ponder deploy readiness probe.
  *
- * Success = reserved GET /ready answered with any HTTP status (200 caught up,
- * 503 backfill). Failure = no listener within the deadline — crash-loop / dead
- * process. Never invents a custom /health route.
+ * Modes:
+ * - answered — any HTTP status within the deadline (ADR 0010 process probe).
+ * - ready200 — HTTP 200 only (ADR 0014 switch gate).
+ *
+ * Failure = no matching answer within the deadline. Never invents /health.
  */
 export const PONDER_READY_DEFAULT_URL = "http://127.0.0.1:42069/ready";
 export const PONDER_READY_TIMEOUT_MS = 90_000;
+export const PONDER_READY200_TIMEOUT_MS = 600_000;
 export const PONDER_READY_INTERVAL_MS = 2_000;
 
+export type PonderReadyMode = "answered" | "ready200";
+
 export type PonderReadyProbeResult =
-  | { ok: true; status: number; url: string; elapsedMs: number }
-  | { ok: false; url: string; timeoutMs: number; elapsedMs: number };
+  | { ok: true; status: number; url: string; elapsedMs: number; mode: PonderReadyMode }
+  | {
+      ok: false;
+      url: string;
+      timeoutMs: number;
+      elapsedMs: number;
+      mode: PonderReadyMode;
+    };
 
 export function ponderDidNotBecomeReadyMessage(
   url: string,
@@ -22,6 +33,11 @@ export function ponderDidNotBecomeReadyMessage(
   );
 }
 
+/** ADR 0014 §d pending evidence line (exact). */
+export function ponderSwitchPendingEvidence(schema: string): string {
+  return `deploy_evidence switch=pending schema=${schema}`;
+}
+
 export type PonderReadyProbeDeps = {
   fetch?: typeof globalThis.fetch;
   sleep?: (ms: number) => Promise<void>;
@@ -29,19 +45,24 @@ export type PonderReadyProbeDeps = {
 };
 
 /**
- * Poll until /ready returns any HTTP status, or the timeout expires.
- * Connection refused / network errors continue until timeout — they are not
- * readiness. No continue-on-error; timeout is the named failure.
+ * Poll /ready until the mode's success criterion, or timeout.
+ * Connection refused / network errors continue until timeout.
  */
 export async function waitForPonderReady(
   opts?: {
     url?: string;
     timeoutMs?: number;
     intervalMs?: number;
+    mode?: PonderReadyMode;
   } & PonderReadyProbeDeps,
 ): Promise<PonderReadyProbeResult> {
+  const mode: PonderReadyMode = opts?.mode ?? "answered";
   const url = opts?.url ?? PONDER_READY_DEFAULT_URL;
-  const timeoutMs = opts?.timeoutMs ?? PONDER_READY_TIMEOUT_MS;
+  const timeoutMs =
+    opts?.timeoutMs ??
+    (mode === "ready200"
+      ? PONDER_READY200_TIMEOUT_MS
+      : PONDER_READY_TIMEOUT_MS);
   const intervalMs = opts?.intervalMs ?? PONDER_READY_INTERVAL_MS;
   const fetchFn = opts?.fetch ?? globalThis.fetch.bind(globalThis);
   const sleep =
@@ -53,17 +74,29 @@ export async function waitForPonderReady(
   for (;;) {
     const elapsedMs = now() - started;
     if (elapsedMs >= timeoutMs) {
-      return { ok: false, url, timeoutMs, elapsedMs };
+      return { ok: false, url, timeoutMs, elapsedMs, mode };
     }
     try {
       const res = await fetchFn(url, { method: "GET", redirect: "manual" });
-      // Any HTTP status proves the process answered (200 or 503 both OK).
-      return {
-        ok: true,
-        status: res.status,
-        url,
-        elapsedMs: now() - started,
-      };
+      if (mode === "answered") {
+        return {
+          ok: true,
+          status: res.status,
+          url,
+          elapsedMs: now() - started,
+          mode,
+        };
+      }
+      if (res.status === 200) {
+        return {
+          ok: true,
+          status: 200,
+          url,
+          elapsedMs: now() - started,
+          mode,
+        };
+      }
+      // ready200: 503 etc. keep polling
     } catch {
       // Not listening yet — keep polling until deadline.
     }
@@ -74,6 +107,7 @@ export async function waitForPonderReady(
         url,
         timeoutMs,
         elapsedMs: now() - started,
+        mode,
       };
     }
     await sleep(Math.min(intervalMs, remaining));

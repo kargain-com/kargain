@@ -1056,6 +1056,33 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     ],
   },
   {
+    id: "ponder-deploy-state",
+    owner: "scripts/lib/ponder-deploy-state.ts",
+    rule: "Typed fail-closed parse of .ponder-deploy-fingerprints; unknown field → deploy_state_invalid; identity/executable-only = pre-cutover",
+    guardTests: ["ponder-deploy-state.test.ts"],
+  },
+  {
+    id: "ponder-deploy-plan",
+    owner: "scripts/lib/ponder-deploy-plan.ts · scripts/ponder-deploy.sh",
+    rule: "Pure plan encodes ADR 0014 §a/d/e/f/j; shell is sole executor; plan imports only Node builtins + scripts/lib",
+    guardTests: [
+      "ponder-deploy-plan.test.ts",
+      "deploy-ponder-svm-ingest-ci-policy.test.ts",
+    ],
+  },
+  {
+    id: "ponder-views-switch",
+    owner: "scripts/lib/ponder-views-switch.ts",
+    rule: "Atomic views flip via psql --single-transaction; final kargain_live_query notify names; never ponder db create-views for live flip",
+    guardTests: ["ponder-views-switch.test.ts"],
+  },
+  {
+    id: "ponder-deploy-retention",
+    owner: "scripts/lib/ponder-deploy-retention.ts",
+    rule: "Drop only ^k_[0-9a-f]{40}$ not live/previous/pending; Context §6 schemas unreachable",
+    guardTests: ["ponder-reindex-svm-isolation-policy.test.ts"],
+  },
+  {
     id: "lib-scripts-boundary",
     owner: "lib/svm/devnet-evidence.ts · lib/** import graph",
     rule: "lib/ must not import scripts/; SVM deploy evidence types live in lib, loaders in scripts",

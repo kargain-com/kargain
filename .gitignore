@@ -38,6 +38,8 @@ ignition/deployments/
 .ponder/
 ponder/.ponder
 .ponder-deploy-fingerprints
+.ponder-slot-*.env
+.ponder-upstream.conf
 .deploy.lock
 
 # vincent commons derivation output (pnpm vincent:derive)
@@ -81,3 +83,5 @@ svm/lab/test-ledger/
 
 # OS junk — must follow docs/ops un-ignore or .DS_Store reappears as untracked
 **/.DS_Store
+
+.ponder-rehearsal-out/

@@ -334,8 +334,7 @@ export function formatSepoliaStackReport(stack: ResolvedCommercialStack): string
 
   lines.push(
     "",
-    "Reindex: docs/indexer/OPERATIONS.md",
-    "  ./scripts/ponder-reindex.sh && docker compose up -d --force-recreate ponder",
+    "Indexer schema: docs/indexer/OPERATIONS.md (per-deployment schema via deploy-ponder).",
   );
 
   return lines.join("\n");

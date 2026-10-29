@@ -75,4 +75,31 @@ describe("ponder-readiness-probe", () => {
       );
     }
   });
+
+  it("ready200 mode rejects 503 and accepts 200", async () => {
+    let n = 0;
+    const server = createServer((_req, res) => {
+      n += 1;
+      res.statusCode = n < 3 ? 503 : 200;
+      res.end(n < 3 ? "backfill" : "ok");
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    try {
+      const result = await waitForPonderReady({
+        url: `http://127.0.0.1:${port}/ready`,
+        mode: "ready200",
+        timeoutMs: 2_000,
+        intervalMs: 20,
+      });
+      assert.equal(result.ok, true);
+      if (!result.ok) throw new Error("unreachable");
+      assert.equal(result.status, 200);
+      assert.equal(result.mode, "ready200");
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve())),
+      );
+    }
+  });
 });
