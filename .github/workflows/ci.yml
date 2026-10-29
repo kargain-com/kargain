@@ -28,12 +28,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          # Full history so append-only can `git show <push.before|PR base>:ix.manifest.json`.
-          # workflow_call inherits the caller's push/PR github context (not a merge-base path).
+          # Full history so append-only can `git show <push.before|PR base|HEAD^1>:ix.manifest.json`.
+          # workflow_call inherits the caller's push/PR/dispatch github context (not a merge-base path).
           fetch-depth: 0
 
       - name: Ensure origin/master ref present
-        # Local tooling / inspect; Actions append-only uses push before or PR base only.
+        # Local tooling / inspect; Actions append-only uses push before, PR base, or dispatch first parent.
         run: git fetch --no-tags origin master:refs/remotes/origin/master
 
       - name: Install gitleaks
