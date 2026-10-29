@@ -205,7 +205,11 @@ One schema per Ponder deployment, a stable views schema for all product SQL, sta
 
 - **Software:** **nginx** as a Compose service — the tunnel’s constant target. It alone publishes the host address pattern used today for `:42069` (`docker-compose.yml:43–44`); Ponder deployment services stay on the internal network (distinct service names and ports).
 - **Pin:** exact image **tag and digest** in `docker-compose.yml` (literal pin, same spirit as [ADR 0009](./0009-node-runtime-single-owner.md) for Node images). Policy asserts the pin. **Forbidden:** `nginx:latest` or any floating tag.
-- **Flip:** write the upstream to the new deployment’s internal `host:port`, then `nginx -s reload` (graceful; in-flight requests finish — [Controlling nginx](http://nginx.org/en/docs/control.html)). **Forbidden:** kill/restart of nginx to flip (drops in-flight).
+- **DNS re-resolution:** Ponder services use Compose `restart: always` (`docker-compose.yml:32`). A crash-restart can change the container’s address on the Compose network. A static `proxy_pass http://<service>:<port>` resolves the name once (at start or reload) and would keep a stale address until the next deploy. The nginx config therefore:
+  1. Sets `resolver 127.0.0.11 valid=10s;` (Docker’s embedded DNS; [`resolver`](http://nginx.org/en/docs/http/ngx_http_core_module.html#resolver)).
+  2. Passes the upstream through a **variable** (e.g. `set $ponder_upstream http://<service>:<port>;` then `proxy_pass $ponder_upstream;`) so nginx re-resolves on the `valid=` interval ([`proxy_pass` with variables](http://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_pass)).
+  - **Forbidden:** a literal hostname in `proxy_pass` without a variable (no re-resolve on container IP change).
+- **Flip:** write the upstream service name and port into that variable’s source, then `nginx -s reload` (graceful; in-flight requests finish — [Controlling nginx](http://nginx.org/en/docs/control.html)). **Forbidden:** kill/restart of nginx to flip (drops in-flight).
 - **Evidence** after a successful flip:
 
   ```text
@@ -221,21 +225,26 @@ One schema per Ponder deployment, a stable views schema for all product SQL, sta
 
 Under `.deploy.lock` / `flock -w 900` and SSH `command_timeout: 30m` (ADR 0010; `deploy-ponder.yml:92–101`). Start and switch are separate so an uncached ~11-hour backfill (Context §5; #47) can complete.
 
-**Start path** (push or `workflow_dispatch` when a new executable must run; after Decision §a collision check):
+**Pending precedence (every run, before any start):** under the lock, after Decision §a collision check:
+
+1. If `pending_schema` is set and that deployment’s `/ready` is already **200:** **switch it first** (atomic views + nginx, Decision §b / §c), clear `pending_schema`, print success evidence. Only then continue this run’s start path for a newer commit if one is required.
+2. If `pending_schema` is set and `/ready` is **not** 200: **supersede** it — stop that container, `DROP SCHEMA` that pending `k_*` only, clear `pending_schema`. Retention does not keep superseded pendings.
+3. If no pending: continue.
+
+A later `workflow_dispatch` with no new executable still takes only the switch half when a ready pending exists (step 1) or re-asserts `switch=pending` when it is not ready (no supersede without a newer start).
+
+**Start path** (push or `workflow_dispatch` when a new executable must run; after pending precedence):
 
 1. **Build** the new image.
-2. **ADR 0012 / 0013 preflight.** On refusal: existing `deploy_preflight … verdict=refused` / `deploy_evidence outcome=refused`; exit non-zero; old keeps serving.
-3. If a **pending** deployment exists for a **different** `k_*` schema, **supersede** it: stop that container, `DROP SCHEMA` that pending `k_*` only, clear `pending_schema` in the state file. Retention does not keep superseded pendings.
-4. **Start the new deployment beside the old** with `DATABASE_SCHEMA=k_<DEPLOY_SHA>`, without views-schema. Record `pending_schema=k_<DEPLOY_SHA>` in the state file. Old keeps answering HTTP through nginx.
-5. Poll the new deployment’s `/ready` for **200** every 2s for **600s**. Justification for attempting an in-run switch: measured ~1 minute with intact cache (#47 / #66) × ~10 under #60. Gate is **200 only**, not ADR 0010’s any-status process probe.
-6. **If `/ready` is 200 within 600s:** run the atomic views switch (Decision §b), then nginx flip (Decision §c). Clear `pending_schema`. Do **not** stop the previous deployment (Decision §e). Print success evidence below.
-7. **If `/ready` is not 200 within 600s:** leave the new deployment running; old keeps serving; exit **0** (not a failed deploy) with:
+2. **ADR 0012 / 0013 preflight.** On refusal: existing `deploy_preflight … verdict=refused` / `deploy_evidence outcome=refused`; exit non-zero; live keeps serving.
+3. **Start the new deployment beside the live** with `DATABASE_SCHEMA=k_<DEPLOY_SHA>`, without views-schema. Record `pending_schema=k_<DEPLOY_SHA>` in the state file. Live keeps answering HTTP through nginx.
+4. Poll the new deployment’s `/ready` for **200** every 2s for **600s**. Justification for attempting an in-run switch: measured ~1 minute with intact cache (#47 / #66) × ~10 under #60. Gate is **200 only**, not ADR 0010’s any-status process probe.
+5. **If `/ready` is 200 within 600s:** run the atomic views switch (Decision §b), then nginx flip (Decision §c). Clear `pending_schema`. Apply Decision §e for whether the previous writer stays up. Print success evidence below.
+6. **If `/ready` is not 200 within 600s:** leave the new deployment running; live keeps serving; exit **0** (not a failed deploy) with:
 
    ```text
    deploy_evidence switch=pending schema=k_<sha>
    ```
-
-**Switch-only path** (later `workflow_dispatch` or a later push that finds `pending_schema` already at `/ready` 200): under the same lock, poll `/ready` 200 for up to 600s; on success, atomic views + nginx flip; on still-not-ready, remain pending (`switch=pending`) and exit 0. No second writer.
 
 **On hard failure (old keeps serving):**
 
@@ -243,7 +252,7 @@ Under `.deploy.lock` / `flock -w 900` and SSH `command_timeout: 30m` (ADR 0010; 
 |------|----------------|
 | Preflight refuse | `deploy_evidence outcome=refused` (ADR 0012) |
 | New never answers HTTP after start | process-answered probe failure (existing named ready timeout); tear down the new container and its `k_*` schema; clear pending |
-| Atomic views or nginx flip fails after ready | `deploy_switch_failed: <views\|http>` — leave proxy on old; leave previous running; tear down new only if it never became the live HTTP target |
+| Atomic views or nginx flip fails after ready | `deploy_switch_failed: <views\|http>` — leave proxy on old; leave previous per Decision §e; tear down new only if it never became the live HTTP target |
 
 **Success evidence** (exact formats; plus existing recreated / commit / node / preflight lines):
 
@@ -254,15 +263,20 @@ deploy_evidence switch=ready status=200
 deploy_evidence switch=views
 deploy_evidence switch=http
 deploy_evidence proxy=upstream <service>:<port>
+deploy_evidence rollback_model=<keep_previous|restart_previous>
 ```
 
 The Ponder executable-unchanged path (no new schema) is unchanged, except Decision §a when the digest matches and the schema is already live.
 
-### e. Rollback after a switch
+### e. Rollback after a switch (dual-serve criterion and fallback)
 
-**Model:** the previous deployment **keeps running** after a successful switch until the **next** successful switch of a newer commit (then stop that spare and apply retention). Rejected: stop-previous-on-switch and restart-on-rollback — catch-up under #60 is neither instant nor bounded by 60s.
+Two Ponder processes share the sole Base Sepolia provider (Context §5 / #60, ~66 rate-limited lines/min with one). Dual-serve is expected to roughly double contention. The default model and the fallback are selected by a **measured criterion** before the first production cutover; the chosen model is recorded in the deploy state file (`rollback_model=keep_previous` or `rollback_model=restart_previous`).
 
-**Rollback steps** (previous already `/ready` 200):
+**Criterion (must be able to fail):** during a **30-minute** dual-serve window with both writers running, sample every **10 minutes** (three samples; same method as #60): for each commercial chain, Ponder live `/status` block vs `eth_blockNumber` from the same provider. **Pass** only if **every** sample has live lag **≤ 64 blocks** on **both** chains. **Fail** if any sample exceeds 64 blocks on either chain.
+
+**Default when the criterion passes — `keep_previous`:** after a successful switch the previous deployment **keeps running** until the next successful switch of a newer commit (then stop that spare and apply retention).
+
+**Rollback under `keep_previous`** (previous already `/ready` 200):
 
 1. Atomic views flip back to the previous deployment schema (same staging + `ALTER SCHEMA` transaction as Decision §b, targeting `k_<previous_sha>`).
 2. nginx upstream → previous; `nginx -s reload`.
@@ -270,12 +284,29 @@ The Ponder executable-unchanged path (no new schema) is unchanged, except Decisi
 
 Bound: **60s**. Named failure: `deploy_rollback_failed: waited 60s`.
 
-**RPC cost:** two Ponder processes share the sole Base Sepolia provider (Context §5 / #60, ~66 rate-limited lines/min with one). Dual-serve is expected to roughly double contention; live HTTP remains the switched target. Before the first production cutover the maintainer records dual-serve `429` rate with the same #60 command (read-only).
+**Fallback when the criterion fails — `restart_previous`:** after a successful switch, **stop** the previous deployment (only current writes). Rollback then:
+
+1. Start the previous deployment against `k_<previous_sha>` (crash recovery / realtime catch-up).
+2. Wait until its `/ready` is **200**, bound **600s** (same intact-cache justification as Decision §d; if the spare’s ranges are cold, use `switch=pending` style and a later `workflow_dispatch` to finish rollback — do not tear it down on the 600s miss).
+3. Atomic views + nginx flip to previous.
+4. Stop the failed new deployment.
+
+Named failure if the restart path’s hard steps miss their bounds: `deploy_rollback_failed: waited 600s` (or `60s` for the views/HTTP half after ready). Evidence line records the active model:
+
+```text
+deploy_evidence rollback_model=keep_previous
+```
+
+or
+
+```text
+deploy_evidence rollback_model=restart_previous
+```
 
 ### f. Retention
 
 - After a **successful** switch: `DROP SCHEMA … CASCADE` every prior **deployment** schema (`k_<40-hex>`) except **current** and **previous** (rollback spare). Stop containers for dropped schemas. At most two deployment schemas + their writers remain beside the protected set.
-- A **pending** schema is kept until switched, superseded (Decision §d step 3), or replaced. Superseded pendings are dropped immediately, not retained.
+- A **pending** schema is kept until switched, superseded (Decision §d pending precedence, not-ready branch), or replaced. Superseded pendings are dropped immediately, not retained.
 - **Never** drops the schemas in Context §6. No recurring manual chore.
 
 ### g. All svm-ingest-owned modules out of Ponder’s build inputs
@@ -330,7 +361,7 @@ One-time under the lock, after new `k_<new_sha>` is `/ready` 200:
 4. nginx → new; evidence lines as in Decision §d.
 5. `k_<prior_sha>` (tables) is the first-cutover rollback spare.
 
-**First-cutover downtime:** bounded to stop → rename transaction → proxy flip (seconds in the local rehearsal), not the backfill. Later switches are zero-downtime (previous kept running per Decision §e).
+**First-cutover downtime:** bounded to stop → rename transaction → proxy flip (seconds in the local rehearsal), not the backfill. Later switches under `keep_previous` are zero-downtime; under `restart_previous` the previous writer is stopped after switch (Decision §e).
 
 **First-cutover rollback:** stop new; reverse rename (move views `kargain` aside, restore table schema name `kargain`); start old against restored `kargain`; nginx → old.
 
@@ -340,12 +371,27 @@ Keep one schema and only remove svm-ingest paths from Ponder’s build inputs (t
 
 ## Consequences
 
-- **Implementation PR scope:** Compose dual Ponder services + pinned nginx proxy; deploy start/pending/switch sequence under the lock; deploy-owned atomic views transaction; same-commit collision rule; rollback with previous kept running; first-cutover migration; Dockerfile/build-context proof that `src/svm-ingest/`, `src/lib/svm-raw-writer.ts`, and `src/lib/svm-projection-writer.ts` are absent from Ponder’s indexing glob; retire `scripts/ponder-reindex.sh` / `.sql` as the `build_id` drop procedure; extend deploy / isolation policy tests.
-- **Constructed controls (red before green):** switching views or HTTP before `/ready` 200 fails; non-atomic live flip (per-view drop/create without a surrounding transaction) fails its test; retention that would drop Context §6 schemas fails; Ponder image/context that still contains `src/svm-ingest/` or either svm writer under the indexing glob fails; deploy script missing pending / success / proxy evidence lines fails; starting a second writer when `k_<sha>` is already live fails; dual-serve path that stops the previous deployment on switch fails.
-- **Local Docker rehearsal** the implementation PR must show before any server deploy: two deployments; pending then a later switch-only run; atomic switch under concurrent reads with no query error; rollback with previous still running within 60s; first-cutover migration and its rollback; same-commit collision; retention dropping only older `k_*` schemas.
+- **Implementation PR scope:** Compose dual Ponder services + pinned nginx with Docker DNS re-resolution; deploy pending-precedence then start/switch under the lock; deploy-owned atomic views transaction; same-commit collision rule; dual-serve lag criterion selecting `keep_previous` vs `restart_previous`; first-cutover migration; Dockerfile/build-context proof that `src/svm-ingest/`, `src/lib/svm-raw-writer.ts`, and `src/lib/svm-projection-writer.ts` are absent from Ponder’s indexing glob; retire `scripts/ponder-reindex.sh` / `.sql` as the `build_id` drop procedure; extend deploy / isolation policy tests.
+- **Constructed controls (red before green):**
+  - switching views or HTTP before `/ready` 200 fails;
+  - a start-path run that **supersedes** a pending deployment already at `/ready` 200 (must switch-first) fails;
+  - a start-path run that **keeps** a not-ready pending beside a new start (must supersede) fails;
+  - nginx config with a literal `proxy_pass` hostname and no `resolver` / variable upstream fails;
+  - non-atomic live flip fails its test;
+  - retention that would drop Context §6 schemas fails;
+  - Ponder image/context that still contains `src/svm-ingest/` or either svm writer under the indexing glob fails;
+  - deploy script missing pending / success / proxy / `rollback_model` evidence lines fails;
+  - starting a second writer when `k_<sha>` is already live fails;
+  - under recorded `keep_previous`, stopping the previous writer on switch fails; under recorded `restart_previous`, leaving it running after switch fails.
+- **Local Docker rehearsal** the implementation PR must show before any server deploy:
+  - two deployments; ready-pending switched first then a newer start; not-ready pending superseded;
+  - atomic switch under concurrent reads with no query error;
+  - **restart the live Ponder container without an nginx reload;** HTTP recovers within the resolver `valid=` bound (10s);
+  - dual-serve lag criterion run (pass → rollback with previous still running within 60s; fail → `restart_previous` rollback path with `/ready` 200 gate);
+  - first-cutover migration and its rollback; same-commit collision; retention dropping only older `k_*` schemas.
 - **Maintainer steps outside the repository, in order:**
   1. Run the Decision §i size SQL; confirm two (briefly three with pending) deployment schemas fit.
-  2. Record dual-serve `429` rate (Decision §e) with the #60 command while two Ponder processes run locally or on the server before cutover.
+  2. Run the Decision §e dual-serve lag criterion (and optionally the #60 `429` count); record `rollback_model=keep_previous` or `rollback_model=restart_previous` in the deploy state file from the result.
   3. One-time: point tunnel ingress at the nginx publish port (Decision §c).
   4. After the implementation merges: first production cutover under the deploy lock with `ponder_rpc_cache_1` / `ponder_sync` intact (Decision §j).
 
