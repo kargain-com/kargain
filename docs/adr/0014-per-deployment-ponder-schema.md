@@ -1,0 +1,289 @@
+# 0014 — One Ponder schema per deployment, stable read surface
+
+## Context
+
+Measured on `732a95fc` with Ponder **0.18.2** from the installed package (`node_modules/ponder`, same contents as `pnpm-lock.yaml` `ponder@0.18.2`). Official guide: [Deploy to production](https://ponder.sh/docs/production/deploy). Related: [#47](https://github.com/kargain-com/kargain/issues/47), [#50](https://github.com/kargain-com/kargain/issues/50) / [ADR 0012](./0012-deploy-preflight.md), [#60](https://github.com/kargain-com/kargain/issues/60), [#66](https://github.com/kargain-com/kargain/issues/66), [ADR 0010](./0010-serialized-pinned-deploys.md), [ADR 0011](./0011-ponder-0-18-upgrade.md), [ADR 0013](./0013-preflight-rate-limited.md), [`docs/ops/deploys/r4-deploy-restore.md`](../ops/deploys/r4-deploy-restore.md).
+
+```bash
+node -p "require('./node_modules/ponder/package.json').version"
+nl -ba node_modules/ponder/src/build/index.ts | sed -n '52p;116,126p;244,271p;291,300p;324,366p;422,487p;567,573p'
+nl -ba node_modules/ponder/src/database/index.ts | sed -n '898,934p'
+nl -ba node_modules/ponder/src/server/index.ts | sed -n '88,101p'
+nl -ba node_modules/ponder/src/runtime/omnichain.ts | sed -n '596,619p'
+nl -ba node_modules/ponder/src/bin/ponder.ts | sed -n '88,145p'
+nl -ba node_modules/ponder/src/bin/commands/createViews.ts | sed -n '196,264p'
+nl -ba node_modules/ponder/src/drizzle/onchain.ts | sed -n '43p'
+nl -ba node_modules/ponder/src/sync-store/schema.ts | sed -n '36,39p'
+rg -n "DATABASE_SCHEMA: kargain|DATABASE_SCHEMA=kargain|DROP SCHEMA IF EXISTS kargain CASCADE|FROM kargain\.|kargain\.(consignment|passport)|Schema: kargain|table_schema = 'kargain'" \
+  --glob '!node_modules/**' --glob '!.git/**'
+nl -ba docker-compose.yml | sed -n '27,58p'
+nl -ba Dockerfile.ponder
+nl -ba test/ponder-reindex-svm-isolation-policy.test.ts | sed -n '1,65p'
+nl -ba scripts/lib/ponder-identity-fingerprint.ts | sed -n '42,48p'
+nl -ba scripts/lib/ponder-executable-fingerprint.ts | sed -n '13,27p'
+nl -ba scripts/lib/ponder-readiness-probe.ts | sed -n '8,10p'
+nl -ba .github/workflows/deploy-ponder.yml | sed -n '94,169p'
+rg -n 'DATABASE_SCHEMA' .env.example
+python3 - <<'PY'
+from pathlib import Path
+files=[]
+for p in Path('src').rglob('*'):
+    if p.suffix not in {'.js','.mjs','.ts','.mts'} or p.name.endswith('.d.ts'): continue
+    rel=str(p).replace('\\','/')
+    if '/api/' in rel or rel.startswith('src/api/'): continue
+    if '.test.' in p.name or '.spec.' in p.name: continue
+    files.append(rel)
+print(f'total={len(files)} svm-ingest={sum(1 for f in files if "svm-ingest" in f)}')
+for f in sorted(files): print(f)
+PY
+```
+
+Every Ponder deployment today reuses one fixed database schema. When Ponder’s `build_id` changes, the new image refuses to start with `MigrationError`, and the indexer stays down until the maintainer drops the schema by hand and the backfill completes. Indexer schema, reindex and deploy are pause classes, so this ADR comes first. Implementation is a follow-up PR after this ADR is merged.
+
+### 1. Ponder 0.18.2 `build_id` inputs
+
+Installed version: **0.18.2** (`node -p "require('./node_modules/ponder/package.json').version"`).
+
+`build_id` is computed in `node_modules/ponder/src/build/index.ts`:
+
+- `BUILD_ID_VERSION = "2"` (`:52`).
+- Final digest (`:567–573`):
+
+  ```text
+  sha256(BUILD_ID_VERSION + configContentHash + schemaContentHash + indexingContentHash).slice(0, 10)
+  ```
+
+- **Config content hash** (`:291–300`): `superjson.stringify` of `{ ordering, contracts, accounts, blocks }` only. `chains` (RPC URLs, `ethGetLogsBlockRange`) are **not** hashed.
+- **Schema content hash** (`:324–329`): raw file bytes of `ponder.schema.ts` (the schema file is also executed first).
+- **Indexing content hash** (`:333–366`): concatenation of the **file contents** of every match of `src/**/*.{js,mjs,ts,mts}`, ignoring `src/api/**` and `**/*.{test,spec}.{js,mjs,ts,mts}` (`:116–126`, `:334–336`). Comment at `:351–352`: hashing is file contents, not exports.
+- **Matched files are executed** before hashing via `executeFileWithTimeout` (`:339`, definition `:244–271`, 10s timeout). A file under the glob that throws at import fails the build, not only the hash.
+- On this tree the glob covers **33** files, **7** of them under `src/svm-ingest/` (list from the `python3` block above). `Dockerfile.ponder:7` is `COPY . .`, so those files are present in the production image and enter both execution and the hash. This supersedes the 0.16.6 measurement on `#47` (35 files / 9 under `src/svm-ingest/`).
+
+### 2. Schema selection, views, MigrationError, crash recovery, `/ready`
+
+- **Schema:** `DATABASE_SCHEMA` or `--schema` is required for `ponder start` (`build/index.ts:422–435`). Max length **45** (`drizzle/onchain.ts:43`; enforced at `build/index.ts:466–479`).
+- **Views schema:** `--views-schema` on `start` (`bin/ponder.ts:91–95`) or `DATABASE_VIEWS_SCHEMA` (`build/index.ts:436–437`). Cannot equal the indexing schema; cannot be a reserved sync schema name (`:439–463`).
+- **`ponder db create-views`:** exists (`bin/ponder.ts:129–145`). Requires both `--schema` and `--views-schema`. Creates (after drop) `CREATE VIEW "<views>"."<table>" AS SELECT * FROM "<schema>"."<table>"` for app tables, views, `_ponder_meta`, and `_ponder_checkpoint` (`bin/commands/createViews.ts:196–264`).
+- **When views are created on `start`:** if `viewsSchema` is set, the omnichain runtime runs `createViews` **after** historical backfill and **before** setting `is_ready=1` (`runtime/omnichain.ts:596–619`). Multichain and isolated controllers mirror that order.
+- **MigrationError** (`database/index.ts:898–916`): prior app minor `version` mismatch, or (non-platform) `dev` **or** `previousApp.build_id !== buildId` → `Schema "…" was previously used by a different Ponder app. Drop the schema first, or use a different schema.`
+- **Crash recovery with the same `build_id`:** after version match and unlock, logs `Detected crash recovery` with that `build_id` and resumes from checkpoints (`:929–934` and following). A changed `build_id` never takes this path.
+- **`/ready`:** HTTP **200** when `_ponder_meta.value.is_ready === 1`; otherwise **503** `"Historical indexing is not complete."` (`server/index.ts:88–101`). `is_ready` is set to `1` only after backfill (and optional auto views) (`omnichain.ts:611–619`).
+- **Reserved sync schemas** (must never be used as indexing or views schema names): `ponder_sync`, `ponder_rpc_cache_1` (`sync-store/schema.ts:36–39`). Active RPC cache after ADR 0011 is `ponder_rpc_cache_1`.
+
+Today’s deploy readiness probe still treats **any** answered HTTP status as success within **90s** (`scripts/lib/ponder-readiness-probe.ts:8–10`; ADR 0010). That proves the process answered, not that indexing reached realtime.
+
+### 3. Literal references to schema `kargain`
+
+Command and full output on this base:
+
+```text
+docker-compose.yml:42:      DATABASE_SCHEMA: kargain
+src/lib/passport-entity-browse-sql.ts:150: * SQL expression: consignment Asking → USD 1e8 (alias `c` on kargain.consignment).
+src/lib/passport-entity-browse-sql.ts:392:  return `kargain.consignment c
+src/lib/ponder-passport-provenance.ts:157:    FROM kargain.passport_record
+src/lib/ponder-passport-provenance.ts:195:    FROM kargain.passport_uri_history
+src/lib/ponder-passport-custody.ts:83:     FROM kargain.custody_determining_event
+src/lib/ponder-passport-custody.ts:94:     FROM kargain.bridge_crossing
+src/lib/ponder-read-path-ready.ts:18:  "kargain.consignment",
+src/lib/ponder-read-path-ready.ts:19:  "kargain.passport",
+src/lib/ponder-read-path-ready.ts:20:  "kargain.passport_record",
+src/lib/ponder-read-path-ready.ts:21:  "kargain.passport_uri_history",
+src/lib/ponder-read-path-ready.ts:127:    FROM kargain.consignment c
+src/lib/ponder-read-path-ready.ts:131:    FROM kargain.custody_determining_event
+src/lib/ponder-read-path-ready.ts:139:    FROM kargain.bridge_crossing
+src/lib/ponder-passport-entity.ts:126:FROM kargain.passport`;
+test/ponder-read-path-ready.test.ts:26:CREATE TABLE IF NOT EXISTS kargain.passport (
+test/ponder-read-path-ready.test.ts:65:CREATE TABLE IF NOT EXISTS kargain.passport_record (
+test/ponder-read-path-ready.test.ts:75:CREATE TABLE IF NOT EXISTS kargain.passport_uri_history (
+test/ponder-read-path-ready.test.ts:103:CREATE TABLE IF NOT EXISTS kargain.consignment (
+test/ponder-read-path-ready.test.ts:144:    "kargain.consignment",
+test/ponder-read-path-ready.test.ts:145:    "kargain.passport",
+test/ponder-read-path-ready.test.ts:146:    "kargain.passport_record",
+test/ponder-read-path-ready.test.ts:147:    "kargain.passport_uri_history",
+test/ponder-read-path-ready.test.ts:217:      FROM kargain.consignment c
+test/ponder-reindex-svm-isolation-policy.test.ts:39:  assert.ok(!writerSrc.includes("DROP SCHEMA IF EXISTS kargain CASCADE"));
+test/ponder-kargain-physical-columns-policy.test.ts:5: * Measured against a Ponder-created `DATABASE_SCHEMA=kargain` Postgres:
+test/ponder-kargain-physical-columns-policy.test.ts:111:  it("kargain.passport SELECT list ≡ physical names from JS→snake_case", () => {
+test/ponder-kargain-physical-columns-policy.test.ts:112:    const cols = extractSelectListBeforeFrom(entity, "kargain.passport");
+test/ponder-kargain-physical-columns-policy.test.ts:124:    const redSql = `SELECT id, "chainId" AS chain_id FROM kargain.passport`;
+test/ponder-kargain-physical-columns-policy.test.ts:127:      extractSelectListBeforeFrom(redSql, "kargain.passport"),
+test/fixtures/entity-pg-pool.ts:19:CREATE TABLE IF NOT EXISTS kargain.passport (
+test/fixtures/entity-pg-pool.ts:135:const EVM_INSERT = `INSERT INTO kargain.passport (
+test/fixtures/ponder-kargain-physical-columns.ts:2: * Physical column names on Ponder 0.16 `DATABASE_SCHEMA=kargain` tables.
+test/fixtures/ponder-kargain-physical-columns.ts:6: * Ponder-created Postgres (`DATABASE_SCHEMA=kargain`):
+test/fixtures/ponder-kargain-physical-columns.ts:7: *   information_schema.columns for kargain.passport includes `chain_id`
+test/fixtures/ponder-kargain-physical-columns.ts:8: *   (not `chainId`); `SELECT "chainId" FROM kargain.passport` →
+lib/commerce/browse-source.ts:3: * Ponder `kargain.consignment` is the only catalog today (EIP-155 commercial).
+scripts/ponder-reindex.sql:20:-- Schema: kargain (set via DATABASE_SCHEMA in docker-compose.yml)
+scripts/ponder-reindex.sql:26:DROP SCHEMA IF EXISTS kargain CASCADE;
+scripts/e2e-local.sh:112:export DATABASE_SCHEMA=kargain
+docs/adr/0011-ponder-0-18-upgrade.md:250:DROP SCHEMA IF EXISTS kargain CASCADE;
+docs/indexer/MIGRATION-V2.md:21:| … handlers on `kargain.passport` only; …
+docs/indexer/OPERATIONS.md:53:**Physical column casing (Ponder 0.16):** `DATABASE_SCHEMA=kargain` …
+docs/indexer/OPERATIONS.md:57:WHERE table_schema = 'kargain' AND table_name = 'passport'
+```
+
+Additional product literals outside that pattern (same schema name): `src/lib/ponder-read-path-ready.ts:22–23` (`kargain.bridge_crossing`, `kargain.custody_determining_event`); matching DDL/asserts in `test/ponder-read-path-ready.test.ts:85`, `:95`, `:148–149`. `.env.example:167` comments `# DATABASE_SCHEMA=kargain` (compose hard-sets it today).
+
+**Not** Postgres app-schema literals: Compose **network** name `kargain` (`docker-compose.yml:101`); database name `kargain_ponder`; Irys metadata tags `app=kargain`; package name `kargain`.
+
+**How each resolves after this decision:** product SQL and tests that qualify `kargain.*` keep that qualifier and read the **stable views schema** named `kargain` (Decision §b). `DATABASE_SCHEMA` on a deployment becomes `k_<commit>` (Decision §a). `scripts/ponder-reindex.sql` / `.sh` are replaced (Decision §h). Docs that prescribe `DROP SCHEMA kargain` for a `build_id` change are superseded by this ADR for that purpose.
+
+### 4. HTTP path and concurrent deployments
+
+- `ponder` publishes `127.0.0.1:42069:42069` (`docker-compose.yml:43–44`).
+- `cloudflared` runs `tunnel --no-autoupdate run` with `TUNNEL_TOKEN`, `depends_on: ponder`, same Compose network (`:48–58`). Tunnel **ingress** is configured outside the repository.
+- The app reaches Ponder over that HTTP path. Switching deployments must switch the HTTP route as well as SQL views.
+
+Two concurrent Ponder deployments on one host require at least: **two Compose services** (distinct names), **two container publish ports** (or only a proxy published on the address the tunnel already uses), **two distinct `DATABASE_SCHEMA` values**, shared `postgres` and network `kargain`. `svm-ingest` (`:42100`) stays a separate service.
+
+### 5. Measured backfill and RPC budget
+
+- **Intact cache (~1 minute):** [#47](https://github.com/kargain-com/kargain/issues/47#issuecomment-6491287172) (2026-10-29): schema `kargain` dropped only; `ponder_rpc_cache_1` and `ponder_sync` intact; Ponder started 07:56:26 UTC; both chains at head by ~07:57 UTC; `/ready` 200. Same facts in [#66](https://github.com/kargain-com/kargain/issues/66).
+- **Cache dropped (~11 hours):** [`docs/ops/deploys/r4-deploy-restore.md`](../ops/deploys/r4-deploy-restore.md) — after `ponder_sync` was dropped on 2026-10-25, the 0.18.2 recreate ([run 40582691842](https://github.com/kargain-com/kargain/actions/runs/40582691842), 2026-10-27 20:58 UTC, `ready` status 503) reached `/ready` 200 at 2026-10-28 07:41 UTC.
+- **Concurrent RPC budget:** [#60](https://github.com/kargain-com/kargain/issues/60) — about **66** rate-limited log lines per minute on the sole Base Sepolia provider (`docker compose logs --since 30m ponder | grep -ciE '429|rate limit'` → 1984 / 30 min).
+
+A per-deployment schema can therefore reach `/ready` 200 inside one deploy step **when the shared cache is never dropped**. The cold path must not be the switch budget.
+
+### 6. Schemas that must never be dropped by any deploy step
+
+Pinned by `test/ponder-reindex-svm-isolation-policy.test.ts:16–31`, `:48–64` (and projection isolation `:34–40`):
+
+- `ponder_sync`
+- `ponder_rpc_cache_1`
+- `kargain_svm_raw`
+- `kargain_svm_projection`
+
+Ponder also reserves the first two as sync schema names (`sync-store/schema.ts:36–39`). Retention and deploy steps must never `DROP` them.
+
+### Boundary with ADR 0012 / #50
+
+[ADR 0012](./0012-deploy-preflight.md) preflight refuses configuration and RPC-capability errors between `build` and `up`, while the old container keeps serving. It deliberately does **not** refuse on a `build_id` mismatch (identity fingerprint is a superset of `build_id` inputs). That refusal class belongs to this design: a new deployment schema absorbs a new `build_id` without dropping the live one. Preflight still runs **before** the new deployment starts, under the ADR 0010 lock, while the old deployment keeps serving.
+
+Today `scripts/ponder-reindex.sh` stops Ponder and drops schema `kargain`, then tells the operator to `docker compose up` **outside** the deploy lock (`scripts/ponder-reindex.sh:19–31`). That path is what this ADR replaces for `build_id` changes.
+
+## Decision
+
+One schema per Ponder deployment, a stable views schema for all product SQL, an HTTP switch after `/ready` 200, and `src/svm-ingest/**` out of Ponder’s build inputs.
+
+### a. Deployment schema naming
+
+- **Derived from:** the deploy commit already pinned by [ADR 0010](./0010-serialized-pinned-deploys.md) (`DEPLOY_SHA` / `github.sha`).
+- **Format:** `k_<40-char lowercase hex of that commit>` (length **42**, ≤ 45).
+- **Why commit, not the executable digest:** Ponder’s production docs list a git commit hash as a common automation choice; deploy evidence already prints `deploy_evidence commit=…`; a 64-char executable digest would need an arbitrary truncation. Recreate still happens only when the executable fingerprint changes; the schema name correlates with the commit that built the image.
+
+### b. Stable read surface
+
+- **Name:** `kargain` — as the **views** schema (`DATABASE_VIEWS_SCHEMA=kargain` / `--views-schema kargain`), not as the indexing schema of a live writer.
+- **How (re)pointed:** `ponder db create-views --schema=k_<sha> --views-schema=kargain` (in-image equivalent). Views are `SELECT * FROM "k_<sha>"."<table>"` (and meta/checkpoint), as in `createViews.ts:196–264`.
+- **When:** only after the new deployment’s `/ready` returns **200**. The new deployment **starts without** auto `--views-schema` / `DATABASE_VIEWS_SCHEMA`, so live views keep pointing at the previous deployment’s tables during backfill.
+- **Item 3 literals:** every product SQL qualifier `kargain.*` keeps reading through those views. No rewrite of UNION / browse / read-path owners is required for the schema switch. Compose stops hard-coding `DATABASE_SCHEMA: kargain` as the writer schema; e2e sets the deployment schema and the views name accordingly.
+
+### c. HTTP switch
+
+- **Recommend:** a fixed Compose **reverse-proxy** service as the tunnel’s constant target. It publishes the address the tunnel already uses (today’s host publish pattern for `:42069`). It forwards to the active deployment service. Deploy flips the proxy upstream; cloudflared and tunnel ingress stay unchanged across deploys.
+- **Reject:** editing Cloudflare tunnel ingress on every deploy (outside-repo, error-prone, not reviewable in this repository).
+- **Maintainer steps outside the repository (one-time, before the first dual-serve cutover):**
+  1. Confirm tunnel ingress targets the proxy’s published service/port (same published pattern the app already uses).
+  2. Do not change ingress per deploy after that.
+
+### d. Deploy sequence under ADR 0010’s lock
+
+Under `.deploy.lock` / `flock -w 900` and SSH `command_timeout: 30m` (ADR 0010; `deploy-ponder.yml:92–101`):
+
+1. **Build** the new image (`docker compose build` for the new deployment service).
+2. **ADR 0012 / 0013 preflight** in a one-off container of that image. On refusal: existing `deploy_preflight … verdict=refused` and `deploy_evidence outcome=refused`; exit non-zero; old keeps serving; no state write; no prune.
+3. **Start the new deployment beside the old** with `DATABASE_SCHEMA=k_<DEPLOY_SHA>`, **without** views-schema. Old keeps answering HTTP through the proxy.
+4. **Wait** until the new deployment’s `/ready` returns **200**, polling every 2s, bound **600s (10 minutes)**. Justification: measured ~1 minute with intact `ponder_rpc_cache_1` (#47 / #66); ~10× margin under continuous Base Sepolia rate limiting (~66/min, #60); still inside the 30m SSH budget after lock wait + build + preflight. This switch gate is **200 only**, not ADR 0010’s “any answered status” process probe.
+5. **Switch views** (`create-views` → `kargain` → `k_<DEPLOY_SHA>`), then **switch HTTP** (proxy upstream → new).
+6. **Stop** the old deployment.
+
+**On timeout or failure (old keeps serving):**
+
+| Step | Named failure |
+|------|----------------|
+| Preflight refuse | `deploy_evidence outcome=refused` (ADR 0012) |
+| New never answers HTTP | process-answered probe failure (existing named ready timeout) |
+| `/ready` 200 not reached in 600s | `deploy_switch_ready_timeout: waited 600s for /ready 200` — stop and remove the new deployment; do not switch views or HTTP; do not write fingerprint state as a successful switch |
+| Views or HTTP switch fails after ready | `deploy_switch_failed: <views\|http>` — leave proxy on old; tear down new; do not claim switch success |
+
+**New `deploy_evidence` lines** (exact formats; in addition to existing recreated / commit / node / preflight lines on success):
+
+```text
+deploy_evidence schema=k_<sha>
+deploy_evidence views=kargain
+deploy_evidence switch=ready status=200
+deploy_evidence switch=views
+deploy_evidence switch=http
+```
+
+The Ponder `unchanged` executable path is unchanged: no build, no new schema, no switch.
+
+### e. Rollback after a switch
+
+1. `ponder db create-views --schema=k_<previous_sha> --views-schema=kargain`.
+2. Point the proxy at the previous deployment.
+3. Stop the failed new deployment.
+
+Bound: **60s** (both deployments are already `/ready` 200; no backfill wait). Named failure if either step misses the bound: `deploy_rollback_failed: waited 60s`.
+
+### f. Retention
+
+After a **successful** switch, automatically `DROP SCHEMA … CASCADE` every prior **deployment** schema (`k_<40-hex>`) except **current** and **previous** (rollback spare). Bounded: at most two deployment schemas remain. Runs in the same deploy script under the lock; no recurring manual chore. **Never** drops the schemas in Context §6.
+
+### g. `src/svm-ingest/**` out of Ponder’s build inputs
+
+Proven against Context §1: the indexing glob includes and **executes** every `src/**/*.{js,mjs,ts,mts}` outside `src/api` and tests. Implementation must ensure the Ponder image tree does not contain `src/svm-ingest/**` where that glob can see it (build context and/or Dockerfile copy list — directory layout changes are allowed if they achieve the same proof).
+
+Effect on fingerprints (owners stay as they are):
+
+- Identity already excludes `src/svm-ingest/`, `src/lib/svm-raw-writer.ts`, `src/lib/svm-projection-writer.ts` (`scripts/lib/ponder-identity-fingerprint.ts:43–48`).
+- Executable graph already excludes `src/svm-ingest/` (`scripts/lib/ponder-executable-fingerprint.ts:27`).
+
+Effect on Ponder: svm-ingest code changes stop changing Ponder’s `build_id` and stop being executed at Ponder build. (The 2026-10-28 outage was `src/svm-ingest/main.ts` alone changing `build_id` — #47 comment / #66.)
+
+### h. What replaces `scripts/ponder-reindex.sh` / `.sql`
+
+A `build_id` change must **never** need a manual schema drop. The deploy opens `k_<new sha>`, backfills from the shared cache, switches on `/ready` 200, and retains per §f.
+
+Those scripts’ `DROP SCHEMA IF EXISTS kargain CASCADE` procedure (`scripts/ponder-reindex.sql:26`; wrapper `scripts/ponder-reindex.sh`) is **retired** by the implementation PR for this purpose. Contract address / schema / start-block identity changes also take the new-deployment-schema path (same sequence), not a drop of the live views schema under the old single-schema model.
+
+**Composition with [#55](https://github.com/kargain-com/kargain/issues/55):** #55 owns aligning reindex runbook / `ponder:config` / deploy-check text with the current plural RPC env keys and Ponder 0.18 wording. This ADR removes the drop-for-`build_id` path those scripts encode; #55’s remaining text work applies to whatever runbook remains after retirement (or is closed as superseded where the procedure no longer exists).
+
+### i. Disk
+
+Before implementation, the maintainer runs this **read-only** per-schema size measurement on the server database (via the postgres Compose service):
+
+```sql
+SELECT n.nspname AS schema,
+       pg_size_pretty(COALESCE(SUM(pg_total_relation_size(c.oid)), 0)) AS total_size,
+       COALESCE(SUM(pg_total_relation_size(c.oid)), 0) AS total_bytes
+FROM pg_namespace n
+LEFT JOIN pg_class c
+  ON c.relnamespace = n.oid
+ AND c.relkind IN ('r', 'i', 'm', 't', 'S')
+WHERE n.nspname NOT LIKE 'pg_%'
+  AND n.nspname <> 'information_schema'
+GROUP BY n.nspname
+ORDER BY COALESCE(SUM(pg_total_relation_size(c.oid)), 0) DESC;
+```
+
+The retention rule keeps at most **two** deployment schemas, so peak deployment-schema disk is about **2 ×** one deployment schema’s measured size, plus the protected schemas in Context §6 (untouched). If the measured size of one deployment schema cannot fit twice beside the protected schemas on the volume, stop and resize before the first dual-serve cutover.
+
+## One rejected alternative and why
+
+Keep one schema and only remove `src/svm-ingest/**` from Ponder’s build inputs (the alternative stated in #47). Rejected: `build_id` changes become rarer, but every legitimate schema or indexing change still means downtime plus a manual drop — the 2026-10-25 and 2026-10-28 outage class.
+
+## Consequences
+
+- **Implementation PR scope:** Compose dual Ponder services + fixed proxy; deploy workflow sequence under the lock (build → preflight → start beside → `/ready` 200 / 600s → views → HTTP → stop old); rollback and retention; Dockerfile/build-context proof that `src/svm-ingest/**` is absent from Ponder’s indexing glob; retire `scripts/ponder-reindex.sh` / `.sql` as the `build_id` drop procedure; update ops text that still prescribe that drop; extend deploy / isolation policy tests.
+- **Constructed controls (red before green):** switching views or HTTP before `/ready` 200 fails; retention that would drop `ponder_sync`, `ponder_rpc_cache_1`, `kargain_svm_raw`, or `kargain_svm_projection` fails; Ponder image / context that still contains `src/svm-ingest/**` under the indexing glob fails; deploy script missing the new evidence lines fails; dual-serve path that replaces the old container before the new `/ready` 200 fails.
+- **Local Docker rehearsal** the implementation PR must show before any server deploy: two deployments on one Compose project, views + HTTP switch after `/ready` 200, rollback to the previous deployment within 60s, retention dropping only older `k_*` schemas and never the protected four.
+- **Maintainer steps outside the repository, in order:**
+  1. Run the Context §i size SQL; confirm two deployment schemas fit.
+  2. One-time: point tunnel ingress at the proxy (Decision §c).
+  3. After the implementation merges: first production cutover under the deploy lock with `ponder_rpc_cache_1` / `ponder_sync` intact (no cache drop).
+
+## Status
+
+Accepted. The maintainer’s merge of this ADR PR is the acceptance.
