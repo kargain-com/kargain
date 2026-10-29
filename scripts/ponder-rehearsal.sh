@@ -141,6 +141,7 @@ grep -q 'cutover=awaiting_dispatch' "$OUT/step-1/executor.txt"
 
 step 2 "hold → blue pending then ready"
 use_compose "$REHEARSAL_COMPOSE"
+rm -rf .ponder-upstream.conf
 printf 'set $ponder_upstream http://ponder-blue:42069;\n' >.ponder-upstream.conf
 run_deploy hold workflow_dispatch "$HEAD_SHA" | tee "$OUT/step-2/executor.txt"
 capture "$OUT/step-2"
