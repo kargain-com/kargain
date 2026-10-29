@@ -22,6 +22,9 @@ export type PonderReadyProbeResult =
       timeoutMs: number;
       elapsedMs: number;
       mode: PonderReadyMode;
+      /** True when at least one HTTP response was received (not connection refused). */
+      hadAnswer: boolean;
+      lastStatus?: number;
     };
 
 export function ponderDidNotBecomeReadyMessage(
@@ -71,13 +74,17 @@ export async function waitForPonderReady(
   const now = opts?.now ?? Date.now;
 
   const started = now();
+  let hadAnswer = false;
+  let lastStatus: number | undefined;
   for (;;) {
     const elapsedMs = now() - started;
     if (elapsedMs >= timeoutMs) {
-      return { ok: false, url, timeoutMs, elapsedMs, mode };
+      return { ok: false, url, timeoutMs, elapsedMs, mode, hadAnswer, lastStatus };
     }
     try {
       const res = await fetchFn(url, { method: "GET", redirect: "manual" });
+      hadAnswer = true;
+      lastStatus = res.status;
       if (mode === "answered") {
         return {
           ok: true,
@@ -108,6 +115,8 @@ export async function waitForPonderReady(
         timeoutMs,
         elapsedMs: now() - started,
         mode,
+        hadAnswer,
+        lastStatus,
       };
     }
     await sleep(Math.min(intervalMs, remaining));

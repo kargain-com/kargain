@@ -49,7 +49,8 @@ jobs:
           envs: DEPLOY_SHA
           script: |
             set -euo pipefail
-            cd /opt/kargain
+            ROOT=/opt/kargain
+            cd "$ROOT"
             exec 9>.deploy.lock
             if ! flock -w 900 9; then
               echo "deploy_lock_not_acquired: waited 900s for .deploy.lock"
@@ -68,11 +69,11 @@ jobs:
             docker compose up -d --force-recreate svm-ingest
 
             # Probe via the image's node (host may lack tsx). --network host → published :42100.
-            # Host scripts mount: keeps probe version aligned with the checked-out commit.
+            # Host scripts mount from $ROOT (A5): keeps probe version aligned with the commit.
             IMAGE_ID=$(docker compose images -q svm-ingest)
             NODE_VER=$(docker compose exec -T svm-ingest node --version)
             READY_STATUS=$(docker run --rm --network host \
-              -v /opt/kargain/scripts:/app/scripts:ro \
+              -v "$ROOT/scripts:/app/scripts:ro" \
               --entrypoint node "$IMAGE_ID" \
               --import tsx /app/scripts/svm-ingest-ready-probe.ts)
 

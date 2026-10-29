@@ -9,10 +9,8 @@ import {
   DeployStateInvalidError,
   readPonderDeployStateFile,
   writePonderDeployStateFile,
-  type PonderDeployState,
   type PonderRollbackModel,
 } from "./lib/ponder-deploy-state.js";
-import { SEPOLIA_CHAIN_ID, SPOKE_CHAIN_ID } from "./lib/load-deployment.js";
 
 type Sample = {
   chainId: number;
@@ -38,8 +36,22 @@ function readSamples(path: string): Sample[] {
 }
 
 function validateSamples(label: string, rows: Sample[]): void {
-  const chains = [SEPOLIA_CHAIN_ID, SPOKE_CHAIN_ID];
-  for (const chainId of chains) {
+  for (const r of rows) {
+    if (
+      typeof r.lag_seconds !== "number" ||
+      !Number.isFinite(r.lag_seconds) ||
+      r.lag_seconds < 0
+    ) {
+      throw new Error(
+        `decide_rollback_model_refused: ${label} non-finite or negative lag_seconds`,
+      );
+    }
+  }
+  const chainIds = [...new Set(rows.map((r) => r.chainId))];
+  if (chainIds.length === 0) {
+    throw new Error(`decide_rollback_model_refused: ${label} empty`);
+  }
+  for (const chainId of chainIds) {
     const forChain = rows.filter((r) => r.chainId === chainId);
     if (forChain.length < 3) {
       throw new Error(
@@ -103,7 +115,7 @@ function main(): void {
     readSamples(dualPath),
   );
 
-  let state: PonderDeployState;
+  let state;
   try {
     state = readPonderDeployStateFile(statePath);
   } catch (err) {
@@ -114,7 +126,7 @@ function main(): void {
     throw err;
   }
 
-  const next: PonderDeployState = {
+  writePonderDeployStateFile(statePath, {
     ...state,
     rollback_model: decision.rollback_model,
     lag: {
@@ -122,8 +134,7 @@ function main(): void {
       m: decision.m,
       b: decision.b,
     },
-  };
-  writePonderDeployStateFile(statePath, next);
+  });
   process.stdout.write(
     `deploy_evidence rollback_model=${decision.rollback_model}\n`,
   );

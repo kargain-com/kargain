@@ -3,6 +3,8 @@
  * Usage: node --import tsx scripts/ponder-deploy-plan-cli.ts \
  *   --state <path> --observations <path> --operation <deploy|hold|rollback> \
  *   --deploy-sha <sha>
+ *
+ * Phase is reconciled from observations.kargainHasBaseTables (A1).
  */
 import { readFileSync } from "node:fs";
 import {
@@ -12,7 +14,8 @@ import {
 } from "./lib/ponder-deploy-plan.js";
 import {
   DeployStateInvalidError,
-  parsePonderDeployState,
+  parsePonderDeployStateFile,
+  reconcileDeployPhase,
 } from "./lib/ponder-deploy-state.js";
 
 function argValue(argv: string[], name: string): string | undefined {
@@ -51,9 +54,27 @@ function main(): void {
     process.exit(1);
   }
 
+  let observations: PonderDeployObservations;
+  try {
+    observations = JSON.parse(
+      readFileSync(obsPath, "utf8"),
+    ) as PonderDeployObservations;
+  } catch {
+    process.stderr.write("deploy_observation_failed: observations JSON\n");
+    process.exit(1);
+  }
+
+  if (typeof observations.kargainHasBaseTables !== "boolean") {
+    process.stderr.write(
+      "deploy_observation_failed: kargainHasBaseTables required\n",
+    );
+    process.exit(1);
+  }
+
   let state;
   try {
-    state = parsePonderDeployState(stateRaw);
+    const file = parsePonderDeployStateFile(stateRaw);
+    state = reconcileDeployPhase(file, observations.kargainHasBaseTables);
   } catch (err) {
     if (err instanceof DeployStateInvalidError) {
       process.stderr.write(`${err.message}\n`);
@@ -61,10 +82,6 @@ function main(): void {
     }
     throw err;
   }
-
-  const observations = JSON.parse(
-    readFileSync(obsPath, "utf8"),
-  ) as PonderDeployObservations;
 
   const result = planPonderDeploy({
     state,

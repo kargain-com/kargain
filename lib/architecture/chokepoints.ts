@@ -1057,14 +1057,14 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   },
   {
     id: "ponder-deploy-state",
-    owner: "scripts/lib/ponder-deploy-state.ts",
-    rule: "Typed fail-closed parse of .ponder-deploy-fingerprints; unknown field → deploy_state_invalid; identity/executable-only = pre-cutover",
+    owner: "scripts/lib/ponder-deploy-state.ts · scripts/ponder-deploy-state-cli.ts",
+    rule: "Fail-closed parse; missing file → deploy_state_invalid (never invent); phase from kargain base-table observation via reconcileDeployPhase; writes only via writePonderDeployStateFile",
     guardTests: ["ponder-deploy-state.test.ts"],
   },
   {
     id: "ponder-deploy-plan",
     owner: "scripts/lib/ponder-deploy-plan.ts · scripts/ponder-deploy.sh",
-    rule: "Pure plan encodes ADR 0014 §a/d/e/f/j; shell is sole executor; plan imports only Node builtins + scripts/lib",
+    rule: "Pure plan encodes ADR 0014 §a/d/e/f/j; typed ProbeObservation; shell sole executor; mounts from $ROOT; no --network kargain literal",
     guardTests: [
       "ponder-deploy-plan.test.ts",
       "deploy-ponder-svm-ingest-ci-policy.test.ts",
@@ -1072,14 +1072,14 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   },
   {
     id: "ponder-views-switch",
-    owner: "scripts/lib/ponder-views-switch.ts",
-    rule: "Atomic views flip via psql --single-transaction; final kargain_live_query notify names; never ponder db create-views for live flip",
+    owner: "scripts/lib/ponder-views-switch.ts · scripts/ponder-views-switch-cli.ts",
+    rule: "Atomic views flip via psql --single-transaction; meta via value->table_names (B1); empty table_names refuses; final kargain_live_query notify names",
     guardTests: ["ponder-views-switch.test.ts"],
   },
   {
     id: "ponder-deploy-retention",
-    owner: "scripts/lib/ponder-deploy-retention.ts",
-    rule: "Drop only ^k_[0-9a-f]{40}$ not live/previous/pending; Context §6 schemas unreachable",
+    owner: "scripts/lib/ponder-deploy-retention.ts · scripts/ponder-deploy-retention-cli.ts",
+    rule: "Drop only ^k_[0-9a-f]{40}$ not live/previous/pending; DROP SQL only from owner after re-validate; Context §6 unreachable",
     guardTests: ["ponder-reindex-svm-isolation-policy.test.ts"],
   },
   {

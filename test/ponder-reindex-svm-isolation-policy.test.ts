@@ -9,6 +9,7 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  dropDeploymentSchemaSql,
   PROTECTED_SCHEMAS,
   retentionSchemasToDrop,
   retentionWouldSelect,
@@ -61,6 +62,30 @@ describe("ponder retention svm isolation policy", () => {
       { live, previous: null, pending: null },
     );
     assert.deepEqual(drop, [old]);
+  });
+
+  it("B6: dropDeploymentSchemaSql re-validates and refuses keep-set / non-k_*", () => {
+    const old =
+      "k_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const live =
+      "k_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    assert.equal(
+      dropDeploymentSchemaSql(old),
+      `DROP SCHEMA IF EXISTS "${old}" CASCADE;`,
+    );
+    assert.throws(
+      () => dropDeploymentSchemaSql("ponder_sync"),
+      /deploy_retention_refused/,
+    );
+    assert.throws(
+      () =>
+        dropDeploymentSchemaSql(live, {
+          live,
+          previous: null,
+          pending: null,
+        }),
+      /deploy_retention_refused: schema in keep set/,
+    );
   });
 
   it("constructed violation: selecting ponder_sync fails the wouldSelect control", () => {

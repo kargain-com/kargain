@@ -446,6 +446,26 @@ export function buildPonderIndexingConfig(): PonderIndexingConfig {
 }
 
 /**
+ * Sole map of Ponder /status chain names → commercial/local chain ids (C4).
+ * Same names as buildPonderIndexingConfig().chains keys.
+ */
+export function ponderStatusChainNameById(
+  env: NodeJS.ProcessEnv = process.env,
+): Record<number, string> {
+  const localOnly = env.PONDER_LOCAL_ONLY === "1";
+  const enableLocal = env.PONDER_ENABLE_LOCAL === "1";
+  const map: Record<number, string> = {};
+  if (!localOnly) {
+    map[SEPOLIA_CHAIN_ID] = "baseSepolia";
+    map[SPOKE_CHAIN_ID] = "ethereumSepolia";
+  }
+  if (enableLocal || localOnly) {
+    map[LOCALHOST_CHAIN_ID] = "localhost";
+  }
+  return map;
+}
+
+/**
  * Full Ponder runtime: indexing + transport (rpc list, getLogs window) + database.
  */
 export function buildPonderRuntime() {

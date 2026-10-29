@@ -38,6 +38,7 @@ ignition/deployments/
 .ponder/
 ponder/.ponder
 .ponder-deploy-fingerprints
+.ponder-deploy-work/
 .ponder-slot-*.env
 .ponder-upstream.conf
 .deploy.lock

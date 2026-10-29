@@ -1,0 +1,40 @@
+# Rehearsal-only override (ADR 0014 / PR #71 D1).
+# Selected via: COMPOSE_FILE=docker-compose.yml:docker-compose.rehearsal.yml
+# Real Ponder slots index local Hardhat only — no commercial RPC in the writers.
+# Does not publish slot ports (nginx owns :42069). Same postgres volume/network.
+x-rehearsal-env: &rehearsal-env
+  DATABASE_URL: ${DATABASE_URL:-postgresql://ponder:${POSTGRES_PASSWORD}@postgres:5432/kargain_ponder}
+  PONDER_ENABLE_LOCAL: "1"
+  PONDER_LOCAL_ONLY: "1"
+  PONDER_RPC_URL_31337: ${PONDER_RPC_URL_31337:-http://host.docker.internal:8545}
+  PONDER_START_BLOCK: "0"
+  PONDER_START_BLOCK_31337: "0"
+  # Preflight still probes commercial chains; rehearsal points these at a local
+  # HTTPS JSON-RPC mock on the host (no external RPC). Writers ignore them under LOCAL_ONLY.
+  PONDER_RPC_URLS_84532: ${PONDER_RPC_URLS_84532}
+  PONDER_RPC_URLS_11155111: ${PONDER_RPC_URLS_11155111}
+  PONDER_START_BLOCK_84532: ${PONDER_START_BLOCK_84532:-0}
+  PONDER_START_BLOCK_11155111: ${PONDER_START_BLOCK_11155111:-0}
+  PONDER_GETLOGS_BLOCK_RANGE_84532: ${PONDER_GETLOGS_BLOCK_RANGE_84532:-1}
+  PONDER_GETLOGS_BLOCK_RANGE_11155111: ${PONDER_GETLOGS_BLOCK_RANGE_11155111:-1}
+  NODE_TLS_REJECT_UNAUTHORIZED: "0"
+
+services:
+  ponder-blue:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      <<: *rehearsal-env
+
+  ponder-green:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      <<: *rehearsal-env
+
+  ponder-legacy:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      <<: *rehearsal-env
+      DATABASE_SCHEMA: kargain

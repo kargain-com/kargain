@@ -166,7 +166,10 @@ const EXPECTED_CONCURRENCY_GROUP: Record<
 const LOCK_FAILURE_MESSAGE =
   "deploy_lock_not_acquired: waited 900s for .deploy.lock";
 
-const HOST_SCRIPTS_MOUNT = "-v /opt/kargain/scripts:/app/scripts:ro";
+/** Host scripts mount over /app/scripts (A5: every mount from $ROOT, not a literal path). */
+const HOST_SCRIPTS_MOUNT_RE =
+  /-v ["']?\$(?:\{ROOT\}|ROOT)\/scripts(?::\/app\/scripts:ro)?["']?/;
+const HOST_SCRIPTS_MOUNT_LITERAL_BANNED = "/opt/kargain/scripts:/app/scripts";
 
 /** Non-empty, non-comment lines (order preserved). */
 export function deployScriptActiveLines(script: string): string[] {
@@ -301,12 +304,25 @@ export function deployScriptEvidenceDefect(
   if (/ready=\S+\s+ok\b/.test(script)) {
     return "deploy evidence must use ready=<service> status=<code> not ready=… ok";
   }
-  if (!/deploy_evidence outcome=recreated/.test(script)) {
+  // C1: ponder executor prints plan `evidence` actions — outcome strings live in the plan owner.
+  const isPonderExecutor =
+    /ponder-deploy-plan/.test(script) ||
+    /action_field type/.test(script) ||
+    /execute_actions/.test(script);
+  let evidenceCorpus = script;
+  if (isPonderExecutor && opts.service === "ponder") {
+    try {
+      evidenceCorpus = `${script}\n${readFileSync(join(ROOT, "scripts/lib/ponder-deploy-plan.ts"), "utf8")}`;
+    } catch {
+      evidenceCorpus = script;
+    }
+  }
+  if (!/deploy_evidence outcome=recreated/.test(evidenceCorpus)) {
     return "deploy script lacks deploy_evidence outcome=recreated";
   }
   if (
     opts.requireUnchanged &&
-    !/deploy_evidence outcome=unchanged/.test(script)
+    !/deploy_evidence outcome=unchanged/.test(evidenceCorpus)
   ) {
     return "deploy script lacks deploy_evidence outcome=unchanged";
   }
@@ -361,24 +377,28 @@ export function deployScriptPreflightAdjacencyDefect(
   }
 
   // Ponder: preflight runs against slot service with ponder-deploy-preflight.ts
+  // Optional -T (non-TTY) is allowed; match active lines only (C2).
+  const active = lines.join("\n");
   const preflightRe =
-    /docker compose run --rm --no-deps --entrypoint node ["']?ponder-\$slot["']? --import tsx scripts\/ponder-deploy-preflight\.ts/;
-  if (!preflightRe.test(script)) {
+    /docker compose run --rm --no-deps(?:\s+-T)? --entrypoint node ["']?ponder-\$slot["']?\s+--import tsx scripts\/ponder-deploy-preflight\.ts/;
+  if (!preflightRe.test(active)) {
     return "deploy script lacks preflight between build and up for ponder";
   }
-  if (!/docker compose build "ponder-\$slot"/.test(script)) {
+  const buildRe =
+    /docker compose build(?:\s+--build-arg\s+"[^"]+")*\s+"ponder-\$slot"/;
+  if (!buildRe.test(active)) {
     return "deploy script lacks docker compose build ponder";
   }
   if (
-    !/docker compose up -d "ponder-\$slot"/.test(script) &&
-    !/docker compose up -d ponder\b/.test(script)
+    !/docker compose up -d "ponder-\$slot"/.test(active) &&
+    !/docker compose up -d ponder\b/.test(active)
   ) {
     return "deploy script lacks docker compose up for ponder";
   }
-  // Ordering: build_slot / preflight_slot / start_slot appear in that case order
-  const buildIdx = script.indexOf('docker compose build "ponder-$slot"');
-  const preflightIdx = script.search(preflightRe);
-  const upIdx = script.indexOf('docker compose up -d "ponder-$slot"');
+  // Ordering on active lines: build before preflight before up.
+  const buildIdx = active.search(buildRe);
+  const preflightIdx = active.search(preflightRe);
+  const upIdx = active.search(/docker compose up -d "ponder-\$slot"/);
   if (buildIdx < 0 || preflightIdx < 0 || upIdx < 0) {
     return "deploy script lacks preflight between build and up for ponder";
   }
@@ -386,16 +406,13 @@ export function deployScriptPreflightAdjacencyDefect(
     return "deploy script must run preflight between build and up for ponder";
   }
   // Preflight must not mount host scripts (image copy only).
-  if (
-    /deploy-preflight[\s\S]*?\/opt\/kargain\/scripts/.test(script) &&
-    script.includes(HOST_SCRIPTS_MOUNT)
-  ) {
-    // Only fail if the preflight run itself mounts — probe mounts are OK.
-    const prefLines = lines.filter((l) => /deploy-preflight/.test(l));
-    for (const l of prefLines) {
-      if (l.includes("/opt/kargain/scripts")) {
-        return "deploy preflight for ponder must not mount host scripts";
-      }
+  const prefLines = lines.filter((l) => /deploy-preflight/.test(l));
+  for (const l of prefLines) {
+    if (
+      l.includes("/opt/kargain/scripts") ||
+      HOST_SCRIPTS_MOUNT_RE.test(l)
+    ) {
+      return "deploy preflight for ponder must not mount host scripts";
     }
   }
   return null;
@@ -409,7 +426,7 @@ export function deployScriptPreflightRefusalDefect(
   script: string,
 ): string | null {
   const branchRe =
-    /if ! docker compose run --rm --no-deps --entrypoint node \S+ --import tsx scripts\/\S+-deploy-preflight\.ts; then\r?\n([\s\S]*?)\r?\n\s*fi\b/;
+    /if ! docker compose run --rm --no-deps(?:\s+-T)? --entrypoint node \S+\s+--import tsx scripts\/\S+-deploy-preflight\.ts(?:\s*<\/dev\/null)?; then\r?\n([\s\S]*?)\r?\n\s*fi\b/;
   const match = script.match(branchRe);
   if (!match) {
     return "deploy script lacks preflight refusal then-branch";
@@ -452,32 +469,32 @@ export function deployScriptEvidenceSourcesDefect(
     }
     return null;
   }
-  // Ponder: node from a slot image (nginx has no Node).
-  if (
-    !/docker compose exec -T "ponder-\$slot" node --version/.test(script) &&
-    !/docker run --rm --entrypoint node "\$image" --version/.test(script) &&
-    !/entrypoint node "\$image" --version/.test(script)
-  ) {
+  // Ponder: node from the live slot via compose exec (C1; nginx has no Node).
+  if (!/docker compose exec -T "ponder-\$slot" node --version/.test(script)) {
     return "deploy evidence node must come from a ponder slot image";
   }
   return null;
 }
 
 /**
- * Every readiness probe docker run must mount the host checkout scripts over
- * /app/scripts so the probe version cannot drift from the deployed commit.
+ * Every readiness probe (compose run or docker run) must mount the host checkout
+ * scripts over /app/scripts so the probe version cannot drift from the commit (A5).
+ * Mounts must use $ROOT/scripts (or ${ROOT}/scripts); literal /opt/kargain/scripts is banned.
  */
 export function deployScriptScriptsMountDefect(script: string): string | null {
-  const runs = script.match(
-    /docker run[\s\S]*?--import tsx \/app\/scripts\/\S*ready-probe\.ts/g,
-  );
-  if (!runs || runs.length === 0) {
+  const hasRootMount = HOST_SCRIPTS_MOUNT_RE.test(script);
+  const hasLiteralBanned = script.includes(HOST_SCRIPTS_MOUNT_LITERAL_BANNED);
+  const hasReadyProbe =
+    /ponder-ready-probe\.ts/.test(script) ||
+    /\/app\/scripts\/\S*ready-probe\.ts/.test(script);
+  if (!hasReadyProbe) {
     return "deploy probe invocations must mount host scripts over /app/scripts";
   }
-  for (const run of runs) {
-    if (!run.includes(HOST_SCRIPTS_MOUNT)) {
-      return "deploy probe invocations must mount host scripts over /app/scripts";
-    }
+  if (hasLiteralBanned) {
+    return "deploy probe mounts must use $ROOT/scripts, not literal /opt/kargain/scripts";
+  }
+  if (!hasRootMount) {
+    return "deploy probe invocations must mount host scripts over /app/scripts";
   }
   return null;
 }
@@ -750,7 +767,10 @@ describe("deploy-ponder-svm-ingest-ci-policy", () => {
     assert.doesNotMatch(paths, /src\/svm-ingest/);
     assert.doesNotMatch(paths, /Dockerfile\.svm-ingest/);
     assert.doesNotMatch(paths, /lib\/svm/);
-    assert.match(body, /docker compose build "ponder-\$slot"/);
+    assert.match(
+      body,
+      /docker compose build(?:\s+--build-arg\s+"[^"]+")*\s+"ponder-\$slot"/,
+    );
     assert.match(body, /docker compose up -d ponder/);
     assert.doesNotMatch(yaml, /build svm-ingest/);
     assert.match(yaml, /scripts\/ponder-deploy\.sh/);
@@ -1118,6 +1138,19 @@ READY_STATUS=$(docker run --rm --network host \\
     assert.equal(
       deployScriptScriptsMountDefect(planted),
       "deploy probe invocations must mount host scripts over /app/scripts",
+    );
+  });
+
+  it("constructed: probe with literal /opt/kargain/scripts mount is red (A5)", () => {
+    const planted = `set -euo pipefail
+READY_STATUS=$(docker compose run --rm --no-deps \\
+  -v /opt/kargain/scripts:/app/scripts:ro \\
+  --entrypoint node ponder-blue \\
+  --import tsx /app/scripts/ponder-ready-probe.ts)
+`;
+    assert.equal(
+      deployScriptScriptsMountDefect(planted),
+      "deploy probe mounts must use $ROOT/scripts, not literal /opt/kargain/scripts",
     );
   });
 

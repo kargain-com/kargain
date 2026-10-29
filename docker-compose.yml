@@ -78,6 +78,22 @@ services:
       - path: .ponder-slot-green.env
         required: false
 
+  # First-cutover rollback writer (A8): tagged image kargain-ponder-legacy:cutover.
+  # Not built by deploy; image is preserved from the pre-cutover writer.
+  ponder-legacy:
+    <<: *ponder-slot
+    image: kargain-ponder-legacy:cutover
+    profiles:
+      - legacy
+    env_file:
+      - path: .env
+        required: true
+      - path: .ponder-slot-legacy.env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://ponder:${POSTGRES_PASSWORD}@postgres:5432/kargain_ponder}
+      DATABASE_SCHEMA: kargain
+
   cloudflared:
     <<: *default-logging
     image: cloudflare/cloudflared:latest

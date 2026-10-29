@@ -3,22 +3,8 @@
 # Invoked by deploy-ponder.yml after flock + checkout. No deploy logic here —
 # only observation gathering and action execution.
 #
-# Evidence formats emitted via plan actions (must stay present for policy):
-#   deploy_evidence outcome=recreated
-#   deploy_evidence outcome=unchanged
-#   deploy_evidence ready=ponder status=
-#   deploy_evidence preflight=ok
-#   deploy_evidence switch=pending schema=
-#   deploy_evidence switch=ready status=200
-#   deploy_evidence switch=views
-#   deploy_evidence switch=http
-#   deploy_evidence proxy=upstream
-#   deploy_evidence rollback_model=
-#   deploy_evidence schema=
-#   deploy_evidence views=kargain
-#   deploy_evidence slot=
-#   deploy_evidence operation=
-#   deploy_evidence reason=live_schema
+# Evidence lines are printed only when executing plan `evidence` actions, or
+# after a step that measured the value (C1). Never invent status=0.
 set -euo pipefail
 
 ROOT="${PONDER_DEPLOY_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -30,66 +16,134 @@ DEPLOY_SHA="${DEPLOY_SHA:?DEPLOY_SHA required}"
 IDENTITY_DIGEST="${IDENTITY_DIGEST:?IDENTITY_DIGEST required}"
 EXECUTABLE_DIGEST="${EXECUTABLE_DIGEST:?EXECUTABLE_DIGEST required}"
 PRIOR_CHECKOUT_SHA="${PRIOR_CHECKOUT_SHA:-}"
-NGINX_CONFIG_CHANGED="${NGINX_CONFIG_CHANGED:-0}"
+EVENT_NAME="${EVENT_NAME:-workflow_dispatch}"
+LEGACY_IMAGE_TAG="kargain-ponder-legacy:cutover"
+WORK="${ROOT}/.ponder-deploy-work"
+UPSTREAM_FILE="${ROOT}/.ponder-upstream.conf"
+# Container paths (A5: host mounts derive from ROOT).
+C_SCRIPTS="/app/scripts"
+C_WORK="/work"
+C_ROOT="/deploy-root"
+C_STATE="/deploy-root/.ponder-deploy-fingerprints"
+
+mkdir -p "$WORK"
+
+# --- helpers -----------------------------------------------------------------
 
 slot_service() {
   echo "ponder-$1"
 }
 
+pick_node_service() {
+  if docker compose images -q ponder-blue 2>/dev/null | grep -q .; then
+    echo "ponder-blue"
+    return 0
+  fi
+  if docker compose images -q ponder-green 2>/dev/null | grep -q .; then
+    echo "ponder-green"
+    return 0
+  fi
+  docker compose build ponder-blue >/dev/null
+  echo "ponder-blue"
+}
+
+# Run node CLI with scripts + work + deploy root mounted (A4/A5).
+# Usage: run_node <args...>, or: printf data | run_node ...
+run_node() {
+  local svc
+  svc="$(pick_node_service)"
+  # </dev/null: compose run must not consume stdin (execute_actions reads actions.jsonl).
+  docker compose run --rm --no-deps -T \
+    -v "$ROOT/scripts:/app/scripts:ro" \
+    -v "$WORK:/work" \
+    -v "$ROOT:/deploy-root" \
+    --entrypoint node \
+    "$svc" \
+    --import tsx \
+    "$@" </dev/null
+}
+
 write_slot_env() {
   local slot="$1" schema="$2"
-  printf 'DATABASE_SCHEMA=%s\n' "$schema" >"$ROOT/.ponder-slot-${slot}.env"
+  printf 'DATABASE_SCHEMA=%s\n' "$schema" >"${ROOT}/.ponder-slot-${slot}.env"
 }
 
-write_upstream() {
-  local slot="$1"
-  printf 'set $ponder_upstream http://ponder-%s:42069;\n' "$slot" >"$ROOT/.ponder-upstream.conf"
+write_upstream_target() {
+  local target="$1"
+  local host
+  case "$target" in
+    blue|green) host="ponder-${target}" ;;
+    legacy) host="ponder-legacy" ;;
+    *)
+      echo "ponder-deploy.sh: bad upstream target $target" >&2
+      return 1
+      ;;
+  esac
+  printf 'set $ponder_upstream http://%s:42069;\n' "$host" >"$UPSTREAM_FILE"
 }
 
-probe_slot_status() {
+save_upstream_backup() {
+  if [ -f "$UPSTREAM_FILE" ]; then
+    cp "$UPSTREAM_FILE" "$WORK/upstream.prev"
+  else
+    rm -f "$WORK/upstream.prev"
+  fi
+}
+
+restore_upstream_backup() {
+  if [ -f "$WORK/upstream.prev" ]; then
+    cp "$WORK/upstream.prev" "$UPSTREAM_FILE"
+    docker compose exec -T ponder nginx -s reload 2>/dev/null || true
+  fi
+}
+
+nginx_config_digest() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "${ROOT}/ops/nginx/ponder.conf" | awk '{print $1}'
+  else
+    shasum -a 256 "${ROOT}/ops/nginx/ponder.conf" | awk '{print $1}'
+  fi
+}
+
+probe_url_json() {
+  local url="$1"
+  set +e
+  local out ec
+  out="$(run_node "${C_SCRIPTS}/ponder-ready-probe.ts" \
+    --mode answered \
+    --format json \
+    --url "$url" \
+    --timeout-ms 5000 2>/dev/null)"
+  ec=$?
+  set -e
+  if [ "$ec" -ne 0 ]; then
+    if printf '%s' "$out" | grep -q '"kind"'; then
+      printf '%s\n' "$out" | tail -n 1
+    else
+      printf '%s\n' '{"kind":"probe_failed","detail":"compose_run_failed"}'
+    fi
+    return 0
+  fi
+  printf '%s\n' "$out" | tail -n 1
+}
+
+probe_slot_json() {
   local slot="$1"
-  local svc image
+  local svc
   svc="$(slot_service "$slot")"
   if ! docker compose ps -q "$svc" 2>/dev/null | grep -q .; then
-    echo ""
+    printf '%s\n' '{"kind":"no_answer"}'
     return 0
   fi
-  image="$(docker compose images -q "$svc" 2>/dev/null || true)"
-  if [ -z "$image" ]; then
-    echo ""
-    return 0
-  fi
-  docker run --rm --network kargain \
-    -v /opt/kargain/scripts:/app/scripts:ro \
-    --entrypoint node "$image" \
-    --import tsx /app/scripts/ponder-ready-probe.ts \
-    --mode answered \
-    --url "http://${svc}:42069/ready" \
-    --timeout-ms 5000 2>/dev/null || echo ""
+  probe_url_json "http://${svc}:42069/ready"
 }
 
-probe_nginx_status() {
+probe_nginx_json() {
   if ! docker compose ps -q ponder 2>/dev/null | grep -q .; then
-    echo ""
+    printf '%s\n' '{"kind":"no_answer"}'
     return 0
   fi
-  # Prefer a slot image for node; fall back to ponder-blue build if needed.
-  local image
-  image="$(docker compose images -q ponder-blue 2>/dev/null || true)"
-  if [ -z "$image" ]; then
-    image="$(docker compose images -q ponder-green 2>/dev/null || true)"
-  fi
-  if [ -z "$image" ]; then
-    echo ""
-    return 0
-  fi
-  docker run --rm --network kargain \
-    -v /opt/kargain/scripts:/app/scripts:ro \
-    --entrypoint node "$image" \
-    --import tsx /app/scripts/ponder-ready-probe.ts \
-    --mode answered \
-    --url "http://ponder:42069/ready" \
-    --timeout-ms 5000 2>/dev/null || echo ""
+  probe_url_json "http://ponder:42069/ready"
 }
 
 list_schemas_json() {
@@ -99,151 +153,401 @@ list_schemas_json() {
     | tr -d '\r' | tail -n 1
 }
 
-plan_image() {
-  local image
-  image="$(docker compose images -q ponder-blue 2>/dev/null || true)"
-  if [ -z "$image" ]; then
-    image="$(docker compose images -q ponder-green 2>/dev/null || true)"
-  fi
-  if [ -z "$image" ]; then
-    # Pre-cutover: legacy ponder writer still has node.
-    image="$(docker compose images -q ponder 2>/dev/null || true)"
-  fi
-  if [ -z "$image" ]; then
-    docker compose build ponder-blue >/dev/null
-    image="$(docker compose images -q ponder-blue)"
-  fi
-  echo "$image"
+kargain_has_base_tables() {
+  local raw
+  raw="$(docker compose exec -T postgres \
+    psql -U ponder -d kargain_ponder -t -A -c \
+    "SELECT EXISTS ( SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'kargain' AND c.relkind IN ('r', 'p') ) AS has_base;" \
+    | tr -d '\r' | tail -n 1 | tr '[:upper:]' '[:lower:]')"
+  case "$raw" in
+    t|true|1) echo "true" ;;
+    *) echo "false" ;;
+  esac
 }
 
-run_plan_cli() {
-  local obs_file="$1"
-  local image
-  image="$(plan_image)"
-  docker run --rm --network kargain \
-    -v /opt/kargain/scripts:/app/scripts:ro \
-    -v "$STATE_FILE:/state.json:ro" \
-    -v "$obs_file:/obs.json:ro" \
-    --entrypoint node "$image" \
-    --import tsx /app/scripts/ponder-deploy-plan-cli.ts \
-    --state /state.json \
-    --observations /obs.json \
-    --operation "$OPERATION" \
-    --deploy-sha "$DEPLOY_SHA"
+legacy_image_id() {
+  local id
+  id="$(docker compose images -q ponder 2>/dev/null || true)"
+  if [ -n "$id" ]; then
+    if docker image inspect "$id" --format '{{json .Config}}' 2>/dev/null | grep -qi nginx; then
+      :
+    else
+      printf '%s\n' "$id"
+      return 0
+    fi
+  fi
+  if docker image inspect "$LEGACY_IMAGE_TAG" >/dev/null 2>&1; then
+    docker image inspect "$LEGACY_IMAGE_TAG" --format '{{.Id}}'
+    return 0
+  fi
+  printf '\n'
 }
 
-ensure_state_file() {
+action_field() {
+  local field="$1"
+  run_node "${C_SCRIPTS}/ponder-deploy-state-cli.ts" \
+    --action-field "${C_WORK}/action.json" "$field" | tr -d '\r' | tail -n 1
+}
+
+stop_writers_for_schema() {
+  local schema="$1"
+  local slot envf cur
+  for slot in blue green; do
+    envf="${ROOT}/.ponder-slot-${slot}.env"
+    if [ -f "$envf" ]; then
+      cur="$(grep -E '^DATABASE_SCHEMA=' "$envf" | head -n1 | cut -d= -f2- | tr -d '\r')"
+      if [ "$cur" = "$schema" ]; then
+        docker compose stop "ponder-${slot}" || true
+      fi
+    fi
+  done
+}
+
+drop_schema_via_owner() {
+  local schema="$1"
+  stop_writers_for_schema "$schema"
+  local sql
+  sql="$(run_node "${C_SCRIPTS}/ponder-deploy-retention-cli.ts" --drop-schema "$schema")"
+  printf '%s\n' "$sql" | docker compose exec -T postgres \
+    psql -U ponder -d kargain_ponder -v ON_ERROR_STOP=1
+}
+
+tear_down_new_pending() {
+  local slot="$1" schema="$2"
+  docker compose stop "ponder-${slot}" || true
+  drop_schema_via_owner "$schema" || true
+  if [ -f "$STATE_FILE" ]; then
+    run_node "${C_SCRIPTS}/ponder-deploy-state-cli.ts" --read "${C_STATE}" \
+      >"$WORK/state.clear.json" || return 0
+    run_node -e "
+      const fs = require('fs');
+      const s = JSON.parse(fs.readFileSync('${C_WORK}/state.clear.json', 'utf8'));
+      s.pending = null;
+      fs.writeFileSync('${C_WORK}/state.cleared.json', JSON.stringify(s) + '\n');
+    " || true
+    if [ -f "$WORK/state.cleared.json" ]; then
+      run_node "${C_SCRIPTS}/ponder-deploy-state-cli.ts" \
+        --write "${C_STATE}" --state-json "${C_WORK}/state.cleared.json" || true
+    fi
+  fi
+}
+
+emit_measured_commit() {
+  DEPLOYED_COMMIT="${DEPLOYED_COMMIT:-$(git rev-parse HEAD)}"
+  echo "deploy_evidence commit=$DEPLOYED_COMMIT"
+}
+
+emit_measured_node() {
+  local slot="$1"
+  local node_ver
+  node_ver="$(docker compose exec -T "ponder-$slot" node --version | tr -d '\r')"
+  echo "deploy_evidence node=$node_ver"
+}
+
+emit_measured_ready() {
+  local probe code
+  probe="$(probe_nginx_json)"
+  printf '%s\n' "$probe" >"$WORK/ready-probe.json"
+  code="$(run_node -e "
+    const j = JSON.parse(require('fs').readFileSync('${C_WORK}/ready-probe.json', 'utf8'));
+    if (j.kind === 'status') process.stdout.write(String(j.code));
+  ")"
+  if [ -n "$code" ]; then
+    echo "deploy_evidence ready=ponder status=$code"
+  fi
+}
+
+# --- observations + plan -----------------------------------------------------
+
+require_state_file() {
+  # A2: missing/unreadable → deploy_state_invalid; never invent.
   if [ ! -f "$STATE_FILE" ]; then
-    printf '{"identity":"%s","executable":"%s"}\n' "$IDENTITY_DIGEST" "$EXECUTABLE_DIGEST" >"$STATE_FILE"
+    echo "deploy_state_invalid: state file missing"
+    exit 1
+  fi
+  # Normalize to ROOT path so C_STATE mount works when PONDER_STATE_FILE is default.
+  if [ "$STATE_FILE" != "${ROOT}/.ponder-deploy-fingerprints" ]; then
+    # Custom path: copy into work for read; writes go back via explicit mount below.
+    cp "$STATE_FILE" "$WORK/state.external.json"
+  fi
+  if ! run_node "${C_SCRIPTS}/ponder-deploy-state-cli.ts" --read "${C_STATE}" \
+    >"$WORK/state.file.json" 2>"$WORK/state.read.err"; then
+    # Retry via copied external path
+    if [ -f "$WORK/state.external.json" ]; then
+      if ! run_node "${C_SCRIPTS}/ponder-deploy-state-cli.ts" \
+        --read "${C_WORK}/state.external.json" >"$WORK/state.file.json" 2>"$WORK/state.read.err"; then
+        echo "deploy_state_invalid: state file unreadable"
+        cat "$WORK/state.read.err" >&2 || true
+        exit 1
+      fi
+    else
+      echo "deploy_state_invalid: state file unreadable"
+      cat "$WORK/state.read.err" >&2 || true
+      exit 1
+    fi
   fi
 }
 
 gather_observations() {
   local obs_path="$1"
-  local blue green nginx legacy schemas stored
-  blue="$(probe_slot_status blue | tr -d '[:space:]')"
-  green="$(probe_slot_status green | tr -d '[:space:]')"
-  nginx="$(probe_nginx_status | tr -d '[:space:]')"
-  legacy=""
+  local blue green nginx schemas has_base legacy stored nginx_dig deploy_commit
+  blue="$(probe_slot_json blue | tr -d '\r' | tail -n 1)"
+  green="$(probe_slot_json green | tr -d '\r' | tail -n 1)"
+  nginx="$(probe_nginx_json | tr -d '\r' | tail -n 1)"
   schemas="$(list_schemas_json)"
-  stored=""
-  if [ -f "$STATE_FILE" ]; then
-    stored="$(python3 -c "import json; print(json.load(open('$STATE_FILE')).get('executable',''))")"
+  has_base="$(kargain_has_base_tables)"
+  legacy="$(legacy_image_id | tr -d '\r' | tail -n 1)"
+  nginx_dig="$(nginx_config_digest)"
+  deploy_commit="$(git rev-parse HEAD)"
+  stored="$(run_node -e "
+    const s = JSON.parse(require('fs').readFileSync('${C_WORK}/state.file.json', 'utf8'));
+    process.stdout.write(typeof s.executable === 'string' ? s.executable : '');
+  ")"
+
+  printf '%s\n' "$blue" >"$WORK/probe-blue.json"
+  printf '%s\n' "$green" >"$WORK/probe-green.json"
+  printf '%s\n' "$nginx" >"$WORK/probe-nginx.json"
+  printf '%s\n' "$schemas" >"$WORK/schemas.json"
+  # Host-side facts for the in-container assembler. Do not rely on `docker compose
+  # run` inheriting the shell environment — it does not (A1/D1 rehearsal).
+  printf '%s\n' "$has_base" >"$WORK/has_base.txt"
+  printf '%s\n' "$legacy" >"$WORK/legacy_id.txt"
+  printf '%s\n' "$stored" >"$WORK/stored_exec.txt"
+  printf '%s\n' "$nginx_dig" >"$WORK/nginx_dig.txt"
+  printf '%s\n' "$DEPLOY_SHA" >"$WORK/deploy_sha.txt"
+  printf '%s\n' "$deploy_commit" >"$WORK/deploy_commit.txt"
+  printf '%s\n' "$IDENTITY_DIGEST" >"$WORK/identity_digest.txt"
+  printf '%s\n' "$EXECUTABLE_DIGEST" >"$WORK/executable_digest.txt"
+  printf '%s\n' "${PRIOR_CHECKOUT_SHA:-}" >"$WORK/prior_checkout_sha.txt"
+  printf '%s\n' "$EVENT_NAME" >"$WORK/event_name.txt"
+
+  run_node -e '
+    const fs = require("fs");
+    const read = (p) => fs.readFileSync(p, "utf8").replace(/\r?\n$/, "");
+    const prior = read("/work/prior_checkout_sha.txt");
+    const legacy = read("/work/legacy_id.txt");
+    const o = {
+      ready: {
+        blue: JSON.parse(fs.readFileSync("/work/probe-blue.json", "utf8")),
+        green: JSON.parse(fs.readFileSync("/work/probe-green.json", "utf8")),
+        nginx: JSON.parse(fs.readFileSync("/work/probe-nginx.json", "utf8")),
+      },
+      schemas: JSON.parse(fs.readFileSync("/work/schemas.json", "utf8")),
+      storedExecutable: read("/work/stored_exec.txt"),
+      executableDigest: read("/work/executable_digest.txt"),
+      identityDigest: read("/work/identity_digest.txt"),
+      deploySha: read("/work/deploy_sha.txt"),
+      deployCommit: read("/work/deploy_commit.txt"),
+      priorCheckoutSha: prior.length === 40 ? prior : null,
+      nginxConfigDigest: read("/work/nginx_dig.txt"),
+      eventName: read("/work/event_name.txt"),
+      legacyImageId: legacy.length > 0 ? legacy : null,
+      kargainHasBaseTables: read("/work/has_base.txt") === "true",
+    };
+    fs.writeFileSync("/work/observations.json", JSON.stringify(o) + "\n");
+  '
+  # macOS cp refuses identical source/dest (gather writes WORK/observations.json).
+  if [ "$obs_path" != "$WORK/observations.json" ]; then
+    cp "$WORK/observations.json" "$obs_path"
   fi
-  BLUE_READY="$blue" GREEN_READY="$green" NGINX_READY="$nginx" \
-  STORED_EXEC="$stored" SCHEMAS_JSON="$schemas" OBS_PATH="$obs_path" \
-  python3 -c 'import json,os; o={"ready":{"blue":int(os.environ["BLUE_READY"]) if os.environ.get("BLUE_READY","").isdigit() else None,"green":int(os.environ["GREEN_READY"]) if os.environ.get("GREEN_READY","").isdigit() else None,"legacy":None,"nginx":int(os.environ["NGINX_READY"]) if os.environ.get("NGINX_READY","").isdigit() else None},"schemas":json.loads(os.environ.get("SCHEMAS_JSON") or "[]"),"storedExecutable":os.environ.get("STORED_EXEC",""),"executableDigest":os.environ["EXECUTABLE_DIGEST"],"identityDigest":os.environ["IDENTITY_DIGEST"],"priorCheckoutSha":os.environ.get("PRIOR_CHECKOUT_SHA") or None,"nginxConfigChanged":os.environ.get("NGINX_CONFIG_CHANGED")=="1"}; json.dump(o, open(os.environ["OBS_PATH"],"w"))'
 }
+
+run_plan_cli() {
+  local obs_file="$1"
+  local out_file="$2"
+  # Prefer bind of state at C_STATE; plan CLI reads /state.json when mounted.
+  local svc
+  svc="$(pick_node_service)"
+  docker compose run --rm --no-deps -T \
+    -v "$ROOT/scripts:/app/scripts:ro" \
+    -v "$WORK:/work" \
+    -v "$ROOT:/deploy-root" \
+    -v "$STATE_FILE:/state.json:ro" \
+    -v "$obs_file:/obs.json:ro" \
+    --entrypoint node \
+    "$svc" \
+    --import tsx /app/scripts/ponder-deploy-plan-cli.ts \
+    --state /state.json \
+    --observations /obs.json \
+    --operation "$OPERATION" \
+    --deploy-sha "$DEPLOY_SHA" </dev/null >"$out_file"
+}
+
+# --- action execution --------------------------------------------------------
 
 execute_actions() {
   local plan_json="$1"
-  python3 - <<'PY' "$plan_json" >"$ROOT/.ponder-deploy-actions.sh"
-import json, sys
-plan = json.load(open(sys.argv[1]))
-# Emit a bash fragment that the parent sources — actually we print action lines
-# as JSONL for the bash loop below.
-for a in plan["actions"]:
-    json.dump(a, sys.stdout)
-    print()
-PY
+  if [ "$plan_json" != "$WORK/plan.json" ]; then
+    cp "$plan_json" "$WORK/plan.json"
+  fi
+  run_node -e '
+    const fs = require("fs");
+    const plan = JSON.parse(fs.readFileSync("/work/plan.json", "utf8"));
+    const lines = (plan.actions || []).map((a) => JSON.stringify(a));
+    fs.writeFileSync("/work/actions.jsonl", lines.join("\n") + (lines.length ? "\n" : ""));
+  '
 
   local exit_code=0
-  while IFS= read -r action_line; do
+  local measured_recreate=0
+  local live_slot_for_evidence=""
+
+  # Load actions into an array first — `docker compose build/run` can consume stdin
+  # (bake definitions), which would starve a `while read` over actions.jsonl.
+  local action_lines=()
+  while IFS= read -r action_line || [ -n "$action_line" ]; do
     [ -z "$action_line" ] && continue
+    action_lines+=("$action_line")
+  done <"$WORK/actions.jsonl"
+
+  local action_line
+  for action_line in "${action_lines[@]}"; do
+    printf '%s\n' "$action_line" >"$WORK/action.json"
     local type
-    type="$(python3 -c "import json,sys; print(json.load(sys.stdin)['type'])" <<<"$action_line")"
+    type="$(action_field type)"
+
     case "$type" in
       evidence)
-        python3 -c "import json,sys; print(json.load(sys.stdin)['text'])" <<<"$action_line"
+        local text
+        text="$(action_field text)"
+        echo "$text"
+        if [[ "$text" == *"outcome=recreated"* ]]; then
+          measured_recreate=1
+        fi
+        if [[ "$text" == deploy_evidence\ slot=* ]]; then
+          live_slot_for_evidence="${text#deploy_evidence slot=}"
+        fi
         ;;
       exit)
-        exit_code="$(python3 -c "import json,sys; print(json.load(sys.stdin)['code'])" <<<"$action_line")"
+        exit_code="$(action_field code)"
+        if [ "$measured_recreate" = "1" ] && [ "$exit_code" = "0" ]; then
+          emit_measured_commit
+          if [ -n "$live_slot_for_evidence" ]; then
+            emit_measured_node "$live_slot_for_evidence" || true
+          fi
+          emit_measured_ready || true
+        fi
         return "$exit_code"
         ;;
       write_slot_env)
-        local slot schema
-        slot="$(python3 -c "import json,sys; print(json.load(sys.stdin)['slot'])" <<<"$action_line")"
-        schema="$(python3 -c "import json,sys; print(json.load(sys.stdin)['schema'])" <<<"$action_line")"
-        write_slot_env "$slot" "$schema"
+        write_slot_env "$(action_field slot)" "$(action_field schema)"
         ;;
       build_slot)
-        local slot
-        slot="$(python3 -c "import json,sys; print(json.load(sys.stdin)['slot'])" <<<"$action_line")"
-        docker compose build "ponder-$slot"
+        local slot label
+        slot="$(action_field slot)"
+        label="$(action_field label)"
+        docker compose build --build-arg "KARGAIN_PONDER_COMMIT=$label" "ponder-$slot" </dev/null
         ;;
       preflight_slot)
-        local slot
-        slot="$(python3 -c "import json,sys; print(json.load(sys.stdin)['slot'])" <<<"$action_line")"
-        if ! docker compose run --rm --no-deps --entrypoint node "ponder-$slot" --import tsx scripts/ponder-deploy-preflight.ts; then
+        local slot expected actual
+        slot="$(action_field slot)"
+        expected="k_${DEPLOY_SHA}"
+        if [ ! -f "$ROOT/.ponder-slot-$slot.env" ]; then
+          echo "deploy_evidence outcome=refused"
+          echo "deploy_preflight refused: DATABASE_SCHEMA missing"
+          exit 1
+        fi
+        actual="$(grep -E '^DATABASE_SCHEMA=' "$ROOT/.ponder-slot-$slot.env" | head -n1 | cut -d= -f2- | tr -d '\r')"
+        if [ "$actual" != "$expected" ]; then
+          echo "deploy_evidence outcome=refused"
+          echo "deploy_preflight refused: DATABASE_SCHEMA want=$expected got=$actual"
+          exit 1
+        fi
+        if ! docker compose run --rm --no-deps -T --entrypoint node "ponder-$slot" --import tsx scripts/ponder-deploy-preflight.ts </dev/null; then
           echo "deploy_evidence outcome=refused"
           exit 1
         fi
         echo "deploy_evidence preflight=ok"
         ;;
       start_slot)
-        local slot
-        slot="$(python3 -c "import json,sys; print(json.load(sys.stdin)['slot'])" <<<"$action_line")"
-        docker compose up -d "ponder-$slot"
+        slot="$(action_field slot)"
+        docker compose up -d "ponder-$slot" </dev/null
         ;;
       stop_slot)
-        local slot
-        slot="$(python3 -c "import json,sys; print(json.load(sys.stdin)['slot'])" <<<"$action_line")"
-        docker compose stop "ponder-$slot" || true
+        slot="$(action_field slot)"
+        docker compose stop "ponder-$slot" </dev/null || true
         ;;
       stop_legacy_writer)
-        # Stop the pre-cutover writer container without bringing up nginx.
-        docker stop "$(docker compose ps -aq ponder 2>/dev/null | head -n1)" 2>/dev/null || \
-          docker stop kargain-ponder-1 2>/dev/null || true
+        docker compose stop ponder </dev/null 2>/dev/null || true
+        docker stop "$(docker compose ps -aq ponder 2>/dev/null | head -n1)" 2>/dev/null || true
         ;;
-      wait_ready200)
-        local target slot schema timeout on_timeout image svc url status
-        target="$(python3 -c "import json,sys; print(json.load(sys.stdin)['target'])" <<<"$action_line")"
-        schema="$(python3 -c "import json,sys; print(json.load(sys.stdin)['schema'])" <<<"$action_line")"
-        timeout="$(python3 -c "import json,sys; print(json.load(sys.stdin)['timeoutMs'])" <<<"$action_line")"
-        on_timeout="$(python3 -c "import json,sys; print(json.load(sys.stdin)['onTimeout'])" <<<"$action_line")"
+      preserve_legacy_image)
+        local image_id
+        image_id="$(action_field imageId)"
+        if [ -z "$image_id" ]; then
+          image_id="$(legacy_image_id | tr -d '\r')"
+        fi
+        if [ -z "$image_id" ]; then
+          echo "deploy_state_invalid: legacy_image_unknown"
+          return 1
+        fi
+        docker tag "$image_id" "$LEGACY_IMAGE_TAG"
+        # Label so prune filters can spare it (A8).
+        docker tag "$image_id" "${LEGACY_IMAGE_TAG}"
+        printf '%s\n' "$image_id" >"$WORK/legacy-image-id"
+        ;;
+      start_legacy_writer)
+        local image
+        image="$(action_field image)"
+        if [ -z "$image" ]; then
+          image="$LEGACY_IMAGE_TAG"
+        fi
+        docker tag "$image" "$LEGACY_IMAGE_TAG" 2>/dev/null || true
+        printf 'DATABASE_SCHEMA=kargain\n' >"$ROOT/.ponder-slot-legacy.env"
+        docker compose --profile legacy up -d ponder-legacy </dev/null
+        ;;
+      wait_answered)
+        local target slot timeout on_timeout url status ec fail_ev
+        target="$(action_field target)"
+        timeout="$(action_field timeoutMs)"
+        on_timeout="$(action_field onTimeout)"
+        fail_ev="$(action_field failEvidence)"
         if [ "$target" = "slot" ]; then
-          slot="$(python3 -c "import json,sys; print(json.load(sys.stdin).get('slot',''))" <<<"$action_line")"
-          svc="ponder-$slot"
-          url="http://${svc}:42069/ready"
-          image="$(docker compose images -q "$svc")"
+          slot="$(action_field slot)"
+          url="http://ponder-${slot}:42069/ready"
         else
-          svc="ponder"
           url="http://ponder:42069/ready"
-          image="$(plan_image)"
         fi
         set +e
-        status="$(docker run --rm --network kargain \
-          -v /opt/kargain/scripts:/app/scripts:ro \
-          --entrypoint node "$image" \
-          --import tsx /app/scripts/ponder-ready-probe.ts \
+        status="$(run_node "${C_SCRIPTS}/ponder-ready-probe.ts" \
+          --mode answered \
+          --url "$url" \
+          --timeout-ms "$timeout" 2>/dev/null)"
+        ec=$?
+        set -e
+        if [ "$ec" -ne 0 ]; then
+          echo "${fail_ev:-ponder_did_not_become_ready}"
+          if [ "$on_timeout" = "tear_down_new" ] && [ "$target" = "slot" ]; then
+            tear_down_new_pending "$slot" "k_${DEPLOY_SHA}"
+          fi
+          return 1
+        fi
+        ;;
+      wait_ready200)
+        local target slot schema timeout on_timeout url status ec fail_ev
+        target="$(action_field target)"
+        schema="$(action_field schema)"
+        timeout="$(action_field timeoutMs)"
+        on_timeout="$(action_field onTimeout)"
+        fail_ev="$(action_field failEvidence)"
+        if [ "$target" = "slot" ]; then
+          slot="$(action_field slot)"
+          url="http://ponder-${slot}:42069/ready"
+        else
+          url="http://ponder:42069/ready"
+        fi
+        set +e
+        status="$(run_node "${C_SCRIPTS}/ponder-ready-probe.ts" \
           --mode ready200 \
           --url "$url" \
           --schema "$schema" \
           --timeout-ms "$timeout")"
-        probe_ec=$?
+        ec=$?
         set -e
-        if [ "$probe_ec" -ne 0 ]; then
-          echo "deploy_switch_failed: http"
+        if [ "$ec" -ne 0 ]; then
+          echo "${fail_ev:-ponder_did_not_become_ready}"
+          if [ "$target" = "nginx" ] || [ "${fail_ev}" = "deploy_switch_failed: http" ]; then
+            restore_upstream_backup
+          fi
           return 1
         fi
         if [[ "$status" == deploy_evidence\ switch=pending* ]]; then
@@ -251,32 +555,53 @@ PY
           if [ "$on_timeout" = "pending_exit0" ]; then
             return 0
           fi
-          echo "deploy_switch_failed: http"
+          echo "${fail_ev:-deploy_switch_failed: http}"
+          if [ "$target" = "nginx" ]; then
+            restore_upstream_backup
+          fi
           return 1
         fi
         ;;
       switch_views)
-        local target kind rename image meta tables_json views_json sql
-        target="$(python3 -c "import json,sys; print(json.load(sys.stdin)['targetSchema'])" <<<"$action_line")"
-        kind="$(python3 -c "import json,sys; print(json.load(sys.stdin)['kind'])" <<<"$action_line")"
-        rename="$(python3 -c "import json,sys; print(json.load(sys.stdin)['renameLiveTo'])" <<<"$action_line")"
-        meta="$(docker compose exec -T postgres \
-          psql -U ponder -d kargain_ponder -t -A -F $'\t' -c \
-          "SELECT COALESCE((value->'app'->'table_names'), '[]'::jsonb)::text, COALESCE((value->'app'->'view_names'), '[]'::jsonb)::text FROM \"${target}\"._ponder_meta WHERE key = 'app' LIMIT 1;")"
-        tables_json="$(printf '%s' "$meta" | awk -F'\t' 'NF{print $1; exit}')"
-        views_json="$(printf '%s' "$meta" | awk -F'\t' 'NF{print $2; exit}')"
-        tables_json="${tables_json:-[]}"
-        views_json="${views_json:-[]}"
-        image="$(plan_image)"
-        sql="$(docker run --rm \
-          -v /opt/kargain/scripts:/app/scripts:ro \
-          --entrypoint node "$image" \
-          --import tsx /app/scripts/ponder-views-switch-cli.ts \
-          --target-schema "$target" \
-          --kind "$kind" \
-          --rename-live-to "$rename" \
-          --tables-json "$tables_json" \
-          --views-json "$views_json")"
+        local target kind rename meta tables_json views_json sql
+        target="$(action_field targetSchema)"
+        kind="$(action_field kind)"
+        rename="$(action_field renameLiveTo)"
+        if [ "$kind" = "first_cutover_rollback" ]; then
+          sql="$(run_node "${C_SCRIPTS}/ponder-views-switch-cli.ts" \
+            --target-schema "$target" \
+            --kind "$kind" \
+            --rename-live-to "$rename")"
+        else
+          # B1: value->'table_names' (not value->'app'->...)
+          set +e
+          meta="$(docker compose exec -T postgres \
+            psql -U ponder -d kargain_ponder -t -A -F $'\t' -c \
+            "SELECT (value->'table_names')::text, (value->'view_names')::text FROM \"${target}\"._ponder_meta WHERE key = 'app' LIMIT 1;")"
+          local meta_ec=$?
+          set -e
+          if [ "$meta_ec" -ne 0 ] || [ -z "$(printf '%s' "$meta" | tr -d '[:space:]')" ]; then
+            echo "deploy_switch_failed: views_meta"
+            return 1
+          fi
+          tables_json="$(printf '%s' "$meta" | awk -F'\t' 'NF{print $1; exit}')"
+          views_json="$(printf '%s' "$meta" | awk -F'\t' 'NF{print $2; exit}')"
+          printf '%s\n' "$tables_json" >"$WORK/meta-tables.json"
+          printf '%s\n' "${views_json:-null}" >"$WORK/meta-views.json"
+          set +e
+          sql="$(run_node "${C_SCRIPTS}/ponder-views-switch-cli.ts" \
+            --target-schema "$target" \
+            --kind "$kind" \
+            --rename-live-to "$rename" \
+            --tables-json "$(cat "$WORK/meta-tables.json")" \
+            --views-json "$(cat "$WORK/meta-views.json")")"
+          local cli_ec=$?
+          set -e
+          if [ "$cli_ec" -ne 0 ]; then
+            echo "deploy_switch_failed: views_meta"
+            return 1
+          fi
+        fi
         if ! printf '%s\n' "$sql" | docker compose exec -T postgres \
           psql -U ponder -d kargain_ponder --single-transaction -v ON_ERROR_STOP=1; then
           echo "deploy_switch_failed: views"
@@ -284,110 +609,133 @@ PY
         fi
         ;;
       write_upstream)
-        local slot
-        slot="$(python3 -c "import json,sys; print(json.load(sys.stdin)['slot'])" <<<"$action_line")"
-        write_upstream "$slot"
+        save_upstream_backup
+        write_upstream_target "$(action_field slot)"
         ;;
       reload_nginx)
         if ! docker compose exec -T ponder nginx -s reload; then
           echo "deploy_switch_failed: http"
+          restore_upstream_backup
           return 1
         fi
         ;;
       up_nginx)
-        # First cutover only — creates the nginx front. Never called before cutover step.
-        write_upstream blue
-        docker compose up -d ponder
+        docker compose up -d ponder </dev/null
         ;;
       recreate_nginx)
-        docker compose up -d --force-recreate ponder
+        docker compose up -d --force-recreate ponder </dev/null
+        measured_recreate=1
+        emit_measured_commit
         ;;
       drop_schema)
-        local schema
-        schema="$(python3 -c "import json,sys; print(json.load(sys.stdin)['schema'])" <<<"$action_line")"
-        docker compose exec -T postgres \
-          psql -U ponder -d kargain_ponder -v ON_ERROR_STOP=1 \
-          -c "DROP SCHEMA IF EXISTS \"${schema}\" CASCADE;"
+        drop_schema_via_owner "$(action_field schema)"
         ;;
       retention)
-        python3 - <<PY
-import json, subprocess
-a = json.loads('''$action_line''')
-for schema in a["drop"]:
-    subprocess.check_call([
-      "docker", "compose", "exec", "-T", "postgres",
-      "psql", "-U", "ponder", "-d", "kargain_ponder", "-v", "ON_ERROR_STOP=1",
-      "-c", f'DROP SCHEMA IF EXISTS "{schema}" CASCADE;'
-    ])
-PY
+        run_node -e '
+          const fs = require("fs");
+          const a = JSON.parse(fs.readFileSync("/work/action.json", "utf8"));
+          fs.writeFileSync("/work/retention-drop.json", JSON.stringify(a.drop || []) + "\n");
+        '
+        local drop_list schema
+        drop_list="$(run_node -e '
+          const d = JSON.parse(require("fs").readFileSync("/work/retention-drop.json", "utf8"));
+          process.stdout.write(d.join("\n"));
+        ')"
+        while IFS= read -r schema || [ -n "$schema" ]; do
+          [ -z "$schema" ] && continue
+          stop_writers_for_schema "$schema"
+        done <<<"$drop_list"
+        local sql
+        sql="$(run_node "${C_SCRIPTS}/ponder-deploy-retention-cli.ts" \
+          --drop-schemas-file "${C_WORK}/retention-drop.json")"
+        if [ -n "$(printf '%s' "$sql" | tr -d '[:space:]')" ]; then
+          printf '%s\n' "$sql" | docker compose exec -T postgres \
+            psql -U ponder -d kargain_ponder -v ON_ERROR_STOP=1
+        fi
         ;;
       write_state)
-        python3 - <<PY
-import json
-a = json.loads('''$action_line''')
-state = a["state"]
-# Strip preCutover flag if present
-state.pop("preCutover", None)
-json.dump(state, open("$STATE_FILE", "w"))
-print("wrote", "$STATE_FILE")
-PY
+        # C3: only through state owner CLI.
+        run_node "${C_SCRIPTS}/ponder-deploy-state-cli.ts" \
+          --action-state-write "${C_WORK}/action.json" "${C_STATE}"
+        if [ "$STATE_FILE" != "${ROOT}/.ponder-deploy-fingerprints" ]; then
+          cp "${ROOT}/.ponder-deploy-fingerprints" "$STATE_FILE"
+        fi
+        ;;
+      check_schema_absent)
+        local schema exists
+        schema="$(action_field schema)"
+        exists="$(docker compose exec -T postgres \
+          psql -U ponder -d kargain_ponder -t -A -c \
+          "SELECT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname = '${schema}');" \
+          | tr -d '\r' | tail -n 1 | tr '[:upper:]' '[:lower:]')"
+        case "$exists" in
+          t|true|1)
+            echo "deploy_state_invalid: schema_exists ${schema}"
+            return 1
+            ;;
+        esac
+        ;;
+      assert_slot_image_label)
+        local slot want got
+        slot="$(action_field slot)"
+        want="$(action_field commit)"
+        got="$(docker image inspect "$(docker compose images -q "ponder-${slot}")" \
+          --format '{{index .Config.Labels "kargain.ponder.commit"}}' 2>/dev/null || true)"
+        if [ "$got" != "$want" ]; then
+          echo "deploy_rollback_failed: previous_image_mismatch"
+          return 1
+        fi
         ;;
       probe_answered)
-        local target
-        target="$(python3 -c "import json,sys; print(json.load(sys.stdin)['target'])" <<<"$action_line")"
-        local status node_ver image
+        local target slot status_json code node_ver
+        target="$(action_field target)"
         if [ "$target" = "nginx" ]; then
-          status="$(probe_nginx_status | tr -d '[:space:]')"
-          image="$(plan_image)"
-          node_ver="$(docker run --rm --entrypoint node "$image" --version)"
+          status_json="$(probe_nginx_json)"
+          slot="$(run_node -e '
+            const s = JSON.parse(require("fs").readFileSync("/deploy-root/.ponder-deploy-fingerprints", "utf8"));
+            if (s.live && s.live.slot) process.stdout.write(s.live.slot);
+          ' 2>/dev/null || true)"
+          if [ -z "$slot" ]; then slot="blue"; fi
+          if docker compose ps -q "ponder-$slot" 2>/dev/null | grep -q .; then
+            node_ver="$(docker compose exec -T "ponder-$slot" node --version | tr -d '\r')"
+            echo "deploy_evidence node=$node_ver"
+          fi
         else
-          local slot
-          slot="$(python3 -c "import json,sys; print(json.load(sys.stdin).get('slot','blue'))" <<<"$action_line")"
-          status="$(probe_slot_status "$slot" | tr -d '[:space:]')"
-          node_ver="$(docker compose exec -T "ponder-$slot" node --version)"
+          slot="$(action_field slot)"
+          [ -z "$slot" ] && slot="blue"
+          status_json="$(probe_slot_json "$slot")"
+          if docker compose ps -q "ponder-$slot" 2>/dev/null | grep -q .; then
+            node_ver="$(docker compose exec -T "ponder-$slot" node --version | tr -d '\r')"
+            echo "deploy_evidence node=$node_ver"
+          fi
         fi
-        echo "deploy_evidence node=$node_ver"
-        echo "deploy_evidence ready=ponder status=${status:-0}"
+        printf '%s\n' "$status_json" >"$WORK/probe-answered.json"
+        code="$(run_node -e "
+          const j = JSON.parse(require('fs').readFileSync('/work/probe-answered.json', 'utf8'));
+          if (j.kind === 'status') process.stdout.write(String(j.code));
+        ")"
+        if [ -n "$code" ]; then
+          echo "deploy_evidence ready=ponder status=$code"
+        fi
         ;;
       *)
         echo "ponder-deploy.sh: unknown action $type" >&2
         return 1
         ;;
     esac
-  done <"$ROOT/.ponder-deploy-actions.sh"
+  done
   return "$exit_code"
 }
 
 main() {
-  ensure_state_file
-  local obs="$ROOT/.ponder-deploy-observations.json"
-  local plan_out="$ROOT/.ponder-deploy-plan.json"
+  require_state_file
+  local obs="$WORK/observations.json"
+  local plan_out="$WORK/plan.json"
   gather_observations "$obs"
-  run_plan_cli "$obs" >"$plan_out"
-  local DEPLOYED_COMMIT
-  DEPLOYED_COMMIT="$(git rev-parse HEAD)"
-  # commit evidence on recreate paths is printed when outcome=recreated appears;
-  # always available for the executor:
-  export DEPLOYED_COMMIT
+  run_plan_cli "$obs" "$plan_out"
   execute_actions "$plan_out"
   local ec=$?
-  if grep -q 'deploy_evidence outcome=recreated' <<<"$(cat "$plan_out")" 2>/dev/null; then
-    :
-  fi
-  # Print commit when recreated evidence was emitted by actions
-  if grep -q 'outcome=recreated' "$ROOT/.ponder-deploy-actions.sh" 2>/dev/null || \
-     python3 -c "import json; print(any(a.get('text','').endswith('outcome=recreated') for a in json.load(open('$plan_out'))['actions']))" | grep -q True; then
-    echo "deploy_evidence commit=$DEPLOYED_COMMIT"
-    local image node_ver
-    image="$(plan_image)"
-    node_ver="$(docker run --rm --entrypoint node "$image" --version)"
-    echo "deploy_evidence node=$node_ver"
-    local ready
-    ready="$(probe_nginx_status | tr -d '[:space:]')"
-    if [ -n "$ready" ]; then
-      echo "deploy_evidence ready=ponder status=$ready"
-    fi
-  fi
+  # A8: never remove the legacy cutover tag (tagged images survive prune -f).
   docker image prune -f >/dev/null 2>&1 || true
   return "$ec"
 }

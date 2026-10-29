@@ -1,18 +1,18 @@
 /**
  * Read-only lag sampler for ADR 0014 §e.
  * lag_seconds = head.timestamp − status[chain].block.timestamp (clamped at 0).
- * Appends one JSON line per sample to --out.
- *
- * Must run from a built slot image (imports lib/ via ponder-env), not a host mount alone:
- *   docker compose run --rm --no-deps -v <dir>:/samples --entrypoint node ponder-blue \
- *     --import tsx scripts/ponder-lag-sample.ts --ponder-url http://ponder:42069 --out /samples/file.jsonl
+ * Chain names come from ponder-env (C4) — never a local duplicate map.
  */
 import { appendFileSync } from "node:fs";
-import { resolveCommercialRpcUrls } from "./lib/ponder-env.js";
+import {
+  ponderStatusChainNameById,
+  resolveCommercialRpcUrls,
+} from "./lib/ponder-env.js";
 import {
   SEPOLIA_CHAIN_ID,
   SPOKE_CHAIN_ID,
 } from "./lib/load-deployment.js";
+import { LOCALHOST_CHAIN_ID } from "../lib/web3/local-chain.js";
 
 function argValue(argv: string[], name: string): string | undefined {
   const i = argv.indexOf(name);
@@ -53,6 +53,7 @@ async function ethGetLatestTimestamp(rpcUrl: string): Promise<number> {
 async function sampleChain(
   ponderUrl: string,
   chainId: number,
+  chainName: string,
 ): Promise<{ chainId: number; lag_seconds: number; at: string }> {
   const statusUrl = `${ponderUrl.replace(/\/$/, "")}/status`;
   const statusRes = await fetch(statusUrl);
@@ -60,37 +61,24 @@ async function sampleChain(
     throw new Error(`status_http_${statusRes.status}`);
   }
   const status = (await statusRes.json()) as StatusPayload;
-  // Ponder /status keys by chain name; find entry whose block we can read.
-  // Prefer numeric chain id key if present; else scan values.
-  let blockTs: number | undefined;
-  const direct = status[String(chainId)];
-  if (direct?.block?.timestamp !== undefined) {
-    blockTs = direct.block.timestamp;
-  } else {
-    for (const v of Object.values(status)) {
-      if (v?.block?.timestamp !== undefined) {
-        // Match by checking config — for dual commercial we need per-chain.
-        // Ponder 0.18 status is keyed by chain name from config.
-      }
-    }
-  }
-  // Resolve chain name keys from known commercial ids via status object shapes.
-  // baseSepolia / ethereumSepolia are the ponder.config names.
-  const nameById: Record<number, string> = {
-    [SEPOLIA_CHAIN_ID]: "baseSepolia",
-    [SPOKE_CHAIN_ID]: "ethereumSepolia",
-  };
-  const named = status[nameById[chainId] ?? ""];
-  if (named?.block?.timestamp !== undefined) {
-    blockTs = named.block.timestamp;
-  }
+  const named = status[chainName];
+  const blockTs = named?.block?.timestamp;
   if (blockTs === undefined) {
     throw new Error(`status_missing_chain_${chainId}`);
   }
 
-  const rpcs = resolveCommercialRpcUrls(chainId);
-  const headTs = await ethGetLatestTimestamp(rpcs[0]!);
+  let headTs: number;
+  if (chainId === LOCALHOST_CHAIN_ID) {
+    const rpc = process.env.PONDER_RPC_URL_31337 ?? "http://127.0.0.1:8545";
+    headTs = await ethGetLatestTimestamp(rpc);
+  } else {
+    const rpcs = resolveCommercialRpcUrls(chainId);
+    headTs = await ethGetLatestTimestamp(rpcs[0]!);
+  }
   const lag = Math.max(0, headTs - blockTs);
+  if (!Number.isFinite(lag) || lag < 0) {
+    throw new Error(`invalid_lag_seconds_${lag}`);
+  }
   return {
     chainId,
     lag_seconds: lag,
@@ -108,11 +96,18 @@ async function main(): Promise<void> {
     );
     process.exit(2);
   }
-  const chains = [SEPOLIA_CHAIN_ID, SPOKE_CHAIN_ID];
+  const nameById = ponderStatusChainNameById();
+  const chains = Object.keys(nameById).map(Number);
+  if (chains.length === 0) {
+    // Default commercial pair when env not local-only
+    chains.push(SEPOLIA_CHAIN_ID, SPOKE_CHAIN_ID);
+  }
   const sampleAt = new Date().toISOString();
   const lines: unknown[] = [];
   for (const chainId of chains) {
-    const row = await sampleChain(ponderUrl, chainId);
+    const name = nameById[chainId] ?? ponderStatusChainNameById()[chainId];
+    if (!name) continue;
+    const row = await sampleChain(ponderUrl, chainId, name);
     lines.push({ ...row, sampleAt });
   }
   for (const row of lines) {

@@ -105,13 +105,14 @@ jobs:
           EXECUTABLE_DIGEST: ${{ steps.fingerprints.outputs.executable }}
           DEPLOY_SHA: ${{ github.sha }}
           OPERATION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.operation || 'deploy' }}
+          EVENT_NAME: ${{ github.event_name }}
         with:
           host: ${{ secrets.VPS_SSH_HOST }}
           username: ${{ secrets.VPS_SSH_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_SSH_PORT }}
           command_timeout: 30m
-          envs: IDENTITY_DIGEST,EXECUTABLE_DIGEST,DEPLOY_SHA,OPERATION
+          envs: IDENTITY_DIGEST,EXECUTABLE_DIGEST,DEPLOY_SHA,OPERATION,EVENT_NAME
           script: |
             set -euo pipefail
             cd /opt/kargain
@@ -129,19 +130,8 @@ jobs:
             export PRIOR_CHECKOUT_SHA
             export PONDER_DEPLOY_ROOT=/opt/kargain
             export PONDER_STATE_FILE=/opt/kargain/.ponder-deploy-fingerprints
-            export IDENTITY_DIGEST EXECUTABLE_DIGEST DEPLOY_SHA OPERATION
+            export IDENTITY_DIGEST EXECUTABLE_DIGEST DEPLOY_SHA OPERATION EVENT_NAME
+            export DEPLOYED_COMMIT
 
-            # Detect nginx main-config change for proxy-only recreate path.
-            NGINX_CONFIG_CHANGED=0
-            if [ -f "$PONDER_STATE_FILE" ]; then
-              STORED_EXEC=$(python3 -c "import json; print(json.load(open('$PONDER_STATE_FILE')).get('executable',''))")
-              if [ -n "$STORED_EXEC" ] && [ "$STORED_EXEC" = "$EXECUTABLE_DIGEST" ]; then
-                if git diff --name-only "$PRIOR_CHECKOUT_SHA" "$DEPLOY_SHA" | grep -q '^ops/nginx/ponder.conf$'; then
-                  NGINX_CONFIG_CHANGED=1
-                fi
-              fi
-            fi
-            export NGINX_CONFIG_CHANGED
-
-            chmod +x scripts/ponder-deploy.sh
+            # Nginx digest drift is observed inside ponder-deploy.sh (B9).
             scripts/ponder-deploy.sh

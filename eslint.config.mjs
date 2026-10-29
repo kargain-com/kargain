@@ -45,6 +45,7 @@ const eslintConfig = [
       "contracts/**",
       "old-*/**",
       "lib/contracts/abis.generated.ts",
+      ".ponder-rehearsal-out/**",
     ],
   },
   {

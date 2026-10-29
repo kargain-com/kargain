@@ -6,3 +6,10 @@ artifacts
 cache
 coverage
 .git
+# Host/SVM build trees — never part of the Ponder image (ADR 0014 indexing glob).
+svm/**/target
+**/target/debug
+**/target/release
+.ponder-rehearsal-out
+.ponder-deploy-work
+.ponder-rehearsal-out-dryrun.log

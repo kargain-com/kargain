@@ -411,6 +411,22 @@ Keep one schema and only remove svm-ingest paths from Ponder’s build inputs (t
   3. One-time: point tunnel ingress at the nginx publish port (Decision §c).
   4. After the implementation merges: first production cutover under the deploy lock with `ponder_rpc_cache_1` / `ponder_sync` intact (Decision §j).
 
+
+## Amendment
+
+Approved on [#69](https://github.com/kargain-com/kargain/issues/69#issuecomment-6495494195) (amends Decision §d for the pre-cutover phase only):
+
+> **Decision** (approved by the maintainer; amends ADR 0014 §d for the pre-cutover phase only):
+>
+> - While the database shows the pre-cutover phase (schema `kargain` holds base tables), a push-triggered run changes nothing, prints `deploy_evidence cutover=awaiting_dispatch`, and exits 0.
+> - The first cutover starts and finishes only by `workflow_dispatch` (`hold`, `deploy`).
+> - After the first cutover, push uses `deploy` as §d states.
+>
+> **Reason:** ADR 0014 Consequences orders the §i size check and the §e measurement before the first production cutover. A push-started writer would precede both.
+>
+> **Recording:** PR #71 adds an `Amendment` section to ADR 0014 that quotes this decision verbatim and links this issue. The maintainer's merge of #71 is its acceptance. This resolves item A9 of the PR #71 review.
+
+
 ## Status
 
 Accepted. The maintainer’s merge of this ADR PR is the acceptance.
