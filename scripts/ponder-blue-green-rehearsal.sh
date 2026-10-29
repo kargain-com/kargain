@@ -584,12 +584,13 @@ sample_lag "http://127.0.0.1:42069" "$OUT/samples/dual.jsonl" 2
   cat "$OUT/samples/dual.jsonl"
 } | scrub | tee "$OUT/steps/03/executor.txt"
 
-python3 - <<PY
-import json, time
+OUT="$OUT" python3 - <<'PY'
+import json, os, time
 from pathlib import Path
 chain = 31337  # PONDER_LOCAL_ONLY: the one chain this environment indexes
+samples = Path(os.environ["OUT"]) / "samples"
 def write(name, lag, count, gap_min):
-  out = Path("$OUT/samples/" + name)
+  out = samples / name
   base = time.time() - 60*60
   rows = []
   for i in range(count):
@@ -971,12 +972,13 @@ step_banner 10 "rollback keep_previous and restart_previous"
 # Ensure previous exists: if null, do another deploy first (already have history).
 # Force keep_previous via decider constructed, run rollback; then restart_previous.
 cp "$PONDER_STATE_FILE" "$OUT/state.before-rollback-models.json"
-python3 - <<PY
-import json, time
+OUT="$OUT" python3 - <<'PY'
+import json, os, time
 from pathlib import Path
+out = Path(os.environ["OUT"])
 base = time.time() - 40*60
 for name, lag in [("keep", 1), ("restart", 99999)]:
-  p = Path("$OUT/samples/dual.constructed-${name}.jsonl")
+  p = out / "samples" / f"dual.constructed-{name}.jsonl"
   p.write_text("")
   for i in range(4):
     at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(base + i*15*60))
