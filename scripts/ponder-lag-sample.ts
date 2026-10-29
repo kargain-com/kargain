@@ -7,11 +7,8 @@ import { appendFileSync } from "node:fs";
 import {
   ponderStatusChainNameById,
   resolveCommercialRpcUrls,
+  resolveLocalRpcUrl,
 } from "./lib/ponder-env.js";
-import {
-  SEPOLIA_CHAIN_ID,
-  SPOKE_CHAIN_ID,
-} from "./lib/load-deployment.js";
 import { LOCALHOST_CHAIN_ID } from "../lib/web3/local-chain.js";
 
 function argValue(argv: string[], name: string): string | undefined {
@@ -69,8 +66,7 @@ async function sampleChain(
 
   let headTs: number;
   if (chainId === LOCALHOST_CHAIN_ID) {
-    const rpc = process.env.PONDER_RPC_URL_31337 ?? "http://127.0.0.1:8545";
-    headTs = await ethGetLatestTimestamp(rpc);
+    headTs = await ethGetLatestTimestamp(resolveLocalRpcUrl());
   } else {
     const rpcs = resolveCommercialRpcUrls(chainId);
     headTs = await ethGetLatestTimestamp(rpcs[0]!);
@@ -99,15 +95,12 @@ async function main(): Promise<void> {
   const nameById = ponderStatusChainNameById();
   const chains = Object.keys(nameById).map(Number);
   if (chains.length === 0) {
-    // Default commercial pair when env not local-only
-    chains.push(SEPOLIA_CHAIN_ID, SPOKE_CHAIN_ID);
+    throw new Error("no_indexed_chains");
   }
   const sampleAt = new Date().toISOString();
   const lines: unknown[] = [];
   for (const chainId of chains) {
-    const name = nameById[chainId] ?? ponderStatusChainNameById()[chainId];
-    if (!name) continue;
-    const row = await sampleChain(ponderUrl, chainId, name);
+    const row = await sampleChain(ponderUrl, chainId, nameById[chainId]!);
     lines.push({ ...row, sampleAt });
   }
   for (const row of lines) {

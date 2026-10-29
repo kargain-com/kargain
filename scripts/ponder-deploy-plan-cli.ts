@@ -4,7 +4,8 @@
  *   --state <path> --observations <path> --operation <deploy|hold|rollback> \
  *   --deploy-sha <sha>
  *
- * Phase is reconciled from observations.kargainHasBaseTables (A1).
+ * Phase is reconciled from observations.kargainHasBaseTables and
+ * observations.kargainViewsTarget (A1 / R1).
  */
 import { readFileSync } from "node:fs";
 import {
@@ -70,11 +71,36 @@ function main(): void {
     );
     process.exit(1);
   }
+  if (
+    observations.kargainViewsTarget !== null &&
+    typeof observations.kargainViewsTarget !== "string"
+  ) {
+    process.stderr.write(
+      "deploy_observation_failed: kargainViewsTarget required\n",
+    );
+    process.exit(1);
+  }
+  const writer = observations.kargainWriter;
+  if (writer !== null && writer !== "ponder" && writer !== "ponder-legacy") {
+    process.stderr.write("deploy_observation_failed: kargainWriter\n");
+    process.exit(1);
+  }
+  // R8: no default, no permissive fallback.
+  if (
+    observations.eventName !== "push" &&
+    observations.eventName !== "workflow_dispatch"
+  ) {
+    process.stderr.write("deploy_observation_failed: event_name\n");
+    process.exit(1);
+  }
 
   let state;
   try {
     const file = parsePonderDeployStateFile(stateRaw);
-    state = reconcileDeployPhase(file, observations.kargainHasBaseTables);
+    state = reconcileDeployPhase(file, {
+      kargainHasBaseTables: observations.kargainHasBaseTables,
+      kargainViewsTarget: observations.kargainViewsTarget,
+    });
   } catch (err) {
     if (err instanceof DeployStateInvalidError) {
       process.stderr.write(`${err.message}\n`);

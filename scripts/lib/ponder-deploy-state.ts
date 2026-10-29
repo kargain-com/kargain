@@ -4,8 +4,9 @@
  * Imports only Node builtins — runnable from a host-mounted scripts/ tree.
  *
  * Phase (pre- vs post-cutover) is a database fact (A1): schema `kargain` holds
- * base tables (relkind r|p) before cutover, views only after. The file never
- * stores a preCutover flag.
+ * base tables (relkind r|p) before cutover, views only after. The views read one
+ * deployment schema (information_schema.view_table_usage); that schema is the second
+ * database fact (R1). The file never stores a phase flag.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 
@@ -29,7 +30,16 @@ export type PonderLagBound = {
   b: number;
 };
 
-export type DeployPhase = "pre_cutover" | "post_cutover";
+/**
+ * pre_cutover: kargain holds base tables.
+ * post_cutover: kargain is views over live.schema (or pending.schema mid-switch).
+ * first_cutover_interrupted: views already read pending.schema, state.live is null
+ * (the views transaction committed, the HTTP half never wrote state) — R1.
+ */
+export type DeployPhase =
+  | "pre_cutover"
+  | "post_cutover"
+  | "first_cutover_interrupted";
 
 /** Runtime state (phase from DB observation, never persisted as a flag). */
 export type PonderDeployState = {
@@ -154,18 +164,64 @@ function parseLag(value: unknown): PonderLagBound | null {
 }
 
 /**
- * SQL: true when schema kargain holds at least one base table (relkind r|p).
- * Used by the executor to observe phase (A1).
+ * Database facts about schema `kargain` (R1), one row `has_base|target_count|target`:
+ * base tables (relkind r|p) and the schemas the kargain views read from
+ * (information_schema.view_table_usage). Owner of the SQL; the executor only runs it.
  */
-export const KARGAIN_HAS_BASE_TABLES_SQL = `
-SELECT EXISTS (
-  SELECT 1
-  FROM pg_class c
-  JOIN pg_namespace n ON n.oid = c.relnamespace
-  WHERE n.nspname = 'kargain'
-    AND c.relkind IN ('r', 'p')
-) AS has_base;
+export const KARGAIN_OBSERVATION_SQL = `
+SELECT
+  EXISTS (
+    SELECT 1
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'kargain'
+      AND c.relkind IN ('r', 'p')
+  ) AS has_base,
+  (
+    SELECT count(DISTINCT table_schema)
+    FROM information_schema.view_table_usage
+    WHERE view_schema = 'kargain'
+  ) AS target_count,
+  COALESCE((
+    SELECT min(table_schema)
+    FROM information_schema.view_table_usage
+    WHERE view_schema = 'kargain'
+  ), '') AS target;
 `.trim();
+
+export type KargainObservation = {
+  kargainHasBaseTables: boolean;
+  /** Schema every kargain view reads from; null when kargain has no views. */
+  kargainViewsTarget: string | null;
+};
+
+/** Parse one `psql -t -A -F '|'` row of KARGAIN_OBSERVATION_SQL. Fail closed. */
+export function parseKargainObservationRow(row: string): KargainObservation {
+  const parts = row.trim().split("|");
+  if (parts.length !== 3) {
+    throw new Error("deploy_observation_failed: kargain_observation");
+  }
+  const [hasBase, count, target] = parts as [string, string, string];
+  const hasBaseNorm = hasBase.toLowerCase();
+  if (hasBaseNorm !== "t" && hasBaseNorm !== "f") {
+    throw new Error("deploy_observation_failed: kargain_observation");
+  }
+  if (!/^\d+$/.test(count)) {
+    throw new Error("deploy_observation_failed: kargain_observation");
+  }
+  const targets = Number.parseInt(count, 10);
+  if (targets > 1) {
+    // Mixed views (e.g. an interrupted non-atomic flip): never guess a target.
+    throw new Error("deploy_observation_failed: kargain_views_target");
+  }
+  if (targets === 1 && !SCHEMA_RE.test(target)) {
+    throw new Error("deploy_observation_failed: kargain_views_target");
+  }
+  return {
+    kargainHasBaseTables: hasBaseNorm === "t",
+    kargainViewsTarget: targets === 1 ? target : null,
+  };
+}
 
 /** Parse file JSON without phase. Caller must reconcile with DB observation. */
 export function parsePonderDeployStateFile(raw: unknown): Omit<
@@ -253,27 +309,48 @@ export function parsePonderDeployStateFile(raw: unknown): Omit<
 }
 
 /**
- * Bind file state to the observed DB phase (A1). Disagreement refuses.
+ * Bind file state to the observed DB phase (A1 / R1). Disagreement refuses.
+ *
+ * Post-cutover requires the kargain views target to be live.schema, or
+ * pending.schema for an interrupted switch. live null + views target = pending.schema
+ * is an interrupted first cutover (resume or roll back); every other disagreement is
+ * deploy_state_invalid.
  */
 export function reconcileDeployPhase(
   file: Omit<PonderDeployState, "phase">,
-  kargainHasBaseTables: boolean,
+  observed: KargainObservation,
 ): PonderDeployState {
-  const phase: DeployPhase = kargainHasBaseTables
-    ? "pre_cutover"
-    : "post_cutover";
+  if (observed.kargainHasBaseTables) {
+    if (file.live !== null) {
+      throw new DeployStateInvalidError(
+        "phase_mismatch: kargain has base tables but state.live is set",
+      );
+    }
+    return { ...file, phase: "pre_cutover" };
+  }
 
-  if (phase === "pre_cutover" && file.live !== null) {
+  const target = observed.kargainViewsTarget;
+  if (target === null) {
     throw new DeployStateInvalidError(
-      "phase_mismatch: kargain has base tables but state.live is set",
+      "phase_mismatch: kargain has neither base tables nor views",
     );
   }
-  if (phase === "post_cutover" && file.live === null) {
+
+  if (file.live === null) {
+    if (file.pending !== null && target === file.pending.schema) {
+      return { ...file, phase: "first_cutover_interrupted" };
+    }
     throw new DeployStateInvalidError(
       "phase_mismatch: kargain has no base tables but state.live is null",
     );
   }
-  return { ...file, phase };
+
+  if (target === file.live.schema || target === file.pending?.schema) {
+    return { ...file, phase: "post_cutover" };
+  }
+  throw new DeployStateInvalidError(
+    `phase_mismatch: kargain views read ${target} but state.live is ${file.live.schema}`,
+  );
 }
 
 export function readPonderDeployStateFile(path: string): Omit<
@@ -359,23 +436,6 @@ export function schemaNameForDeploySha(deploySha: string): string {
 
 export function isDeploymentSchemaName(name: string): boolean {
   return SCHEMA_RE.test(name);
-}
-
-/** @deprecated use parsePonderDeployStateFile + reconcileDeployPhase */
-export function parsePonderDeployState(
-  raw: unknown,
-  opts?: { kargainHasBaseTables?: boolean },
-): PonderDeployState {
-  const file = parsePonderDeployStateFile(raw);
-  const hasBase =
-    opts?.kargainHasBaseTables ??
-    (file.live === null && file.pending === null ? true : file.live === null);
-  // When caller omits observation: fingerprints-only → pre; live set → post.
-  const inferred =
-    opts?.kargainHasBaseTables !== undefined
-      ? opts.kargainHasBaseTables
-      : file.live === null;
-  return reconcileDeployPhase(file, inferred);
 }
 
 export { SCHEMA_RE as DEPLOYMENT_SCHEMA_RE };

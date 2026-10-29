@@ -1,5 +1,6 @@
-# Rehearsal-only override (ADR 0014 / PR #71 D1).
-# Selected via: COMPOSE_FILE=docker-compose.yml:docker-compose.rehearsal.yml
+# Rehearsal-only override (ADR 0014 / PR #71 D1). Never referenced by a deploy workflow
+# or scripts/ponder-deploy.sh (policy-pinned): it disables TLS verification.
+# Selected via: COMPOSE_FILE=docker-compose.yml:ops/rehearsal/docker-compose.rehearsal.yml
 # Real Ponder slots index local Hardhat only — no commercial RPC in the writers.
 # Does not publish slot ports (nginx owns :42069). Same postgres volume/network.
 x-rehearsal-env: &rehearsal-env

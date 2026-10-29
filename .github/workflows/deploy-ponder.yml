@@ -43,6 +43,7 @@ on:
       - "scripts/lib/ponder-deploy-plan.ts"
       - "scripts/lib/ponder-deploy-retention.ts"
       - "scripts/lib/ponder-views-switch.ts"
+      - "scripts/lib/ponder-rollback-decision.ts"
       - "scripts/ponder-deploy-fingerprints.ts"
       - "scripts/ponder-ready-probe.ts"
       - "scripts/ponder-deploy.sh"

@@ -1,8 +1,8 @@
 /**
  * Pure deploy planner (ADR 0014 §a/d/e/f/j / issue #69 / PR #71).
  * Sole encoder of collision, pending precedence, start≠switch, rollback models,
- * retention, first cutover, and typed probe refusal. Imports only Node builtins
- * + ./ponder-deploy-state.js + ./ponder-deploy-retention.js.
+ * retention, first cutover (incl. an interrupted one), and typed probe refusal.
+ * Imports only Node builtins + ./ponder-deploy-state.js + ./ponder-deploy-retention.js.
  */
 import type {
   PonderDeploySlot,
@@ -11,7 +11,10 @@ import type {
   PonderSlotRef,
 } from "./ponder-deploy-state.js";
 import { schemaNameForDeploySha } from "./ponder-deploy-state.js";
-import { retentionSchemasToDrop } from "./ponder-deploy-retention.js";
+import {
+  keepSetFromState,
+  retentionSchemasToDrop,
+} from "./ponder-deploy-retention.js";
 
 export type PonderDeployOperation = "deploy" | "hold" | "rollback";
 
@@ -44,8 +47,8 @@ export type PonderDeployObservations = {
   priorCheckoutSha: string | null;
   /** Digest of the current ops/nginx/ponder.conf file (B9). */
   nginxConfigDigest: string;
-  /** GitHub event / rehearsal trigger (A9). */
-  eventName: "push" | "workflow_dispatch" | "rehearsal" | string;
+  /** GitHub event (A9 / R8). The executor refuses any other value. */
+  eventName: "push" | "workflow_dispatch";
   /** Running legacy ponder image id before cutover (A8). */
   legacyImageId: string | null;
   /**
@@ -53,7 +56,19 @@ export type PonderDeployObservations = {
    * Plan CLI reconciles phase from this (A1); not a file flag.
    */
   kargainHasBaseTables: boolean;
+  /**
+   * DB fact (R1): the one schema the kargain views read from
+   * (information_schema.view_table_usage); null when kargain has no views.
+   */
+  kargainViewsTarget: string | null;
+  /**
+   * Container that writes schema kargain before cutover (R2): the pre-#71 `ponder`
+   * service, or `ponder-legacy` after a first-cutover rollback; null when none runs.
+   */
+  kargainWriter: KargainWriter | null;
 };
+
+export type KargainWriter = "ponder" | "ponder-legacy";
 
 export type UpstreamTarget = PonderDeploySlot | "legacy";
 
@@ -74,18 +89,20 @@ export type PlanAction =
   | { type: "preflight_slot"; slot: PonderDeploySlot }
   | { type: "start_slot"; slot: PonderDeploySlot }
   | { type: "stop_slot"; slot: PonderDeploySlot }
-  | { type: "stop_legacy_writer" }
+  | { type: "stop_legacy_writer"; writer: KargainWriter }
   | {
       type: "preserve_legacy_image";
       imageId: string;
     }
+  | { type: "remove_legacy_image_tag" }
   | {
       type: "start_legacy_writer";
+      /** state.legacy_image — the tag must resolve to exactly this image (R5). */
       image: string;
     }
   | {
       type: "wait_answered";
-      target: "slot" | "nginx";
+      target: "slot" | "nginx" | "legacy";
       slot?: PonderDeploySlot;
       timeoutMs: number;
       /** On fail: shell stops new, drops schema, clears pending, exits 1 (B7). */
@@ -94,7 +111,7 @@ export type PlanAction =
     }
   | {
       type: "wait_ready200";
-      target: "slot" | "nginx";
+      target: "slot" | "nginx" | "legacy";
       slot?: PonderDeploySlot;
       schema: string;
       timeoutMs: number;
@@ -142,6 +159,8 @@ export type PlanResult = {
 const ANSWERED_TIMEOUT_MS = 90_000;
 const READY200_TIMEOUT_MS = 600_000;
 const ROLLBACK_READY_TIMEOUT_MS = 60_000;
+const LEGACY_ANSWERED_WAIT = `deploy_rollback_failed: waited ${ANSWERED_TIMEOUT_MS / 1000}s`;
+const LEGACY_READY_WAIT = `deploy_rollback_failed: waited ${READY200_TIMEOUT_MS / 1000}s`;
 
 function oppositeSlot(slot: PonderDeploySlot): PonderDeploySlot {
   return slot === "blue" ? "green" : "blue";
@@ -162,16 +181,15 @@ function isReady200(probe: ProbeObservation): boolean {
   return probe.kind === "status" && probe.code === 200;
 }
 
-/** Not-ready for supersede: only no_answer or non-200 status (A3). */
-function isNotReady(probe: ProbeObservation): boolean {
-  return (
-    probe.kind === "no_answer" ||
-    (probe.kind === "status" && probe.code !== 200)
-  );
+function mayMutatePreCutover(eventName: string): boolean {
+  return eventName === "workflow_dispatch";
 }
 
-function mayMutatePreCutover(eventName: string): boolean {
-  return eventName === "workflow_dispatch" || eventName === "rehearsal";
+function probeEvidence(probe: ProbeObservation): string {
+  if (probe.kind === "status") {
+    return `deploy_evidence pending_probe=status code=${probe.code}`;
+  }
+  return `deploy_evidence pending_probe=${probe.kind}`;
 }
 
 /**
@@ -230,11 +248,7 @@ function applyRetention(
   state: PonderDeployState,
   schemas: readonly string[],
 ): PlanAction[] {
-  const drop = retentionSchemasToDrop(schemas, {
-    live: state.live?.schema ?? null,
-    previous: state.previous?.schema ?? null,
-    pending: state.pending?.schema ?? null,
-  });
+  const drop = retentionSchemasToDrop(schemas, keepSetFromState(state));
   if (drop.length === 0) return [];
   return [{ type: "retention", drop }];
 }
@@ -301,11 +315,16 @@ function blockedRollbackModel(
 function pendingEvidenceExit(
   actions: PlanAction[],
   pending: PonderSlotRef,
+  /** Observed probe of an existing pending (R7); absent for a slot started this run. */
+  probe?: ProbeObservation,
 ): PlanResult {
   actions.push({
     type: "evidence",
     text: `deploy_evidence switch=pending schema=${pending.schema}`,
   });
+  if (probe) {
+    actions.push({ type: "evidence", text: probeEvidence(probe) });
+  }
   actions.push({
     type: "evidence",
     text: `deploy_evidence slot=${pending.slot}`,
@@ -330,18 +349,25 @@ function emitNginxRecreate(
   };
 }
 
-function emitWaitNewSlot(args: {
+/**
+ * Wait for a slot STARTED IN THIS RUN. Teardown (stop + drop schema + clear pending)
+ * applies only to that slot (ADR §d table, R7); an existing pending is never waited
+ * on here — it is reported with its observed probe and nothing is dropped.
+ * `teardown: false` is for the in-place recreate of the live schema: never dropped.
+ */
+function emitWaitStartedSlot(args: {
   actions: PlanAction[];
   slot: PonderDeploySlot;
   schema: string;
+  teardown: boolean;
 }): void {
-  const { actions, slot, schema } = args;
+  const { actions, slot, schema, teardown } = args;
   actions.push({
     type: "wait_answered",
     target: "slot",
     slot,
     timeoutMs: ANSWERED_TIMEOUT_MS,
-    onTimeout: "tear_down_new",
+    onTimeout: teardown ? "tear_down_new" : "fail",
     failEvidence: "ponder_did_not_become_ready",
   });
   actions.push({
@@ -354,12 +380,20 @@ function emitWaitNewSlot(args: {
   });
 }
 
+/**
+ * Supersede: stop the pending writer, record pending=null, THEN drop its schema, so the
+ * keep set the executor reads from the state file at execution no longer holds it (R9).
+ */
 function emitSupersedePending(
   actions: PlanAction[],
-  pending: PonderSlotRef,
-): void {
+  state: PonderDeployState,
+): PonderDeployState {
+  const pending = state.pending!;
+  const next: PonderDeployState = { ...state, pending: null };
   actions.push({ type: "stop_slot", slot: pending.slot });
+  actions.push({ type: "write_state", state: next });
   actions.push({ type: "drop_schema", schema: pending.schema });
+  return next;
 }
 
 /**
@@ -383,8 +417,12 @@ export function planPonderDeploy(args: {
     text: `deploy_evidence operation=${operation}`,
   });
 
-  // A9: push must not start or finish the first cutover.
-  if (state.phase === "pre_cutover" && !mayMutatePreCutover(observations.eventName)) {
+  // A9: push must not start or finish the first cutover (an interrupted one included).
+  if (
+    (state.phase === "pre_cutover" ||
+      state.phase === "first_cutover_interrupted") &&
+    !mayMutatePreCutover(observations.eventName)
+  ) {
     actions.push({
       type: "evidence",
       text: "deploy_evidence cutover=awaiting_dispatch",
@@ -404,6 +442,11 @@ export function planPonderDeploy(args: {
   // --- rollback ---
   if (operation === "rollback") {
     return planRollback({ state, observations, actions });
+  }
+
+  // R1: the views transaction committed but the HTTP half never wrote state.
+  if (state.phase === "first_cutover_interrupted") {
+    return planResumeFirstCutover({ state, observations, actions, operation });
   }
 
   let working: PonderDeployState = { ...state };
@@ -474,80 +517,19 @@ export function planPonderDeploy(args: {
     working = emitNginxRecreate(actions, working, observations);
   }
 
-  // Pending precedence (§d) — post-cutover
-  if (working.phase === "post_cutover" && working.pending) {
-    const pendingProbe = probeOf(observations, working.pending.slot);
-    if (isReady200(pendingProbe)) {
-      if (operation === "hold") {
-        return pendingEvidenceExit(actions, working.pending);
-      }
-      if (working.rollback_model === null) {
-        return blockedRollbackModel(actions, working.pending.schema);
-      }
-      const continueStart =
-        observations.executableDigest !== working.pending.executable;
-      return planSwitchPendingThenMaybeStart({
-        state: working,
-        observations,
-        actions,
-        operation,
-        deploySha,
-        deployCommit,
-        schema,
-        continueStart,
-      });
-    }
-    // Not ready
-    if (unchanged || operation === "hold") {
-      return pendingEvidenceExit(actions, working.pending);
-    }
-    if (working.pending.schema === schema) {
-      // Same pending schema still backfilling — wait, do not supersede.
-      emitWaitNewSlot({
-        actions,
-        slot: working.pending.slot,
-        schema,
-      });
-      return pendingEvidenceExit(actions, working.pending);
-    }
-    // Supersede not-ready pending before new start (A3: only not-ready, not probe_failed)
-    if (isNotReady(pendingProbe)) {
-      emitSupersedePending(actions, working.pending);
-      working = { ...working, pending: null };
-    }
-  }
-
-  // Pre-cutover pending already started → finish or wait
-  if (working.phase === "pre_cutover" && working.pending) {
-    const pendingProbe = probeOf(observations, working.pending.slot);
-    if (operation === "hold") {
-      return pendingEvidenceExit(actions, working.pending);
-    }
-    if (working.rollback_model === null) {
-      return blockedRollbackModel(actions, working.pending.schema);
-    }
-    if (isReady200(pendingProbe)) {
-      return planFirstCutoverSwitch({
-        state: working,
-        observations,
-        actions,
-        pending: working.pending,
-        model: working.rollback_model,
-      });
-    }
-    if (working.pending.schema === schema) {
-      emitWaitNewSlot({
-        actions,
-        slot: working.pending.slot,
-        schema,
-      });
-      return pendingEvidenceExit(actions, working.pending);
-    }
-    // Stale pre-cutover pending of another commit — supersede like any not-ready (A7)
-    if (isNotReady(pendingProbe)) {
-      emitSupersedePending(actions, working.pending);
-      working = { ...working, pending: null };
-    }
+  // Pending precedence (§d) — both phases.
+  if (working.pending) {
+    const handled = planExistingPending({
+      state: working,
+      observations,
+      actions,
+      operation,
+      deploySha,
+      deployCommit,
+      schema,
+    });
+    if ("actions" in handled) return handled;
+    working = handled.state;
   }
 
   // Executable unchanged after pending handling (e.g. switched nothing, no start)
@@ -603,6 +585,61 @@ export function planPonderDeploy(args: {
   });
 }
 
+/**
+ * Pending precedence (ADR §d, R6/R7), identical in both phases.
+ * - ready 200: switch it first (rollback_model gate only here, at the switch);
+ * - not ready, same executable as the incoming run: re-assert switch=pending with the
+ *   observed probe kind; nothing is waited on, dropped, or torn down;
+ * - not ready, incoming executable differs: supersede (stop, clear, drop) and let the
+ *   caller start the incoming commit — for hold and deploy alike.
+ */
+function planExistingPending(args: {
+  state: PonderDeployState;
+  observations: PonderDeployObservations;
+  actions: PlanAction[];
+  operation: PonderDeployOperation;
+  deploySha: string;
+  deployCommit: string;
+  schema: string;
+}): PlanResult | { state: PonderDeployState } {
+  const { state, observations, actions, operation } = args;
+  const pending = state.pending!;
+  const probe = probeOf(observations, pending.slot);
+
+  if (isReady200(probe)) {
+    if (operation === "hold") {
+      return pendingEvidenceExit(actions, pending, probe);
+    }
+    if (state.rollback_model === null) {
+      return blockedRollbackModel(actions, pending.schema);
+    }
+    if (state.phase === "pre_cutover") {
+      return planFirstCutoverSwitch({
+        state,
+        observations,
+        actions,
+        pending,
+        model: state.rollback_model,
+      });
+    }
+    return planSwitchPendingThenMaybeStart({
+      state,
+      observations,
+      actions,
+      operation,
+      deploySha: args.deploySha,
+      deployCommit: args.deployCommit,
+      schema: args.schema,
+      continueStart: observations.executableDigest !== pending.executable,
+    });
+  }
+
+  if (observations.executableDigest === pending.executable) {
+    return pendingEvidenceExit(actions, pending, probe);
+  }
+  return { state: emitSupersedePending(actions, state) };
+}
+
 function planRollback(args: {
   state: PonderDeployState;
   observations: PonderDeployObservations;
@@ -610,12 +647,17 @@ function planRollback(args: {
 }): PlanResult {
   const { state, observations, actions } = args;
 
-  // A8: first-cutover rollback — previous is null; legacy_* restore the table writer.
+  // A8 / R4: first-cutover rollback only while the first-cutover deployment is live
+  // (any later switch clears legacy_schema) AND the legacy schema still exists.
+  const legacyRollbackValid =
+    state.legacy_schema !== null &&
+    observations.schemas.includes(state.legacy_schema);
   if (
-    state.phase === "post_cutover" &&
-    state.live !== null &&
-    state.previous === null &&
-    state.legacy_schema !== null
+    legacyRollbackValid &&
+    (state.phase === "first_cutover_interrupted" ||
+      (state.phase === "post_cutover" &&
+        state.live !== null &&
+        state.previous === null))
   ) {
     return planFirstCutoverRollback({ state, observations, actions });
   }
@@ -642,8 +684,7 @@ function planRollback(args: {
     if (pendingProbe.kind === "probe_failed") {
       return refuseProbeFailed(actions, working.pending.slot);
     }
-    emitSupersedePending(actions, working.pending);
-    working = { ...working, pending: null };
+    working = emitSupersedePending(actions, working);
   }
 
   const prev = working.previous!;
@@ -691,8 +732,8 @@ function planRollback(args: {
       executable: prev.executable,
       phase: "post_cutover",
     };
-    actions.push(...applyRetention(nextState, observations.schemas));
     actions.push({ type: "write_state", state: nextState });
+    actions.push(...applyRetention(nextState, observations.schemas));
     actions.push({
       type: "evidence",
       text: `deploy_evidence slot=${prev.slot}`,
@@ -761,8 +802,8 @@ function planRollback(args: {
       executable: prev.executable,
       phase: "post_cutover",
     };
-    actions.push(...applyRetention(nextState, observations.schemas));
     actions.push({ type: "write_state", state: nextState });
+    actions.push(...applyRetention(nextState, observations.schemas));
     actions.push({
       type: "evidence",
       text: `deploy_evidence slot=${prev.slot}`,
@@ -779,40 +820,46 @@ function planRollback(args: {
   return { actions };
 }
 
+/**
+ * First-cutover rollback (ADR §j, R3/R4): stop the new writer, restore the table schema
+ * `kargain`, record that fact in state, start the legacy writer from the preserved image,
+ * and flip HTTP only after the legacy writer answered and is /ready 200. On a gate
+ * timeout the run fails (`deploy_rollback_failed: waited <n>s`) and leaves views and
+ * upstream as they are.
+ */
 function planFirstCutoverRollback(args: {
   state: PonderDeployState;
   observations: PonderDeployObservations;
   actions: PlanAction[];
 }): PlanResult {
   const { state, observations, actions } = args;
-  const live = state.live!;
+  const interrupted = state.phase === "first_cutover_interrupted";
+  // Interrupted: the views already read pending; state.live is still null.
+  const newWriter = interrupted ? state.pending! : state.live!;
   const legacySchema = state.legacy_schema!;
-  const legacyImage = state.legacy_image ?? observations.legacyImageId;
+  const legacyImage = state.legacy_image;
   if (!legacyImage) {
-    return refuseInvalid(actions, "legacy_image_unknown");
+    actions.push({
+      type: "evidence",
+      text: "deploy_rollback_failed: legacy_image_missing",
+    });
+    actions.push({ type: "exit", code: 1 });
+    return { actions };
   }
 
   // B5: supersede pending before rollback
   let working: PonderDeployState = { ...state };
-  if (working.pending) {
-    emitSupersedePending(actions, working.pending);
-    working = { ...working, pending: null };
+  if (!interrupted && working.pending) {
+    working = emitSupersedePending(actions, working);
   }
 
-  actions.push({ type: "stop_slot", slot: live.slot });
+  actions.push({ type: "stop_slot", slot: newWriter.slot });
   actions.push({
     type: "switch_views",
     targetSchema: legacySchema,
     kind: "first_cutover_rollback",
     renameLiveTo: legacySchema,
   });
-  actions.push({ type: "start_legacy_writer", image: legacyImage });
-  actions.push({
-    type: "write_upstream",
-    slot: "legacy",
-    previousUpstream: live.slot,
-  });
-  actions.push({ type: "reload_nginx" });
 
   const nextState: PonderDeployState = {
     ...working,
@@ -826,8 +873,32 @@ function planFirstCutoverRollback(args: {
     legacy_image: legacyImage,
     phase: "pre_cutover",
   };
-  actions.push(...applyRetention(nextState, observations.schemas));
+  // The views transaction committed: state agrees with the database before the legacy
+  // writer is gated, so a gate timeout leaves a recoverable (pre-cutover) state.
   actions.push({ type: "write_state", state: nextState });
+  actions.push({ type: "start_legacy_writer", image: legacyImage });
+  actions.push({
+    type: "wait_answered",
+    target: "legacy",
+    timeoutMs: ANSWERED_TIMEOUT_MS,
+    onTimeout: "fail",
+    failEvidence: LEGACY_ANSWERED_WAIT,
+  });
+  actions.push({
+    type: "wait_ready200",
+    target: "legacy",
+    schema: legacySchema,
+    timeoutMs: READY200_TIMEOUT_MS,
+    onTimeout: "fail",
+    failEvidence: LEGACY_READY_WAIT,
+  });
+  actions.push({
+    type: "write_upstream",
+    slot: "legacy",
+    previousUpstream: newWriter.slot,
+  });
+  actions.push({ type: "reload_nginx" });
+  actions.push(...applyRetention(nextState, observations.schemas));
   actions.push({
     type: "evidence",
     text: "deploy_evidence outcome=first_cutover_rollback",
@@ -912,6 +983,11 @@ function appendNormalSwitch(args: {
   }
 
   // A6: record digests of code that is now live — never the incoming newer digest.
+  // R4: this switch lets retention drop the first-cutover spare (live is no longer the
+  // first-cutover deployment), so legacy_schema/legacy_image are cleared in the same
+  // state write and the preserved image tag is removed.
+  const clearsLegacy =
+    state.legacy_schema !== null || state.legacy_image !== null;
   const nextState: PonderDeployState = {
     ...state,
     live: newLive,
@@ -919,11 +995,17 @@ function appendNormalSwitch(args: {
     pending: null,
     identity: observations.identityDigest,
     executable: newLive.executable,
+    legacy_schema: null,
+    legacy_image: null,
     phase: "post_cutover",
   };
 
-  actions.push(...applyRetention(nextState, observations.schemas));
+  // State first: the retention executor reads its keep set from the state file (R9).
   actions.push({ type: "write_state", state: nextState });
+  actions.push(...applyRetention(nextState, observations.schemas));
+  if (clearsLegacy) {
+    actions.push({ type: "remove_legacy_image_tag" });
+  }
   actions.push({
     type: "evidence",
     text: "deploy_evidence outcome=recreated",
@@ -966,7 +1048,8 @@ function planInPlaceRecreate(args: {
   });
   actions.push({ type: "preflight_slot", slot: live.slot });
   actions.push({ type: "start_slot", slot: live.slot });
-  emitWaitNewSlot({ actions, slot: live.slot, schema });
+  // The recreated schema IS the live schema: a missing answer fails, never tears down.
+  emitWaitStartedSlot({ actions, slot: live.slot, schema, teardown: false });
 
   const newLive = slotRef({
     slot: live.slot,
@@ -1049,7 +1132,7 @@ function planNormalStart(args: {
     text: `deploy_evidence slot=${startSlot}`,
   });
 
-  emitWaitNewSlot({ actions, slot: startSlot, schema });
+  emitWaitStartedSlot({ actions, slot: startSlot, schema, teardown: true });
 
   if (operation === "hold") {
     return pendingEvidenceExit(actions, pendingRef);
@@ -1139,7 +1222,7 @@ function planFirstCutoverStart(args: {
     text: `deploy_evidence slot=${startSlot}`,
   });
 
-  emitWaitNewSlot({ actions, slot: startSlot, schema });
+  emitWaitStartedSlot({ actions, slot: startSlot, schema, teardown: true });
 
   if (operation === "hold") {
     return pendingEvidenceExit(actions, pendingRef);
@@ -1182,13 +1265,89 @@ function planFirstCutoverSwitch(args: {
 
   // A7: rename target must not already exist
   actions.push({ type: "check_schema_absent", schema: legacySchema });
-  actions.push({ type: "stop_legacy_writer" });
+  // R2: stop exactly the observed writer of kargain (ponder, or ponder-legacy after a
+  // first-cutover rollback). No observed writer → nothing to stop, named.
+  if (observations.kargainWriter === null) {
+    actions.push({
+      type: "evidence",
+      text: "deploy_evidence legacy_writer=none",
+    });
+  } else {
+    actions.push({
+      type: "stop_legacy_writer",
+      writer: observations.kargainWriter,
+    });
+  }
   actions.push({
     type: "switch_views",
     targetSchema: pending.schema,
     kind: "first_cutover",
     renameLiveTo: legacySchema,
   });
+  return finishFirstCutover({
+    state,
+    observations,
+    actions,
+    pending,
+    model,
+    legacySchema,
+    legacyImage,
+  });
+}
+
+/**
+ * R1: the views transaction committed, state.live is still null. Resume the HTTP half
+ * (upstream → nginx → 200 gate → state) of the first cutover.
+ */
+function planResumeFirstCutover(args: {
+  state: PonderDeployState;
+  observations: PonderDeployObservations;
+  actions: PlanAction[];
+  operation: PonderDeployOperation;
+}): PlanResult {
+  const { state, observations, actions, operation } = args;
+  const pending = state.pending!;
+  if (operation === "hold") {
+    // hold never switches; the switch already happened — report, change nothing.
+    actions.push({
+      type: "evidence",
+      text: "deploy_evidence cutover=interrupted",
+    });
+    actions.push({ type: "exit", code: 0 });
+    return { actions };
+  }
+  if (state.rollback_model === null) {
+    return refuseInvalid(actions, "interrupted_first_cutover: rollback_model unset");
+  }
+  if (state.legacy_schema === null) {
+    return refuseInvalid(actions, "legacy_schema_unknown");
+  }
+  actions.push({
+    type: "evidence",
+    text: "deploy_evidence cutover=resumed",
+  });
+  return finishFirstCutover({
+    state,
+    observations,
+    actions,
+    pending,
+    model: state.rollback_model,
+    legacySchema: state.legacy_schema,
+    legacyImage: state.legacy_image ?? observations.legacyImageId ?? null,
+  });
+}
+
+/** First-cutover HTTP half + state write (shared by the full run and the resume). */
+function finishFirstCutover(args: {
+  state: PonderDeployState;
+  observations: PonderDeployObservations;
+  actions: PlanAction[];
+  pending: PonderSlotRef;
+  model: PonderRollbackModel;
+  legacySchema: string;
+  legacyImage: string | null;
+}): PlanResult {
+  const { state, observations, actions, pending, model } = args;
   actions.push({
     type: "write_upstream",
     slot: pending.slot,
@@ -1213,14 +1372,14 @@ function planFirstCutoverSwitch(args: {
     pending: null,
     rollback_model: model,
     lag: state.lag,
-    legacy_schema: legacySchema,
-    legacy_image: legacyImage,
+    legacy_schema: args.legacySchema,
+    legacy_image: args.legacyImage,
     nginx_config_digest: observations.nginxConfigDigest,
     phase: "post_cutover",
   };
 
-  actions.push(...applyRetention(nextState, observations.schemas));
   actions.push({ type: "write_state", state: nextState });
+  actions.push(...applyRetention(nextState, observations.schemas));
   actions.push({
     type: "evidence",
     text: "deploy_evidence outcome=recreated",

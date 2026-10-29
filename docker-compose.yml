@@ -5,11 +5,10 @@ x-default-logging: &default-logging
       max-size: "20m"
       max-file: "5"
 
-x-ponder-slot: &ponder-slot
+# Writer settings shared by every Ponder writer. No `build:` here: a writer that must
+# run a preserved image (ponder-legacy) must never be buildable from the checkout.
+x-ponder-writer: &ponder-writer
   <<: *default-logging
-  build:
-    context: .
-    dockerfile: Dockerfile.ponder
   restart: always
   depends_on:
     postgres:
@@ -55,7 +54,7 @@ services:
       - kargain
 
   ponder-blue:
-    <<: *ponder-slot
+    <<: *ponder-writer
     image: kargain-ponder-blue
     build:
       context: .
@@ -67,7 +66,7 @@ services:
         required: false
 
   ponder-green:
-    <<: *ponder-slot
+    <<: *ponder-writer
     image: kargain-ponder-green
     build:
       context: .
@@ -79,10 +78,12 @@ services:
         required: false
 
   # First-cutover rollback writer (A8): tagged image kargain-ponder-legacy:cutover.
-  # Not built by deploy; image is preserved from the pre-cutover writer.
+  # Never built (no `build:`) and never pulled (R5): the deploy verifies the tag equals
+  # state.legacy_image before starting it, so current code can never run on the legacy schema.
   ponder-legacy:
-    <<: *ponder-slot
+    <<: *ponder-writer
     image: kargain-ponder-legacy:cutover
+    pull_policy: never
     profiles:
       - legacy
     env_file:

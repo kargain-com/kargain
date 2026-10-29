@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -7,103 +9,28 @@ import { fileURLToPath } from "node:url";
 import {
   planNeverSwitchesOnHold,
   planPonderDeploy,
-  type PonderDeployObservations,
-  type ProbeObservation,
 } from "../scripts/lib/ponder-deploy-plan.ts";
-import type {
-  PonderDeployState,
-  PonderSlotRef,
-} from "../scripts/lib/ponder-deploy-state.ts";
+import {
+  baseObs,
+  evidenceTexts,
+  newerSchema,
+  newerSha,
+  noAnswer,
+  otherSchema,
+  otherSha,
+  PLAN_CONTROLS,
+  postCutoverState,
+  preCutoverState,
+  schema,
+  sha,
+  slotRef,
+  status,
+} from "./fixtures/ponder-deploy-plan-controls.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PLAN_SRC = path.join(ROOT, "scripts/lib/ponder-deploy-plan.ts");
 const STATE_SRC = path.join(ROOT, "scripts/lib/ponder-deploy-state.ts");
 const VIEWS_SRC = path.join(ROOT, "scripts/lib/ponder-views-switch.ts");
-
-const sha = "f".repeat(40);
-const schema = `k_${sha}`;
-const otherSha = "a".repeat(40);
-const otherSchema = `k_${otherSha}`;
-const newerSha = "b".repeat(40);
-const newerSchema = `k_${newerSha}`;
-
-const status = (code: number): ProbeObservation => ({ kind: "status", code });
-const noAnswer: ProbeObservation = { kind: "no_answer" };
-
-function slotRef(
-  slot: "blue" | "green",
-  schemaName: string,
-  commit = otherSha,
-  executable = "exec0",
-): PonderSlotRef {
-  return { slot, schema: schemaName, commit, executable };
-}
-
-function baseObs(
-  over: Partial<PonderDeployObservations> = {},
-): PonderDeployObservations {
-  return {
-    ready: { blue: noAnswer, green: noAnswer, nginx: noAnswer },
-    schemas: [],
-    storedExecutable: "",
-    executableDigest: "exec1",
-    identityDigest: "id1",
-    deploySha: sha,
-    deployCommit: sha,
-    priorCheckoutSha: otherSha,
-    nginxConfigDigest: "nginx0",
-    eventName: "workflow_dispatch",
-    legacyImageId: "sha256:legacy",
-    kargainHasBaseTables: true,
-    ...over,
-  };
-}
-
-function preCutoverState(
-  over: Partial<PonderDeployState> = {},
-): PonderDeployState {
-  return {
-    identity: "id0",
-    executable: "exec0",
-    live: null,
-    previous: null,
-    pending: null,
-    rollback_model: null,
-    lag: null,
-    legacy_schema: null,
-    legacy_image: null,
-    nginx_config_digest: null,
-    phase: "pre_cutover",
-    ...over,
-  };
-}
-
-function postCutoverState(
-  over: Partial<PonderDeployState> = {},
-): PonderDeployState {
-  return {
-    identity: "id0",
-    executable: "exec0",
-    live: slotRef("blue", otherSchema),
-    previous: null,
-    pending: null,
-    rollback_model: "keep_previous",
-    lag: { l_single_max: 1, m: 30, b: 31 },
-    legacy_schema: otherSchema,
-    legacy_image: "sha256:legacy",
-    nginx_config_digest: "nginx0",
-    phase: "post_cutover",
-    ...over,
-  };
-}
-
-function evidenceTexts(
-  result: ReturnType<typeof planPonderDeploy>,
-): string[] {
-  return result.actions
-    .filter((a) => a.type === "evidence")
-    .map((a) => (a.type === "evidence" ? a.text : ""));
-}
 
 describe("ponder-deploy-plan", () => {
   it("self-contained: plan/state/views import only scripts/lib + builtins", () => {
@@ -436,5 +363,166 @@ describe("ponder-deploy-plan", () => {
     assert.ok(
       result.actions.some((a) => a.type === "stop_slot" && a.slot === "blue"),
     );
+  });
+
+  it("A9 / R1: push never finishes an interrupted first cutover", () => {
+    const result = planPonderDeploy({
+      state: preCutoverState({
+        phase: "first_cutover_interrupted",
+        pending: slotRef("blue", schema, sha, "execB"),
+        rollback_model: "keep_previous",
+        legacy_schema: otherSchema,
+        legacy_image: "sha256:legacy",
+      }),
+      operation: "deploy",
+      deploySha: sha,
+      observations: baseObs({
+        eventName: "push",
+        ready: { blue: status(200), green: noAnswer, nginx: noAnswer },
+        kargainHasBaseTables: false,
+        kargainViewsTarget: schema,
+      }),
+    });
+    assert.ok(
+      evidenceTexts(result).includes("deploy_evidence cutover=awaiting_dispatch"),
+    );
+    assert.ok(!result.actions.some((a) => a.type === "up_nginx"));
+  });
+
+  it("R8: the plan types and gate know only push | workflow_dispatch", () => {
+    const src = fs.readFileSync(PLAN_SRC, "utf8");
+    assert.doesNotMatch(src, /rehearsal/i);
+    assert.match(
+      src,
+      /eventName: "push" \| "workflow_dispatch"/,
+      "eventName is a closed union",
+    );
+  });
+});
+
+describe("ponder-deploy-plan controls (R21: red on a planted defect, green on the real planner)", () => {
+  assert.ok(PLAN_CONTROLS.length > 0, "controls must not be an empty set");
+  for (const control of PLAN_CONTROLS) {
+    it(`${control.id}: ${control.title}`, () => {
+      assert.ok(control.planted.length > 0, "a control needs a planted defect");
+      for (const defect of control.planted) {
+        assert.throws(
+          () => control.run(defect.planner),
+          (err: unknown) => {
+            assert.ok(
+              err instanceof assert.AssertionError,
+              `planted "${defect.name}" must fail by assertion, got ${String(err)}`,
+            );
+            assert.match(
+              err.message,
+              defect.expect,
+              `planted "${defect.name}" failed with the wrong assertion`,
+            );
+            return true;
+          },
+          `planted defect "${defect.name}" must turn the control red`,
+        );
+      }
+      control.run(planPonderDeploy);
+    });
+  }
+});
+
+describe("ponder-deploy-plan-cli (R1 / R8 observation contract)", () => {
+  const cli = path.join(ROOT, "scripts/ponder-deploy-plan-cli.ts");
+
+  function runCli(
+    state: unknown,
+    observations: Record<string, unknown>,
+    operation = "deploy",
+  ) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ponder-plan-cli-"));
+    try {
+      const statePath = path.join(dir, "state.json");
+      const obsPath = path.join(dir, "obs.json");
+      fs.writeFileSync(statePath, JSON.stringify(state));
+      fs.writeFileSync(obsPath, JSON.stringify(observations));
+      return spawnSync(
+        "node",
+        [
+          "--import",
+          "tsx",
+          cli,
+          "--state",
+          statePath,
+          "--observations",
+          obsPath,
+          "--operation",
+          operation,
+          "--deploy-sha",
+          sha,
+        ],
+        { cwd: ROOT, encoding: "utf8" },
+      );
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  const fileState = {
+    identity: "id0",
+    executable: "exec0",
+    live: null,
+    previous: null,
+    pending: { slot: "blue", schema, commit: sha, executable: "execB" },
+    rollback_model: "keep_previous",
+    lag: null,
+    legacy_schema: otherSchema,
+    legacy_image: "sha256:legacy",
+    nginx_config_digest: null,
+  };
+
+  const wireObs = (over: Record<string, unknown> = {}) => ({
+    ready: {
+      blue: { kind: "status", code: 200 },
+      green: { kind: "no_answer" },
+      nginx: { kind: "no_answer" },
+    },
+    schemas: [otherSchema, schema],
+    storedExecutable: "",
+    executableDigest: "execB",
+    identityDigest: "id1",
+    deploySha: sha,
+    deployCommit: sha,
+    priorCheckoutSha: otherSha,
+    nginxConfigDigest: "nginx0",
+    eventName: "workflow_dispatch",
+    legacyImageId: "sha256:legacy",
+    kargainHasBaseTables: false,
+    kargainViewsTarget: schema,
+    kargainWriter: null,
+    ...over,
+  });
+
+  it("R1: views target = pending.schema with live null plans the resumed HTTP half (no deploy_state_invalid)", () => {
+    const out = runCli(fileState, wireObs());
+    assert.equal(out.status, 0, out.stderr + out.stdout);
+    assert.doesNotMatch(out.stdout, /deploy_state_invalid/);
+    assert.match(out.stdout, /write_upstream/);
+    assert.match(out.stdout, /up_nginx/);
+    assert.doesNotMatch(out.stdout, /switch_views/);
+  });
+
+  it("R1: any other views disagreement stays deploy_state_invalid", () => {
+    const out = runCli(fileState, wireObs({ kargainViewsTarget: otherSchema }));
+    assert.notEqual(out.status, 0);
+    assert.match(out.stdout + out.stderr, /deploy_state_invalid/);
+  });
+
+  it("R8: event_name must be push|workflow_dispatch (rehearsal and absent are refused)", () => {
+    for (const eventName of ["rehearsal", "pull_request", "", undefined]) {
+      const out = runCli(fileState, wireObs({ eventName }));
+      assert.notEqual(out.status, 0, String(eventName));
+      assert.match(
+        out.stdout + out.stderr,
+        /deploy_observation_failed: event_name/,
+        String(eventName),
+      );
+    }
   });
 });

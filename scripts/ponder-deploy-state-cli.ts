@@ -8,10 +8,16 @@
  *   --write-json <path>         arbitrary JSON document on stdin (obs / plan scratch)
  *   --action-field <action.json> <field>   print a top-level string/number field
  *   --action-state-write <action.json> <state-path>   write action.state via owner
+ *   --kargain-observation-sql              print the kargain DB-fact SQL (owner)
+ *   --kargain-observation <raw-file>       parse its psql row → observation JSON
+ *   --clear-pending <path>                 pending=null via owner; exit 1 unless cleared
+ *   --live-slot <path>                     print state.live.slot, or nothing when no live
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import {
   DeployStateInvalidError,
+  KARGAIN_OBSERVATION_SQL,
+  parseKargainObservationRow,
   parsePonderDeployStateFile,
   readPonderDeployStateFile,
   writePonderDeployStateFile,
@@ -48,6 +54,71 @@ function main(): void {
     try {
       const file = readPonderDeployStateFile(path);
       process.stdout.write(`${JSON.stringify(file)}\n`);
+      process.exit(0);
+    } catch (err) {
+      if (err instanceof DeployStateInvalidError) {
+        process.stderr.write(`${err.message}\n`);
+        process.exit(1);
+      }
+      throw err;
+    }
+  }
+
+  if (argv[0] === "--live-slot") {
+    const path = argv[1];
+    if (!path) {
+      process.stderr.write("usage: --live-slot <path>\n");
+      process.exit(2);
+    }
+    try {
+      const file = readPonderDeployStateFile(path);
+      if (file.live) process.stdout.write(`${file.live.slot}\n`);
+      process.exit(0);
+    } catch (err) {
+      if (err instanceof DeployStateInvalidError) {
+        process.stderr.write(`${err.message}\n`);
+        process.exit(1);
+      }
+      throw err;
+    }
+  }
+
+  if (argv[0] === "--kargain-observation-sql") {
+    process.stdout.write(`${KARGAIN_OBSERVATION_SQL}\n`);
+    process.exit(0);
+  }
+
+  if (argv[0] === "--kargain-observation") {
+    const rawPath = argv[1];
+    if (!rawPath) {
+      process.stderr.write("usage: --kargain-observation <raw-file>\n");
+      process.exit(2);
+    }
+    try {
+      const row = readFileSync(rawPath, "utf8").trim().split("\n").pop() ?? "";
+      process.stdout.write(`${JSON.stringify(parseKargainObservationRow(row))}\n`);
+      process.exit(0);
+    } catch (err) {
+      process.stderr.write(
+        `${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      process.exit(1);
+    }
+  }
+
+  if (argv[0] === "--clear-pending") {
+    const path = argv[1];
+    if (!path) {
+      process.stderr.write("usage: --clear-pending <path>\n");
+      process.exit(2);
+    }
+    try {
+      const file = readPonderDeployStateFile(path);
+      writePonderDeployStateFile(path, { ...file, pending: null });
+      if (readPonderDeployStateFile(path).pending !== null) {
+        process.stderr.write("deploy_teardown_failed: pending_not_cleared\n");
+        process.exit(1);
+      }
       process.exit(0);
     } catch (err) {
       if (err instanceof DeployStateInvalidError) {

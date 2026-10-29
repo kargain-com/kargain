@@ -2,13 +2,9 @@
  * Sole owner of the atomic Ponder views-switch SQL (ADR 0014 §b / #69).
  * Generates one script for `psql --single-transaction -v ON_ERROR_STOP=1`.
  * Notify channel/trigger use the final views-schema names (kargain_*), never the
- * staging schema string. Notify procedure body matches Ponder 0.18.2 (B2).
+ * staging schema string. Notify procedure body equals Ponder 0.18.2's template
+ * (proved by string equality in test/ponder-views-switch.test.ts, B2 / R11).
  */
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
 export const VIEWS_SCHEMA = "kargain";
 export const VIEWS_STAGING = "kargain_views_next";
 export const VIEWS_PREV = "kargain_views_prev";
@@ -265,45 +261,4 @@ export function viewsSwitchNotifyUsesFinalNames(sql: string): boolean {
     !sql.includes(stagingTrigger) &&
     !sql.includes(`'${VIEWS_STAGING}_live_query'`)
   );
-}
-
-/**
- * Compare our procedure body to Ponder 0.18.2 installed source (B2).
- * Returns null when equal; otherwise a defect string.
- */
-export function notifyProcedureDiffersFromPonderDefect(
-  ourSql: string,
-): string | null {
-  try {
-    const require = createRequire(import.meta.url);
-    const ponderPkg = require.resolve("ponder/package.json");
-    const onchainPath = join(
-      dirname(ponderPkg),
-      "src/drizzle/onchain.ts",
-    );
-    const src = readFileSync(onchainPath, "utf8");
-    // Extract the template body between CREATE OR REPLACE FUNCTION and $$;
-    const m = src.match(
-      /CREATE OR REPLACE FUNCTION "\$\{schema\}"\.\$\{getLiveQueryNotifyProcedureName\(\)\}[\s\S]*?RETURN NULL;\s*END;\s*\$\$;/,
-    );
-    if (!m) return "ponder notify procedure source not found";
-    const normalizedOurs = ourSql.replace(/\s+/g, " ").trim();
-    // Ours uses fixed schema/channel; compare structural markers
-    if (normalizedOurs.includes("DELETE FROM live_query_tables")) {
-      return "notify procedure must not DELETE FROM live_query_tables";
-    }
-    if (!normalizedOurs.includes("RETURN NULL;")) {
-      return "notify procedure missing RETURN NULL";
-    }
-    if (!src.includes("RETURN NULL;") || src.includes("DELETE FROM live_query_tables")) {
-      // If ponder itself changed, still enforce no DELETE in ours
-    }
-    return null;
-  } catch {
-    // Fallback: structural check only
-    if (ourSql.includes("DELETE FROM live_query_tables")) {
-      return "notify procedure must not DELETE FROM live_query_tables";
-    }
-    return null;
-  }
 }

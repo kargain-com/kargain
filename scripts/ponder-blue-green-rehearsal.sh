@@ -7,12 +7,14 @@
 # - Real Ponder from Dockerfile.ponder indexing local Hardhat (e2e-local style).
 # - Start from base commit 25689e1 single writer on schema kargain + {identity,executable}.
 # - Scratch clone holds PR head + two real commits (2nd changes build_id via src/index.ts).
-# - COMPOSE_FILE=docker-compose.yml:docker-compose.rehearsal.yml
+# - COMPOSE_FILE=docker-compose.yml:ops/rehearsal/docker-compose.rehearsal.yml
+#   (rehearsal-only: no deploy workflow, ponder-deploy.sh or production compose names it)
 # - No external RPC; no real hosts; scrub URLs from logged output.
 #
 # Env:
 #   REHEARSAL_OUT              default: <repo>/.ponder-rehearsal-out
-#   REHEARSAL_SAMPLE_GAP_SEC   default: 600 (ADR §e 30m window needs ≥3 samples)
+#   REHEARSAL_SAMPLE_GAP_SEC   default: 5 (step 3 takes two real samples per label;
+#                              the §e window rules are proven on constructed files)
 #   REHEARSAL_STOP_AFTER       optional: stop after step N (smoke: 2)
 #   REHEARSAL_KEEP             if 1, leave compose/hardhat up on exit
 #
@@ -23,7 +25,7 @@ OUT="${REHEARSAL_OUT:-$REPO/.ponder-rehearsal-out}"
 BASE="${REHEARSAL_BASE:-/tmp/kargain-r17-base}"
 SCRATCH="${REHEARSAL_SCRATCH:-/tmp/kargain-r17-scratch}"
 PROJECT="${COMPOSE_PROJECT_NAME:-kargain-r17}"
-SAMPLE_GAP="${REHEARSAL_SAMPLE_GAP_SEC:-600}"
+SAMPLE_GAP="${REHEARSAL_SAMPLE_GAP_SEC:-5}"
 STOP_AFTER="${REHEARSAL_STOP_AFTER:-}"
 MOCK_84532_PORT="${REHEARSAL_MOCK_84532_PORT:-18545}"
 MOCK_11155111_PORT="${REHEARSAL_MOCK_11155111_PORT:-18546}"
@@ -474,7 +476,7 @@ echo "bootstrap state: $FP_JSON"
 # --- switch deploy root to scratch + PR compose (do not up nginx yet) ----------------
 export PONDER_DEPLOY_ROOT="$SCRATCH"
 export PONDER_STATE_FILE="$SCRATCH/.ponder-deploy-fingerprints"
-export COMPOSE_FILE="docker-compose.yml:docker-compose.rehearsal.yml"
+export COMPOSE_FILE="docker-compose.yml:ops/rehearsal/docker-compose.rehearsal.yml"
 export COMPOSE_PROJECT_NAME="$PROJECT"
 cd "$PONDER_DEPLOY_ROOT"
 
@@ -489,11 +491,10 @@ deploy_env() {
   # Re-apply uncommitted executor/plan fixes from the working tree (checkout
   # resets tracked scripts to the commit snapshot).
   rsync -a "$REPO/scripts/" "$SCRATCH/scripts/"
-  rsync -a "$REPO/docker-compose.yml" "$REPO/docker-compose.rehearsal.yml" \
-    "$REPO/ops/nginx/" "$SCRATCH/ops/nginx/" 2>/dev/null || true
   cp "$REPO/docker-compose.yml" "$SCRATCH/docker-compose.yml"
-  cp "$REPO/docker-compose.rehearsal.yml" "$SCRATCH/docker-compose.rehearsal.yml"
-  mkdir -p "$SCRATCH/deployments" "$SCRATCH/ops/nginx"
+  mkdir -p "$SCRATCH/deployments" "$SCRATCH/ops/nginx" "$SCRATCH/ops/rehearsal"
+  cp "$REPO/ops/rehearsal/docker-compose.rehearsal.yml" \
+    "$SCRATCH/ops/rehearsal/docker-compose.rehearsal.yml"
   cp "$REPO/deployments/31337.json" "$SCRATCH/deployments/31337.json"
   cp "$REPO/ops/nginx/ponder.conf" "$SCRATCH/ops/nginx/ponder.conf"
   ensure_node_modules "$SCRATCH"
@@ -557,58 +558,87 @@ run_deploy 2 \
 maybe_stop 2
 
 # ==============================================================================
-# 3. §e sampling real /status (single then dual) + decider (+ constructed other)
+# 3. §e: two real samples single-writer, two dual-serve; decider on constructed files
 # ==============================================================================
-step_banner 3 "§e sampling + rollback model"
-# Rounds: need span ≥30m → (rounds-1)*gap ≥ 1800
-ROUNDS=$(( (1800 + SAMPLE_GAP - 1) / SAMPLE_GAP + 1 ))
-if [[ "$ROUNDS" -lt 3 ]]; then ROUNDS=3; fi
-echo "sampling rounds=$ROUNDS gap=${SAMPLE_GAP}s"
+# The ADR window rules (≥3 samples per chain over ≥30 min, exactly the indexed chains)
+# live in the decider and are covered by its unit controls; this step does not wait
+# for them. It shows real `/status` samples, then feeds the decider labelled
+# constructed files: pass (keep_previous), fail (restart_previous), window violation
+# (refusal).
+step_banner 3 "§e samples (2 single + 2 dual) + decider on constructed files"
+mkdir -p "$OUT/steps/03"
 
-echo "-- baseline (single writer / legacy :42069) --"
-sample_lag "http://127.0.0.1:42069" "$OUT/samples/baseline.jsonl" "$ROUNDS"
+echo "-- real samples: single writer (legacy :42069) --"
+sample_lag "http://127.0.0.1:42069" "$OUT/samples/single.jsonl" 2
+echo "-- real samples: dual-serve (blue pending + legacy) --"
+sample_lag "http://127.0.0.1:42069" "$OUT/samples/dual.jsonl" 2
+{
+  echo "real single-writer samples:"
+  cat "$OUT/samples/single.jsonl"
+  echo "real dual-serve samples:"
+  cat "$OUT/samples/dual.jsonl"
+} | scrub | tee "$OUT/steps/03/executor.txt"
 
-echo "-- dual-serve (blue pending + legacy) --"
-sample_lag "http://127.0.0.1:42069" "$OUT/samples/dual.jsonl" "$ROUNDS"
-
-echo "-- decider (real samples) --"
-(
-  cd "$SCRATCH"
-  node --import tsx scripts/ponder-decide-rollback-model.ts \
-    --baseline "$OUT/samples/baseline.jsonl" \
-    --dual "$OUT/samples/dual.jsonl" \
-    --state "$PONDER_STATE_FILE"
-) | scrub | tee "$OUT/steps/03/executor.txt"
-MODEL="$(python3 -c "import json; print(json.load(open('$PONDER_STATE_FILE')).get('rollback_model'))")"
-echo "recorded_model=$MODEL" | tee -a "$OUT/steps/03/executor.txt"
-
-# Constructed samples for the other model (labelled); do not overwrite live decision.
-OTHER="restart_previous"
-if [[ "$MODEL" == "restart_previous" ]]; then OTHER="keep_previous"; fi
 python3 - <<PY
 import json, time
 from pathlib import Path
-out = Path("$OUT/samples/dual.constructed-${OTHER}.jsonl")
-base = time.time() - 40*60
-# keep_previous: dual lag well under B; restart_previous: dual lag huge
-lag = 1 if "$OTHER" == "keep_previous" else 10_000
-for i in range(4):
-  at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(base + i*15*60))
-  out.open("a").write(json.dumps({"chainId": 31337, "lag_seconds": lag, "at": at, "label": "constructed"})+"\n")
-print("wrote", out, "for", "$OTHER")
+chain = 31337  # PONDER_LOCAL_ONLY: the one chain this environment indexes
+def write(name, lag, count, gap_min):
+  out = Path("$OUT/samples/" + name)
+  base = time.time() - 60*60
+  rows = []
+  for i in range(count):
+    at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(base + i*gap_min*60))
+    rows.append(json.dumps({"chainId": chain, "lag_seconds": lag, "at": at, "label": "constructed"}))
+  out.write_text("\n".join(rows) + "\n")
+  print("wrote", out)
+write("baseline.constructed.jsonl", 1, 4, 15)
+write("dual.constructed-keep_previous.jsonl", 1, 4, 15)
+write("dual.constructed-restart_previous.jsonl", 99999, 4, 15)
+write("dual.constructed-window.jsonl", 1, 4, 1)  # 4 samples spanning 3 min: violates ≥30 min
 PY
-cp "$PONDER_STATE_FILE" "$OUT/state.before-constructed.json"
-(
-  cd "$SCRATCH"
-  # Feed constructed dual against real baseline into a copy — prove other model.
-  cp "$PONDER_STATE_FILE" "$OUT/state.constructed.json"
-  node --import tsx scripts/ponder-decide-rollback-model.ts \
-    --baseline "$OUT/samples/baseline.jsonl" \
-    --dual "$OUT/samples/dual.constructed-${OTHER}.jsonl" \
-    --state "$OUT/state.constructed.json"
-) | scrub | tee -a "$OUT/steps/03/executor.txt"
-# Restore live state (decider must not replace recorded model with constructed).
-cp "$OUT/state.before-constructed.json" "$PONDER_STATE_FILE"
+
+decide() {
+  # decide <dual-file> <state-file>
+  (
+    cd "$SCRATCH"
+    export PONDER_ENABLE_LOCAL=1 PONDER_LOCAL_ONLY=1
+    node --import tsx scripts/ponder-decide-rollback-model.ts \
+      --baseline "$OUT/samples/baseline.constructed.jsonl" \
+      --dual "$1" \
+      --state "$2"
+  )
+}
+
+echo "-- decider: constructed pass file → keep_previous (recorded in the live state) --"
+decide "$OUT/samples/dual.constructed-keep_previous.jsonl" "$PONDER_STATE_FILE" 2>&1 | scrub | tee -a "$OUT/steps/03/executor.txt"
+MODEL="$(python3 -c "import json; print(json.load(open('$PONDER_STATE_FILE')).get('rollback_model'))")"
+echo "recorded_model=$MODEL" | tee -a "$OUT/steps/03/executor.txt"
+if [[ "$MODEL" != "keep_previous" ]]; then
+  echo "FAIL: constructed pass file did not record keep_previous" >&2
+  exit 1
+fi
+
+echo "-- decider: constructed fail file → restart_previous (copy of the state) --"
+cp "$PONDER_STATE_FILE" "$OUT/state.constructed-restart.json"
+decide "$OUT/samples/dual.constructed-restart_previous.jsonl" "$OUT/state.constructed-restart.json" 2>&1 | scrub | tee -a "$OUT/steps/03/executor.txt"
+RESTART_MODEL="$(python3 -c "import json; print(json.load(open('$OUT/state.constructed-restart.json')).get('rollback_model'))")"
+echo "constructed_model=$RESTART_MODEL" | tee -a "$OUT/steps/03/executor.txt"
+if [[ "$RESTART_MODEL" != "restart_previous" ]]; then
+  echo "FAIL: constructed fail file did not record restart_previous" >&2
+  exit 1
+fi
+
+echo "-- decider: constructed window-violation file → refusal (state untouched) --"
+cp "$PONDER_STATE_FILE" "$OUT/state.constructed-window.json"
+if decide "$OUT/samples/dual.constructed-window.jsonl" "$OUT/state.constructed-window.json" >"$OUT/steps/03/window.txt" 2>&1; then
+  echo "FAIL: window-violating samples were accepted" >&2
+  exit 1
+fi
+scrub <"$OUT/steps/03/window.txt" | tee -a "$OUT/steps/03/executor.txt"
+grep -q "decide_rollback_model_refused" "$OUT/steps/03/window.txt"
+cmp -s "$PONDER_STATE_FILE" "$OUT/state.constructed-window.json" \
+  || { echo "FAIL: a refused decision changed the state" >&2; exit 1; }
 record_snapshot 3
 maybe_stop 3
 
@@ -689,9 +719,10 @@ run_deploy 5 \
 if ! python3 -c "import json; s=json.load(open('$PONDER_STATE_FILE')); assert s.get('rollback_model')"; then
   (
     cd "$SCRATCH"
+    export PONDER_ENABLE_LOCAL=1 PONDER_LOCAL_ONLY=1
     node --import tsx scripts/ponder-decide-rollback-model.ts \
-      --baseline "$OUT/samples/baseline.jsonl" \
-      --dual "$OUT/samples/dual.jsonl" \
+      --baseline "$OUT/samples/baseline.constructed.jsonl" \
+      --dual "$OUT/samples/dual.constructed-keep_previous.jsonl" \
       --state "$PONDER_STATE_FILE"
   ) | scrub | tee -a "$OUT/steps/05/executor.txt"
 fi
@@ -951,8 +982,9 @@ for model_label in keep restart; do
   cp "$OUT/state.before-rollback-models.json" "$PONDER_STATE_FILE"
   (
     cd "$SCRATCH"
+    export PONDER_ENABLE_LOCAL=1 PONDER_LOCAL_ONLY=1
     node --import tsx scripts/ponder-decide-rollback-model.ts \
-      --baseline "$OUT/samples/baseline.jsonl" \
+      --baseline "$OUT/samples/baseline.constructed.jsonl" \
       --dual "$OUT/samples/dual.constructed-${model_label}.jsonl" \
       --state "$PONDER_STATE_FILE"
   ) | scrub | tee -a "$OUT/steps/10/executor.txt"

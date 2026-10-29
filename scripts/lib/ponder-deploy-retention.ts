@@ -1,6 +1,7 @@
 /**
  * Sole owner of the Ponder deployment-schema retention set (ADR 0014 §f / #69).
- * Drops only names matching ^k_[0-9a-f]{40}$ that are not live, previous, or pending.
+ * Drops only names matching ^k_[0-9a-f]{40}$ that are not live, previous, pending, or the
+ * first-cutover legacy spare.
  * Protected Context §6 schemas are unreachable via the regex.
  * DROP SQL is emitted only after re-validating the name (B6).
  */
@@ -17,7 +18,27 @@ export type RetentionKeepSet = {
   live: string | null;
   previous: string | null;
   pending: string | null;
+  /**
+   * First-cutover rollback spare (ADR §j). Kept while the first-cutover rollback is
+   * valid, i.e. while state.legacy_schema is set (R12).
+   */
+  legacy: string | null;
 };
+
+/** The keep set as recorded in a deploy state (executor reads it at execution, R9). */
+export function keepSetFromState(state: {
+  live: { schema: string } | null;
+  previous: { schema: string } | null;
+  pending: { schema: string } | null;
+  legacy_schema: string | null;
+}): RetentionKeepSet {
+  return {
+    live: state.live?.schema ?? null,
+    previous: state.previous?.schema ?? null,
+    pending: state.pending?.schema ?? null,
+    legacy: state.legacy_schema,
+  };
+}
 
 /**
  * From a list of schema names (e.g. pg_namespace), return deployment schemas
@@ -31,6 +52,7 @@ export function retentionSchemasToDrop(
   if (keep.live) keepSet.add(keep.live);
   if (keep.previous) keepSet.add(keep.previous);
   if (keep.pending) keepSet.add(keep.pending);
+  if (keep.legacy) keepSet.add(keep.legacy);
 
   const drop: string[] = [];
   for (const name of allSchemas) {
@@ -48,29 +70,30 @@ export function retentionWouldSelect(name: string): boolean {
 
 /**
  * Emit DROP SCHEMA SQL for one deployment schema. Re-validates ^k_[0-9a-f]{40}$
- * and optional non-membership in keep (B6). Never emits for unprotected names.
+ * and non-membership in the keep set (B6 / R9 — keep is required: the executor passes
+ * the set read from the state file at execution).
  */
 export function dropDeploymentSchemaSql(
   schema: string,
-  keep?: RetentionKeepSet,
+  keep: RetentionKeepSet,
 ): string {
   if (!DEPLOYMENT_SCHEMA_RE.test(schema)) {
     throw new Error(`deploy_retention_refused: invalid schema ${schema}`);
   }
-  if (keep) {
-    const stillKeep = retentionSchemasToDrop([schema], keep);
-    if (stillKeep.length === 0) {
-      throw new Error(`deploy_retention_refused: schema in keep set ${schema}`);
-    }
+  if (retentionSchemasToDrop([schema], keep).length === 0) {
+    throw new Error(`deploy_retention_refused: schema in keep set ${schema}`);
   }
   return `DROP SCHEMA IF EXISTS "${schema}" CASCADE;`;
 }
 
 /** Emit DROP statements for a list already selected by retentionSchemasToDrop. */
-export function retentionDropSql(schemas: readonly string[]): string {
+export function retentionDropSql(
+  schemas: readonly string[],
+  keep: RetentionKeepSet,
+): string {
   const lines: string[] = [];
   for (const schema of schemas) {
-    lines.push(dropDeploymentSchemaSql(schema));
+    lines.push(dropDeploymentSchemaSql(schema, keep));
   }
   return lines.length === 0 ? "" : `${lines.join("\n")}\n`;
 }

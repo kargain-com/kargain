@@ -335,14 +335,28 @@ export type PonderIndexingConfig = {
 };
 
 /**
+ * Local Hardhat chain RPC — sole owner of the PONDER_RPC_URL_31337 default
+ * (Ponder runtime and the §e lag sampler both read it here).
+ */
+export function resolveLocalRpcUrl(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return env.PONDER_RPC_URL_31337 ?? "http://127.0.0.1:8545";
+}
+
+/**
  * Indexing assembly only: chain names/ids, addresses, start blocks, contracts.
  * No RPC URLs or eth_getLogs windows — those are transport and outside build_id.
+ * `env` selects which chains are indexed (local flags); start blocks still read
+ * process.env.
  */
-export function buildPonderIndexingConfig(): PonderIndexingConfig {
-  const enableLocal = process.env.PONDER_ENABLE_LOCAL === "1";
+export function buildPonderIndexingConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): PonderIndexingConfig {
+  const enableLocal = env.PONDER_ENABLE_LOCAL === "1";
   // Local-dev-only: index just the Hardhat chain (skip commercial backfill).
   // Used by the E2E harness so `/ready` does not wait on a public RPC.
-  const localOnly = enableLocal && process.env.PONDER_LOCAL_ONLY === "1";
+  const localOnly = enableLocal && env.PONDER_LOCAL_ONLY === "1";
   const sepoliaAddresses = ponderSepoliaAddresses();
   const localAddresses = enableLocal ? ponderLocalAddresses() : null;
 
@@ -446,21 +460,17 @@ export function buildPonderIndexingConfig(): PonderIndexingConfig {
 }
 
 /**
- * Sole map of Ponder /status chain names → commercial/local chain ids (C4).
- * Same names as buildPonderIndexingConfig().chains keys.
+ * Sole map of Ponder /status chain names → chain ids (C4 / R10), derived from
+ * buildPonderIndexingConfig().chains for the same environment — no name literals here.
  */
 export function ponderStatusChainNameById(
   env: NodeJS.ProcessEnv = process.env,
 ): Record<number, string> {
-  const localOnly = env.PONDER_LOCAL_ONLY === "1";
-  const enableLocal = env.PONDER_ENABLE_LOCAL === "1";
   const map: Record<number, string> = {};
-  if (!localOnly) {
-    map[SEPOLIA_CHAIN_ID] = "baseSepolia";
-    map[SPOKE_CHAIN_ID] = "ethereumSepolia";
-  }
-  if (enableLocal || localOnly) {
-    map[LOCALHOST_CHAIN_ID] = "localhost";
+  for (const [name, chain] of Object.entries(
+    buildPonderIndexingConfig(env).chains,
+  )) {
+    map[chain.id] = name;
   }
   return map;
 }
@@ -478,7 +488,7 @@ export function buildPonderRuntime() {
     if (name === "localhost") {
       chains.localhost = {
         id: chain.id,
-        rpc: process.env.PONDER_RPC_URL_31337 ?? "http://127.0.0.1:8545",
+        rpc: resolveLocalRpcUrl(),
       };
       continue;
     }

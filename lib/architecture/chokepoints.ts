@@ -1058,13 +1058,13 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "ponder-deploy-state",
     owner: "scripts/lib/ponder-deploy-state.ts · scripts/ponder-deploy-state-cli.ts",
-    rule: "Fail-closed parse; missing file → deploy_state_invalid (never invent); phase from kargain base-table observation via reconcileDeployPhase; writes only via writePonderDeployStateFile",
+    rule: "Fail-closed parse; missing file → deploy_state_invalid (never invent); phase from the kargain DB observation (base tables + views target) via reconcileDeployPhase; an interrupted first cutover is a named phase, every other disagreement refuses; writes only via writePonderDeployStateFile",
     guardTests: ["ponder-deploy-state.test.ts"],
   },
   {
     id: "ponder-deploy-plan",
     owner: "scripts/lib/ponder-deploy-plan.ts · scripts/ponder-deploy.sh",
-    rule: "Pure plan encodes ADR 0014 §a/d/e/f/j; typed ProbeObservation; shell sole executor; mounts from $ROOT; no --network kargain literal",
+    rule: "Pure plan encodes ADR 0014 §a/d/e/f/j; typed ProbeObservation; shell sole executor with one state path ($PONDER_STATE_FILE) and fail-closed stops/teardowns; mounts from $ROOT; no --network kargain literal",
     guardTests: [
       "ponder-deploy-plan.test.ts",
       "deploy-ponder-svm-ingest-ci-policy.test.ts",
@@ -1077,9 +1077,16 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["ponder-views-switch.test.ts"],
   },
   {
+    id: "ponder-rollback-decision",
+    owner:
+      "scripts/lib/ponder-rollback-decision.ts · scripts/ponder-decide-rollback-model.ts · scripts/lib/ponder-env.ts",
+    rule: "§e decision: ≥3 samples per expected chain over ≥30 min; expected chains come from ponderStatusChainNameById (derived from buildPonderIndexingConfig); missing or extra chain refuses",
+    guardTests: ["ponder-deploy-state.test.ts"],
+  },
+  {
     id: "ponder-deploy-retention",
     owner: "scripts/lib/ponder-deploy-retention.ts · scripts/ponder-deploy-retention-cli.ts",
-    rule: "Drop only ^k_[0-9a-f]{40}$ not live/previous/pending; DROP SQL only from owner after re-validate; Context §6 unreachable",
+    rule: "Drop only ^k_[0-9a-f]{40}$ not live/previous/pending/legacy; the keep set is required and read from the state file at execution; DROP SQL only from owner after re-validate; Context §6 unreachable",
     guardTests: ["ponder-reindex-svm-isolation-policy.test.ts"],
   },
   {

@@ -3,7 +3,7 @@
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -885,7 +885,11 @@ deploy:
           name,
         );
         assert.equal(deployScriptPreflightRefusalDefect(script), null, name);
-        assert.equal(deployScriptScriptsMountDefect(script), null, name);
+        // The probe mount rule is the Ponder deploy's (svm-ingest's workflow is not part
+        // of this initiative and keeps its master mounts).
+        if (service === "ponder") {
+          assert.equal(deployScriptScriptsMountDefect(script), null, name);
+        }
         assert.equal(bashSyntaxDefect(script), null, name);
       }
     }
@@ -1769,5 +1773,409 @@ jobs:
     );
     const live = readFileSync(CI_WF, "utf8");
     assert.equal(lacksTopLevelContentsRead(live), false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review 2 (R2, R5, R8, R13, R14, R15, R17, R20): executor and compose pins.
+// Each defect function returns a named message; every pin has a planted control.
+// ---------------------------------------------------------------------------
+
+/** Body of one `execute_actions` case branch (6-space label … 8-space `;;`). */
+export function deployScriptCaseBranch(script: string, label: string): string {
+  const lines = script.split("\n");
+  const start = lines.findIndex((l) => new RegExp(`^ {6}${label}\\)\\s*$`).test(l));
+  if (start < 0) return "";
+  const out: string[] = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^ {8};;\s*$/.test(lines[i]!)) break;
+    out.push(lines[i]!);
+  }
+  return deployScriptActiveLines(out.join("\n")).join("\n");
+}
+
+/** Body of a top-level shell function. */
+export function deployScriptFunctionBody(script: string, name: string): string {
+  const lines = script.split("\n");
+  const start = lines.findIndex((l) => l.startsWith(`${name}() {`));
+  if (start < 0) return "";
+  const out: string[] = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    if (lines[i] === "}") break;
+    out.push(lines[i]!);
+  }
+  return deployScriptActiveLines(out.join("\n")).join("\n");
+}
+
+/** R2: stop exactly the observed kargain writer, fail closed. */
+export function legacyWriterStopDefect(script: string): string | null {
+  const stop = deployScriptCaseBranch(script, "stop_legacy_writer");
+  if (stop === "") return "stop_legacy_writer branch missing";
+  if (!/action_field writer/.test(stop)) {
+    return "stop_legacy_writer must stop the writer named by the plan action";
+  }
+  if (/\|\|\s*true/.test(stop)) return "stop_legacy_writer must fail closed (no || true)";
+  if (!/docker compose --profile legacy stop "\$writer"/.test(stop)) {
+    return "stop_legacy_writer must stop exactly the named writer";
+  }
+  const slot = deployScriptCaseBranch(script, "stop_slot");
+  if (/\|\|\s*true/.test(slot)) return "stop_slot must fail closed (no || true)";
+  return null;
+}
+
+/** R5: the legacy writer runs only the verified preserved image. */
+export function legacyWriterStartDefect(script: string): string | null {
+  const start = deployScriptCaseBranch(script, "start_legacy_writer");
+  if (start === "") return "start_legacy_writer branch missing";
+  if (!/deploy_rollback_failed: legacy_image_missing/.test(start)) {
+    return "start_legacy_writer must refuse deploy_rollback_failed: legacy_image_missing";
+  }
+  if (!/--no-build/.test(start)) return "start_legacy_writer must pass --no-build";
+  if (/\|\|\s*true/.test(start)) return "start_legacy_writer must fail closed (no || true)";
+  if (/docker tag /.test(start)) {
+    return "start_legacy_writer must not retag (the tag is verified, not rewritten)";
+  }
+  const preserve = deployScriptCaseBranch(script, "preserve_legacy_image");
+  const tags = preserve.split("\n").filter((l) => /docker tag /.test(l));
+  if (tags.length !== 1) return "preserve_legacy_image must tag exactly once";
+  if (/Label so prune/.test(script)) return "preserve_legacy_image carries a false label comment";
+  return null;
+}
+
+/** R5: compose never builds the preserved legacy writer, never pulls it. */
+export function composeLegacyWriterDefect(composeYaml: string): string | null {
+  const doc = yaml.load(composeYaml) as {
+    services?: Record<string, Record<string, unknown>>;
+    "x-ponder-writer"?: Record<string, unknown>;
+  };
+  const legacy = doc.services?.["ponder-legacy"];
+  if (!legacy) return "compose lacks ponder-legacy";
+  if (doc["x-ponder-writer"] && "build" in doc["x-ponder-writer"]) {
+    return "shared writer anchor must have no build key";
+  }
+  if ("build" in legacy) return "ponder-legacy must have no build key";
+  if (legacy.pull_policy !== "never") return "ponder-legacy must set pull_policy: never";
+  return null;
+}
+
+/** R8: the event name is required and closed. */
+export function eventNameDefect(script: string): string | null {
+  const active = deployScriptActiveLines(script).join("\n");
+  if (!/EVENT_NAME="\$\{EVENT_NAME:\?/.test(active)) {
+    return "EVENT_NAME must be required (:?), no default";
+  }
+  if (/rehearsal/i.test(active)) return "deploy script must not know a rehearsal event";
+  if (!/push\|workflow_dispatch\)/.test(active)) {
+    return "EVENT_NAME must be validated as push|workflow_dispatch";
+  }
+  if (!/deploy_observation_failed: event_name/.test(active)) {
+    return "an unknown EVENT_NAME must refuse deploy_observation_failed: event_name";
+  }
+  return null;
+}
+
+/** R13: one state path, one container path. */
+export function stateFilePathDefect(script: string): string | null {
+  const lines = deployScriptActiveLines(script);
+  const active = lines.join("\n");
+  if (!/STATE_FILE="\$\{PONDER_STATE_FILE:\?/.test(active)) {
+    return "PONDER_STATE_FILE must be required (:?)";
+  }
+  if (/\.ponder-deploy-fingerprints/.test(active)) {
+    return "no second state path: .ponder-deploy-fingerprints must not appear";
+  }
+  const mounts = lines.filter((l) => /-v "\$STATE_FILE:/.test(l));
+  if (mounts.length === 0) return "state file must be mounted";
+  for (const m of mounts) {
+    if (!/-v "\$STATE_FILE:\$\{C_STATE\}(:ro)?" /.test(m)) {
+      return "state file must mount only at ${C_STATE}";
+    }
+  }
+  if (lines.some((l) => /^\s*cp\b.*(STATE_FILE|fingerprints)/.test(l))) {
+    return "no copy between state paths";
+  }
+  if ((active.match(/C_STATE=/g) ?? []).length !== 1) {
+    return "C_STATE must be defined exactly once";
+  }
+  return null;
+}
+
+/** R14: pending teardown fails closed with named refusals. */
+export function pendingTeardownDefect(script: string): string | null {
+  const body = deployScriptFunctionBody(script, "tear_down_new_pending");
+  if (body === "") return "tear_down_new_pending missing";
+  if (/\|\|\s*true/.test(body)) return "tear_down_new_pending must not swallow failures";
+  for (const named of ["stop", "pending_not_cleared", "drop_schema"]) {
+    if (!body.includes(`deploy_teardown_failed: ${named}`)) {
+      return `tear_down_new_pending lacks named refusal ${named}`;
+    }
+  }
+  if (!/return 1/.test(body)) return "tear_down_new_pending must return non-zero";
+  return null;
+}
+
+/** R15: no default live slot in probe_answered. */
+export function probeAnsweredSlotDefect(script: string): string | null {
+  const probe = deployScriptCaseBranch(script, "probe_answered");
+  if (probe === "") return "probe_answered branch missing";
+  if (/:-blue|slot=blue|="blue"/.test(probe)) {
+    return "probe_answered must not default the live slot to blue";
+  }
+  if (!/--live-slot/.test(probe)) {
+    return "probe_answered must read the live slot from state";
+  }
+  if (!/-n "\$slot"/.test(probe)) {
+    return "probe_answered must omit node= when there is no live slot";
+  }
+  return null;
+}
+
+/** R17: bounded disk after slot builds; never `-a`. */
+export function buildPruneDefect(script: string): string | null {
+  const build = deployScriptCaseBranch(script, "build_slot");
+  if (!/docker builder prune -f --filter until=72h/.test(build)) {
+    return "build_slot must prune the builder cache older than 72h";
+  }
+  if (!/docker image prune -f\b/.test(build)) {
+    return "build_slot must prune dangling images";
+  }
+  const active = deployScriptActiveLines(script).join("\n");
+  if (/prune\s+-[a-z]*a/.test(active)) return "prune -a would delete the preserved legacy image";
+  const buildAt = build.indexOf("docker compose build");
+  if (buildAt < 0 || build.indexOf("docker builder prune") < buildAt) {
+    return "prune must run after the slot build";
+  }
+  return null;
+}
+
+const REHEARSAL_COMPOSE = "docker-compose.rehearsal.yml";
+
+/** R20: the rehearsal compose is a rehearsal-only file, referenced by no deploy path. */
+export function rehearsalComposeReferenceDefect(files: {
+  name: string;
+  text: string;
+}[]): string | null {
+  for (const f of files) {
+    if (f.text.includes(REHEARSAL_COMPOSE)) {
+      return `${f.name} must not reference ${REHEARSAL_COMPOSE}`;
+    }
+  }
+  return null;
+}
+
+describe("ponder-deploy.sh executor pins (Review 2)", () => {
+  const shell = readFileSync(PONDER_DEPLOY_SH, "utf8");
+  const compose = readFileSync(join(ROOT, "docker-compose.yml"), "utf8");
+
+  it("R2: stop_legacy_writer stops exactly the observed writer, fail closed", () => {
+    assert.equal(legacyWriterStopDefect(shell), null);
+    const planted = shell.replace(
+      'docker compose --profile legacy stop "$writer" </dev/null',
+      'docker compose stop ponder </dev/null || true',
+    );
+    assert.notEqual(planted, shell, "planted edit must apply");
+    assert.equal(
+      legacyWriterStopDefect(planted),
+      "stop_legacy_writer must fail closed (no || true)",
+    );
+    const hardcoded = shell.replace(
+      'writer="$(action_field writer)"',
+      'writer="ponder"',
+    );
+    assert.equal(
+      legacyWriterStopDefect(hardcoded),
+      "stop_legacy_writer must stop the writer named by the plan action",
+    );
+    const slotSwallow = shell.replace(
+      'docker compose stop "ponder-$slot" </dev/null\n        ;;\n      stop_legacy_writer)',
+      'docker compose stop "ponder-$slot" </dev/null || true\n        ;;\n      stop_legacy_writer)',
+    );
+    assert.notEqual(slotSwallow, shell, "planted edit must apply");
+    assert.equal(
+      legacyWriterStopDefect(slotSwallow),
+      "stop_slot must fail closed (no || true)",
+    );
+  });
+
+  it("R5: the legacy writer starts only the verified preserved image; compose cannot build it", () => {
+    assert.equal(legacyWriterStartDefect(shell), null);
+    assert.equal(composeLegacyWriterDefect(compose), null);
+
+    const noVerify = shell.replace("deploy_rollback_failed: legacy_image_missing", "x");
+    assert.equal(
+      legacyWriterStartDefect(noVerify),
+      "start_legacy_writer must refuse deploy_rollback_failed: legacy_image_missing",
+    );
+    const build = shell.replace(
+      "up -d --no-build ponder-legacy",
+      "up -d ponder-legacy",
+    );
+    assert.equal(
+      legacyWriterStartDefect(build),
+      "start_legacy_writer must pass --no-build",
+    );
+    const dupTag = shell.replace(
+      'docker tag "$image_id" "$LEGACY_IMAGE_TAG"\n',
+      'docker tag "$image_id" "$LEGACY_IMAGE_TAG"\n        docker tag "$image_id" "${LEGACY_IMAGE_TAG}"\n',
+    );
+    assert.notEqual(dupTag, shell, "planted edit must apply");
+    assert.equal(
+      legacyWriterStartDefect(dupTag),
+      "preserve_legacy_image must tag exactly once",
+    );
+
+    const withBuild = compose.replace(
+      "    image: kargain-ponder-legacy:cutover\n",
+      "    image: kargain-ponder-legacy:cutover\n    build:\n      context: .\n",
+    );
+    assert.equal(
+      composeLegacyWriterDefect(withBuild),
+      "ponder-legacy must have no build key",
+    );
+    const pulls = compose.replace("    pull_policy: never\n", "");
+    assert.equal(
+      composeLegacyWriterDefect(pulls),
+      "ponder-legacy must set pull_policy: never",
+    );
+    const anchorBuild = compose.replace(
+      "x-ponder-writer: &ponder-writer\n",
+      "x-ponder-writer: &ponder-writer\n  build: .\n",
+    );
+    assert.equal(
+      composeLegacyWriterDefect(anchorBuild),
+      "shared writer anchor must have no build key",
+    );
+  });
+
+  it("R8: EVENT_NAME is required and closed to push|workflow_dispatch", () => {
+    assert.equal(eventNameDefect(shell), null);
+    const defaulted = shell.replace(
+      'EVENT_NAME="${EVENT_NAME:?EVENT_NAME required}"',
+      'EVENT_NAME="${EVENT_NAME:-push}"',
+    );
+    assert.notEqual(defaulted, shell, "planted edit must apply");
+    assert.equal(
+      eventNameDefect(defaulted),
+      "EVENT_NAME must be required (:?), no default",
+    );
+    const rehearsal = shell.replace("push|workflow_dispatch)", "push|workflow_dispatch|rehearsal)");
+    assert.equal(
+      eventNameDefect(rehearsal),
+      "deploy script must not know a rehearsal event",
+    );
+  });
+
+  it("R13: one state path ($PONDER_STATE_FILE) and one container mount path", () => {
+    assert.equal(stateFilePathDefect(shell), null);
+    const dual = shell.replace(
+      '-v "$STATE_FILE:${C_STATE}" \\',
+      '-v "$STATE_FILE:/state.json" \\',
+    );
+    assert.notEqual(dual, shell, "planted edit must apply");
+    assert.equal(
+      stateFilePathDefect(dual),
+      "state file must mount only at ${C_STATE}",
+    );
+    const fallback = `${shell}\nSTATE=/opt/kargain/.ponder-deploy-fingerprints\n`;
+    assert.equal(
+      stateFilePathDefect(fallback),
+      "no second state path: .ponder-deploy-fingerprints must not appear",
+    );
+    const optional = shell.replace(
+      'STATE_FILE="${PONDER_STATE_FILE:?PONDER_STATE_FILE required}"',
+      'STATE_FILE="${PONDER_STATE_FILE:-/opt/kargain/state.json}"',
+    );
+    assert.equal(
+      stateFilePathDefect(optional),
+      "PONDER_STATE_FILE must be required (:?)",
+    );
+    const wf = readFileSync(PONDER_WF, "utf8");
+    assert.match(wf, /PONDER_STATE_FILE=/, "workflow exports the one state path");
+  });
+
+  it("R14: pending teardown fails closed with named refusals", () => {
+    assert.equal(pendingTeardownDefect(shell), null);
+    const swallow = shell.replace(
+      '  if ! drop_schema_via_owner "$schema"; then\n    echo "deploy_teardown_failed: drop_schema"\n    return 1\n  fi',
+      '  drop_schema_via_owner "$schema" || true',
+    );
+    assert.notEqual(swallow, shell, "planted edit must apply");
+    assert.equal(
+      pendingTeardownDefect(swallow),
+      "tear_down_new_pending must not swallow failures",
+    );
+    const unnamed = shell.replace('echo "deploy_teardown_failed: pending_not_cleared"', 'echo "failed"');
+    assert.equal(
+      pendingTeardownDefect(unnamed),
+      "tear_down_new_pending lacks named refusal pending_not_cleared",
+    );
+  });
+
+  it("R15: probe_answered takes the live slot from state or omits node=", () => {
+    assert.equal(probeAnsweredSlotDefect(shell), null);
+    const defaulted = shell.replace(
+      "--live-slot",
+      "--live-slot-removed",
+    ).replace(
+      '        if [ -n "$slot" ] && docker compose ps -q',
+      '        slot="${slot:-blue}"\n        if [ -n "$slot" ] && docker compose ps -q',
+    );
+    assert.equal(
+      probeAnsweredSlotDefect(defaulted),
+      "probe_answered must not default the live slot to blue",
+    );
+    const noOmit = shell.replace('if [ -n "$slot" ] && docker', 'if docker');
+    assert.equal(
+      probeAnsweredSlotDefect(noOmit),
+      "probe_answered must omit node= when there is no live slot",
+    );
+  });
+
+  it("R17: slot builds prune the builder cache (72h) and dangling images, never -a", () => {
+    assert.equal(buildPruneDefect(shell), null);
+    const noBuilder = shell.replace("docker builder prune -f --filter until=72h </dev/null\n", "");
+    assert.notEqual(noBuilder, shell, "planted edit must apply");
+    assert.equal(
+      buildPruneDefect(noBuilder),
+      "build_slot must prune the builder cache older than 72h",
+    );
+    const all = shell.replace("docker image prune -f </dev/null", "docker image prune -af </dev/null");
+    assert.equal(
+      buildPruneDefect(all),
+      "build_slot must prune dangling images",
+    );
+    const commented = shell.replace(
+      "        docker builder prune -f --filter until=72h </dev/null",
+      "        # docker builder prune -f --filter until=72h </dev/null",
+    );
+    assert.equal(
+      buildPruneDefect(commented),
+      "build_slot must prune the builder cache older than 72h",
+    );
+  });
+
+  it("R20: the rehearsal compose lives under ops/rehearsal and no deploy path references it", () => {
+    assert.ok(existsSync(join(ROOT, "ops/rehearsal", REHEARSAL_COMPOSE)));
+    assert.ok(
+      !existsSync(join(ROOT, REHEARSAL_COMPOSE)),
+      "no root copy of the rehearsal compose",
+    );
+    const deployPaths = [
+      ...listDeployWorkflowFiles().map((name) => ({
+        name: `.github/workflows/${name}`,
+        text: readFileSync(join(WORKFLOWS_DIR, name), "utf8"),
+      })),
+      { name: "scripts/ponder-deploy.sh", text: shell },
+      { name: "docker-compose.yml", text: compose },
+    ];
+    assert.ok(deployPaths.length >= 4, "deploy path set must be non-empty");
+    assert.equal(rehearsalComposeReferenceDefect(deployPaths), null);
+    assert.equal(
+      rehearsalComposeReferenceDefect([
+        ...deployPaths,
+        { name: "planted", text: "docker compose -f docker-compose.rehearsal.yml up" },
+      ]),
+      `planted must not reference ${REHEARSAL_COMPOSE}`,
+    );
   });
 });

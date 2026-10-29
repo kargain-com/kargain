@@ -2,100 +2,35 @@
  * Compute ADR 0014 §e rollback model from baseline + dual-serve sample files.
  * Writes lag + rollback_model into the state file via the state owner.
  *
- * Refuses unless both files hold ≥3 samples per chain spanning ≥30 minutes.
+ * Refuses unless both files hold ≥3 samples spanning ≥30 minutes for exactly the
+ * chains this environment indexes (ponderStatusChainNameById; missing/extra refuse).
  */
 import { readFileSync } from "node:fs";
+import { ponderStatusChainNameById } from "./lib/ponder-env.js";
+import {
+  decideRollbackModel,
+  type LagSample,
+} from "./lib/ponder-rollback-decision.js";
 import {
   DeployStateInvalidError,
   readPonderDeployStateFile,
   writePonderDeployStateFile,
-  type PonderRollbackModel,
 } from "./lib/ponder-deploy-state.js";
-
-type Sample = {
-  chainId: number;
-  lag_seconds: number;
-  at: string;
-  sampleAt?: string;
-};
 
 function argValue(argv: string[], name: string): string | undefined {
   const i = argv.indexOf(name);
   return i >= 0 ? argv[i + 1] : undefined;
 }
 
-function readSamples(path: string): Sample[] {
+function readSamples(path: string): LagSample[] {
   const text = readFileSync(path, "utf8");
-  const rows: Sample[] = [];
+  const rows: LagSample[] = [];
   for (const line of text.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    rows.push(JSON.parse(trimmed) as Sample);
+    rows.push(JSON.parse(trimmed) as LagSample);
   }
   return rows;
-}
-
-function validateSamples(label: string, rows: Sample[]): void {
-  for (const r of rows) {
-    if (
-      typeof r.lag_seconds !== "number" ||
-      !Number.isFinite(r.lag_seconds) ||
-      r.lag_seconds < 0
-    ) {
-      throw new Error(
-        `decide_rollback_model_refused: ${label} non-finite or negative lag_seconds`,
-      );
-    }
-  }
-  const chainIds = [...new Set(rows.map((r) => r.chainId))];
-  if (chainIds.length === 0) {
-    throw new Error(`decide_rollback_model_refused: ${label} empty`);
-  }
-  for (const chainId of chainIds) {
-    const forChain = rows.filter((r) => r.chainId === chainId);
-    if (forChain.length < 3) {
-      throw new Error(
-        `decide_rollback_model_refused: ${label} needs ≥3 samples for chain ${chainId}, got ${forChain.length}`,
-      );
-    }
-    const times = forChain.map((r) => Date.parse(r.at || r.sampleAt || ""));
-    if (times.some((t) => Number.isNaN(t))) {
-      throw new Error(
-        `decide_rollback_model_refused: ${label} sample missing valid at timestamp`,
-      );
-    }
-    const spanMs = Math.max(...times) - Math.min(...times);
-    if (spanMs < 30 * 60 * 1000) {
-      throw new Error(
-        `decide_rollback_model_refused: ${label} chain ${chainId} span ${spanMs}ms < 30m`,
-      );
-    }
-  }
-}
-
-export function decideRollbackModel(
-  baseline: Sample[],
-  dual: Sample[],
-): {
-  l_single_max: number;
-  m: number;
-  b: number;
-  rollback_model: PonderRollbackModel;
-} {
-  validateSamples("baseline", baseline);
-  validateSamples("dual", dual);
-
-  const l_single_max = Math.max(...baseline.map((r) => r.lag_seconds));
-  const m = Math.max(l_single_max, 30);
-  const b = l_single_max + m;
-
-  const pass = dual.every((r) => r.lag_seconds <= b);
-  return {
-    l_single_max,
-    m,
-    b,
-    rollback_model: pass ? "keep_previous" : "restart_previous",
-  };
 }
 
 function main(): void {
@@ -110,10 +45,25 @@ function main(): void {
     process.exit(2);
   }
 
-  const decision = decideRollbackModel(
-    readSamples(baselinePath),
-    readSamples(dualPath),
-  );
+  // R10: the chain set ADR §e requires is the one this environment indexes.
+  const expectedChainIds = Object.keys(ponderStatusChainNameById()).map(Number);
+  let decision;
+  try {
+    decision = decideRollbackModel(
+      readSamples(baselinePath),
+      readSamples(dualPath),
+      expectedChainIds,
+    );
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      err.message.startsWith("decide_rollback_model_refused")
+    ) {
+      process.stderr.write(`${err.message}\n`);
+      process.exit(1);
+    }
+    throw err;
+  }
 
   let state;
   try {
