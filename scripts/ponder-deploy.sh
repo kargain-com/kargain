@@ -467,7 +467,10 @@ execute_actions() {
 
   local action_line
   for action_line in "${action_lines[@]}"; do
-    printf '%s\n' "$action_line" >"$WORK/action.json"
+    # Atomic replace: Docker Desktop volume mounts can expose a partial write to
+    # a concurrent `compose run` reader (truncated JSON → SyntaxError).
+    printf '%s\n' "$action_line" >"$WORK/action.json.tmp"
+    mv -f "$WORK/action.json.tmp" "$WORK/action.json"
     local type
     type="$(action_field type)"
 
