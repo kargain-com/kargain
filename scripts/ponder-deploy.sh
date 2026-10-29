@@ -256,8 +256,13 @@ legacy_image_id() {
 
 action_field() {
   local field="$1"
-  run_node "${C_SCRIPTS}/ponder-deploy-state-cli.ts" \
-    --action-field "${C_WORK}/action.json" "$field" | tr -d '\r' | tail -n 1
+  # Host-side read: avoids Docker Desktop bind-mount races where a just-written
+  # action.json is truncated or briefly missing inside `compose run`.
+  (
+    cd "$ROOT"
+    node --import tsx scripts/ponder-deploy-state-cli.ts \
+      --action-field "$WORK/action.json" "$field"
+  ) | tr -d '\r' | tail -n 1
 }
 
 stop_writers_for_schema() {

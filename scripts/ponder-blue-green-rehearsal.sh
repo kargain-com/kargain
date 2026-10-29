@@ -96,22 +96,26 @@ record_snapshot() {
 }
 
 # Run deploy.sh; capture scrubbed stdout into step log. Returns deploy exit code.
+# Appends when the same step runs deploy more than once (e.g. step 5 rollback→hold→deploy).
 run_deploy() {
   local step="$1"
   shift
   local dir="$OUT/steps/$(printf '%02d' "$step")"
   mkdir -p "$dir"
   local ec=0
+  local stderr_chunk
+  stderr_chunk="$(mktemp)"
   set +e
   (
     cd "$PONDER_DEPLOY_ROOT"
     env "$@" ./scripts/ponder-deploy.sh
-  ) 2>"$dir/executor.stderr" | scrub | tee "$dir/executor.txt"
+  ) 2>"$stderr_chunk" | scrub | tee -a "$dir/executor.txt"
   ec=${PIPESTATUS[0]}
   set -e
-  if [[ -s "$dir/executor.stderr" ]]; then
-    scrub <"$dir/executor.stderr" | tee -a "$dir/executor.txt" >/dev/null
+  if [[ -s "$stderr_chunk" ]]; then
+    scrub <"$stderr_chunk" | tee -a "$dir/executor.stderr" | tee -a "$dir/executor.txt" >/dev/null
   fi
+  rm -f "$stderr_chunk"
   record_snapshot "$step"
   return "$ec"
 }
