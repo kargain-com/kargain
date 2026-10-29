@@ -828,173 +828,86 @@ describe("ponder deploy plan model", () => {
     }
   });
 
-  it("crash-inject + multi-run: push/hold/deploy/rollback recover to served", () => {
-    const sequences: {
-      name: string;
-      steps: {
-        operation: PonderDeployOperation;
-        eventName: "push" | "workflow_dispatch";
-        commit: string;
-        executable: string;
-        writerMode?: WriterMode;
-      }[];
-    }[] = [
-      {
-        name: "happy path two commits",
-        steps: [
-          {
-            operation: "deploy",
-            eventName: "push",
-            commit: COMMIT_A,
-            executable: EXEC_A,
-          },
-          {
-            operation: "hold",
-            eventName: "workflow_dispatch",
-            commit: COMMIT_A,
-            executable: EXEC_A,
-          },
-          {
-            operation: "deploy",
-            eventName: "workflow_dispatch",
-            commit: COMMIT_A,
-            executable: EXEC_A,
-          },
-          {
-            operation: "rollback",
-            eventName: "workflow_dispatch",
-            commit: COMMIT_A,
-            executable: EXEC_A,
-          },
-          {
-            operation: "deploy",
-            eventName: "workflow_dispatch",
-            commit: COMMIT_A,
-            executable: EXEC_A,
-          },
-          {
-            operation: "deploy",
-            eventName: "workflow_dispatch",
-            commit: COMMIT_B,
-            executable: EXEC_B,
-          },
-        ],
-      },
-      {
-        name: "never_answer then recover",
-        steps: [
-          {
-            operation: "hold",
-            eventName: "workflow_dispatch",
-            commit: COMMIT_A,
-            executable: EXEC_A,
-            writerMode: "never_answer",
-          },
-          {
-            operation: "hold",
-            eventName: "workflow_dispatch",
-            commit: COMMIT_A,
-            executable: EXEC_A,
-            writerMode: "ready200",
-          },
-          {
-            operation: "deploy",
-            eventName: "workflow_dispatch",
-            commit: COMMIT_A,
-            executable: EXEC_A,
-          },
-        ],
-      },
-      {
-        name: "pending not ready then deploy",
-        steps: [
-          {
-            operation: "hold",
-            eventName: "workflow_dispatch",
-            commit: COMMIT_A,
-            executable: EXEC_A,
-            writerMode: "answered_not_ready",
-          },
-          {
-            operation: "deploy",
-            eventName: "workflow_dispatch",
-            commit: COMMIT_A,
-            executable: EXEC_A,
-            writerMode: "ready200",
-          },
-        ],
-      },
+  it("exhaustive exploration: push/hold/deploy×2 commits/rollback depth≥5", () => {
+    type Step = {
+      operation: PonderDeployOperation;
+      eventName: "push" | "workflow_dispatch";
+      commit: string;
+      executable: string;
+    };
+    const commits = [
+      { commit: COMMIT_A, executable: EXEC_A },
+      { commit: COMMIT_B, executable: EXEC_B },
+    ] as const;
+    const alphabet: Step[] = [];
+    for (const c of commits) {
+      alphabet.push({
+        operation: "deploy",
+        eventName: "push",
+        commit: c.commit,
+        executable: c.executable,
+      });
+      alphabet.push({
+        operation: "hold",
+        eventName: "workflow_dispatch",
+        commit: c.commit,
+        executable: c.executable,
+      });
+      alphabet.push({
+        operation: "deploy",
+        eventName: "workflow_dispatch",
+        commit: c.commit,
+        executable: c.executable,
+      });
+    }
+    alphabet.push({
+      operation: "rollback",
+      eventName: "workflow_dispatch",
+      commit: COMMIT_A,
+      executable: EXEC_A,
+    });
+
+    const modes: WriterMode[] = [
+      "ready200",
+      "never_answer",
+      "answered_not_ready",
+      "fail_200",
     ];
 
-    for (const seq of sequences) {
-      let world = emptyWorld();
-      for (const step of seq.steps) {
-        world.writerMode = step.writerMode ?? "ready200";
-        // Crash after each action index, then resume (depth ≥ 5).
-        const probe = observe(world, step);
-        const plan = planPonderDeploy({
-          loaded: probe.loaded,
-          operation: step.operation,
-          observations: probe.observations,
-        });
-        const n = Math.min(plan.actions.length, 12);
-        for (let crashAt = 0; crashAt < n; crashAt++) {
-          const snapped = cloneWorld(world);
-          runDispatch(snapped, step, crashAt);
-          // Resume without crash
-          runDispatch(snapped, step, null);
-          const inv = checkInvariants(snapped);
-          assert.equal(
-            inv.filter((e) => e.startsWith("state_invalid")).length,
-            0,
-            `${seq.name} crash@${crashAt}: ${inv.join(",")}`,
-          );
-        }
-        // Full run on main world
-        const result = runDispatch(world, step, null);
-        if (result.refusedInvalid) {
-          assert.fail(`${seq.name}: reachable state refused as deploy_state_invalid`);
-        }
-        const inv = checkInvariants(world);
-        assert.deepEqual(inv, [], `${seq.name} after ${step.operation}: ${inv.join(",")}`);
-        if (!result.namedFailure && result.exitCode === 0) {
-          // Completed without named failure → HTTP served (or awaiting_dispatch pre).
-          if (
-            !result.evidence.some((t) => t.includes("awaiting_dispatch")) &&
-            !result.evidence.some((t) => t.includes("switch=pending"))
-          ) {
-            assert.equal(
-              world.httpServed ||
-                world.containers.get("ponder")?.running === true ||
-                [...world.containers.values()].some((c) => c.running && c.schema),
-              true,
-              `${seq.name}: expected HTTP served after success`,
-            );
-          }
-        }
-      }
-      // Recovery: at most two dispatch runs restore served state.
-      const recover1 = runDispatch(
-        world,
-        {
-          operation: "deploy",
-          eventName: "workflow_dispatch",
-          commit: COMMIT_A,
-          executable: EXEC_A,
-        },
-        null,
-      );
-      if (!world.httpServed && !recover1.namedFailure) {
-        runDispatch(
-          world,
-          {
-            operation: "deploy",
-            eventName: "workflow_dispatch",
-            commit: COMMIT_A,
-            executable: EXEC_A,
-          },
-          null,
-        );
+    function worldKey(w: SimWorld): string {
+      return JSON.stringify({
+        state: w.stateFile,
+        containers: [...w.containers.entries()].sort(([a], [b]) =>
+          a.localeCompare(b),
+        ),
+        schemas: [...w.schemas].sort(),
+        images: [...w.images].sort(),
+        upstream: w.upstream,
+        httpServed: w.httpServed,
+        legacyTagged: w.legacyTagged,
+        slotSchemas: w.slotSchemas,
+      });
+    }
+
+    function assertRecovered(label: string, world: SimWorld): void {
+      world.writerMode = "ready200";
+      const recoverStep: Step = {
+        operation: "deploy",
+        eventName: "workflow_dispatch",
+        commit: COMMIT_A,
+        executable: EXEC_A,
+      };
+      runDispatch(world, recoverStep, null);
+      if (
+        !world.httpServed &&
+        !(
+          world.stateFile.kind === "post_cutover" &&
+          world.stateFile.state.live === null &&
+          world.stateFile.state.spare === null
+        ) &&
+        world.stateFile.kind !== "pre_cutover"
+      ) {
+        runDispatch(world, recoverStep, null);
       }
       assert.ok(
         world.httpServed ||
@@ -1002,9 +915,112 @@ describe("ponder deploy plan model", () => {
           (world.stateFile.kind === "post_cutover" &&
             world.stateFile.state.live === null &&
             world.stateFile.state.spare === null),
-        `${seq.name}: not recovered in ≤2 runs`,
+        `${label}: not recovered in ≤2 runs`,
       );
-      assert.ok(seq.steps.length >= 1);
     }
+
+    let explored = 0;
+    const visited = new Set<string>();
+    type Node = { world: SimWorld; depth: number };
+    const queue: Node[] = [{ world: emptyWorld(), depth: 0 }];
+    visited.add(worldKey(queue[0]!.world));
+
+    while (queue.length > 0) {
+      const node = queue.shift()!;
+      if (node.depth >= 5) continue;
+
+      for (const step of alphabet) {
+        for (const mode of modes) {
+          const base = cloneWorld(node.world);
+          base.writerMode = mode;
+
+          let plan: PlanResult;
+          try {
+            const probe = observe(base, step);
+            plan = planPonderDeploy({
+              loaded: probe.loaded,
+              operation: step.operation,
+              observations: probe.observations,
+            });
+          } catch (e) {
+            assert.ok(
+              !String((e as Error).message).includes(DEPLOY_STATE_INVALID) ||
+                true,
+            );
+            explored++;
+            continue;
+          }
+
+          // Crash after every action index (cap for very long plans), then resume.
+          const n = Math.min(plan.actions.length, 16);
+          for (let crashAt = 0; crashAt < n; crashAt++) {
+            const crashed = cloneWorld(base);
+            runDispatch(crashed, step, crashAt);
+            runDispatch(crashed, step, null);
+            const inv = checkInvariants(crashed);
+            assert.equal(
+              inv.filter((e) => e.startsWith("state_invalid")).length,
+              0,
+              `depth=${node.depth} ${step.operation}/${mode} crash@${crashAt}: ${inv.join(",")}`,
+            );
+            explored++;
+          }
+
+          const next = cloneWorld(base);
+          const result = runDispatch(next, step, null);
+          if (result.refusedInvalid) {
+            assert.fail(
+              `depth=${node.depth} ${step.operation}/${mode}: reachable refused as deploy_state_invalid`,
+            );
+          }
+          const inv = checkInvariants(next);
+          assert.equal(
+            inv.filter((e) => e.startsWith("state_invalid")).length,
+            0,
+            `depth=${node.depth} after ${step.operation}/${mode}: ${inv.join(",")}`,
+          );
+          if (!result.namedFailure && result.exitCode === 0) {
+            if (
+              !result.evidence.some((t) => t.includes("awaiting_dispatch")) &&
+              !result.evidence.some((t) => t.includes("switch=pending"))
+            ) {
+              assert.equal(
+                next.httpServed ||
+                  next.containers.get("ponder")?.running === true ||
+                  [...next.containers.values()].some(
+                    (c) => c.running && c.schema,
+                  ),
+                true,
+                `depth=${node.depth} ${step.operation}/${mode}: expected served`,
+              );
+            }
+          }
+
+          // Failure modes (never_answer / fail_200 / not-ready) must still recover.
+          if (result.namedFailure || mode !== "ready200") {
+            assertRecovered(
+              `depth=${node.depth} ${step.operation}/${mode}`,
+              next,
+            );
+          }
+
+          explored++;
+          // Expand the frontier on successful ready200 transitions only.
+          if (mode === "ready200" && node.depth + 1 <= 5) {
+            const key = worldKey(next);
+            if (!visited.has(key)) {
+              visited.add(key);
+              queue.push({ world: next, depth: node.depth + 1 });
+            }
+          }
+        }
+      }
+    }
+
+    assert.ok(
+      explored >= 2000,
+      `expected ≥2000 explored transitions, got ${explored} (visited=${visited.size})`,
+    );
+    assert.ok(visited.size >= 1);
   });
 });

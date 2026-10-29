@@ -50,6 +50,11 @@ UPSTREAM_FILE="${ROOT}/.ponder-upstream.conf"
 # deploy_evidence ready=ponder status=
 # deploy_evidence node=
 DEPLOYED_COMMIT="$(git rev-parse HEAD)"
+# Bind the tree we build/label to DEPLOY_SHA (workflow checks out first; rehearsal must too).
+if [ "$DEPLOYED_COMMIT" != "$DEPLOY_SHA" ]; then
+  echo "deploy_observation_failed: checkout"
+  exit 1
+fi
 mkdir -p "$WORK"
 
 # Build deploy-tools once (cached). Writer images are separate ("no writer → no writer build").
@@ -302,7 +307,11 @@ restore_reused_on_timeout() {
   local slot="$1" failure_text="$2"
   echo "$failure_text"
   if [ -n "$slot" ]; then
-    docker compose stop "ponder-${slot}" </dev/null >/dev/null || true
+    # Named failure if stop fails — spare stays under restart:always otherwise.
+    if ! docker compose stop "ponder-${slot}" </dev/null >/dev/null; then
+      echo "deploy_observation_failed: stop_reused"
+      exit 1
+    fi
   fi
   # State was not mutated to consume the spare; leave nginx/live untouched.
   exit 1
@@ -601,7 +610,12 @@ for action_line in "${action_lines[@]}"; do
       python3 -c "import json,sys; print('\n'.join(json.loads(sys.argv[1])))" "$imgs" >"$WORK/rm-images.txt"
       while IFS= read -r img || [ -n "$img" ]; do
         [ -z "$img" ] && continue
-        docker rmi "$img" </dev/null >/dev/null 2>&1 || true
+        # Keep when still in use by a container; name it (do not discard silently).
+        if docker rmi "$img" </dev/null >/dev/null 2>&1; then
+          :
+        else
+          echo "deploy_evidence image_kept=$img"
+        fi
       done <"$WORK/rm-images.txt"
       ;;
     write_state)

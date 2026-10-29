@@ -2,8 +2,9 @@
 # ADR 0009 pinned Node; not a writer image. Built on every deploy run (cached).
 FROM node:24.22.1-alpine
 WORKDIR /app
-# tsx only — tooling CLIs import Node builtins + these scripts.
-RUN npm init -y >/dev/null && npm install --omit=dev tsx@4.21.0
+# Lockfile-pinned install only (ops/deploy-tools); install via npm ci exclusively.
+COPY ops/deploy-tools/package.json ops/deploy-tools/package-lock.json ./
+RUN npm ci --omit=dev
 COPY scripts/ponder-deploy-plan-cli.ts \
      scripts/ponder-deploy-state-cli.ts \
      scripts/ponder-deploy-retention-cli.ts \

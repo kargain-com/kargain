@@ -1,0 +1,7 @@
+{
+  "name": "kargain-deploy-tools",
+  "private": true,
+  "dependencies": {
+    "tsx": "4.21.0"
+  }
+}

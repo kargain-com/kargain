@@ -628,6 +628,88 @@ export function deployScriptStateMountDefect(script: string): string | null {
   return null;
 }
 
+/**
+ * HEAD must equal DEPLOY_SHA before observation (else image labelled for the
+ * wrong commit). Refuses with deploy_observation_failed: checkout.
+ */
+export function deployScriptCheckoutBindDefect(script: string): string | null {
+  if (!/deploy_observation_failed: checkout/.test(script)) {
+    return "ponder-deploy.sh must refuse when HEAD ≠ DEPLOY_SHA";
+  }
+  if (
+    !/DEPLOYED_COMMIT="\$\(git rev-parse HEAD\)"/.test(script) &&
+    !/DEPLOYED_COMMIT=\$\(git rev-parse HEAD\)/.test(script)
+  ) {
+    return "ponder-deploy.sh must refuse when HEAD ≠ DEPLOY_SHA";
+  }
+  if (
+    !/\[ "\$DEPLOYED_COMMIT" != "\$DEPLOY_SHA" \]/.test(script) &&
+    !/\[ "\$\(git rev-parse HEAD\)" != "\$DEPLOY_SHA" \]/.test(script)
+  ) {
+    return "ponder-deploy.sh must refuse when HEAD ≠ DEPLOY_SHA";
+  }
+  return null;
+}
+
+/**
+ * restore_reused must not swallow stop failure with || true — a spare under
+ * restart:always would keep answering on the spare schema.
+ */
+export function deployScriptRestoreReusedStopDefect(
+  script: string,
+): string | null {
+  const restoreBlock = script.match(
+    /restore_reused_on_timeout\(\)\s*\{([\s\S]*?)\n\}/,
+  );
+  if (!restoreBlock) {
+    return "ponder-deploy.sh must name stop_reused on restore_reused stop failure";
+  }
+  const body = restoreBlock[1]!;
+  if (/docker compose stop[\s\S]*\|\|\s*true/.test(body)) {
+    return "ponder-deploy.sh must name stop_reused on restore_reused stop failure";
+  }
+  if (!/deploy_observation_failed: stop_reused/.test(body)) {
+    return "ponder-deploy.sh must name stop_reused on restore_reused stop failure";
+  }
+  return null;
+}
+
+/**
+ * remove_images: only keep when still in use; print image_kept=<tag>.
+ */
+export function deployScriptRemoveImagesKeptDefect(
+  script: string,
+): string | null {
+  const block = script.match(/remove_images\)([\s\S]*?);;/);
+  if (!block) {
+    return "ponder-deploy.sh remove_images must print image_kept when rmi fails";
+  }
+  const body = block[1]!;
+  if (/docker rmi[\s\S]*\|\|\s*true/.test(body)) {
+    return "ponder-deploy.sh remove_images must print image_kept when rmi fails";
+  }
+  if (!/deploy_evidence image_kept=/.test(body)) {
+    return "ponder-deploy.sh remove_images must print image_kept when rmi fails";
+  }
+  return null;
+}
+
+/**
+ * Dockerfile.deploy-tools installs only via npm ci from ops/deploy-tools lockfile.
+ */
+export function deployToolsDockerfileDefect(dockerfile: string): string | null {
+  if (!/ops\/deploy-tools\/package-lock\.json/.test(dockerfile)) {
+    return "Dockerfile.deploy-tools must COPY ops/deploy-tools lockfile";
+  }
+  if (!/\bnpm ci\b/.test(dockerfile)) {
+    return "Dockerfile.deploy-tools must install with npm ci";
+  }
+  if (/^\s*RUN\b[^\n]*\bnpm install\b/m.test(dockerfile)) {
+    return "Dockerfile.deploy-tools must not use npm install";
+  }
+  return null;
+}
+
 /** Extract appleboy remote `script:` bodies from a deploy workflow. */
 export function extractDeployRemoteScripts(yamlText: string): string[] {
   const doc = yaml.load(yamlText);
@@ -1054,6 +1136,17 @@ deploy:
             name,
           );
           assert.equal(deployScriptStateMountDefect(script), null, name);
+          assert.equal(deployScriptCheckoutBindDefect(script), null, name);
+          assert.equal(
+            deployScriptRestoreReusedStopDefect(script),
+            null,
+            name,
+          );
+          assert.equal(
+            deployScriptRemoveImagesKeptDefect(script),
+            null,
+            name,
+          );
         }
         assert.equal(bashSyntaxDefect(script), null, name);
       }
@@ -1351,6 +1444,64 @@ docker compose run -v "$STATE_FILE:$STATE_FILE" deploy-tools true
     );
     const green = readFileSync(PONDER_DEPLOY_SH, "utf8");
     assert.equal(deployScriptStateMountDefect(green), null);
+  });
+
+  it("constructed: missing HEAD=DEPLOY_SHA bind is red; live is green", () => {
+    const planted = `set -euo pipefail
+DEPLOYED_COMMIT="$(git rev-parse HEAD)"
+gather_observations() { true; }
+`;
+    assert.equal(
+      deployScriptCheckoutBindDefect(planted),
+      "ponder-deploy.sh must refuse when HEAD ≠ DEPLOY_SHA",
+    );
+    const green = readFileSync(PONDER_DEPLOY_SH, "utf8");
+    assert.equal(deployScriptCheckoutBindDefect(green), null);
+  });
+
+  it("constructed: restore_reused stop || true is red; live names stop_reused", () => {
+    const planted = [
+      "set -euo pipefail",
+      "restore_reused_on_timeout() {",
+      '  local slot="$1" failure_text="$2"',
+      '  echo "$failure_text"',
+      '  docker compose stop "ponder-${slot}" </dev/null >/dev/null || true',
+      "  exit 1",
+      "}",
+      "",
+    ].join("\n");
+    assert.equal(
+      deployScriptRestoreReusedStopDefect(planted),
+      "ponder-deploy.sh must name stop_reused on restore_reused stop failure",
+    );
+    const green = readFileSync(PONDER_DEPLOY_SH, "utf8");
+    assert.equal(deployScriptRestoreReusedStopDefect(green), null);
+  });
+
+  it("constructed: remove_images || true without image_kept is red; live is green", () => {
+    const planted = `set -euo pipefail
+remove_images)
+  docker rmi "$img" </dev/null >/dev/null 2>&1 || true
+  ;;
+`;
+    assert.equal(
+      deployScriptRemoveImagesKeptDefect(planted),
+      "ponder-deploy.sh remove_images must print image_kept when rmi fails",
+    );
+    const green = readFileSync(PONDER_DEPLOY_SH, "utf8");
+    assert.equal(deployScriptRemoveImagesKeptDefect(green), null);
+  });
+
+  it("constructed: deploy-tools floating npm install is red; live npm ci is green", () => {
+    const planted = `FROM node:24.22.1-alpine
+RUN npm init -y && npm install --omit=dev tsx@4.21.0
+`;
+    assert.equal(
+      deployToolsDockerfileDefect(planted),
+      "Dockerfile.deploy-tools must COPY ops/deploy-tools lockfile",
+    );
+    const green = readFileSync(join(ROOT, "Dockerfile.deploy-tools"), "utf8");
+    assert.equal(deployToolsDockerfileDefect(green), null);
   });
 
   it("constructed: command_timeout on a different step is red", () => {

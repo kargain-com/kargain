@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # ADR 0015 / #73 local Docker rehearsal — nine steps through ponder-deploy.sh.
-# One non-interactive command; writes a log. Do not poll; read the log when it exits.
+# Mirrors deploy-ponder.yml: checkout DEPLOY_SHA in the deploy root, digests from
+# scripts/ponder-deploy-fingerprints.ts on that tree. No faked digests; no || true
+# on a deploy run. One non-interactive command; writes a log.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -12,8 +14,9 @@ LOG="$OUT/rehearsal.log"
 mkdir -p "$OUT"
 exec > >(tee -a "$LOG") 2>&1
 
+ORIGINAL_HEAD="$(git rev-parse HEAD)"
 echo "=== ponder rehearsal start $(date -u +%Y-%m-%dT%H:%M:%SZ) root=$ROOT out=$OUT ==="
-echo "head=$(git rev-parse HEAD)"
+echo "head=$ORIGINAL_HEAD"
 
 export PONDER_DEPLOY_ROOT="$ROOT"
 export PONDER_STATE_FILE="$OUT/state.json"
@@ -43,16 +46,20 @@ cleanup_compose_project() {
 }
 
 SCRATCH=""
-SCRATCH2=""
 HEAD_SHA=""
+SECOND_SHA=""
+THIRD_SHA=""
 cleanup_all() {
   cleanup_compose_project
-  if [ -n "${SCRATCH2:-}" ]; then
-    git worktree remove --force "$SCRATCH2" 2>/dev/null || true
-    rm -rf "$SCRATCH2"
-    if [ -n "${HEAD_SHA:-}" ]; then
-      git branch -D "rehearsal-second-$HEAD_SHA" 2>/dev/null || true
-    fi
+  # Restore the developer's checkout after per-step DEPLOY_SHA checkouts.
+  if [ -n "${ORIGINAL_HEAD:-}" ]; then
+    git checkout --force "$ORIGINAL_HEAD" >/dev/null 2>&1 || true
+  fi
+  if [ -n "${THIRD_SHA:-}" ]; then
+    git branch -D "rehearsal-third-$ORIGINAL_HEAD" 2>/dev/null || true
+  fi
+  if [ -n "${SECOND_SHA:-}" ]; then
+    git branch -D "rehearsal-second-$ORIGINAL_HEAD" 2>/dev/null || true
   fi
   if [ -n "${SCRATCH:-}" ]; then
     git worktree remove --force "$SCRATCH" 2>/dev/null || true
@@ -67,8 +74,10 @@ cleanup_compose_project
 
 use_compose "docker-compose.yml"
 
+# Per-step evidence required by #73: stdout, pg_namespace, compose ps, state.
 capture() {
   local dir="$1"
+  mkdir -p "$dir"
   docker compose ps >"$dir/compose-ps.txt" || true
   docker compose exec -T postgres \
     psql -U ponder -d kargain_ponder -t -A -c \
@@ -79,6 +88,13 @@ capture() {
   else
     echo "(missing)" >"$dir/state.json"
   fi
+  echo "--- pg_namespace ---"
+  cat "$dir/pg_namespace.txt"
+  echo "--- docker compose ps ---"
+  cat "$dir/compose-ps.txt"
+  echo "--- state file ---"
+  cat "$dir/state.json"
+  echo "--- end capture ---"
 }
 
 # Mirror production: PATH with no `node` binary (server has none). Host-Node
@@ -99,11 +115,27 @@ path_without_node() {
   printf '%s' "$new"
 }
 
+# Like the GHA fingerprint step, then VPS `git checkout --force "$DEPLOY_SHA"`.
+load_fingerprints() {
+  local out identity executable
+  out="$(node --import tsx scripts/ponder-deploy-fingerprints.ts)"
+  identity="$(printf '%s\n' "$out" | sed -n 's/^identity=//p' | head -n1)"
+  executable="$(printf '%s\n' "$out" | sed -n 's/^executable=//p' | head -n1)"
+  : "${identity:?fingerprint identity missing}"
+  : "${executable:?fingerprint executable missing}"
+  export IDENTITY_DIGEST="$identity"
+  export EXECUTABLE_DIGEST="$executable"
+  echo "fingerprints identity=$IDENTITY_DIGEST executable=$EXECUTABLE_DIGEST"
+}
+
 run_deploy() {
   local op="$1" event="$2" sha="$3" ec=0
+  echo "=== run_deploy op=$op event=$event sha=$sha ==="
+  # Workflow: checkout DEPLOY_SHA in the deploy root, then compute digests on that tree.
+  git checkout --force "$sha"
+  test "$(git rev-parse HEAD)" = "$sha"
+  load_fingerprints
   export OPERATION="$op" EVENT_NAME="$event" DEPLOY_SHA="$sha"
-  export IDENTITY_DIGEST="${IDENTITY_DIGEST:-rehearsal-identity}"
-  export EXECUTABLE_DIGEST="${EXECUTABLE_DIGEST:-exec-$sha}"
   set +e
   env PATH="$(path_without_node)" "$ROOT/scripts/ponder-deploy.sh"
   ec=$?
@@ -126,7 +158,6 @@ report_slot_image_size() {
     echo "slot_image_size tag=$tag missing"
     return 1
   fi
-  # Human-readable via awk (no bc dependency).
   local human
   human="$(awk -v b="$bytes" 'BEGIN{
     split("B KB MB GB TB", u, " ");
@@ -176,6 +207,8 @@ if ! curl -sf -X POST -H 'content-type: application/json' \
 fi
 
 echo "=== deploy local stack; set start/window from registry deployment blocks ==="
+# Ensure we are on the PR head for deploy:local / fingerprint sources.
+git checkout --force "$ORIGINAL_HEAD"
 pnpm deploy:local
 PONDER_RPC_URL_31337=http://127.0.0.1:8545 \
   eval "$(node --import tsx scripts/rehearsal-local-window.ts)"
@@ -187,7 +220,7 @@ echo "PONDER_GETLOGS_BLOCK_RANGE_31337=$PONDER_GETLOGS_BLOCK_RANGE_31337"
 export PONDER_RPC_URL_31337=http://host.docker.internal:8545
 
 # Slot env must satisfy the legacy image exactly as ENABLE_LOCAL expects addresses.
-# No rename of PONDER_*_ADDRESS vs 25689e1 — inject from deployments/31337.json.
+# No rename of PONDER_*_ADDRESS vs 25689e1 — inject from the local stack manifest.
 eval "$(node --import tsx -e '
 import { readFileSync } from "node:fs";
 const d = JSON.parse(readFileSync("deployments/31337.json", "utf8"));
@@ -207,13 +240,13 @@ for (const [k, v] of map) {
   if (v) console.log(`export ${k}=${JSON.stringify(v)}`);
 }
 ')"
-: "${PONDER_KAR_PASSPORT_ADDRESS:?missing from deployments/31337.json}"
-: "${PONDER_KAR_PRO_PASS_ADDRESS:?missing from deployments/31337.json}"
-: "${PONDER_KAR_PRO_STAKING_ADDRESS:?missing from deployments/31337.json}"
-: "${PONDER_USDC_ADDRESS:?missing from deployments/31337.json}"
-: "${PONDER_NATIVE_FEED_ADDRESS:?missing from deployments/31337.json}"
-: "${PONDER_TIMELOCK_ADDRESS:?missing from deployments/31337.json}"
-: "${PONDER_PLATFORM_RECIPIENT_ADDRESS:?missing from deployments/31337.json}"
+: "${PONDER_KAR_PASSPORT_ADDRESS:?missing local stack address}"
+: "${PONDER_KAR_PRO_PASS_ADDRESS:?missing local stack address}"
+: "${PONDER_KAR_PRO_STAKING_ADDRESS:?missing local stack address}"
+: "${PONDER_USDC_ADDRESS:?missing local stack address}"
+: "${PONDER_NATIVE_FEED_ADDRESS:?missing local stack address}"
+: "${PONDER_TIMELOCK_ADDRESS:?missing local stack address}"
+: "${PONDER_PLATFORM_RECIPIENT_ADDRESS:?missing local stack address}"
 export PONDER_KAR_PASSPORT_ADDRESS PONDER_KAR_PRO_PASS_ADDRESS PONDER_KAR_PRO_STAKING_ADDRESS
 export PONDER_USDC_ADDRESS PONDER_NATIVE_FEED_ADDRESS PONDER_TIMELOCK_ADDRESS
 export PONDER_PLATFORM_RECIPIENT_ADDRESS
@@ -263,8 +296,7 @@ docker compose stop ponder ponder-blue ponder-green 2>/dev/null || true
 docker compose up -d postgres ponder
 printf '%s\n' '{"identity":"rehearsal-identity","executable":"exec-legacy"}' >"$PONDER_STATE_FILE"
 
-HEAD_SHA="$(git rev-parse HEAD)"
-COMMIT2="$(git rev-parse HEAD)"
+HEAD_SHA="$ORIGINAL_HEAD"
 
 REHEARSAL_COMPOSE="docker-compose.yml:ops/rehearsal/docker-compose.rehearsal.yml"
 
@@ -302,29 +334,30 @@ run_deploy deploy workflow_dispatch "$HEAD_SHA" | tee "$OUT/step-5/executor.txt"
 capture "$OUT/step-5"
 
 step 6 "second commit → switch + retention"
-SCRATCH2="${TMPDIR:-/tmp}/kargain-rehearsal-scratch2-$$"
-rm -rf "$SCRATCH2"
-git worktree remove --force "$SCRATCH2" 2>/dev/null || true
-git worktree add "$SCRATCH2" -b "rehearsal-second-$HEAD_SHA" HEAD
-(
-  cd "$SCRATCH2"
-  echo "// rehearsal build_id bump $(date -u +%s)" >>src/lib/ponder-writer-schema.ts
-  git add src/lib/ponder-writer-schema.ts
-  git -c user.email=rehearsal@local -c user.name=rehearsal \
-    commit -m "rehearsal: bump writer schema comment for build_id"
-  git rev-parse HEAD >"$OUT/second-sha.txt"
-)
-SECOND_SHA="$(cat "$OUT/second-sha.txt")"
-docker build -f "$SCRATCH2/Dockerfile.ponder" \
-  --build-arg "KARGAIN_PONDER_COMMIT=$SECOND_SHA" \
-  -t "kargain-ponder:$SECOND_SHA" "$SCRATCH2"
-report_slot_image_size "kargain-ponder:$SECOND_SHA" | tee -a "$OUT/step-6-image-size.txt"
-export EXECUTABLE_DIGEST="exec-${SECOND_SHA}-2"
+# Real second commit on a branch tip that changes the executable fingerprint / build_id.
+git checkout --force -B "rehearsal-second-$ORIGINAL_HEAD" "$HEAD_SHA"
+echo "// rehearsal build_id bump $(date -u +%s)" >>src/lib/ponder-writer-schema.ts
+git add src/lib/ponder-writer-schema.ts
+git -c user.email=rehearsal@local -c user.name=rehearsal \
+  commit -m "rehearsal: bump writer schema comment for build_id"
+SECOND_SHA="$(git rev-parse HEAD)"
+printf '%s\n' "$SECOND_SHA" >"$OUT/second-sha.txt"
+echo "second_sha=$SECOND_SHA"
 run_deploy deploy workflow_dispatch "$SECOND_SHA" | tee "$OUT/step-6/executor.txt"
 capture "$OUT/step-6"
+grep -q "k_${SECOND_SHA}" "$OUT/step-6/pg_namespace.txt" \
+  || grep -q "schema=k_${SECOND_SHA}" "$OUT/step-6/executor.txt"
+# Retention drops the legacy kargain schema after the second-commit switch.
+if grep -q '^kargain$' "$OUT/step-6/pg_namespace.txt"; then
+  echo "step 6 expected retention to drop kargain"
+  exit 1
+fi
+report_slot_image_size "kargain-ponder:$SECOND_SHA" | tee -a "$OUT/step-6/executor.txt" | tee "$OUT/step-6-image-size.txt"
 
 step 7 "restart live writer without nginx reload"
-LIVE_SLOT="$(node --import tsx scripts/ponder-deploy-state-cli.ts --live-slot "$PONDER_STATE_FILE" --pre-cutover 0 | tr -d '\r' || true)"
+# State CLI needs a checkout that still has the CLI; SECOND_SHA does.
+git checkout --force "$SECOND_SHA"
+LIVE_SLOT="$(node --import tsx scripts/ponder-deploy-state-cli.ts --live-slot "$PONDER_STATE_FILE" --pre-cutover 0 | tr -d '\r')"
 LIVE_SLOT="${LIVE_SLOT:-blue}"
 docker compose restart "ponder-$LIVE_SLOT"
 START_MS=$(python3 -c 'import time; print(int(time.time()*1000))')
@@ -345,17 +378,57 @@ test "$ok" = "1"
 test "$ELAPSED" -le 10000
 
 step 8 "not-ready pending superseded"
-export EXECUTABLE_DIGEST="exec-pending-stale"
+# Hold a third commit (new executable) → pending writer, then stop it so observe
+# sees not-ready, then deploy SECOND_SHA's successor… use a fourth bump on second branch.
+git checkout --force -B "rehearsal-third-$ORIGINAL_HEAD" "$SECOND_SHA"
+echo "// rehearsal pending-stale bump $(date -u +%s)" >>src/lib/ponder-writer-schema.ts
+git add src/lib/ponder-writer-schema.ts
+git -c user.email=rehearsal@local -c user.name=rehearsal \
+  commit -m "rehearsal: pending not-ready candidate"
+THIRD_SHA="$(git rev-parse HEAD)"
+printf '%s\n' "$THIRD_SHA" >"$OUT/third-sha.txt"
+echo "third_sha=$THIRD_SHA"
 mkdir -p "$OUT/step-8a"
-run_deploy hold workflow_dispatch "$HEAD_SHA" | tee "$OUT/step-8a/executor.txt" || true
-export EXECUTABLE_DIGEST="exec-pending-newer"
-run_deploy deploy workflow_dispatch "$SECOND_SHA" | tee "$OUT/step-8/executor.txt"
+run_deploy hold workflow_dispatch "$THIRD_SHA" | tee "$OUT/step-8a/executor.txt"
+capture "$OUT/step-8a"
+# Pending slot from hold evidence / state.
+PENDING_SLOT="$(node --import tsx -e '
+import { readFileSync } from "node:fs";
+const s = JSON.parse(readFileSync(process.env.PONDER_STATE_FILE, "utf8"));
+if (!s.pending?.slot) { console.error("no pending after hold"); process.exit(1); }
+console.log(s.pending.slot);
+')"
+echo "pending_slot=$PENDING_SLOT"
+docker compose stop "ponder-${PENDING_SLOT}"
+# Probe kind while not answering (deploy-tools on Compose network).
+PROBE_KIND="$(docker compose --profile deploy-tools run --rm --no-deps -T deploy-tools \
+  scripts/ponder-ready-probe.ts --mode answered --format json \
+  --url "http://ponder-${PENDING_SLOT}:42069/ready" --timeout-ms 3000 \
+  | tail -n1 | python3 -c 'import json,sys; print(json.load(sys.stdin).get("kind","?"))')"
+echo "probe_kind=$PROBE_KIND" | tee "$OUT/step-8/probe-kind.txt"
+test "$PROBE_KIND" = "no_answer" -o "$PROBE_KIND" = "probe_failed" -o "$PROBE_KIND" = "status"
+# Newer commit than the not-ready pending: bump again and deploy → supersede.
+echo "// rehearsal supersede newer $(date -u +%s)" >>src/lib/ponder-writer-schema.ts
+git add src/lib/ponder-writer-schema.ts
+git -c user.email=rehearsal@local -c user.name=rehearsal \
+  commit -m "rehearsal: supersede newer commit"
+NEWER_SHA="$(git rev-parse HEAD)"
+printf '%s\n' "$NEWER_SHA" >"$OUT/newer-sha.txt"
+echo "newer_sha=$NEWER_SHA"
+run_deploy deploy workflow_dispatch "$NEWER_SHA" | tee "$OUT/step-8/executor.txt"
 capture "$OUT/step-8"
+# Supersede drops the third pending schema.
+if grep -q "k_${THIRD_SHA}" "$OUT/step-8/pg_namespace.txt"; then
+  echo "step 8 expected supersede to drop k_${THIRD_SHA}"
+  exit 1
+fi
+grep -q "k_${NEWER_SHA}" "$OUT/step-8/pg_namespace.txt" \
+  || grep -q "schema=k_${NEWER_SHA}" "$OUT/step-8/executor.txt"
 
 step 9 "state file removed → deploy_state_invalid"
 rm -f "$PONDER_STATE_FILE"
 set +e
-run_deploy deploy workflow_dispatch "$HEAD_SHA" >"$OUT/step-9/executor.txt" 2>&1
+run_deploy deploy workflow_dispatch "$NEWER_SHA" >"$OUT/step-9/executor.txt" 2>&1
 ec=$?
 set -e
 capture "$OUT/step-9"
@@ -364,4 +437,4 @@ grep -q 'deploy_state_invalid' "$OUT/step-9/executor.txt"
 test "$ec" -ne 0
 
 report_slot_image_size "kargain-ponder:$HEAD_SHA" | tee "$OUT/slot-image-size-final.txt"
-echo "=== rehearsal complete head=$HEAD_SHA out=$OUT ==="
+echo "=== rehearsal complete head=$ORIGINAL_HEAD out=$OUT ==="
