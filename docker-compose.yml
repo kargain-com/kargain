@@ -5,6 +5,21 @@ x-default-logging: &default-logging
       max-size: "20m"
       max-file: "5"
 
+# Writer settings shared by blue/green. DATABASE_SCHEMA comes only from the
+# deploy-written slot env file (ADR 0015 §a / §c). No views-schema env or flag.
+x-ponder-writer: &ponder-writer
+  <<: *default-logging
+  restart: always
+  depends_on:
+    postgres:
+      condition: service_healthy
+  environment:
+    DATABASE_URL: ${DATABASE_URL:-postgresql://ponder:${POSTGRES_PASSWORD}@postgres:5432/kargain_ponder}
+    PONDER_START_BLOCK_84532: ${PONDER_START_BLOCK_84532:-latest}
+    PONDER_START_BLOCK: ${PONDER_START_BLOCK:-latest}
+  networks:
+    - kargain
+
 services:
   postgres:
     <<: *default-logging
@@ -24,26 +39,43 @@ services:
     networks:
       - kargain
 
+  # HTTP front: pinned nginx. Tunnel / host :42069 target. Writers are blue/green.
+  # No depends_on writers: a stopped spare must stay stopped when nginx restarts.
   ponder:
     <<: *default-logging
+    image: nginx:1.27.5-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+    restart: always
+    ports:
+      - "127.0.0.1:42069:42069"
+    volumes:
+      - ./ops/nginx/ponder.conf:/etc/nginx/nginx.conf:ro
+      - ./.ponder-upstream.conf:/etc/nginx/ponder-upstream.conf:ro
+    networks:
+      - kargain
+
+  ponder-blue:
+    <<: *ponder-writer
+    image: kargain-ponder-blue
     build:
       context: .
       dockerfile: Dockerfile.ponder
-    restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
     env_file:
-      - .env
-    environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://ponder:${POSTGRES_PASSWORD}@postgres:5432/kargain_ponder}
-      PONDER_START_BLOCK_84532: ${PONDER_START_BLOCK_84532:-latest}
-      PONDER_START_BLOCK: ${PONDER_START_BLOCK:-latest}
-      DATABASE_SCHEMA: kargain
-    ports:
-      - "127.0.0.1:42069:42069"
-    networks:
-      - kargain
+      - path: .env
+        required: true
+      - path: .ponder-slot-blue.env
+        required: false
+
+  ponder-green:
+    <<: *ponder-writer
+    image: kargain-ponder-green
+    build:
+      context: .
+      dockerfile: Dockerfile.ponder
+    env_file:
+      - path: .env
+        required: true
+      - path: .ponder-slot-green.env
+        required: false
 
   cloudflared:
     <<: *default-logging

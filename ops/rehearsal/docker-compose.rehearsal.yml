@@ -1,0 +1,24 @@
+# Rehearsal-only override (ADR 0015 / #73). Never referenced by a deploy workflow
+# or scripts/ponder-deploy.sh (policy-pinned).
+# Selected via: COMPOSE_FILE=docker-compose.yml:ops/rehearsal/docker-compose.rehearsal.yml
+# Real Ponder slots index local Hardhat only — local-only preflight probes that chain.
+x-rehearsal-env: &rehearsal-env
+  DATABASE_URL: ${DATABASE_URL:-postgresql://ponder:${POSTGRES_PASSWORD}@postgres:5432/kargain_ponder}
+  PONDER_ENABLE_LOCAL: "1"
+  PONDER_LOCAL_ONLY: "1"
+  PONDER_RPC_URL_31337: ${PONDER_RPC_URL_31337:-http://host.docker.internal:8545}
+  PONDER_START_BLOCK: "0"
+  PONDER_START_BLOCK_31337: "0"
+
+services:
+  ponder-blue:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      <<: *rehearsal-env
+
+  ponder-green:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      <<: *rehearsal-env

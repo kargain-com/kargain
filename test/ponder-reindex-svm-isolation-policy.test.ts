@@ -1,6 +1,7 @@
 /**
- * Reindex vs projection isolation — both directions (S7c-2).
- * ADR 0011: reindex drops kargain only; never ponder_sync or ponder_rpc_cache_1.
+ * Reindex vs projection isolation — both directions (S7c-2 / ADR 0015).
+ * ADR 0015 removes scripts/ponder-reindex.sh|.sql; retention never selects
+ * protected schemas. Projection rebuild still drops only the projection schema.
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -8,28 +9,16 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import {
+  PROTECTED_SCHEMAS,
+  retentionWouldSelect,
+} from "../scripts/lib/ponder-deploy-retention.js";
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const REINDEX_SQL = path.join(ROOT, "scripts/ponder-reindex.sql");
+const REINDEX_SH = path.join(ROOT, "scripts/ponder-reindex.sh");
 const PROJECTION_REBUILD = path.join(ROOT, "src/svm-ingest/projection-rebuild.ts");
 const PROJECTION_WRITER = path.join(ROOT, "src/lib/svm-projection-writer.ts");
-
-function assertReindexIsolation(sql: string): void {
-  const upper = sql.toUpperCase();
-  assert.ok(upper.includes("DROP SCHEMA IF EXISTS KARGAIN"), "must drop kargain");
-  assert.ok(
-    !upper.includes("DROP SCHEMA IF EXISTS PONDER_SYNC"),
-    "must not drop ponder_sync",
-  );
-  assert.ok(
-    !upper.includes("DROP SCHEMA IF EXISTS PONDER_RPC_CACHE_1"),
-    "must not drop ponder_rpc_cache_1",
-  );
-  assert.ok(!sql.includes("kargain_svm_raw"), "must not reference kargain_svm_raw");
-  assert.ok(
-    !sql.includes("kargain_svm_projection"),
-    "must not reference kargain_svm_projection",
-  );
-}
 
 function assertProjectionRebuildIsolation(rebuildSrc: string, writerSrc: string): void {
   assert.ok(rebuildSrc.includes("dropSvmProjectionSchema"));
@@ -41,27 +30,22 @@ function assertProjectionRebuildIsolation(rebuildSrc: string, writerSrc: string)
 }
 
 describe("ponder reindex svm isolation policy", () => {
-  const sql = fs.readFileSync(REINDEX_SQL, "utf8");
   const rebuildSrc = fs.readFileSync(PROJECTION_REBUILD, "utf8");
   const writerSrc = fs.readFileSync(PROJECTION_WRITER, "utf8");
 
-  it("drops kargain only; never ponder_sync or ponder_rpc_cache_1", () => {
-    assertReindexIsolation(sql);
+  it("ADR 0015: ponder-reindex.sh and .sql are removed", () => {
+    assert.equal(fs.existsSync(REINDEX_SQL), false);
+    assert.equal(fs.existsSync(REINDEX_SH), false);
   });
 
-  it("constructed violation: dropping ponder_sync in reindex fails", () => {
-    const dirty = `${sql}\nDROP SCHEMA IF EXISTS ponder_sync CASCADE;`;
-    assert.throws(() => assertReindexIsolation(dirty), /ponder_sync/);
+  it("retention never selects protected schemas", () => {
+    for (const name of PROTECTED_SCHEMAS) {
+      assert.equal(retentionWouldSelect(name), false, name);
+    }
   });
 
-  it("constructed violation: dropping ponder_rpc_cache_1 in reindex fails", () => {
-    const dirty = `${sql}\nDROP SCHEMA IF EXISTS ponder_rpc_cache_1 CASCADE;`;
-    assert.throws(() => assertReindexIsolation(dirty), /ponder_rpc_cache_1/);
-  });
-
-  it("constructed violation: dropping svm projection in reindex fails", () => {
-    const dirty = `${sql}\nDROP SCHEMA IF EXISTS kargain_svm_projection CASCADE;`;
-    assert.throws(() => assertReindexIsolation(dirty), /kargain_svm_projection/);
+  it("constructed violation: retentionWouldSelect on ponder_sync stays red", () => {
+    assert.equal(retentionWouldSelect("ponder_sync"), false);
   });
 
   it("projection rebuild drops projection schema only", () => {

@@ -108,8 +108,16 @@ describe("ponder kargain physical columns", () => {
     }
   });
 
-  it("kargain.passport SELECT list ≡ physical names from JS→snake_case", () => {
-    const cols = extractSelectListBeforeFrom(entity, "kargain.passport");
+  it("writer passport SELECT list ≡ physical names from JS→snake_case", () => {
+    assert.match(entity, /ponderQualifiedTable\("passport"\)/);
+    const listMatch = entity.match(
+      /PASSPORT_ENTITY_SELECT_LIST = `([\s\S]*?)`;/,
+    );
+    assert.ok(listMatch?.[1], "PASSPORT_ENTITY_SELECT_LIST missing");
+    const cols = listMatch[1]
+      .split(",")
+      .map((part) => part.trim())
+      .filter((name) => name.length > 0);
     const gaps = columnSetMismatch(cols, KARGAIN_PASSPORT_PHYSICAL_COLUMNS);
     assert.deepEqual(gaps.missing, []);
     assert.deepEqual(gaps.extra, []);
@@ -121,10 +129,10 @@ describe("ponder kargain physical columns", () => {
     );
     assert.deepEqual(redQuoted, ["chainId", "denominationKind"]);
 
-    const redSql = `SELECT id, "chainId" AS chain_id FROM kargain.passport`;
+    const redSql = `SELECT id, "chainId" AS chain_id FROM "kargain"."passport"`;
     assert.ok(findQuotedCamelCaseSqlIdentifiers(redSql).includes("chainId"));
     const redGaps = columnSetMismatch(
-      extractSelectListBeforeFrom(redSql, "kargain.passport"),
+      extractSelectListBeforeFrom(redSql, '"kargain"."passport"'),
       KARGAIN_PASSPORT_PHYSICAL_COLUMNS,
     );
     assert.ok(
@@ -147,7 +155,7 @@ describe("ponder kargain physical columns", () => {
 
   it("custody EVM SQL has no quoted camelCase; uses token_id / chain_id", () => {
     assert.deepEqual(findQuotedCamelCaseSqlIdentifiers(custody), []);
-    assert.match(custody, /FROM kargain\.custody_determining_event/);
+    assert.match(custody, /ponderQualifiedTable\("custody_determining_event"\)/);
     assert.match(custody, /token_id/);
     assert.match(custody, /chain_id/);
     for (const col of ["token_id", "chain_id", "block_number", "log_index"]) {
@@ -159,7 +167,8 @@ describe("ponder kargain physical columns", () => {
 
   it("provenance EVM SQL uses snake_case passport_record / uri_history", () => {
     assert.deepEqual(findQuotedCamelCaseSqlIdentifiers(provenance), []);
-    assert.match(provenance, /FROM kargain\.passport_record/);
+    assert.match(provenance, /ponderQualifiedTable\("passport_record"\)/);
+    assert.match(provenance, /ponderQualifiedTable\("passport_uri_history"\)/);
     assert.match(provenance, /token_id/);
     assert.match(provenance, /chain_id/);
   });

@@ -20,6 +20,7 @@ import {
   type PassportCustodyAnswer,
 } from "../../lib/custody/normalized-event.js";
 import { indexerReadNamespaceIds } from "./ponder-read-namespaces.js";
+import { ponderQualifiedTable } from "./ponder-writer-schema.js";
 
 export type { PassportCustodyAnswer };
 
@@ -80,7 +81,7 @@ export async function loadCustodyFoldInputs(
   const evmStreamPromise = pool.query<EvmCustodyDeterminingRow>(
     `SELECT token_id AS "tokenId", chain_id AS "chainId", kind,
             block_number AS "blockNumber", log_index AS "logIndex"
-     FROM kargain.custody_determining_event
+     FROM ${ponderQualifiedTable("custody_determining_event")}
      WHERE token_id = $1`,
     [tokenId],
   );
@@ -91,7 +92,7 @@ export async function loadCustodyFoldInputs(
             peer_namespace AS "peerNamespace",
             peer_namespace_refusal AS "peerNamespaceRefusal",
             block_number AS "blockNumber", log_index AS "logIndex"
-     FROM kargain.bridge_crossing
+     FROM ${ponderQualifiedTable("bridge_crossing")}
      WHERE token_id = $1`,
     [tokenId],
   );

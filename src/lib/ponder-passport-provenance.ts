@@ -6,6 +6,7 @@
 import pg from "pg";
 
 import { indexerReadNamespaceIds } from "./ponder-read-namespaces.js";
+import { ponderQualifiedTable } from "./ponder-writer-schema.js";
 
 export type ProvenancePassportRecord = {
   id: string;
@@ -154,7 +155,7 @@ export function buildUnionPassportRecordsSql(args: {
   svmWhere.push(`chain_id = ANY(${nsParam}::int[])`);
 
   const evmClause = `SELECT id, token_id, chain_id, author, record_type, description, evidence_cid, timestamp
-    FROM kargain.passport_record
+    FROM ${ponderQualifiedTable("passport_record")}
     ${evmWhere.length ? `WHERE ${evmWhere.join(" AND ")}` : ""}`;
 
   const parts = [evmClause];
@@ -192,7 +193,7 @@ export function buildUnionUriHistorySql(args: {
   const nsParam = `$2`;
 
   const evmClause = `SELECT id, token_id, chain_id, previous_uri, new_uri, author, verification_reset, timestamp
-    FROM kargain.passport_uri_history
+    FROM ${ponderQualifiedTable("passport_uri_history")}
     WHERE token_id = ${tokenParam} AND chain_id = ANY(${nsParam}::int[])`;
 
   const parts = [evmClause];

@@ -2,14 +2,20 @@
  * Sole owner of Ponder RPC capability probing.
  * Maintainer runs this before any commercial `.env` RPC / getLogs window change.
  */
+import { LOCALHOST_CHAIN_ID } from "../../lib/web3/local-chain.js";
 import {
+  buildPonderIndexingConfig,
   commercialPonderRegistryAddresses,
   PonderEnvRefusalError,
   resolveChainStartBlockWithKey,
   resolveCommercialRpcUrls,
   resolveGetLogsBlockRange,
 } from "./ponder-env.js";
-import { SEPOLIA_CHAIN_ID, SPOKE_CHAIN_ID } from "./load-deployment.js";
+import {
+  ponderLocalAddresses,
+  SEPOLIA_CHAIN_ID,
+  SPOKE_CHAIN_ID,
+} from "./load-deployment.js";
 
 /** Per-request bound for probe JSON-RPC (ADR 0012). */
 export const PONDER_RPC_PROBE_TIMEOUT_MS = 10_000;
@@ -179,6 +185,42 @@ export function commercialPonderProbeChainIds(): readonly number[] {
  * Probe every provider in `PONDER_RPC_URLS_<chainId>` at the configured
  * getLogs window against all commercial Ponder registry addresses.
  */
+function probeRegistryAddresses(chainId: number): `0x${string}`[] {
+  if (chainId === LOCALHOST_CHAIN_ID) {
+    const local = ponderLocalAddresses();
+    if (!local) {
+      throw new Error("localhost probe requires ponderLocalAddresses()");
+    }
+    const addresses: `0x${string}`[] = [
+      local.karPassport,
+      local.karProPass,
+      local.karProStaking,
+    ];
+    if (local.bridgeGateway) addresses.push(local.bridgeGateway);
+    if (local.fixedPriceConsignment) addresses.push(local.fixedPriceConsignment);
+    if (local.ascendingConsignment) addresses.push(local.ascendingConsignment);
+    return addresses;
+  }
+  return commercialPonderRegistryAddresses(chainId);
+}
+
+function probeRpcUrls(
+  chainId: number,
+  env: NodeJS.ProcessEnv,
+): string[] {
+  if (chainId === LOCALHOST_CHAIN_ID) {
+    const singular = env.PONDER_RPC_URL_31337?.trim();
+    if (singular) return [singular];
+    const listKey = `PONDER_RPC_URLS_${LOCALHOST_CHAIN_ID}`;
+    const raw = env[listKey]?.trim();
+    if (raw) {
+      return raw.split(",").map((p) => p.trim()).filter(Boolean);
+    }
+    return ["http://127.0.0.1:8545"];
+  }
+  return resolveCommercialRpcUrls(chainId, env);
+}
+
 export async function probePonderRpcCapability(
   chainId: number,
   deps?: PonderRpcProbeDeps,
@@ -186,7 +228,7 @@ export async function probePonderRpcCapability(
   const env = deps?.env ?? process.env;
   const fetchFn = deps?.fetch ?? globalThis.fetch.bind(globalThis);
 
-  const addresses = commercialPonderRegistryAddresses(chainId);
+  const addresses = probeRegistryAddresses(chainId);
   const { startBlock: startRaw, envKey: startEnvKey } =
     resolveChainStartBlockWithKey(chainId);
   if (startRaw === "latest" || typeof startRaw !== "number") {
@@ -197,8 +239,11 @@ export async function probePonderRpcCapability(
     );
   }
   const startBlock = startRaw;
-  const window = resolveGetLogsBlockRange(chainId, env);
-  const urls = resolveCommercialRpcUrls(chainId, env);
+  const window =
+    chainId === LOCALHOST_CHAIN_ID
+      ? Number.parseInt(env.PONDER_GETLOGS_BLOCK_RANGE_31337 ?? "1", 10) || 1
+      : resolveGetLogsBlockRange(chainId, env);
+  const urls = probeRpcUrls(chainId, env);
   const toBlock = startBlock + window - 1;
 
   const providers: PonderRpcProviderResult[] = [];
@@ -311,11 +356,19 @@ export async function probePonderRpcCapability(
   };
 }
 
+/**
+ * Chain ids the deploy preflight probes: exactly those in the indexing config
+ * (ADR 0015 / #73 Task 4). Local-only → localhost only.
+ */
+export function ponderPreflightProbeChainIds(): readonly number[] {
+  return Object.values(buildPonderIndexingConfig().chains).map((c) => c.id);
+}
+
 export async function probeAllCommercialPonderRpcs(
   deps?: PonderRpcProbeDeps,
 ): Promise<PonderRpcProbeResult[]> {
   const out: PonderRpcProbeResult[] = [];
-  for (const chainId of commercialPonderProbeChainIds()) {
+  for (const chainId of ponderPreflightProbeChainIds()) {
     out.push(await probePonderRpcCapability(chainId, deps));
   }
   return out;

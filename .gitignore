@@ -38,6 +38,10 @@ ignition/deployments/
 .ponder/
 ponder/.ponder
 .ponder-deploy-fingerprints
+.ponder-rehearsal-out/
+.ponder-upstream.conf
+.ponder-slot-*.env
+.ponder-deploy-work/
 .deploy.lock
 
 # vincent commons derivation output (pnpm vincent:derive)

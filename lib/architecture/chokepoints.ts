@@ -884,6 +884,34 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["ponder-read-namespaces.test.ts"],
   },
   {
+    id: "ponder-writer-schema",
+    owner: "src/lib/ponder-writer-schema.ts",
+    rule: "Product raw SQL qualifies writer tables only via DATABASE_SCHEMA owner (^k_[0-9a-f]{40}$|kargain); no kargain. literals in src/**",
+    guardTests: [
+      "ponder-writer-schema.test.ts",
+      "ponder-kargain-physical-columns-policy.test.ts",
+    ],
+  },
+
+  {
+    id: "ponder-deploy-plan",
+    owner: "scripts/lib/ponder-deploy-plan.ts",
+    rule: "Sole encoder of ADR 0015 deploy sequence (pending precedence, first switch, rollback, retention); executor only runs actions",
+    guardTests: ["ponder-deploy-plan.test.ts", "deploy-ponder-svm-ingest-ci-policy.test.ts"],
+  },
+  {
+    id: "ponder-deploy-state",
+    owner: "scripts/lib/ponder-deploy-state.ts",
+    rule: "Sole owner of Ponder deploy state file (live/spare/pending/nginx_config_digest); fail-closed",
+    guardTests: ["ponder-deploy-state.test.ts"],
+  },
+  {
+    id: "ponder-deploy-retention",
+    owner: "scripts/lib/ponder-deploy-retention.ts",
+    rule: "Sole owner of deployment-schema retention drop set (ADR 0015 §h)",
+    guardTests: ["ponder-deploy-plan.test.ts", "ponder-reindex-svm-isolation-policy.test.ts"],
+  },
+  {
     id: "passport-custody-fold",
     owner: "lib/custody/fold.ts",
     rule: "Two-stream custody fold is VM-agnostic; adapters outside fold; no cross-writer timestamp order",

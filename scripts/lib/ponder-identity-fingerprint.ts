@@ -4,7 +4,7 @@
  * schema, EVM indexing sources). Answers: "might a reindex be required?"
  *
  * Explicitly does NOT equal or predict Ponder's build_id. Changing this digest
- * means identity inputs changed; the operator may need ponder-reindex.sql before
+ * means identity inputs changed; ADR 0015 rotates via a new deployment schema before
  * a new image can start against the live schema.
  *
  * ABI identity is the sha256 of lib/contracts/abis.generated.ts — not a parallel

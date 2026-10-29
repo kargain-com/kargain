@@ -13,17 +13,26 @@ import { DataType, newDb } from "pg-mem";
 import type pg from "pg";
 
 import {
-  READ_PATH_REQUIRED_RELATIONS,
   assertReadPathServedFacts,
+  readPathRequiredRelations,
   resolveReadPathReadiness,
 } from "../src/lib/ponder-read-path-ready.js";
 import { buildPassportEntityUnionSubquery } from "../src/lib/ponder-passport-entity.js";
+import {
+  ponderQualifiedTable,
+  quotePgIdent,
+} from "../src/lib/ponder-writer-schema.js";
+import { ensureTestWriterSchema } from "./fixtures/entity-pg-pool.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-const EVM_DDL = `
-CREATE SCHEMA IF NOT EXISTS kargain;
-CREATE TABLE IF NOT EXISTS kargain.passport (
+function evmDdl(): string {
+  ensureTestWriterSchema();
+  const schema = quotePgIdent(process.env.DATABASE_SCHEMA!);
+  const t = (name: string) => ponderQualifiedTable(name);
+  return `
+CREATE SCHEMA IF NOT EXISTS ${schema};
+CREATE TABLE IF NOT EXISTS ${t("passport")} (
   id TEXT PRIMARY KEY,
   chain_id INTEGER NOT NULL,
   entity_origin TEXT NOT NULL DEFAULT 'minted',
@@ -62,7 +71,7 @@ CREATE TABLE IF NOT EXISTS kargain.passport (
   created_at BIGINT NOT NULL DEFAULT 0,
   updated_at BIGINT NOT NULL DEFAULT 0
 );
-CREATE TABLE IF NOT EXISTS kargain.passport_record (
+CREATE TABLE IF NOT EXISTS ${t("passport_record")} (
   id TEXT PRIMARY KEY,
   token_id TEXT NOT NULL,
   chain_id INTEGER NOT NULL,
@@ -72,7 +81,7 @@ CREATE TABLE IF NOT EXISTS kargain.passport_record (
   evidence_cid TEXT NOT NULL DEFAULT '',
   timestamp BIGINT NOT NULL DEFAULT 0
 );
-CREATE TABLE IF NOT EXISTS kargain.passport_uri_history (
+CREATE TABLE IF NOT EXISTS ${t("passport_uri_history")} (
   id TEXT PRIMARY KEY,
   token_id TEXT NOT NULL,
   chain_id INTEGER NOT NULL,
@@ -82,7 +91,7 @@ CREATE TABLE IF NOT EXISTS kargain.passport_uri_history (
   verification_reset BOOLEAN NOT NULL DEFAULT false,
   timestamp BIGINT NOT NULL DEFAULT 0
 );
-CREATE TABLE IF NOT EXISTS kargain.bridge_crossing (
+CREATE TABLE IF NOT EXISTS ${t("bridge_crossing")} (
   id TEXT PRIMARY KEY,
   token_id TEXT NOT NULL,
   direction TEXT NOT NULL,
@@ -92,7 +101,7 @@ CREATE TABLE IF NOT EXISTS kargain.bridge_crossing (
   block_number INTEGER NOT NULL DEFAULT 0,
   log_index INTEGER NOT NULL DEFAULT 0
 );
-CREATE TABLE IF NOT EXISTS kargain.custody_determining_event (
+CREATE TABLE IF NOT EXISTS ${t("custody_determining_event")} (
   id TEXT PRIMARY KEY,
   token_id TEXT NOT NULL,
   chain_id INTEGER NOT NULL,
@@ -100,7 +109,7 @@ CREATE TABLE IF NOT EXISTS kargain.custody_determining_event (
   block_number INTEGER NOT NULL DEFAULT 0,
   log_index INTEGER NOT NULL DEFAULT 0
 );
-CREATE TABLE IF NOT EXISTS kargain.consignment (
+CREATE TABLE IF NOT EXISTS ${t("consignment")} (
   id TEXT PRIMARY KEY,
   chain_id INTEGER NOT NULL,
   mode TEXT NOT NULL,
@@ -130,6 +139,7 @@ CREATE TABLE IF NOT EXISTS kargain.consignment (
   updated_at BIGINT NOT NULL DEFAULT 0
 );
 `;
+}
 
 function projectionDdl(): string {
   return fs.readFileSync(
@@ -138,17 +148,19 @@ function projectionDdl(): string {
   );
 }
 
+function normalizeRegclass(value: string): string {
+  return value.replaceAll('"', "");
+}
+
 async function createReadinessPool(args: { withProjection: boolean }): Promise<pg.Pool> {
+  ensureTestWriterSchema();
   const db = newDb({ autoCreateForeignKeyIndices: true });
-  const existingRelations = new Set<string>([
-    "kargain.consignment",
-    "kargain.passport",
-    "kargain.passport_record",
-    "kargain.passport_uri_history",
-    "kargain.bridge_crossing",
-    "kargain.custody_determining_event",
-  ]);
-  db.public.none(EVM_DDL);
+  const existingRelations = new Set(
+    readPathRequiredRelations()
+      .filter((rel) => !rel.startsWith("kargain_svm_"))
+      .map(normalizeRegclass),
+  );
+  db.public.none(evmDdl());
   if (args.withProjection) {
     db.public.none(projectionDdl());
     existingRelations.add("kargain_svm_projection.passport");
@@ -160,8 +172,10 @@ async function createReadinessPool(args: { withProjection: boolean }): Promise<p
     name: "to_regclass",
     args: [DataType.text],
     returns: DataType.text,
-    implementation: (value: string | null) =>
-      value != null && existingRelations.has(value) ? value : null,
+    implementation: (value: string | null) => {
+      if (value == null) return null;
+      return existingRelations.has(normalizeRegclass(value)) ? value : null;
+    },
   });
   const adapter = db.adapters.createPg();
   return new adapter.Pool() as unknown as pg.Pool;
@@ -214,7 +228,7 @@ function readinessApp(pool: pg.Pool): Hono {
   });
   app.get("/consignments", async (c) => {
     await strictPool.query(`SELECT c.id
-      FROM kargain.consignment c
+      FROM ${ponderQualifiedTable("consignment")} c
       LEFT JOIN ${buildPassportEntityUnionSubquery([84532, 11155111], true)} p
         ON c.token_id = p.id
       LIMIT 0`, [[84532, 11155111]]);
@@ -239,7 +253,7 @@ describe("ponder read-path readiness", () => {
     assert.equal(readReady.status, 503);
     const body = await readReady.json();
     assert.equal(body.status, "not_ready");
-    assert.deepEqual(body.checkedRelations, [...READ_PATH_REQUIRED_RELATIONS]);
+    assert.deepEqual(body.checkedRelations, [...readPathRequiredRelations()]);
     assert.ok(body.missingRelations.includes("kargain_svm_projection.passport"));
     assert.ok(body.missingRelations.includes("kargain_svm_projection.passport_record"));
     assert.ok(body.missingRelations.includes("kargain_svm_projection.passport_uri_history"));

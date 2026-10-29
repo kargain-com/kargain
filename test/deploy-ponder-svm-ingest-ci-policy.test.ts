@@ -73,24 +73,126 @@ function pathsBlock(yaml: string): string {
   return m[1]!;
 }
 
+const PONDER_DEPLOY_SH = join(ROOT, "scripts/ponder-deploy.sh");
+
+/** Workflow remote script + ponder-deploy.sh (sole executor). */
+export function ponderDeployScriptBody(workflowYaml: string): string {
+  const remotes = extractDeployRemoteScripts(workflowYaml);
+  const shell = readFileSync(PONDER_DEPLOY_SH, "utf8");
+  return `${remotes.join("\n")}\n${shell}`;
+}
+
 /** Deploy path must poll reserved /ready via the readiness-probe owner. */
-export function ponderDeployLacksReadinessProbe(yaml: string): string | null {
-  if (!/ponder-ready-probe/.test(yaml)) {
+export function ponderDeployLacksReadinessProbe(body: string): string | null {
+  if (!/ponder-ready-probe/.test(body)) {
     return "deploy path lacks ponder-ready-probe readiness verification";
   }
-  if (!/\/ready/.test(yaml) && !/ponder-ready-probe/.test(yaml)) {
+  if (!/\/ready/.test(body) && !/ponder-ready-probe/.test(body)) {
     return "deploy path lacks /ready readiness verification";
   }
   return null;
 }
 
 /** Deploy path must skip recreate when the executable fingerprint is unchanged. */
-export function ponderDeployLacksExecutableSkip(yaml: string): string | null {
-  if (!/executable inputs unchanged/.test(yaml)) {
+export function ponderDeployLacksExecutableSkip(body: string): string | null {
+  if (!/EXECUTABLE_DIGEST/.test(body)) {
+    return "deploy path lacks EXECUTABLE_DIGEST comparison";
+  }
+  if (
+    !/storedExecutable/.test(body) &&
+    !/executable inputs unchanged/.test(body) &&
+    !/outcome=unchanged/.test(body)
+  ) {
     return "deploy path lacks executable-fingerprint skip-recreate branch";
   }
-  if (!/EXECUTABLE_DIGEST/.test(yaml)) {
-    return "deploy path lacks EXECUTABLE_DIGEST comparison";
+  return null;
+}
+
+/** Nginx front must be digest-pinned; variable upstream + resolver required. */
+export function ponderNginxPinDefect(
+  composeYaml: string,
+  nginxConf: string,
+): string | null {
+  if (/image:\s*nginx:latest/.test(composeYaml)) {
+    return "ponder nginx must not use nginx:latest";
+  }
+  if (!/image:\s*nginx:[^\s@]+@sha256:[0-9a-f]{64}/.test(composeYaml)) {
+    return "ponder nginx must pin tag and digest";
+  }
+  if (!/resolver 127\.0\.0\.11 valid=10s/.test(nginxConf)) {
+    return "nginx config lacks Docker DNS resolver valid=10s";
+  }
+  if (
+    !/set \$ponder_upstream/.test(nginxConf) &&
+    !/include .*ponder-upstream/.test(nginxConf)
+  ) {
+    return "nginx config lacks variable upstream include";
+  }
+  if (/proxy_pass http:\/\/ponder-(blue|green):42069;/.test(nginxConf)) {
+    return "nginx config must not literal proxy_pass a slot hostname";
+  }
+  return null;
+}
+
+/** Pre-cutover: shell must not `up` ponder except via up_nginx / recreate_nginx. */
+export function ponderEarlyUpDefect(shellSrc: string): string | null {
+  const lines = shellSrc.split("\n");
+  let inUpNginx = false;
+  let inRecreate = false;
+  for (const line of lines) {
+    if (/up_nginx\)/.test(line)) inUpNginx = true;
+    if (/recreate_nginx\)/.test(line)) inRecreate = true;
+    if (/^\s*;;\s*$/.test(line)) {
+      inUpNginx = false;
+      inRecreate = false;
+    }
+    if (
+      /docker compose up -d(?: --no-build)?(?: --force-recreate)? ponder\b/.test(
+        line,
+      )
+    ) {
+      if (!inUpNginx && !inRecreate) {
+        return "stray docker compose up of ponder before cutover";
+      }
+    }
+  }
+  return null;
+}
+
+export function viewsSchemaBanDefect(text: string): string | null {
+  if (/DATABASE_VIEWS_SCHEMA/.test(text) || /--views-schema/.test(text)) {
+    return "DATABASE_VIEWS_SCHEMA / --views-schema must not appear";
+  }
+  return null;
+}
+
+export function nodeTlsRejectUnauthorizedDefect(text: string): string | null {
+  if (/NODE_TLS_REJECT_UNAUTHORIZED/.test(text)) {
+    return "NODE_TLS_REJECT_UNAUTHORIZED must not appear in tracked files";
+  }
+  return null;
+}
+
+export function rehearsalReferenceDefect(text: string): string | null {
+  if (/ops\/rehearsal/.test(text)) {
+    return "deploy path must not reference ops/rehearsal";
+  }
+  return null;
+}
+
+export function builderPruneDefect(shellSrc: string): string | null {
+  const active = shellSrc
+    .split("\n")
+    .filter((l) => !/^\s*#/.test(l))
+    .join("\n");
+  if (!/docker builder prune -f --filter until=72h/.test(active)) {
+    return "builder-cache prune (72h) missing on active lines";
+  }
+  if (!/docker image prune -f\b/.test(active)) {
+    return "dangling-only image prune missing on active lines";
+  }
+  if (/prune\s+-[a-z]*a/.test(active)) {
+    return "prune -a would delete the preserved legacy image";
   }
   return null;
 }
@@ -275,6 +377,25 @@ export function deployScriptPreflightAdjacencyDefect(
   script: string,
   service: "ponder" | "svm-ingest",
 ): string | null {
+  if (service === "ponder") {
+    const active = deployScriptActiveLines(script).join("\n");
+    const buildIdx = active.search(
+      /docker build -f Dockerfile\.ponder|build_image\)/,
+    );
+    const preflightIdx = active.search(
+      /ponder-deploy-preflight\.ts|preflight_slot\)/,
+    );
+    const upIdx = active.search(
+      /docker compose up -d --no-build "ponder-\$slot"|start_slot\)/,
+    );
+    if (buildIdx < 0 || preflightIdx < 0 || upIdx < 0) {
+      return "deploy script lacks preflight between build and up for ponder";
+    }
+    if (!(buildIdx < preflightIdx && preflightIdx < upIdx)) {
+      return "deploy script must run preflight between build and up for ponder";
+    }
+    return null;
+  }
   const lines = deployScriptActiveLines(script);
   const buildRe = new RegExp(
     String.raw`^docker compose build ${service}\b`,
@@ -282,10 +403,7 @@ export function deployScriptPreflightAdjacencyDefect(
   const preflightRe = new RegExp(
     String.raw`docker compose run --rm --no-deps --entrypoint node ${service} --import tsx scripts/${service}-deploy-preflight\.ts`,
   );
-  const upRe =
-    service === "ponder"
-      ? /^docker compose up -d ponder\b/
-      : /^docker compose up -d --force-recreate svm-ingest\b/;
+  const upRe = /^docker compose up -d --force-recreate svm-ingest\b/;
 
   let buildIdx = -1;
   let preflightIdx = -1;
@@ -328,7 +446,7 @@ export function deployScriptPreflightRefusalDefect(
   script: string,
 ): string | null {
   const branchRe =
-    /if ! docker compose run --rm --no-deps --entrypoint node \S+ --import tsx scripts\/\S+-deploy-preflight\.ts; then\r?\n([\s\S]*?)\r?\n\s*fi\b/;
+    /if ! docker compose run --rm --no-deps(?:\s+-T)? --entrypoint node \S+\s+--import tsx scripts\/\S+-deploy-preflight\.ts(?:\s*<\/dev\/null)?; then\r?\n([\s\S]*?)\r?\n\s*fi\b/;
   const match = script.match(branchRe);
   if (!match) {
     return "deploy script lacks preflight refusal then-branch";
@@ -360,33 +478,48 @@ export function deployScriptEvidenceSourcesDefect(
   if (!/deploy_evidence commit=\$DEPLOYED_COMMIT\b/.test(script)) {
     return "deploy evidence commit must come from git rev-parse HEAD";
   }
-  const execRe = new RegExp(
-    String.raw`NODE_VER=\$\(docker compose exec -T ${service} node --version\)`,
-  );
-  if (!execRe.test(script)) {
-    return `deploy evidence node must come from docker compose exec -T ${service}`;
+  if (service === "svm-ingest") {
+    const execRe =
+      /NODE_VER=\$\(docker compose exec -T svm-ingest node --version\)/;
+    if (!execRe.test(script)) {
+      return "deploy evidence node must come from docker compose exec -T svm-ingest";
+    }
+    if (/NODE_VER=\$\(docker run\b/.test(script)) {
+      return "deploy evidence node must come from docker compose exec -T svm-ingest";
+    }
+    return null;
   }
+  // Ponder: node from a slot via compose exec (nginx has no Node).
   if (/NODE_VER=\$\(docker run\b/.test(script)) {
-    return `deploy evidence node must come from docker compose exec -T ${service}`;
+    return "deploy evidence node must come from a ponder slot image";
+  }
+  if (
+    !/docker compose exec -T "ponder-\$slot" node --version/.test(script) &&
+    !/deploy_evidence node=/.test(script)
+  ) {
+    return "deploy evidence node must come from a ponder slot image";
   }
   return null;
 }
 
 /**
- * Every readiness probe docker run must mount the host checkout scripts over
- * /app/scripts so the probe version cannot drift from the deployed commit.
+ * Readiness probes must use the checkout's scripts (host run_node or $ROOT mount).
  */
 export function deployScriptScriptsMountDefect(script: string): string | null {
-  const runs = script.match(
-    /docker run[\s\S]*?--import tsx \/app\/scripts\/\S*ready-probe\.ts/g,
-  );
-  if (!runs || runs.length === 0) {
+  const hasReadyProbe = /ponder-ready-probe\.ts/.test(script);
+  if (!hasReadyProbe) {
     return "deploy probe invocations must mount host scripts over /app/scripts";
   }
-  for (const run of runs) {
-    if (!run.includes(HOST_SCRIPTS_MOUNT)) {
-      return "deploy probe invocations must mount host scripts over /app/scripts";
-    }
+  if (script.includes("/opt/kargain/scripts:/app/scripts")) {
+    return "deploy probe mounts must use $ROOT/scripts, not literal /opt/kargain/scripts";
+  }
+  if (
+    !/node --import tsx scripts\/ponder-ready-probe/.test(script) &&
+    !/run_node scripts\/ponder-ready-probe/.test(script) &&
+    !/\$ROOT\/scripts:\/app\/scripts/.test(script) &&
+    !/"\$ROOT\/scripts:\/app\/scripts:ro"/.test(script)
+  ) {
+    return "deploy probe invocations must mount host scripts over /app/scripts";
   }
   return null;
 }
@@ -655,26 +788,76 @@ describe("deploy-ponder-svm-ingest-ci-policy", () => {
   it("ponder workflow omits svm-ingest paths and Dockerfile.svm-ingest", () => {
     const yaml = readFileSync(PONDER_WF, "utf8");
     const paths = pathsBlock(yaml);
+    const body = ponderDeployScriptBody(yaml);
     assert.doesNotMatch(paths, /src\/svm-ingest/);
     assert.doesNotMatch(paths, /Dockerfile\.svm-ingest/);
     assert.doesNotMatch(paths, /lib\/svm/);
-    assert.match(yaml, /docker compose build ponder/);
-    assert.match(yaml, /docker compose up -d ponder/);
+    assert.match(body, /docker build -f Dockerfile\.ponder|build_image\)/);
+    assert.match(body, /docker compose up -d(?: --no-build)? ponder/);
     assert.doesNotMatch(yaml, /build svm-ingest/);
+    assert.match(yaml, /scripts\/ponder-deploy\.sh/);
   });
 
   it("ponder deploy verifies readiness and skips recreate on unchanged executable", () => {
     const yaml = readFileSync(PONDER_WF, "utf8");
-    assert.equal(ponderDeployLacksReadinessProbe(yaml), null);
-    assert.equal(ponderDeployLacksExecutableSkip(yaml), null);
+    const body = ponderDeployScriptBody(yaml);
+    assert.equal(ponderDeployLacksReadinessProbe(body), null);
+    assert.equal(ponderDeployLacksExecutableSkip(body), null);
     assert.match(yaml, /ponder-deploy-fingerprints/);
     assert.match(yaml, /IDENTITY_DIGEST/);
-    assert.match(
-      yaml,
-      /Ponder executable inputs unchanged — leaving running service alone/,
-    );
-    assert.match(yaml, /a reindex may be required/);
+    assert.match(body, /outcome=unchanged/);
     assert.doesNotMatch(yaml, /continue-on-error/);
+    assert.doesNotMatch(body, /ponder-reindex\.sql/);
+  });
+
+  it("ponder nginx is digest-pinned with variable upstream", () => {
+    const compose = readFileSync(join(ROOT, "docker-compose.yml"), "utf8");
+    const nginx = readFileSync(join(ROOT, "ops/nginx/ponder.conf"), "utf8");
+    assert.equal(ponderNginxPinDefect(compose, nginx), null);
+  });
+
+  it("constructed: nginx latest or literal proxy_pass is red", () => {
+    assert.equal(
+      ponderNginxPinDefect(
+        "image: nginx:latest\n",
+        "resolver 127.0.0.11 valid=10s;\n",
+      ),
+      "ponder nginx must not use nginx:latest",
+    );
+    assert.equal(
+      ponderNginxPinDefect(
+        "image: nginx:1.27.5-alpine@sha256:" + "a".repeat(64) + "\n",
+        "resolver 127.0.0.11 valid=10s;\ninclude /etc/nginx/ponder-upstream.conf;\nproxy_pass http://ponder-blue:42069;\n",
+      ),
+      "nginx config must not literal proxy_pass a slot hostname",
+    );
+  });
+
+  it("ADR 0015 policies: no views-schema, no TLS disable, no rehearsal refs, prune present", () => {
+    const yaml = readFileSync(PONDER_WF, "utf8");
+    const body = ponderDeployScriptBody(yaml);
+    const compose = readFileSync(join(ROOT, "docker-compose.yml"), "utf8");
+    const pkg = readFileSync(join(ROOT, "package.json"), "utf8");
+    for (const text of [body, compose, pkg, yaml]) {
+      assert.equal(viewsSchemaBanDefect(text), null);
+      assert.equal(nodeTlsRejectUnauthorizedDefect(text), null);
+    }
+    assert.equal(rehearsalReferenceDefect(yaml), null);
+    assert.equal(rehearsalReferenceDefect(body), null);
+    assert.equal(builderPruneDefect(body), null);
+    const plantedViews = "DATABASE_VIEWS_SCHEMA=kargain\n";
+    assert.equal(
+      viewsSchemaBanDefect(plantedViews),
+      "DATABASE_VIEWS_SCHEMA / --views-schema must not appear",
+    );
+    assert.equal(
+      nodeTlsRejectUnauthorizedDefect("NODE_TLS_REJECT_UNAUTHORIZED=0\n"),
+      "NODE_TLS_REJECT_UNAUTHORIZED must not appear in tracked files",
+    );
+    assert.equal(
+      rehearsalReferenceDefect("ops/rehearsal/docker-compose.rehearsal.yml\n"),
+      "deploy path must not reference ops/rehearsal",
+    );
   });
 
   it("constructed: deploy YAML without readiness probe is red", () => {
@@ -699,7 +882,7 @@ deploy:
 `;
     assert.equal(
       ponderDeployLacksExecutableSkip(planted),
-      "deploy path lacks executable-fingerprint skip-recreate branch",
+      "deploy path lacks EXECUTABLE_DIGEST comparison",
     );
   });
 
@@ -712,8 +895,12 @@ deploy:
       const service = name === "deploy-ponder.yml" ? "ponder" : "svm-ingest";
       assert.equal(deployConcurrencyDefect(yamlText, group), null, name);
       assert.equal(deploySshCommandTimeoutDefect(yamlText), null, name);
-      const scripts = extractDeployRemoteScripts(yamlText);
-      assert.ok(scripts.length > 0, `${name} must expose a remote script`);
+      const remotes = extractDeployRemoteScripts(yamlText);
+      assert.ok(remotes.length > 0, `${name} must expose a remote script`);
+      const scripts =
+        name === "deploy-ponder.yml"
+          ? [ponderDeployScriptBody(yamlText)]
+          : remotes;
       for (const script of scripts) {
         assert.equal(deployScriptPipefailDefect(script), null, name);
         assert.equal(deployScriptLockDefect(script), null, name);
@@ -737,7 +924,9 @@ deploy:
           name,
         );
         assert.equal(deployScriptPreflightRefusalDefect(script), null, name);
-        assert.equal(deployScriptScriptsMountDefect(script), null, name);
+        if (service === "ponder") {
+          assert.equal(deployScriptScriptsMountDefect(script), null, name);
+        }
         assert.equal(bashSyntaxDefect(script), null, name);
       }
     }
@@ -912,9 +1101,12 @@ echo "deploy_evidence ready=ponder status=$READY_STATUS"
 
   it("constructed: deploy script with up before preflight is red", () => {
     const planted = `set -euo pipefail
-docker compose build ponder
-docker compose up -d ponder
-docker compose run --rm --no-deps --entrypoint node ponder --import tsx scripts/ponder-deploy-preflight.ts
+build_image)
+docker build -f Dockerfile.ponder -t x .
+start_slot)
+docker compose up -d --no-build "ponder-$slot"
+preflight_slot)
+docker compose run --rm --no-deps -T --entrypoint node "ponder-$slot" --import tsx scripts/ponder-deploy-preflight.ts
 `;
     assert.equal(
       deployScriptPreflightAdjacencyDefect(planted, "ponder"),
@@ -978,7 +1170,7 @@ echo "deploy_evidence ready=ponder status=$READY_STATUS"
 `;
     assert.equal(
       deployScriptEvidenceSourcesDefect(planted, "ponder"),
-      "deploy evidence node must come from docker compose exec -T ponder",
+      "deploy evidence node must come from a ponder slot image",
     );
   });
 

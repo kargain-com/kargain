@@ -1,4 +1,6 @@
 FROM node:24.22.1-alpine
+ARG KARGAIN_PONDER_COMMIT=
+LABEL kargain.ponder.commit=$KARGAIN_PONDER_COMMIT
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.6.5 --activate
 COPY package.json pnpm-lock.yaml ./

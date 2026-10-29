@@ -335,7 +335,7 @@ export function formatSepoliaStackReport(stack: ResolvedCommercialStack): string
   lines.push(
     "",
     "Reindex: docs/indexer/OPERATIONS.md",
-    "  ./scripts/ponder-reindex.sh && docker compose up -d --force-recreate ponder",
+    "  # ADR 0015: schema rotation is via blue/green deploy (hold then deploy), not reindex.sql",
   );
 
   return lines.join("\n");

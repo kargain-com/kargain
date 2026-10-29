@@ -11,12 +11,30 @@ import { newDb, type IMemoryDb, DataType } from "pg-mem";
 import type pg from "pg";
 
 import type { PassportEntityRow } from "../../src/lib/ponder-passport-entity.js";
+import {
+  ponderQualifiedTable,
+  ponderWriterSchema,
+  quotePgIdent,
+  resetPonderWriterSchemaCacheForTests,
+} from "../../src/lib/ponder-writer-schema.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
-const EVM_PASSPORT_DDL = `
-CREATE SCHEMA IF NOT EXISTS kargain;
-CREATE TABLE IF NOT EXISTS kargain.passport (
+/** Ensure tests build writer tables through the same schema owner as production. */
+export function ensureTestWriterSchema(
+  schema = "kargain",
+): string {
+  process.env.DATABASE_SCHEMA = schema;
+  resetPonderWriterSchemaCacheForTests();
+  return ponderWriterSchema();
+}
+
+function evmPassportDdl(): string {
+  const schema = ponderWriterSchema();
+  const passport = ponderQualifiedTable("passport");
+  return `
+CREATE SCHEMA IF NOT EXISTS ${quotePgIdent(schema)};
+CREATE TABLE IF NOT EXISTS ${passport} (
   id TEXT PRIMARY KEY,
   chain_id INTEGER NOT NULL,
   entity_origin TEXT NOT NULL CHECK (entity_origin IN ('minted', 'pre_mint')),
@@ -56,6 +74,7 @@ CREATE TABLE IF NOT EXISTS kargain.passport (
   updated_at BIGINT NOT NULL
 );
 `;
+}
 
 function svmProjectionPassportDdl(): string {
   const sql = fs.readFileSync(
@@ -132,11 +151,13 @@ const ENTITY_INSERT_COLS = `id, chain_id, entity_origin, owner, status, verifier
 
 const ENTITY_INSERT_VALS = `$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37`;
 
-const EVM_INSERT = `INSERT INTO kargain.passport (
+function evmInsertSql(): string {
+  return `INSERT INTO ${ponderQualifiedTable("passport")} (
   ${ENTITY_INSERT_COLS}
 ) VALUES (
   ${ENTITY_INSERT_VALS}
 )`;
+}
 
 const SVM_INSERT = `INSERT INTO kargain_svm_projection.passport (
   ${ENTITY_INSERT_COLS}
@@ -153,16 +174,18 @@ export async function createEntityPgPoolForTests(state: {
   evmPassports: PassportEntityRow[];
   svmPassports: PassportEntityRow[];
 }): Promise<EntityPgPoolFixture> {
+  ensureTestWriterSchema();
   const db = newDb({ autoCreateForeignKeyIndices: true });
   registerPgMemFunctions(db);
-  db.public.none(EVM_PASSPORT_DDL);
+  db.public.none(evmPassportDdl());
   db.public.none(svmProjectionPassportDdl());
 
   const adapter = db.adapters.createPg();
   const pool = new adapter.Pool() as unknown as pg.Pool;
+  const evmInsert = evmInsertSql();
 
   for (const row of state.evmPassports) {
-    await pool.query(EVM_INSERT, insertParams(row));
+    await pool.query(evmInsert, insertParams(row));
   }
   for (const row of state.svmPassports) {
     await pool.query(SVM_INSERT, insertParams(row));
