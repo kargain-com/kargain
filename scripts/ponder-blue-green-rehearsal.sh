@@ -53,6 +53,7 @@ BASE_SHA="$(git -C "$REPO" rev-parse 25689e1)"
 PRIOR_SHA="$BASE_SHA"
 
 step_banner() {
+  mkdir -p "$OUT/steps/$(printf '%02d' "$1")"
   echo ""
   echo "======== step $1: $2 ========"
 }
