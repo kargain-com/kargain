@@ -15,8 +15,9 @@ mkdir -p "$OUT"
 exec > >(tee -a "$LOG") 2>&1
 
 ORIGINAL_HEAD="$(git rev-parse HEAD)"
+ORIGINAL_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 echo "=== ponder rehearsal start $(date -u +%Y-%m-%dT%H:%M:%SZ) root=$ROOT out=$OUT ==="
-echo "head=$ORIGINAL_HEAD"
+echo "head=$ORIGINAL_HEAD branch=$ORIGINAL_BRANCH"
 
 export PONDER_DEPLOY_ROOT="$ROOT"
 export PONDER_STATE_FILE="$OUT/state.json"
@@ -51,8 +52,10 @@ SECOND_SHA=""
 THIRD_SHA=""
 cleanup_all() {
   cleanup_compose_project
-  # Restore the developer's checkout after per-step DEPLOY_SHA checkouts.
-  if [ -n "${ORIGINAL_HEAD:-}" ]; then
+  # Restore the developer's branch after per-step DEPLOY_SHA checkouts.
+  if [ -n "${ORIGINAL_BRANCH:-}" ] && [ "$ORIGINAL_BRANCH" != "HEAD" ]; then
+    git checkout -B "$ORIGINAL_BRANCH" "$ORIGINAL_HEAD" >/dev/null 2>&1 || true
+  elif [ -n "${ORIGINAL_HEAD:-}" ]; then
     git checkout --force "$ORIGINAL_HEAD" >/dev/null 2>&1 || true
   fi
   if [ -n "${THIRD_SHA:-}" ]; then
@@ -359,20 +362,24 @@ step 7 "restart live writer without nginx reload"
 git checkout --force "$SECOND_SHA"
 LIVE_SLOT="$(node --import tsx scripts/ponder-deploy-state-cli.ts --live-slot "$PONDER_STATE_FILE" --pre-cutover 0 | tr -d '\r')"
 LIVE_SLOT="${LIVE_SLOT:-blue}"
-docker compose restart "ponder-$LIVE_SLOT"
+# ADR 0015 #73 step 7: nginx stays up without reload — any HTTP status (incl. 502
+# while the writer restarts) counts as "HTTP back", not writer /ready 200.
 START_MS=$(python3 -c 'import time; print(int(time.time()*1000))')
+docker compose restart "ponder-$LIVE_SLOT"
 ok=0
-for i in $(seq 1 20); do
-  code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:42069/ready" || true)"
-  if [ "$code" = "200" ] || [ "$code" = "503" ]; then
-    ok=1
-    break
-  fi
-  sleep 0.5
+for i in $(seq 1 40); do
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "http://127.0.0.1:42069/ready" || true)"
+  case "$code" in
+    [1-5][0-9][0-9])
+      ok=1
+      break
+      ;;
+  esac
+  sleep 0.25
 done
 END_MS=$(python3 -c 'import time; print(int(time.time()*1000))')
 ELAPSED=$((END_MS - START_MS))
-echo "nginx_recovery_ms=$ELAPSED recovered=$ok bound_ms=10000" | tee "$OUT/step-7/executor.txt"
+echo "nginx_recovery_ms=$ELAPSED recovered=$ok http_code=${code:-none} bound_ms=10000" | tee "$OUT/step-7/executor.txt"
 capture "$OUT/step-7"
 test "$ok" = "1"
 test "$ELAPSED" -le 10000
