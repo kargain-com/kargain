@@ -608,7 +608,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "irys-solana-adapter",
     owner:
       "adapters/irys-solana/build-uploader.ts · adapters/irys-solana/to-irys-provider.ts · lib/storage/irys-client.ts",
-    rule: "Solana Irys SDK lives in adapters/irys-solana and is reached from product only via irys-client (literal import() is a static edge; S8-2 reachability stops at adapters/irys-solana/); Wallet Standard→Irys wrap stays in the adapter; EVM path does not fetch it; product never calls uploader.fund",
+    rule: "Solana Irys SDK lives in adapters/irys-solana and is reached from product only via the declared edge lib/storage/irys-client.ts → adapters/irys-solana/ (literal import() is a static edge; S8-2 stopAtEdges is that edge only — any other product importer is red); Wallet Standard→Irys wrap stays in the adapter; EVM path does not fetch it; product never calls uploader.fund",
     guardTests: ["irys-solana-adapter-policy.test.ts", "solana-web3-app-graph-policy.test.ts"],
   },
   {
