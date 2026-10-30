@@ -17,10 +17,10 @@ import { fileURLToPath } from "node:url";
 import {
   listPonderIndexingGlob,
   ponderIndexingSvmIngestDefect,
-  resolveSvmIngestStartEntry,
 } from "../scripts/lib/ponder-indexing-glob.ts";
 import {
   collectStaticImportClosure,
+  resolveSvmIngestStartEntry,
   SVM_INGEST_GRAPH_ROOTS,
 } from "./policy-scan-helpers.ts";
 
@@ -139,6 +139,52 @@ describe("ponder indexing glob svm isolation policy", () => {
         () => resolveSvmIngestStartEntry(plant),
         /svm-ingest:start unresolved/,
       );
+    } finally {
+      rmSync(plant, { recursive: true, force: true });
+    }
+  });
+
+  it("constructed: code module outside graph roots fails closed", () => {
+    const plant = mkdtempSync(path.join(tmpdir(), "kargain-closure-outside-"));
+    try {
+      mkdirSync(path.join(plant, "svm-ingest"), { recursive: true });
+      mkdirSync(path.join(plant, "outside"), { recursive: true });
+      writeFileSync(
+        path.join(plant, "outside/helper.ts"),
+        "export const n = 1;\n",
+      );
+      writeFileSync(
+        path.join(plant, "svm-ingest/main.ts"),
+        'import { n } from "../outside/helper.js";\nexport const x = n;\n',
+      );
+      assert.throws(
+        () =>
+          collectStaticImportClosure("svm-ingest/main.ts", {
+            rootDir: plant,
+            graphRoots: ["svm-ingest"],
+          }),
+        /unresolved code module outside graph roots: outside\/helper\.ts/,
+      );
+    } finally {
+      rmSync(plant, { recursive: true, force: true });
+    }
+  });
+
+  it("constructed: non-code leaf outside graph roots stays a leaf", () => {
+    const plant = mkdtempSync(path.join(tmpdir(), "kargain-closure-json-"));
+    try {
+      mkdirSync(path.join(plant, "svm-ingest"), { recursive: true });
+      mkdirSync(path.join(plant, "outside"), { recursive: true });
+      writeFileSync(path.join(plant, "outside/data.json"), '{"ok":true}\n');
+      writeFileSync(
+        path.join(plant, "svm-ingest/main.ts"),
+        'import data from "../outside/data.json";\nexport const x = data;\n',
+      );
+      const closure = collectStaticImportClosure("svm-ingest/main.ts", {
+        rootDir: plant,
+        graphRoots: ["svm-ingest"],
+      });
+      assert.deepEqual(closure, ["outside/data.json", "svm-ingest/main.ts"]);
     } finally {
       rmSync(plant, { recursive: true, force: true });
     }

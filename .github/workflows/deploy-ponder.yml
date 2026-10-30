@@ -16,6 +16,7 @@ on:
       - "src/bridge-handlers.ts"
       - "src/commerce-handlers.ts"
       - "src/lib/**"
+      - "lib/passport/trust-fields.ts"
       - "lib/contracts/abis.generated.ts"
       - "lib/web3/commercial-active.ts"
       - "lib/web3/sepolia-addresses.ts"

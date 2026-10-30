@@ -222,10 +222,55 @@ export const SVM_INGEST_GRAPH_ROOTS = [
   "svm-ingest",
 ] as const;
 
+function isCodeModuleRel(rel: string): boolean {
+  return (
+    /\.(?:ts|tsx|js|mjs|mts|cjs)$/.test(rel) && !rel.endsWith(".d.ts")
+  );
+}
+
+/**
+ * Resolve the svm-ingest process entry from its single definition:
+ * `package.json` scripts["svm-ingest:start"] (Dockerfile.svm-ingest runs it).
+ */
+export function resolveSvmIngestStartEntry(rootDir: string = POLICY_SCAN_ROOT): string {
+  const pkgPath = join(rootDir, "package.json");
+  let pkg: { scripts?: Record<string, string> };
+  try {
+    pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
+      scripts?: Record<string, string>;
+    };
+  } catch {
+    throw new Error("svm-ingest:start unresolved: package.json unreadable");
+  }
+  const script = pkg.scripts?.["svm-ingest:start"]?.trim();
+  if (!script) {
+    throw new Error(
+      'svm-ingest:start unresolved: scripts["svm-ingest:start"] missing',
+    );
+  }
+  const tokens = script.split(/\s+/).filter(Boolean);
+  let entry: string | undefined;
+  for (let i = tokens.length - 1; i >= 0; i -= 1) {
+    const tok = tokens[i]!;
+    if (tok.startsWith("-")) continue;
+    if (/\.(?:ts|js|mts|mjs)$/.test(tok)) {
+      entry = tok;
+      break;
+    }
+  }
+  if (!entry) {
+    throw new Error(
+      `svm-ingest:start unresolved: no entry path in ${JSON.stringify(script)}`,
+    );
+  }
+  return entry.replace(/^\.\//, "").replace(/\\/g, "/");
+}
+
 /**
  * Static local-module import closure of a single entry file (inclusive).
  * Uses {@link buildStaticImportGraph} — no second walker. Fail closed when
- * the entry is missing, not in the graph, or the closure is empty.
+ * the entry is missing or not in the graph, and when a resolved code module
+ * (ts/js) lies outside the graph roots. Non-code leaves (e.g. JSON) stay leaves.
  */
 export function collectStaticImportClosure(
   entryRel: string,
@@ -255,13 +300,17 @@ export function collectStaticImportClosure(
     if (visited.has(current)) continue;
     visited.add(current);
     const node = graph.get(current);
-    if (!node) continue;
+    if (!node) {
+      if (isCodeModuleRel(current)) {
+        throw new Error(
+          `static import closure unresolved code module outside graph roots: ${current}`,
+        );
+      }
+      continue;
+    }
     for (const dep of node.localDeps) {
       if (!visited.has(dep)) queue.push(dep);
     }
-  }
-  if (visited.size === 0) {
-    throw new Error(`static import closure empty for entry: ${entry}`);
   }
   return [...visited].sort();
 }

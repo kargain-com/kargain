@@ -18,7 +18,7 @@ import {
   passportMintTrustFields,
   passportUriUpdatedTrustFields,
   verificationResetTrustFields,
-} from "../lib/ponder/g1-fields.ts";
+} from "../lib/passport/trust-fields.ts";
 import { foldPassportCustody } from "../lib/custody/fold.ts";
 import { originNamespaceOf } from "../lib/custody/origin.ts";
 import type {

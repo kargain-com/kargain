@@ -7,7 +7,7 @@
  * Guard: test/ponder-indexing-glob-svm-isolation-policy.test.ts
  */
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 /** Indexing directory Ponder walks (common.options.indexingDir). */
@@ -72,42 +72,6 @@ export function listPonderIndexingGlob(root: string): string[] {
     );
   }
   return found.sort();
-}
-
-/**
- * Resolve the svm-ingest process entry from its single definition:
- * `package.json` scripts["svm-ingest:start"] (Dockerfile.svm-ingest runs it).
- */
-export function resolveSvmIngestStartEntry(root: string): string {
-  const pkgPath = join(root, "package.json");
-  let pkg: { scripts?: Record<string, string> };
-  try {
-    pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
-      scripts?: Record<string, string>;
-    };
-  } catch {
-    throw new Error("svm-ingest:start unresolved: package.json unreadable");
-  }
-  const script = pkg.scripts?.["svm-ingest:start"]?.trim();
-  if (!script) {
-    throw new Error('svm-ingest:start unresolved: scripts["svm-ingest:start"] missing');
-  }
-  const tokens = script.split(/\s+/).filter(Boolean);
-  let entry: string | undefined;
-  for (let i = tokens.length - 1; i >= 0; i -= 1) {
-    const tok = tokens[i]!;
-    if (tok.startsWith("-")) continue;
-    if (/\.(?:ts|js|mts|mjs)$/.test(tok)) {
-      entry = tok;
-      break;
-    }
-  }
-  if (!entry) {
-    throw new Error(
-      `svm-ingest:start unresolved: no entry path in ${JSON.stringify(script)}`,
-    );
-  }
-  return entry.replace(/^\.\//, "").replace(/\\/g, "/");
 }
 
 /**

@@ -1064,6 +1064,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     ],
   },
   {
+    id: "lib-src-layering",
+    owner: "test/lib-src-layering-policy.test.ts",
+    rule: "No module under lib/ imports from src/ (keeps shared facts out of the Ponder indexing glob)",
+    guardTests: ["lib-src-layering-policy.test.ts"],
+  },
+  {
     id: "lib-scripts-boundary",
     owner: "lib/svm/devnet-evidence.ts · lib/** import graph",
     rule: "lib/ must not import scripts/; SVM deploy evidence types live in lib, loaders in scripts",
