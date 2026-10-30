@@ -6,7 +6,6 @@ import assert from "node:assert/strict";
 import {
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -85,7 +84,5 @@ describe("lib/ must not import from src/", () => {
         f.replace(/\\/g, "/").endsWith("lib/passport/trust-fields.ts"),
       ),
     );
-    // Touch package.json so unused-import lint stays quiet if any.
-    assert.ok(readFileSync(path.join(ROOT, "package.json"), "utf8").length > 0);
   });
 });
