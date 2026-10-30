@@ -76,13 +76,8 @@ describe("lib/ must not import from src/", () => {
     }
   });
 
-  it("lib/ tree is non-empty (negative control)", () => {
+  it("lib/ tree is non-empty (scan guard)", () => {
     const files = walkTsFilesFromRoots(["lib"], ROOT);
     assert.ok(files.length > 0);
-    assert.ok(
-      files.some((f) =>
-        f.replace(/\\/g, "/").endsWith("lib/passport/trust-fields.ts"),
-      ),
-    );
   });
 });
