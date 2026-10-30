@@ -7,7 +7,7 @@ import type {
   PassportRecordProjectionDraft,
   PassportUriHistoryProjectionDraft,
 } from "../lib/svm/project-raw-to-projection.js";
-import type { SvmProjectionWriter } from "../src/lib/svm-projection-writer.js";
+import type { SvmProjectionWriter } from "../svm-ingest/svm-projection-writer.js";
 
 export function createMemorySvmProjectionWriter(): SvmProjectionWriter & {
   passportRecords: PassportRecordProjectionDraft[];

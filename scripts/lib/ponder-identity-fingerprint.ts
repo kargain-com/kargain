@@ -9,12 +9,15 @@
  *
  * ABI identity is the sha256 of lib/contracts/abis.generated.ts — not a parallel
  * commercial ABI collection (that stays owned by commercial-abi-events + ponder.config).
+ *
+ * Indexing file set is owned by scripts/lib/ponder-indexing-glob.ts.
  */
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { buildPonderIndexingConfig } from "./ponder-env.js";
+import { listPonderIndexingGlob } from "./ponder-indexing-glob.js";
 
 export type PonderIdentityChain = { name: string; id: number };
 
@@ -38,14 +41,6 @@ export type PonderIdentityPayload = {
   schemaSha256: string;
   indexingFiles: PonderIdentityIndexingFile[];
 };
-
-/** Indexing paths Ponder glob-hashes that we deliberately exclude from our identity. */
-export const PONDER_IDENTITY_INDEXING_EXCLUDES = [
-  "src/api/",
-  "src/svm-ingest/",
-  "src/lib/svm-raw-writer.ts",
-  "src/lib/svm-projection-writer.ts",
-] as const;
 
 export const PONDER_ABIS_GENERATED_REL = "lib/contracts/abis.generated.ts";
 
@@ -74,35 +69,6 @@ export function digestPonderIdentityPayload(
   return sha256Bytes(body);
 }
 
-function isExcludedIndexingPath(rel: string): boolean {
-  const normalized = rel.replace(/\\/g, "/");
-  for (const prefix of PONDER_IDENTITY_INDEXING_EXCLUDES) {
-    if (normalized === prefix || normalized.startsWith(prefix)) return true;
-  }
-  return false;
-}
-
-function walkIndexingSources(root: string, dir: string, out: string[]): void {
-  let entries: string[];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return;
-  }
-  for (const name of entries) {
-    const full = join(dir, name);
-    const st = statSync(full);
-    if (st.isDirectory()) {
-      walkIndexingSources(root, full, out);
-      continue;
-    }
-    if (!/\.(ts|js|mts|mjs)$/.test(name) || name.endsWith(".d.ts")) continue;
-    const rel = relative(root, full).replace(/\\/g, "/");
-    if (isExcludedIndexingPath(rel)) continue;
-    out.push(rel);
-  }
-}
-
 /**
  * List EVM indexing sources that enter our identity digest (sorted).
  * Injectable via opts.indexingRels for constructed tests.
@@ -113,11 +79,7 @@ export function listPonderIdentityIndexingFiles(
 ): PonderIdentityIndexingFile[] {
   const rels = opts?.indexingRels
     ? [...opts.indexingRels]
-    : (() => {
-        const found: string[] = [];
-        walkIndexingSources(root, join(root, "src"), found);
-        return found.sort();
-      })();
+    : listPonderIndexingGlob(root);
   return rels.map((rel) => ({
     path: rel,
     sha256: sha256Bytes(readFileSync(join(root, rel))),

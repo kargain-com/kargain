@@ -327,7 +327,7 @@ describe("svm commercial program census (registry runtime)", () => {
       `assertSvmCommercialStack must not be called outside ingest-config owner:\n${hits.join("\n")}`,
     );
 
-    const ingestMain = readFileSync(join(ROOT, "src/svm-ingest/main.ts"), "utf8");
+    const ingestMain = readFileSync(join(ROOT, "svm-ingest/main.ts"), "utf8");
     assert.match(
       ingestMain,
       /\bbuildSvmIngestRuntime\s*\(/,
@@ -418,8 +418,8 @@ describe("svm commercial program census (registry runtime)", () => {
   it("svm-ingest graph must not reach scripts/lib/load-deployment", () => {
     const banned = ["scripts/lib/load-deployment.ts"];
     const violations = traceStaticReachabilityToModules(banned, {
-      startRoots: ["src/svm-ingest"],
-      graphRoots: ["src", "lib", "scripts"],
+      startRoots: ["svm-ingest"],
+      graphRoots: ["src", "lib", "scripts", "svm-ingest"],
     });
     assert.deepEqual(
       violations,
@@ -430,7 +430,7 @@ describe("svm commercial program census (registry runtime)", () => {
     // scripts may still import the loader (deploy-machine).
     const scriptHits = traceStaticReachabilityToModules(banned, {
       startRoots: ["scripts/lib"],
-      graphRoots: ["src", "lib", "scripts"],
+      graphRoots: ["src", "lib", "scripts", "svm-ingest"],
       owners: banned,
     });
     // Owner is the banned module itself — skipped. Other scripts that import it are ok for this gate.
@@ -439,13 +439,13 @@ describe("svm commercial program census (registry runtime)", () => {
     // Planted control: text scan green, graph red.
     const plantedRoot = mkdtempSync(join(tmpdir(), "kargain-ingest-reach-"));
     try {
-      const ingestDir = join(plantedRoot, "src/svm-ingest");
+      const ingestDir = join(plantedRoot, "svm-ingest");
       const scriptsDir = join(plantedRoot, "scripts/lib");
       mkdirSync(ingestDir, { recursive: true });
       mkdirSync(scriptsDir, { recursive: true });
       writeFileSync(
         join(ingestDir, "main.ts"),
-        'import { loadSvmDevnetEvidence } from "../../scripts/lib/load-deployment.js";\nexport const x = loadSvmDevnetEvidence;\n',
+        'import { loadSvmDevnetEvidence } from "../scripts/lib/load-deployment.js";\nexport const x = loadSvmDevnetEvidence;\n',
       );
       writeFileSync(
         join(scriptsDir, "load-deployment.ts"),
@@ -454,7 +454,7 @@ describe("svm commercial program census (registry runtime)", () => {
 
       const textScan = scanProductSources(
         (rel, source) =>
-          rel.startsWith("src/svm-ingest/") &&
+          rel.startsWith("svm-ingest/") &&
           source.includes("@solana/web3.js")
             ? "sdk"
             : false,
@@ -469,12 +469,12 @@ describe("svm commercial program census (registry runtime)", () => {
         ["scripts/lib/load-deployment.ts"],
         {
           rootDir: plantedRoot,
-          startRoots: ["src/svm-ingest"],
-          graphRoots: ["src", "lib", "scripts"],
+          startRoots: ["svm-ingest"],
+          graphRoots: ["src", "lib", "scripts", "svm-ingest"],
         },
       );
       assert.equal(reachability.length, 1);
-      assert.equal(reachability[0]?.path, "src/svm-ingest/main.ts");
+      assert.equal(reachability[0]?.path, "svm-ingest/main.ts");
       assert.match(reachability[0]?.reason ?? "", /load-deployment/);
     } finally {
       rmSync(plantedRoot, { recursive: true, force: true });

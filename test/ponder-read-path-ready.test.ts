@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS kargain.consignment (
 
 function projectionDdl(): string {
   return fs.readFileSync(
-    path.join(ROOT, "src/svm-ingest/db/projection-schema.sql"),
+    path.join(ROOT, "svm-ingest/db/projection-schema.sql"),
     "utf8",
   );
 }

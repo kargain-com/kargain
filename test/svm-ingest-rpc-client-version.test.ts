@@ -10,7 +10,7 @@ import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../lib/svm/rpc-max-suppor
 import {
   createSolanaRpcClient,
   solanaGetBlockRequestConfig,
-} from "../src/svm-ingest/rpc-client.ts";
+} from "../svm-ingest/rpc-client.ts";
 import type { SolanaJsonRpcPost } from "../lib/svm/solana-json-rpc.ts";
 import {
   GET_BLOCK_WIRE_WITH_VERSION_1,

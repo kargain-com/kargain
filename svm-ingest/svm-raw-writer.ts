@@ -7,12 +7,12 @@ import type pg from "pg";
 import type {
   BootstrapCatchupState,
   CatchupIncident,
-} from "../../lib/svm/ingest-refusal.js";
-import type { MetadataSnapshotDraft } from "../../lib/svm/metadata-snapshot.js";
+} from "../lib/svm/ingest-refusal.js";
+import type { MetadataSnapshotDraft } from "../lib/svm/metadata-snapshot.js";
 import type {
   IngestRefusalDraft,
   StructuredPayloadDraft,
-} from "../../lib/svm/parse-transaction-ingest.js";
+} from "../lib/svm/parse-transaction-ingest.js";
 
 export type SvmRawWriter = {
   insertStructuredPayload: (row: StructuredPayloadDraft) => Promise<boolean>;
@@ -258,7 +258,7 @@ export async function applySvmRawSchema(pool: pg.Pool): Promise<void> {
   const { fileURLToPath } = await import("node:url");
   const schemaPath = path.join(
     path.dirname(fileURLToPath(import.meta.url)),
-    "../svm-ingest/db/schema.sql",
+    "./db/schema.sql",
   );
   const sql = await fs.readFile(schemaPath, "utf8");
   await pool.query(sql);

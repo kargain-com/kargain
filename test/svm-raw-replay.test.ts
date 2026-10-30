@@ -5,9 +5,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { digestStructuredPayloadRows } from "../lib/svm/raw-replay-digest.js";
-import { ingestBlockFromFixture } from "../src/svm-ingest/ingest-loop.js";
-import type { SvmRpcClient } from "../src/svm-ingest/rpc-client.js";
-import { createIngestLoop } from "../src/svm-ingest/ingest-loop.js";
+import { ingestBlockFromFixture } from "../svm-ingest/ingest-loop.js";
+import type { SvmRpcClient } from "../svm-ingest/rpc-client.js";
+import { createIngestLoop } from "../svm-ingest/ingest-loop.js";
 import {
   FIXTURE_BLOCK,
   FIXTURE_FOLLOWED_PROGRAMS,

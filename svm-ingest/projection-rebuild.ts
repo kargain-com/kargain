@@ -4,14 +4,14 @@
 
 import type pg from "pg";
 
-import { fetchMetadataSnapshotsOrdered } from "../../lib/svm/raw-replay-digest.js";
-import { projectStructuredPayloadsOrdered } from "../../lib/svm/project-raw-to-projection.js";
-import { fetchStructuredPayloadsOrdered } from "../../lib/svm/raw-replay-digest.js";
+import { fetchMetadataSnapshotsOrdered } from "../lib/svm/raw-replay-digest.js";
+import { projectStructuredPayloadsOrdered } from "../lib/svm/project-raw-to-projection.js";
+import { fetchStructuredPayloadsOrdered } from "../lib/svm/raw-replay-digest.js";
 import {
   applySvmProjectionSchema,
   createSvmProjectionWriter,
   dropSvmProjectionSchema,
-} from "../lib/svm-projection-writer.js";
+} from "./svm-projection-writer.js";
 
 export async function rebuildProjectionFromRaw(
   pool: pg.Pool,

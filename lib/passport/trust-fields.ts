@@ -1,4 +1,7 @@
-/** Pure G1 trust-field updates shared by Ponder handlers and unit tests. */
+/**
+ * Pure passport trust-field updates shared by the EVM indexer and the SVM
+ * projection — one owner for both VMs.
+ */
 
 export function nextVerificationResetCount(current: number): number {
   return current + 1;

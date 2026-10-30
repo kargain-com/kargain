@@ -19,7 +19,7 @@ import {
   passportMintTrustFields,
   passportUriUpdatedTrustFields,
   verificationResetTrustFields,
-} from "../../src/lib/ponder-g1-fields.js";
+} from "../passport/trust-fields.js";
 import { denormFromMetadataSnapshotRow } from "./metadata-snapshot.js";
 import type { MetadataSnapshotRow } from "./raw-replay-digest.js";
 import {

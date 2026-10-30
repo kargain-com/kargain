@@ -5,7 +5,7 @@
 import pg from "pg";
 
 import { projectionReplayDigestFromPool } from "../lib/svm/projection-replay-digest.js";
-import { rebuildProjectionFromRaw } from "../src/svm-ingest/projection-rebuild.js";
+import { rebuildProjectionFromRaw } from "../svm-ingest/projection-rebuild.js";
 
 async function main(): Promise<void> {
   if (process.env.SVM_INGEST_RPC_URL?.trim()) {

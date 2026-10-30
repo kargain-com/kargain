@@ -113,7 +113,7 @@ export DATABASE_SCHEMA=kargain
 
 echo "==> Applying empty kargain_svm_projection (UNION arm)…"
 docker exec -i "${E2E_PG_NAME}" psql -U ponder -d kargain_ponder \
-  < "$ROOT/src/svm-ingest/db/projection-schema.sql" >/dev/null
+  < "$ROOT/svm-ingest/db/projection-schema.sql" >/dev/null
 
 echo "==> Starting Ponder (Postgres)…"
 pnpm ponder:dev > /tmp/kargain-e2e-ponder.log 2>&1 &

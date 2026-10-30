@@ -17,8 +17,8 @@ const BANNED_ROOTS = [
 ];
 
 const ALLOWED = new Set([
-  path.join(ROOT, "src/lib/svm-raw-writer.ts"),
-  path.join(ROOT, "src/svm-ingest"),
+  path.join(ROOT, "svm-ingest/svm-raw-writer.ts"),
+  path.join(ROOT, "svm-ingest"),
   path.join(ROOT, "lib/svm"),
   path.join(ROOT, "scripts/svm-raw-replay-digest.ts"),
 ]);
@@ -89,8 +89,8 @@ describe("svm ingest surface policy", () => {
 
 describe("svm raw ingest allowed paths", () => {
   it("writer and ingest service may reference schema", () => {
-    const owner = fs.readFileSync(path.join(ROOT, "src/lib/svm-raw-writer.ts"), "utf8");
-    assert.ok(isAllowed(path.join(ROOT, "src/lib/svm-raw-writer.ts")));
+    const owner = fs.readFileSync(path.join(ROOT, "svm-ingest/svm-raw-writer.ts"), "utf8");
+    assert.ok(isAllowed(path.join(ROOT, "svm-ingest/svm-raw-writer.ts")));
     assert.ok(owner.includes("kargain_svm_raw"));
   });
 });

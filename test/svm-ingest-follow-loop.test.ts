@@ -7,7 +7,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { runFollowLoop } from "../src/svm-ingest/follow-loop.js";
+import { runFollowLoop } from "../svm-ingest/follow-loop.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -48,7 +48,7 @@ describe("svm-ingest follow loop owner", () => {
 
   it("main does not schedule follow with setInterval", () => {
     const mainSrc = fs.readFileSync(
-      path.join(ROOT, "src/svm-ingest/main.ts"),
+      path.join(ROOT, "svm-ingest/main.ts"),
       "utf8",
     );
     assert.ok(mainSrc.includes("runFollowLoop"));
@@ -60,7 +60,7 @@ describe("svm-ingest follow loop owner", () => {
 describe("svm-ingest RPC budget sole owner", () => {
   it("disables web3.js rate-limit retry so with429Backoff is the only 429 path", () => {
     const src = fs.readFileSync(
-      path.join(ROOT, "src/svm-ingest/rpc-client.ts"),
+      path.join(ROOT, "svm-ingest/rpc-client.ts"),
       "utf8",
     );
     assert.ok(src.includes("disableRetryOnRateLimit: true"));

@@ -10,8 +10,8 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const REINDEX_SQL = path.join(ROOT, "scripts/ponder-reindex.sql");
-const PROJECTION_REBUILD = path.join(ROOT, "src/svm-ingest/projection-rebuild.ts");
-const PROJECTION_WRITER = path.join(ROOT, "src/lib/svm-projection-writer.ts");
+const PROJECTION_REBUILD = path.join(ROOT, "svm-ingest/projection-rebuild.ts");
+const PROJECTION_WRITER = path.join(ROOT, "svm-ingest/svm-projection-writer.ts");
 
 function assertReindexIsolation(sql: string): void {
   const upper = sql.toUpperCase();

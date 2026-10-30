@@ -11,7 +11,7 @@ import {
   assertSvmIngestReadyServedFacts,
   classifySvmIngestReadySurface,
   type SvmIngestReadyPayload,
-} from "../../src/svm-ingest/http-health.js";
+} from "../../svm-ingest/http-health.js";
 
 export const SVM_INGEST_READY_DEFAULT_URL = "http://127.0.0.1:42100/ready";
 export const SVM_INGEST_READY_TIMEOUT_MS = 90_000;

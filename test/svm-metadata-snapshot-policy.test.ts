@@ -11,12 +11,12 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const REBUILD_PATHS = [
   "lib/svm/project-raw-to-projection.ts",
-  "src/svm-ingest/projection-rebuild.ts",
-  "src/svm-ingest/projection-projector.ts",
+  "svm-ingest/projection-rebuild.ts",
+  "svm-ingest/projection-projector.ts",
   "lib/svm/passport-entity-projection.ts",
 ];
 
-const RAW_WRITER = path.join(ROOT, "src/lib/svm-raw-writer.ts");
+const RAW_WRITER = path.join(ROOT, "svm-ingest/svm-raw-writer.ts");
 
 describe("svm metadata snapshot policy", () => {
   it("rebuild/projection modules do not fetch metadata over the network", () => {

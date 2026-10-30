@@ -29,9 +29,9 @@ import {
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SCHEMA = path.join(
   ROOT,
-  "src/svm-ingest/db/projection-schema.sql",
+  "svm-ingest/db/projection-schema.sql",
 );
-const WRITER = path.join(ROOT, "src/lib/svm-projection-writer.ts");
+const WRITER = path.join(ROOT, "svm-ingest/svm-projection-writer.ts");
 const DIGEST = path.join(ROOT, "lib/svm/projection-replay-digest.ts");
 
 const INSERT_TABLE_RE =

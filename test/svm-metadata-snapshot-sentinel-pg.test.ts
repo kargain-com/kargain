@@ -15,7 +15,7 @@ import {
   applySvmRawSchema,
   assertSvmRawMetadataSnapshotForm,
   SvmRawSchemaFormError,
-} from "../src/lib/svm-raw-writer.js";
+} from "../svm-ingest/svm-raw-writer.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -163,7 +163,7 @@ describe("svm metadata snapshot raw-sentinel (real Postgres)", async () => {
 
   it("schema.sql has CHECK both directions and partial unique; no total UNIQUE on digest", () => {
     const sql = fs.readFileSync(
-      path.join(ROOT, "src/svm-ingest/db/schema.sql"),
+      path.join(ROOT, "svm-ingest/db/schema.sql"),
       "utf8",
     );
     assert.match(sql, /metadata_snapshot_digest_status_ck/);

@@ -7,12 +7,12 @@ import { createRequire } from "node:module";
 
 import pg from "pg";
 
-import { buildSvmIngestRuntime } from "../../lib/svm/ingest-config.js";
-import { applySvmRawSchema, createSvmRawWriter } from "../lib/svm-raw-writer.js";
+import { buildSvmIngestRuntime } from "../lib/svm/ingest-config.js";
+import { applySvmRawSchema, createSvmRawWriter } from "./svm-raw-writer.js";
 import {
   applySvmProjectionSchema,
   createSvmProjectionWriter,
-} from "../lib/svm-projection-writer.js";
+} from "./svm-projection-writer.js";
 import { runFollowLoop } from "./follow-loop.js";
 import { createIngestLoop } from "./ingest-loop.js";
 import { createProjectionProjector } from "./projection-projector.js";

@@ -214,6 +214,107 @@ export function buildStaticImportGraph(
   return graph;
 }
 
+/** Default roots for svm-ingest / product service import graphs. */
+export const SVM_INGEST_GRAPH_ROOTS = [
+  "src",
+  "lib",
+  "scripts",
+  "svm-ingest",
+] as const;
+
+function isCodeModuleRel(rel: string): boolean {
+  return (
+    /\.(?:ts|tsx|js|mjs|mts|cjs)$/.test(rel) && !rel.endsWith(".d.ts")
+  );
+}
+
+/**
+ * Resolve the svm-ingest process entry from its single definition:
+ * `package.json` scripts["svm-ingest:start"] (Dockerfile.svm-ingest runs it).
+ */
+export function resolveSvmIngestStartEntry(rootDir: string = POLICY_SCAN_ROOT): string {
+  const pkgPath = join(rootDir, "package.json");
+  let pkg: { scripts?: Record<string, string> };
+  try {
+    pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
+      scripts?: Record<string, string>;
+    };
+  } catch {
+    throw new Error("svm-ingest:start unresolved: package.json unreadable");
+  }
+  const script = pkg.scripts?.["svm-ingest:start"]?.trim();
+  if (!script) {
+    throw new Error(
+      'svm-ingest:start unresolved: scripts["svm-ingest:start"] missing',
+    );
+  }
+  const tokens = script.split(/\s+/).filter(Boolean);
+  let entry: string | undefined;
+  for (let i = tokens.length - 1; i >= 0; i -= 1) {
+    const tok = tokens[i]!;
+    if (tok.startsWith("-")) continue;
+    if (/\.(?:ts|js|mts|mjs)$/.test(tok)) {
+      entry = tok;
+      break;
+    }
+  }
+  if (!entry) {
+    throw new Error(
+      `svm-ingest:start unresolved: no entry path in ${JSON.stringify(script)}`,
+    );
+  }
+  return entry.replace(/^\.\//, "").replace(/\\/g, "/");
+}
+
+/**
+ * Static local-module import closure of a single entry file (inclusive).
+ * Uses {@link buildStaticImportGraph} — no second walker. Fail closed when
+ * the entry is missing or not in the graph, and when a resolved code module
+ * (ts/js) lies outside the graph roots. Non-code leaves (e.g. JSON) stay leaves.
+ */
+export function collectStaticImportClosure(
+  entryRel: string,
+  options?: {
+    rootDir?: string;
+    graphRoots?: readonly string[];
+  },
+): string[] {
+  const rootDir = options?.rootDir ?? POLICY_SCAN_ROOT;
+  const entry = entryRel.replace(/\\/g, "/");
+  if (!existsSync(join(rootDir, entry))) {
+    throw new Error(`static import closure entry missing: ${entry}`);
+  }
+  const graph = buildStaticImportGraph(
+    options?.graphRoots ?? SVM_INGEST_GRAPH_ROOTS,
+    rootDir,
+  );
+  if (!graph.has(entry)) {
+    throw new Error(
+      `static import closure entry not in graph roots: ${entry}`,
+    );
+  }
+  const visited = new Set<string>();
+  const queue = [entry];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (visited.has(current)) continue;
+    visited.add(current);
+    const node = graph.get(current);
+    if (!node) {
+      if (isCodeModuleRel(current)) {
+        throw new Error(
+          `static import closure unresolved code module outside graph roots: ${current}`,
+        );
+      }
+      continue;
+    }
+    for (const dep of node.localDeps) {
+      if (!visited.has(dep)) queue.push(dep);
+    }
+  }
+  return [...visited].sort();
+}
+
 type ReachabilityOptions = {
   rootDir?: string;
   startRoots?: readonly string[];
@@ -377,7 +478,7 @@ export function traceStaticReachabilityToModules(
     bannedModules.map((p) => p.replace(/\\/g, "/").replace(/\.ts$/, "")),
   );
   const graph = buildStaticImportGraph(
-    options?.graphRoots ?? ["src", "lib", "scripts"],
+    options?.graphRoots ?? ["src", "lib", "scripts", "svm-ingest"],
     rootDir,
   );
   const hits: ProductSourceHit[] = [];
@@ -392,7 +493,7 @@ export function traceStaticReachabilityToModules(
   }
 
   for (const file of walkTsFilesFromRoots(
-    options?.startRoots ?? ["src/svm-ingest"],
+    options?.startRoots ?? ["svm-ingest"],
     rootDir,
   )) {
     const startRel = relative(rootDir, file).replace(/\\/g, "/");

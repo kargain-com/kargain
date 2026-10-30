@@ -17,9 +17,9 @@ import {
   type RawPayloadForProjection,
 } from "../lib/svm/project-raw-to-projection.js";
 import type { MetadataSnapshotRow } from "../lib/svm/raw-replay-digest.js";
-import { ingestBlockFromFixture } from "../src/svm-ingest/ingest-loop.js";
-import { rebuildProjectionFromRaw } from "../src/svm-ingest/projection-rebuild.js";
-import { projectPayloadsIntoWriter, emptyInlineProjectionState } from "../src/svm-ingest/projection-projector.js";
+import { ingestBlockFromFixture } from "../svm-ingest/ingest-loop.js";
+import { rebuildProjectionFromRaw } from "../svm-ingest/projection-rebuild.js";
+import { projectPayloadsIntoWriter, emptyInlineProjectionState } from "../svm-ingest/projection-projector.js";
 import {
   FIXTURE_BLOCK_ENTITY_MINT,
   FIXTURE_BLOCK_PROVENANCE,
@@ -298,7 +298,7 @@ describe("svm projection replay", () => {
 
   it("rebuild module does not import rpc client", () => {
     const src = fs.readFileSync(
-      path.join(ROOT, "src/svm-ingest/projection-rebuild.ts"),
+      path.join(ROOT, "svm-ingest/projection-rebuild.ts"),
       "utf8",
     );
     assert.ok(!src.includes("rpc-client"));

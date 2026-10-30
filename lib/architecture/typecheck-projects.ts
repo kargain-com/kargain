@@ -39,7 +39,12 @@ export const TYPECHECK_PROJECTS: readonly TypecheckProject[] = [
   {
     id: "indexer",
     tsconfig: "tsconfig.indexer.json",
-    role: "Ponder indexer + svm-ingest (src, ponder config/schema)",
+    role: "Ponder indexer (src, ponder config/schema)",
+  },
+  {
+    id: "svm-ingest",
+    tsconfig: "tsconfig.svm-ingest.json",
+    role: "svm-ingest service root (outside Ponder indexing glob)",
   },
   {
     id: "svm",

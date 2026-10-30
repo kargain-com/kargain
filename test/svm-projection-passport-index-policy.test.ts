@@ -12,7 +12,7 @@ import { PASSPORT_BROWSE_INDEXES } from "../src/lib/passport-browse-index-contra
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PROJECTION_SCHEMA = path.join(
   ROOT,
-  "src/svm-ingest/db/projection-schema.sql",
+  "svm-ingest/db/projection-schema.sql",
 );
 
 type DeclaredIndex = {

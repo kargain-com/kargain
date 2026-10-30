@@ -8,15 +8,15 @@ import {
   emptyEntityProjectionReplayState,
   finalizeEntityProjectionState,
   loadMetadataSnapshotsIntoState,
-} from "../../lib/svm/passport-entity-projection.js";
-import type { MetadataSnapshotDraft } from "../../lib/svm/metadata-snapshot.js";
-import type { StructuredPayloadDraft } from "../../lib/svm/parse-transaction-ingest.js";
+} from "../lib/svm/passport-entity-projection.js";
+import type { MetadataSnapshotDraft } from "../lib/svm/metadata-snapshot.js";
+import type { StructuredPayloadDraft } from "../lib/svm/parse-transaction-ingest.js";
 import {
   projectStructuredPayload,
   type ProjectionReplayState,
   emptyProjectionReplayState,
-} from "../../lib/svm/project-raw-to-projection.js";
-import type { SvmProjectionWriter } from "../lib/svm-projection-writer.js";
+} from "../lib/svm/project-raw-to-projection.js";
+import type { SvmProjectionWriter } from "./svm-projection-writer.js";
 
 export type InlineProjectionState = {
   replay: ProjectionReplayState;

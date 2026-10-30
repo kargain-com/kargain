@@ -29,7 +29,7 @@ import {
   passportMintTrustFields,
   passportUriUpdatedTrustFields,
   verificationResetTrustFields,
-} from "./lib/ponder-g1-fields";
+} from "../lib/passport/trust-fields.js";
 import {
   notePassportCounterpartForTx,
 } from "./lib/ponder-bridge-crossings";
