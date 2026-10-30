@@ -1,12 +1,13 @@
 /**
  * Sole owner of the Ponder indexing-file glob — the same path set Ponder 0.18
- * hashes and executes for build_id (under src/, extensions js/mjs/ts/mts,
- * ignoring src/api/ and test/spec files). Does not equal or predict build_id.
+ * hashes and executes for build_id. Mirrors glob.sync under src/ for
+ * js/mjs/ts/mts, ignoring src/api/ and test/spec files, with glob 10 default
+ * dot:false. Does not equal or predict build_id.
  *
  * Guard: test/ponder-indexing-glob-svm-isolation-policy.test.ts
  */
 
-import { readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 /** Indexing directory Ponder walks (common.options.indexingDir). */
@@ -15,101 +16,116 @@ export const PONDER_INDEXING_DIR = "src" as const;
 /** API tree Ponder ignores from the indexing hash/execution set. */
 export const PONDER_INDEXING_API_DIR = "src/api" as const;
 
-/** Repo-root home of svm-ingest-owned modules (outside the indexing glob). */
-export const SVM_INGEST_ROOT = "svm-ingest" as const;
-
-/**
- * Paths that must never appear in the Ponder indexing glob. Historical
- * locations under src/ stay listed so a regression that puts ingest back
- * under src/ fails even if svm-ingest/ is also present.
- */
-export const SVM_INGEST_BANNED_IN_PONDER_GLOB = [
-  "src/svm-ingest/",
-  "src/lib/svm-raw-writer.ts",
-  "src/lib/svm-projection-writer.ts",
-] as const;
-
 const INDEXING_EXT_RE = /\.(?:js|mjs|ts|mts)$/;
+/** Ponder ignore: test/spec files under the indexing dir. */
 const TEST_FILE_RE = /\.(?:test|spec)\.(?:js|mjs|ts|mts)$/;
 
-function isBannedInPonderGlob(rel: string): boolean {
-  const normalized = rel.replace(/\\/g, "/");
-  for (const ban of SVM_INGEST_BANNED_IN_PONDER_GLOB) {
-    if (ban.endsWith("/")) {
-      if (normalized.startsWith(ban)) return true;
-    } else if (normalized === ban) {
-      return true;
-    }
-  }
-  return false;
+function isDotSegment(name: string): boolean {
+  return name.startsWith(".");
 }
 
-function walkTsLike(root: string, dir: string, out: string[]): void {
-  let entries: string[];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return;
-  }
+function walkPonderIndexing(root: string, dir: string, out: string[]): void {
+  const entries = readdirSync(dir);
   for (const name of entries) {
+    // glob 10 default `dot: false` — skip dotfiles and dot directories.
+    if (isDotSegment(name)) continue;
     const full = join(dir, name);
     const st = statSync(full);
     if (st.isDirectory()) {
-      walkTsLike(root, full, out);
+      walkPonderIndexing(root, full, out);
       continue;
     }
-    if (!INDEXING_EXT_RE.test(name) || name.endsWith(".d.ts")) continue;
+    // Brace set is js/mjs/ts/mts — `.d.ts` matches `*.ts`; `.tsx` does not.
+    if (!INDEXING_EXT_RE.test(name)) continue;
     if (TEST_FILE_RE.test(name)) continue;
-    out.push(relative(root, full).replace(/\\/g, "/"));
+    const rel = relative(root, full).replace(/\\/g, "/");
+    const apiPrefix = `${PONDER_INDEXING_API_DIR}/`;
+    if (rel === PONDER_INDEXING_API_DIR || rel.startsWith(apiPrefix)) continue;
+    out.push(rel);
   }
 }
 
 /**
  * List relative paths Ponder would include in its indexing content hash.
- * Matches ponder/src/build/index.ts indexingPattern + api/test ignores.
+ * Fail closed when `src/` is missing/unreadable or the match set is empty.
  */
 export function listPonderIndexingGlob(root: string): string[] {
+  const indexingDir = join(root, PONDER_INDEXING_DIR);
+  let st: ReturnType<typeof statSync>;
+  try {
+    st = statSync(indexingDir);
+  } catch {
+    throw new Error(
+      `Ponder indexing dir unreadable: ${PONDER_INDEXING_DIR}/`,
+    );
+  }
+  if (!st.isDirectory()) {
+    throw new Error(
+      `Ponder indexing dir unreadable: ${PONDER_INDEXING_DIR}/`,
+    );
+  }
   const found: string[] = [];
-  walkTsLike(root, join(root, PONDER_INDEXING_DIR), found);
-  const apiPrefix = `${PONDER_INDEXING_API_DIR}/`;
-  return found
-    .filter((rel) => rel !== PONDER_INDEXING_API_DIR && !rel.startsWith(apiPrefix))
-    .sort();
-}
-
-/**
- * svm-ingest-owned TypeScript/JS modules under the dedicated root.
- * Injectable via opts.ownedRels for constructed tests.
- */
-export function listSvmIngestOwnedModules(
-  root: string,
-  opts?: { ownedRels?: readonly string[] },
-): string[] {
-  if (opts?.ownedRels) return [...opts.ownedRels].sort();
-  const found: string[] = [];
-  walkTsLike(root, join(root, SVM_INGEST_ROOT), found);
+  walkPonderIndexing(root, indexingDir, found);
+  if (found.length === 0) {
+    throw new Error(
+      `Ponder indexing glob empty under ${PONDER_INDEXING_DIR}/`,
+    );
+  }
   return found.sort();
 }
 
 /**
- * Defect when any Ponder indexing path is svm-ingest-owned (banned under src/
- * or overlapping the dedicated svm-ingest/ tree). null when isolated.
+ * Resolve the svm-ingest process entry from its single definition:
+ * `package.json` scripts["svm-ingest:start"] (Dockerfile.svm-ingest runs it).
+ */
+export function resolveSvmIngestStartEntry(root: string): string {
+  const pkgPath = join(root, "package.json");
+  let pkg: { scripts?: Record<string, string> };
+  try {
+    pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
+      scripts?: Record<string, string>;
+    };
+  } catch {
+    throw new Error("svm-ingest:start unresolved: package.json unreadable");
+  }
+  const script = pkg.scripts?.["svm-ingest:start"]?.trim();
+  if (!script) {
+    throw new Error('svm-ingest:start unresolved: scripts["svm-ingest:start"] missing');
+  }
+  const tokens = script.split(/\s+/).filter(Boolean);
+  let entry: string | undefined;
+  for (let i = tokens.length - 1; i >= 0; i -= 1) {
+    const tok = tokens[i]!;
+    if (tok.startsWith("-")) continue;
+    if (/\.(?:ts|js|mts|mjs)$/.test(tok)) {
+      entry = tok;
+      break;
+    }
+  }
+  if (!entry) {
+    throw new Error(
+      `svm-ingest:start unresolved: no entry path in ${JSON.stringify(script)}`,
+    );
+  }
+  return entry.replace(/^\.\//, "").replace(/\\/g, "/");
+}
+
+/**
+ * Defect when any svm-ingest-owned module (static import closure of the
+ * service entry) appears in the Ponder indexing glob. null when isolated.
+ * Fail closed on an empty owned set.
  */
 export function ponderIndexingSvmIngestDefect(
   indexingRels: readonly string[],
   ownedRels: readonly string[],
 ): string | null {
   if (ownedRels.length === 0) {
-    return `svm-ingest owned modules missing under ${SVM_INGEST_ROOT}/`;
+    throw new Error("svm-ingest import closure is empty");
   }
   const indexingSet = new Set(indexingRels);
-  const bannedHits = indexingRels.filter((rel) => isBannedInPonderGlob(rel));
-  if (bannedHits.length > 0) {
-    return `Ponder indexing glob includes svm-ingest-owned paths:\n${bannedHits.join("\n")}`;
-  }
-  const overlap = ownedRels.filter((rel) => indexingSet.has(rel));
+  const overlap = ownedRels.filter((rel) => indexingSet.has(rel)).sort();
   if (overlap.length > 0) {
-    return `Ponder indexing glob overlaps svm-ingest owned modules:\n${overlap.join("\n")}`;
+    return `Ponder indexing glob includes svm-ingest-owned modules:\n${overlap.join("\n")}`;
   }
   return null;
 }

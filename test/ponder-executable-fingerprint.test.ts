@@ -121,19 +121,19 @@ describe("ponder-executable-fingerprint", () => {
     );
   });
 
-  it("graph walk reaches src/api from entries; svm-ingest is not imported", () => {
+  it("graph walk reaches src/api from entries", () => {
     const files = plantedGraph();
-    files.set(
-      "svm-ingest/main.ts",
-      "export const shouldNotAppear = true;\n",
-    );
     const graph = collectPonderExecutableGraphFiles(ROOT, {
       fileContents: files,
     });
     assert.ok(graph.includes("src/api/commerce-routes.ts"));
     assert.ok(graph.includes("src/index.ts"));
-    // Unreachable from Ponder entries — not planted into the import graph.
-    assert.equal(graph.includes("svm-ingest/main.ts"), false);
+  });
+
+  it("live Ponder executable graph contains no svm-ingest/ file", () => {
+    const graph = collectPonderExecutableGraphFiles(ROOT);
+    const hits = graph.filter((p) => p === "svm-ingest" || p.startsWith("svm-ingest/"));
+    assert.deepEqual(hits, []);
   });
 
   it("live executable fingerprint is 64-hex", () => {

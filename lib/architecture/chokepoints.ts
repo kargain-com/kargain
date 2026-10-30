@@ -849,7 +849,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "ponder-indexing-glob",
     owner: "scripts/lib/ponder-indexing-glob.ts",
-    rule: "Sole owner of the Ponder indexing-file glob (src/ js/mjs/ts/mts minus api and test/spec); svm-ingest-owned modules must not match",
+    rule: "Sole owner of the Ponder indexing-file glob (src/ js/mjs/ts/mts, api+test/spec ignored, dot:false); identity consumes it; svm-ingest:start static import closure ∩ glob = ∅ (closure via policy-scan-helpers collectStaticImportClosure)",
     guardTests: ["ponder-indexing-glob-svm-isolation-policy.test.ts"],
   },
   {

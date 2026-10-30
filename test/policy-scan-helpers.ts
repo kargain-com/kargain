@@ -214,6 +214,58 @@ export function buildStaticImportGraph(
   return graph;
 }
 
+/** Default roots for svm-ingest / product service import graphs. */
+export const SVM_INGEST_GRAPH_ROOTS = [
+  "src",
+  "lib",
+  "scripts",
+  "svm-ingest",
+] as const;
+
+/**
+ * Static local-module import closure of a single entry file (inclusive).
+ * Uses {@link buildStaticImportGraph} — no second walker. Fail closed when
+ * the entry is missing, not in the graph, or the closure is empty.
+ */
+export function collectStaticImportClosure(
+  entryRel: string,
+  options?: {
+    rootDir?: string;
+    graphRoots?: readonly string[];
+  },
+): string[] {
+  const rootDir = options?.rootDir ?? POLICY_SCAN_ROOT;
+  const entry = entryRel.replace(/\\/g, "/");
+  if (!existsSync(join(rootDir, entry))) {
+    throw new Error(`static import closure entry missing: ${entry}`);
+  }
+  const graph = buildStaticImportGraph(
+    options?.graphRoots ?? SVM_INGEST_GRAPH_ROOTS,
+    rootDir,
+  );
+  if (!graph.has(entry)) {
+    throw new Error(
+      `static import closure entry not in graph roots: ${entry}`,
+    );
+  }
+  const visited = new Set<string>();
+  const queue = [entry];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (visited.has(current)) continue;
+    visited.add(current);
+    const node = graph.get(current);
+    if (!node) continue;
+    for (const dep of node.localDeps) {
+      if (!visited.has(dep)) queue.push(dep);
+    }
+  }
+  if (visited.size === 0) {
+    throw new Error(`static import closure empty for entry: ${entry}`);
+  }
+  return [...visited].sort();
+}
+
 type ReachabilityOptions = {
   rootDir?: string;
   startRoots?: readonly string[];

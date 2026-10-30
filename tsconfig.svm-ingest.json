@@ -16,6 +16,5 @@
       "@/*": ["./*"]
     }
   },
-  "include": ["svm-ingest/**/*.ts"],
-  "exclude": ["node_modules", ".next", "test", "scripts"]
+  "include": ["svm-ingest/**/*.ts"]
 }
