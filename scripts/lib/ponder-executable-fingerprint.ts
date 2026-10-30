@@ -10,6 +10,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 
+import { extractStaticImportSpecifiers } from "./static-import-specifiers.js";
+
 export const PONDER_EXECUTABLE_ENTRIES = [
   "ponder.config.ts",
   "ponder.schema.ts",
@@ -42,9 +44,6 @@ export type PonderExecutablePayload = {
   files: PonderExecutableFile[];
   packageRuntime: PackageRuntimeSlice;
 };
-
-const STATIC_IMPORT_RE =
-  /(?:import|export)\s+(?:type\s+)?(?:[\s\S]*?\s+from\s+)?["']([^"']+)["']|require\s*\(\s*["']([^"']+)["']\s*\)/g;
 
 function sha256Bytes(buf: Buffer | string): string {
   return createHash("sha256").update(buf).digest("hex");
@@ -93,22 +92,6 @@ function isExcludedGraphPath(rel: string): boolean {
     if (normalized === prefix || normalized.startsWith(prefix)) return true;
   }
   return false;
-}
-
-function stripComments(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
-}
-
-function extractStaticSpecs(source: string): string[] {
-  const specs: string[] = [];
-  const stripped = stripComments(source);
-  for (const match of stripped.matchAll(STATIC_IMPORT_RE)) {
-    const spec = match[1] ?? match[2];
-    if (spec) specs.push(spec);
-  }
-  return specs;
 }
 
 function isLocalSpecifier(spec: string): boolean {
@@ -223,7 +206,7 @@ export function collectPonderExecutableGraphFiles(
       source = readFileSync(abs, "utf8");
     }
 
-    for (const spec of extractStaticSpecs(source)) {
+    for (const spec of extractStaticImportSpecifiers(source)) {
       if (!isLocalSpecifier(spec)) continue;
       const absFrom = join(root, rel);
       const resolved = resolveLocalImport(

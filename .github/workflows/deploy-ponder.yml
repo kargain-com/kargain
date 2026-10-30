@@ -27,6 +27,7 @@ on:
       - ".github/workflows/deploy-ponder.yml"
       - "scripts/lib/ponder-identity-fingerprint.ts"
       - "scripts/lib/ponder-executable-fingerprint.ts"
+      - "scripts/lib/static-import-specifiers.ts"
       - "scripts/lib/ponder-readiness-probe.ts"
       - "scripts/ponder-deploy-fingerprints.ts"
       - "scripts/ponder-ready-probe.ts"

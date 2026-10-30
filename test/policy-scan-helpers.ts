@@ -15,6 +15,13 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { builtinModules } from "node:module";
 
+import { extractStaticImportSpecifiers as extractStaticImportSpecifiersOwner } from "../scripts/lib/static-import-specifiers.ts";
+
+/** Sole owner lives in scripts/lib — do not fork a second extractor. */
+export function extractStaticImportSpecifiers(source: string): string[] {
+  return extractStaticImportSpecifiersOwner(source);
+}
+
 export const POLICY_SCAN_ROOT = join(
   fileURLToPath(new URL(".", import.meta.url)),
   "..",
@@ -136,25 +143,6 @@ export function walkCommercialAbiEnumerationTsFiles(
   return out;
 }
 
-function stripComments(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/.*$/gm, "");
-}
-
-const STATIC_IMPORT_RE =
-  /\bimport\s+(?:type\s+)?(?:[\w*\s{},]+\s+from\s+)?["']([^"']+)["']|\bexport\s+(?:type\s+)?(?:[\w*\s{},]+\s+from\s+)?["']([^"']+)["']|\brequire\s*\(\s*["']([^"']+)["']\s*\)/g;
-
-export function extractStaticImportSpecifiers(source: string): string[] {
-  const stripped = stripComments(source);
-  const matches: string[] = [];
-  for (const match of stripped.matchAll(STATIC_IMPORT_RE)) {
-    const spec = match[1] ?? match[2] ?? match[3];
-    if (spec) matches.push(spec);
-  }
-  return matches;
-}
-
 function packageNameFromSpecifier(specifier: string): string | null {
   if (specifier.startsWith("node:")) return null;
   if (specifier.startsWith("@")) {
@@ -231,6 +219,12 @@ type ReachabilityOptions = {
   startRoots?: readonly string[];
   graphRoots?: readonly string[];
   owners?: readonly string[];
+  /**
+   * Repo-relative path prefixes that are opaque doors: the edge may be
+   * recorded in the path, but their local/package deps are not expanded
+   * (e.g. adapters/irys-solana owns @solana/web3.js).
+   */
+  stopAtPrefixes?: readonly string[];
 };
 
 function resolvePackageRootDir(
@@ -283,6 +277,19 @@ function packageDependencies(
   }
 }
 
+function matchesStopPrefix(
+  rel: string,
+  prefixes: readonly string[] | undefined,
+): boolean {
+  if (!prefixes || prefixes.length === 0) return false;
+  const normalized = rel.replace(/\\/g, "/");
+  return prefixes.some(
+    (prefix) =>
+      normalized === prefix.replace(/\/$/, "") ||
+      normalized.startsWith(prefix.endsWith("/") ? prefix : `${prefix}/`),
+  );
+}
+
 export function traceStaticReachabilityToPackages(
   bannedPackages: readonly string[],
   options?: ReachabilityOptions,
@@ -310,6 +317,9 @@ export function traceStaticReachabilityToPackages(
     while (queue.length > 0 && !foundPath) {
       const current = queue.shift()!;
       if (current.kind === "file") {
+        if (matchesStopPrefix(current.name, options?.stopAtPrefixes)) {
+          continue;
+        }
         const node = graph.get(current.name);
         if (!node) continue;
         for (const dep of node.localDeps) {
