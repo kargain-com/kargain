@@ -658,6 +658,8 @@ describe("deploy-ponder-svm-ingest-ci-policy", () => {
     assert.doesNotMatch(paths, /src\/svm-ingest/);
     assert.doesNotMatch(paths, /Dockerfile\.svm-ingest/);
     assert.doesNotMatch(paths, /lib\/svm/);
+    assert.match(paths, /scripts\/lib\/ponder-executable-fingerprint\.ts/);
+    assert.match(paths, /scripts\/lib\/static-import-specifiers\.ts/);
     assert.match(yaml, /docker compose build ponder/);
     assert.match(yaml, /docker compose up -d ponder/);
     assert.doesNotMatch(yaml, /build svm-ingest/);

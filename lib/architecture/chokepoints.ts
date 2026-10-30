@@ -608,7 +608,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "irys-solana-adapter",
     owner:
       "adapters/irys-solana/build-uploader.ts · adapters/irys-solana/to-irys-provider.ts · lib/storage/irys-client.ts",
-    rule: "Solana Irys SDK lives outside product roots and is reached only by one dynamic import from irys-client; Wallet Standard→Irys wrap stays in the adapter; EVM path does not fetch it; product never calls uploader.fund",
+    rule: "Solana Irys SDK lives in adapters/irys-solana and is reached from product only via irys-client (literal import() is a static edge; S8-2 reachability stops at adapters/irys-solana/); Wallet Standard→Irys wrap stays in the adapter; EVM path does not fetch it; product never calls uploader.fund",
     guardTests: ["irys-solana-adapter-policy.test.ts", "solana-web3-app-graph-policy.test.ts"],
   },
   {
@@ -1046,11 +1046,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "ponder-deploy-identity",
     owner:
-      "scripts/lib/ponder-identity-fingerprint.ts · scripts/lib/ponder-executable-fingerprint.ts · scripts/lib/ponder-readiness-probe.ts",
-    rule: "Two fingerprints (identity = may need reindex; executable = must recreate) plus reserved /ready probe; neither equals Ponder build_id; scripts.test:* never recreates",
+      "scripts/lib/ponder-identity-fingerprint.ts · scripts/lib/ponder-executable-fingerprint.ts · scripts/lib/static-import-specifiers.ts · scripts/lib/ponder-readiness-probe.ts",
+    rule: "Two fingerprints (identity = may need reindex; executable = must recreate) plus reserved /ready probe; neither equals Ponder build_id; scripts.test:* never recreates; static imports via static-import-specifiers (ts.preProcessFile) so side-effect imports are not dropped",
     guardTests: [
       "ponder-identity-fingerprint.test.ts",
       "ponder-executable-fingerprint.test.ts",
+      "static-import-specifiers.test.ts",
       "ponder-readiness-probe.test.ts",
       "deploy-ponder-svm-ingest-ci-policy.test.ts",
     ],
