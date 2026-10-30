@@ -4,22 +4,22 @@
  * Cursor `lastContiguousSlot` = high-water processed discovered slot.
  */
 
-import { metadataSnapshotsForPayloads } from "../../lib/svm/ingest-metadata-capture.js";
-import type { MetadataFetcher } from "../../lib/svm/capture-metadata-at-ingest.js";
-import type { FollowedProgram } from "../../lib/svm/ingest-config.js";
+import { metadataSnapshotsForPayloads } from "../lib/svm/ingest-metadata-capture.js";
+import type { MetadataFetcher } from "../lib/svm/capture-metadata-at-ingest.js";
+import type { FollowedProgram } from "../lib/svm/ingest-config.js";
 import {
   ingestRefusalRowId,
   isRetriableCatchupIncident,
   type BootstrapCatchupState,
   type CatchupIncident,
-} from "../../lib/svm/ingest-refusal.js";
-import { discoverIngestSlots, type DiscoverIngestSlotsOk } from "../../lib/svm/ingest-slot-discovery.js";
-import { parseTransactionForIngest } from "../../lib/svm/parse-transaction-ingest.js";
+} from "../lib/svm/ingest-refusal.js";
+import { discoverIngestSlots, type DiscoverIngestSlotsOk } from "../lib/svm/ingest-slot-discovery.js";
+import { parseTransactionForIngest } from "../lib/svm/parse-transaction-ingest.js";
 import {
   evaluateStartupRetention,
   startupRetentionUnavailableMessage,
-} from "../../lib/svm/startup-retention.js";
-import type { SvmRawWriter } from "../lib/svm-raw-writer.js";
+} from "../lib/svm/startup-retention.js";
+import type { SvmRawWriter } from "./svm-raw-writer.js";
 import type { ProjectionProjector } from "./projection-projector.js";
 import {
   SvmIngestRpcBudgetExhaustedError,

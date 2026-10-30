@@ -10,8 +10,8 @@ import {
   buildSvmIngestReadyPayload,
   classifySvmIngestReadySurface,
   createSvmIngestHealthServer,
-} from "../src/svm-ingest/http-health.js";
-import { createIngestLoop } from "../src/svm-ingest/ingest-loop.js";
+} from "../svm-ingest/http-health.js";
+import { createIngestLoop } from "../svm-ingest/ingest-loop.js";
 import {
   FIXTURE_FOLLOWED_PROGRAMS,
   FIXTURE_NAMESPACE,

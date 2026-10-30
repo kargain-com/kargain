@@ -9,7 +9,7 @@ import type {
   PassportEntityProjectionDraft,
   PassportRecordProjectionDraft,
   PassportUriHistoryProjectionDraft,
-} from "../../lib/svm/project-raw-to-projection.js";
+} from "../lib/svm/project-raw-to-projection.js";
 
 export type SvmProjectionWriter = {
   insertPassportRecord: (row: PassportRecordProjectionDraft) => Promise<boolean>;
@@ -223,7 +223,7 @@ export async function applySvmProjectionSchema(pool: pg.Pool): Promise<void> {
   const { fileURLToPath } = await import("node:url");
   const schemaPath = path.join(
     path.dirname(fileURLToPath(import.meta.url)),
-    "../svm-ingest/db/projection-schema.sql",
+    "./db/projection-schema.sql",
   );
   const sql = await fs.readFile(schemaPath, "utf8");
   await pool.query(sql);

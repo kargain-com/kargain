@@ -135,9 +135,10 @@ describe("ponder-identity-fingerprint", () => {
     assert.ok(payload.chains.length >= 2);
     assert.ok(payload.contracts.KarPassport);
     assert.equal(payload.ordering, "omnichain");
-    // Indexing excludes api + svm-ingest writers
+    // Indexing excludes api; svm-ingest lives outside src/ so never appears
     for (const f of payload.indexingFiles) {
       assert.equal(f.path.startsWith("src/api/"), false, f.path);
+      assert.equal(f.path.startsWith("svm-ingest/"), false, f.path);
       assert.equal(f.path.startsWith("src/svm-ingest/"), false, f.path);
       assert.notEqual(f.path, "src/lib/svm-raw-writer.ts");
       assert.notEqual(f.path, "src/lib/svm-projection-writer.ts");

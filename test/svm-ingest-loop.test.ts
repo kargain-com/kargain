@@ -13,7 +13,7 @@ import {
   discoverIngestSlots,
   type DiscoverIngestSlotsOk,
 } from "../lib/svm/ingest-slot-discovery.js";
-import { createIngestLoop } from "../src/svm-ingest/ingest-loop.js";
+import { createIngestLoop } from "../svm-ingest/ingest-loop.js";
 import {
   SvmIngestRpcBudgetExhaustedError,
   with429Backoff,
@@ -21,7 +21,7 @@ import {
   type GetBlockOutcome,
   type SignatureInfo,
   type SvmRpcClient,
-} from "../src/svm-ingest/rpc-client.js";
+} from "../svm-ingest/rpc-client.js";
 import {
   FIXTURE_BLOCK,
   FIXTURE_FOLLOWED_PROGRAMS,

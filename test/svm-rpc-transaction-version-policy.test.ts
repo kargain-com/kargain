@@ -17,7 +17,7 @@ const ROOT = POLICY_SCAN_ROOT;
 const OWNER_REL = "lib/svm/rpc-max-supported-transaction-version.ts";
 const MAPPER_REL = "lib/svm/rpc-block-transactions.ts";
 const JSON_RPC_REL = "lib/svm/solana-json-rpc.ts";
-const RPC_CLIENT_REL = "src/svm-ingest/rpc-client.ts";
+const RPC_CLIENT_REL = "svm-ingest/rpc-client.ts";
 const SVM_RPC_REL = "lib/web3/svm-rpc.ts";
 
 const LITERAL_CEILING_RE =

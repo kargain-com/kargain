@@ -20,11 +20,11 @@ import {
   normalizeCanonicalValue,
   projectionReplayDigestFromPool,
 } from "../lib/svm/projection-replay-digest.ts";
-import { rebuildProjectionFromRaw } from "../src/svm-ingest/projection-rebuild.ts";
+import { rebuildProjectionFromRaw } from "../svm-ingest/projection-rebuild.ts";
 import {
   applySvmRawSchema,
   createSvmRawWriter,
-} from "../src/lib/svm-raw-writer.ts";
+} from "../svm-ingest/svm-raw-writer.ts";
 import {
   FIXTURE_NAMESPACE,
   FIXTURE_PASSPORT_PROGRAM,

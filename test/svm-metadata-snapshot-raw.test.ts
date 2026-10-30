@@ -17,7 +17,7 @@ import {
   type MetadataSnapshotDraft,
 } from "../lib/svm/metadata-snapshot.js";
 import type { StructuredPayloadDraft } from "../lib/svm/parse-transaction-ingest.js";
-import { createSvmRawWriter } from "../src/lib/svm-raw-writer.js";
+import { createSvmRawWriter } from "../svm-ingest/svm-raw-writer.js";
 import {
   buildPassportMintedBody,
   globalTokenId,
@@ -240,7 +240,7 @@ describe("svm metadata snapshot raw semantics", () => {
 
   it("ingest_refusal kinds unchanged — metadata failure is not a fifth refusal kind", () => {
     const sql = fs.readFileSync(
-      path.join(ROOT, "src/svm-ingest/db/schema.sql"),
+      path.join(ROOT, "svm-ingest/db/schema.sql"),
       "utf8",
     );
     const match = sql.match(/refusal_kind IN \(([\s\S]*?)\)/);

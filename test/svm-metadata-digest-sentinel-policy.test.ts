@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-const SCAN_ROOTS = ["lib/svm", "src/svm-ingest", "src/lib"];
+const SCAN_ROOTS = ["lib/svm", "svm-ingest", "src/lib"];
 
 /** Digest-shaped uses of the literal — status: "unavailable" is legal. */
 const DIGEST_SENTINEL_PATTERNS = [

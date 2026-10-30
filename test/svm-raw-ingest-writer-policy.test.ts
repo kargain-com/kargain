@@ -8,7 +8,7 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const OWNER = path.join(ROOT, "src/lib/svm-raw-writer.ts");
+const OWNER = path.join(ROOT, "svm-ingest/svm-raw-writer.ts");
 
 const INSERT_RE = /INSERT\s+INTO\s+kargain_svm_raw/i;
 

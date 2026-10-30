@@ -25,8 +25,6 @@ export const PONDER_EXECUTABLE_ARTIFACTS = [
   "pnpm-lock.yaml",
 ] as const;
 
-/** Paths under the import graph that never force a Ponder recreate. */
-export const PONDER_EXECUTABLE_GRAPH_EXCLUDES = ["src/svm-ingest/"] as const;
 
 export type PackageRuntimeSlice = {
   dependencies: Record<string, string>;
@@ -86,13 +84,6 @@ export function packageRuntimeSlice(pkg: {
   };
 }
 
-function isExcludedGraphPath(rel: string): boolean {
-  const normalized = rel.replace(/\\/g, "/");
-  for (const prefix of PONDER_EXECUTABLE_GRAPH_EXCLUDES) {
-    if (normalized === prefix || normalized.startsWith(prefix)) return true;
-  }
-  return false;
-}
 
 function isLocalSpecifier(spec: string): boolean {
   return (
@@ -173,7 +164,7 @@ function tryResolveFile(
 }
 
 /**
- * Walk static imports from process entries. Excludes src/svm-ingest/**.
+ * Walk static imports from process entries.
  * Injectable fileContents map lets tests plant a graph without touching live src.
  * Relative and `@/` imports that resolve to no file throw (fail closed).
  * Bare package specifiers stay outside the graph.
@@ -193,7 +184,6 @@ export function collectPonderExecutableGraphFiles(
   while (queue.length > 0) {
     const rel = queue.shift()!.replace(/\\/g, "/");
     if (visited.has(rel)) continue;
-    if (isExcludedGraphPath(rel)) continue;
     visited.add(rel);
 
     let source: string | undefined;
@@ -221,7 +211,6 @@ export function collectPonderExecutableGraphFiles(
         );
       }
       const nextRel = relative(root, resolved).replace(/\\/g, "/");
-      if (isExcludedGraphPath(nextRel)) continue;
       if (opts?.fileContents && !opts.fileContents.has(nextRel)) {
         // Planted graphs only follow files present in the map.
         continue;

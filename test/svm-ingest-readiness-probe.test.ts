@@ -8,7 +8,7 @@ import { describe, it } from "node:test";
 import {
   classifySvmIngestReadySurface,
   type SvmIngestReadyPayload,
-} from "../src/svm-ingest/http-health.ts";
+} from "../svm-ingest/http-health.ts";
 import {
   parseSvmIngestReadyPayload,
   svmIngestDidNotBecomeReadyMessage,

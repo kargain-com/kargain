@@ -1046,10 +1046,10 @@ jobs:
   it("svm-ingest workflow exists and never builds or restarts ponder", () => {
     const yaml = readFileSync(SVM_WF, "utf8");
     const paths = pathsBlock(yaml);
-    assert.match(paths, /src\/svm-ingest\/\*\*/);
+    assert.match(paths, /svm-ingest\/\*\*/);
     assert.match(paths, /lib\/svm\/\*\*/);
-    assert.match(paths, /src\/lib\/svm-projection-writer\.ts/);
-    assert.match(paths, /src\/lib\/svm-raw-writer\.ts/);
+    assert.doesNotMatch(paths, /src\/svm-ingest/);
+    assert.doesNotMatch(paths, /src\/lib\/svm-(?:raw|projection)-writer/);
     assert.match(paths, /Dockerfile\.svm-ingest/);
     assert.match(yaml, /workflow_dispatch:/);
     assert.match(yaml, /docker compose build svm-ingest/);

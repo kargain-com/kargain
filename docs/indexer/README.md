@@ -12,7 +12,7 @@
 
 ## SVM raw ingest (S7c-1)
 
-Separate Node service — **not** inside the Ponder image. Append-only Postgres schema **`kargain_svm_raw`** (`structured_payload`, `ingest_refusal`, `ingest_cursor`). Sole INSERT owner: [`src/lib/svm-raw-writer.ts`](../../src/lib/svm-raw-writer.ts). Ponder reindex (`scripts/ponder-reindex.sql`) drops `kargain` only — raw survives; active cache `ponder_rpc_cache_1` (and leftover `ponder_sync`) are never dropped (policy: `test/ponder-reindex-svm-isolation-policy.test.ts`).
+Separate Node service — **not** inside the Ponder image. Append-only Postgres schema **`kargain_svm_raw`** (`structured_payload`, `ingest_refusal`, `ingest_cursor`). Sole INSERT owner: [`svm-ingest/svm-raw-writer.ts`](../../svm-ingest/svm-raw-writer.ts). Ponder reindex (`scripts/ponder-reindex.sql`) drops `kargain` only — raw survives; active cache `ponder_rpc_cache_1` (and leftover `ponder_sync`) are never dropped (policy: `test/ponder-reindex-svm-isolation-policy.test.ts`).
 
 | Item | Value |
 |------|--------|
@@ -26,7 +26,7 @@ Separate Node service — **not** inside the Ponder image. Append-only Postgres 
 
 ## SVM provenance projection (S7c-2)
 
-Materialized schema **`kargain_svm_projection`** — tables `passport_record`, `passport_uri_history` (column shapes mirror Ponder). Sole writer: [`src/lib/svm-projection-writer.ts`](../../src/lib/svm-projection-writer.ts); inline projection on ingest + full rebuild via [`src/svm-ingest/projection-rebuild.ts`](../../src/svm-ingest/projection-rebuild.ts) (drop schema + replay from raw, no RPC).
+Materialized schema **`kargain_svm_projection`** — tables `passport_record`, `passport_uri_history` (column shapes mirror Ponder). Sole writer: [`svm-ingest/svm-projection-writer.ts`](../../svm-ingest/svm-projection-writer.ts); inline projection on ingest + full rebuild via [`svm-ingest/projection-rebuild.ts`](../../svm-ingest/projection-rebuild.ts) (drop schema + replay from raw, no RPC).
 
 | Item | Value |
 |------|--------|

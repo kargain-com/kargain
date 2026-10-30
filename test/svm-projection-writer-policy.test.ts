@@ -27,7 +27,7 @@ function listTsFiles(dir: string): string[] {
 describe("svm projection writer policy", () => {
   it("owner module inserts into projection tables", () => {
     const owner = fs.readFileSync(
-      path.join(ROOT, "src/lib/svm-projection-writer.ts"),
+      path.join(ROOT, "svm-ingest/svm-projection-writer.ts"),
       "utf8",
     );
     assert.ok(owner.includes("kargain_svm_projection.passport_record"));
@@ -35,7 +35,7 @@ describe("svm projection writer policy", () => {
   });
 
   it("no other module inserts into kargain_svm_projection", () => {
-    const ownerPath = path.join(ROOT, "src/lib/svm-projection-writer.ts");
+    const ownerPath = path.join(ROOT, "svm-ingest/svm-projection-writer.ts");
     for (const file of listTsFiles(path.join(ROOT, "src"))) {
       if (file === ownerPath) continue;
       const src = fs.readFileSync(file, "utf8");

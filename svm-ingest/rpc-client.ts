@@ -6,14 +6,14 @@
 
 import { Connection, PublicKey } from "@solana/web3.js";
 
-import { resolveIngestMaxRps } from "../../lib/svm/ingest-config.js";
-import { mapGetBlockResultToFetchedTransactions } from "../../lib/svm/rpc-block-transactions.js";
-import type { GetBlockWireResult } from "../../lib/svm/rpc-block-transactions.js";
-import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../../lib/svm/rpc-max-supported-transaction-version.js";
+import { resolveIngestMaxRps } from "../lib/svm/ingest-config.js";
+import { mapGetBlockResultToFetchedTransactions } from "../lib/svm/rpc-block-transactions.js";
+import type { GetBlockWireResult } from "../lib/svm/rpc-block-transactions.js";
+import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../lib/svm/rpc-max-supported-transaction-version.js";
 import {
   postSolanaJsonRpc,
   type SolanaJsonRpcPost,
-} from "../../lib/svm/solana-json-rpc.js";
+} from "../lib/svm/solana-json-rpc.js";
 
 export type FetchedBlock = {
   slot: number;

@@ -10,7 +10,7 @@ import type {
   BootstrapCatchupState,
   CatchupIncident,
 } from "../lib/svm/ingest-refusal.js";
-import type { SvmRawWriter } from "../src/lib/svm-raw-writer.js";
+import type { SvmRawWriter } from "../svm-ingest/svm-raw-writer.js";
 
 export function createMemorySvmRawWriter(): SvmRawWriter & {
   payloads: StructuredPayloadDraft[];

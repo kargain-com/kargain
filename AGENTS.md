@@ -57,7 +57,7 @@ Executable registry: [`lib/architecture/chokepoints.ts`](lib/architecture/chokep
 | Amounts / explorer URLs | [`lib/web3/native-amount.ts`](lib/web3/native-amount.ts) · [`lib/web3/network-explorer.ts`](lib/web3/network-explorer.ts) |
 | Passport presence / origin | [`lib/passport/presence.ts`](lib/passport/presence.ts) · [`lib/passport/passport-holder.ts`](lib/passport/passport-holder.ts) |
 | Ponder reads | [`lib/web3/ponder-tagged-read.ts`](lib/web3/ponder-tagged-read.ts) |
-| SVM ingest | [`src/lib/svm-raw-writer.ts`](src/lib/svm-raw-writer.ts) |
+| SVM ingest | [`svm-ingest/svm-raw-writer.ts`](svm-ingest/svm-raw-writer.ts) |
 | Custody fold | [`lib/custody/fold.ts`](lib/custody/fold.ts) |
 | Storage | [`lib/storage/irys-deposit.ts`](lib/storage/irys-deposit.ts) |
 | Messaging | [`lib/messaging/session-registry.ts`](lib/messaging/session-registry.ts) |

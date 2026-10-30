@@ -40,7 +40,7 @@ Historical: Nuclear #4 hub **44957457** / Eth **11404204** — superseded by Nuc
 
 1. Cut over `COMMERCIAL_ACTIVE` + SPEC I.9 to Nuclear #7 (`indexFromBlock` **46119704** / **11591966**) — **done**.
 2. Full `ponder-reindex.sql` dual-chain; gateway start blocks from `COMMERCIAL_ACTIVE[chainId].blocks.bridgeGateway`.
-3. Apply empty [`projection-schema.sql`](../../src/svm-ingest/db/projection-schema.sql) so UNION HTTP had an empty SVM arm before S9-B.
+3. Apply empty [`projection-schema.sql`](../../svm-ingest/db/projection-schema.sql) so UNION HTTP had an empty SVM arm before S9-B.
 4. Smoke Ponder `/ready` then `GET /read-path-ready`.
 5. Smoke fold-at-read via [`src/lib/ponder-passport-custody.ts`](../../src/lib/ponder-passport-custody.ts).
 6. *(Historical)* `svm-ingest` stayed down until S9-B — **superseded**.
@@ -112,7 +112,7 @@ Default `SVM_INGEST_CATCHUP_MAX_LAG_SLOTS=216000` (~24h at ~400ms/slot). After b
 
 ### Schema bootstrap
 
-On start, `svm-ingest` runs [`src/svm-ingest/db/schema.sql`](../../src/svm-ingest/db/schema.sql) and [`src/svm-ingest/db/projection-schema.sql`](../../src/svm-ingest/db/projection-schema.sql), then **asserts** the live `metadata_snapshot` form: CHECK `metadata_snapshot_digest_status_ck` and partial unique index `metadata_snapshot_captured_uri_digest_uidx` must exist. `CREATE TABLE IF NOT EXISTS` does not reshape a table created before that form — bootstrap refuses by name and tells you to drop `kargain_svm_raw.metadata_snapshot` (or schema `kargain_svm_raw`) on that database, then restart. Same Postgres instance as Ponder; separate schema names.
+On start, `svm-ingest` runs [`svm-ingest/db/schema.sql`](../../svm-ingest/db/schema.sql) and [`svm-ingest/db/projection-schema.sql`](../../svm-ingest/db/projection-schema.sql), then **asserts** the live `metadata_snapshot` form: CHECK `metadata_snapshot_digest_status_ck` and partial unique index `metadata_snapshot_captured_uri_digest_uidx` must exist. `CREATE TABLE IF NOT EXISTS` does not reshape a table created before that form — bootstrap refuses by name and tells you to drop `kargain_svm_raw.metadata_snapshot` (or schema `kargain_svm_raw`) on that database, then restart. Same Postgres instance as Ponder; separate schema names.
 
 ### S9-B enable / rollback
 
@@ -195,7 +195,7 @@ Rules:
 2. **Executable digest alone gates recreate.** If it matches `/opt/kargain/.ponder-deploy-fingerprints`, the job prints that executable inputs are unchanged and **leaves the running service alone** (no build / no `up`).
 3. **Identity digest never suppresses recreate.** When it differs from the stored value, the job prints **before** rebuild that a reindex may be required. The founder still runs `ponder-reindex.sql` from this runbook — CI does not wipe.
 4. **`package.json` `scripts.test:*` edits do not change the executable digest** (runtime slice only). Path triggers may still fire the workflow; the fingerprint decides whether production restarts.
-5. **Image pollution residual:** `Dockerfile.ponder` still `COPY . .`, so Ponder’s glob can hash `src/svm-ingest/**` inside the image. Our identity digest **excludes** those paths and the two ingest writers. Do not remove them from the image in a casual Dockerfile edit — that would change live `build_id` and force a wipe. Treat image narrowing as a separate unit.
+5. **Image copy residual:** `Dockerfile.ponder` still `COPY . .`, so `svm-ingest/` is present in the image tree, but it sits **outside** Ponder’s indexing dir (`src/`) and is not hashed or executed for `build_id`. Narrowing the Ponder image copy list remains a separate unit.
 
 First deploy after this unit lands: expect either skip-recreate (if the running image’s executable set already matches) or rebuild+probe **without** an identity “reindex may be required” warning unless bake inputs changed. The pending commits ahead of `origin/master` (test-suite membership + svm-ingest loop + CI gates) do **not** change schema / addresses / start blocks — **no reindex expected** for that push alone.
 
@@ -229,7 +229,7 @@ First deploy after this unit lands: expect either skip-recreate (if the running 
 
 Examples that **do not** require reindex:
 
-- **`src/svm-ingest/**` / `lib/svm/**` / `Dockerfile.svm-ingest` only** — separate compose service; CI [`.github/workflows/deploy-svm-ingest.yml`](../../.github/workflows/deploy-svm-ingest.yml) runs `docker compose build svm-ingest && docker compose up -d --force-recreate svm-ingest` and **never** builds or restarts Ponder. Manual: same compose commands. [`.github/workflows/deploy-ponder.yml`](../../.github/workflows/deploy-ponder.yml) must **not** list those paths (omit by design). A needless Ponder rebuild can still exit with `MigrationError` if the baked image’s contract `build_id` (addresses / start blocks from `COMMERCIAL_ACTIVE`) no longer matches the DB — that is not an SVM-ingest signal to wipe.
+- **`svm-ingest/**` / `lib/svm/**` / `Dockerfile.svm-ingest` only** — separate compose service; CI [`.github/workflows/deploy-svm-ingest.yml`](../../.github/workflows/deploy-svm-ingest.yml) runs `docker compose build svm-ingest && docker compose up -d --force-recreate svm-ingest` and **never** builds or restarts Ponder. Manual: same compose commands. [`.github/workflows/deploy-ponder.yml`](../../.github/workflows/deploy-ponder.yml) must **not** list those paths (omit by design). A needless Ponder rebuild can still exit with `MigrationError` if the baked image’s contract `build_id` (addresses / start blocks from `COMMERCIAL_ACTIVE`) no longer matches the DB — that is not an SVM-ingest signal to wipe.
 - **VPS deploys wait on trunk CI.** Both deploy workflows `needs: gates` ([`ci.yml`](../../.github/workflows/ci.yml): compile → typecheck → lint → `test:ci` → build). Full live-manifest match (`commercial-active-manifest-policy`) stays on the deploy machine via `pnpm test:verify`; CI runs the derived partition without that suite. **Deploy Ponder** additionally fingerprints identity vs executable and probes reserved `/ready` after recreate — a green job that skipped recreate left the prior container running; a green job that recreated proved the process answered (200 or 503), not that backfill finished.
 - Phase 5 polish UI (PR5a–d): typed record labels, attestation form, browse chain-status sample (`getPassportStatus` via wagmi on the client)
 - Irys upload hardening (June 2026): client-side only — no Ponder schema change

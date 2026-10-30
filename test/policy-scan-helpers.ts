@@ -377,7 +377,7 @@ export function traceStaticReachabilityToModules(
     bannedModules.map((p) => p.replace(/\\/g, "/").replace(/\.ts$/, "")),
   );
   const graph = buildStaticImportGraph(
-    options?.graphRoots ?? ["src", "lib", "scripts"],
+    options?.graphRoots ?? ["src", "lib", "scripts", "svm-ingest"],
     rootDir,
   );
   const hits: ProductSourceHit[] = [];
@@ -392,7 +392,7 @@ export function traceStaticReachabilityToModules(
   }
 
   for (const file of walkTsFilesFromRoots(
-    options?.startRoots ?? ["src/svm-ingest"],
+    options?.startRoots ?? ["svm-ingest"],
     rootDir,
   )) {
     const startRel = relative(rootDir, file).replace(/\\/g, "/");

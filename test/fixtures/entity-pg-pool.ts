@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS kargain.passport (
 
 function svmProjectionPassportDdl(): string {
   const sql = fs.readFileSync(
-    path.join(ROOT, "src/svm-ingest/db/projection-schema.sql"),
+    path.join(ROOT, "svm-ingest/db/projection-schema.sql"),
     "utf8",
   );
   const match = sql.match(

@@ -40,12 +40,7 @@ export type PonderIdentityPayload = {
 };
 
 /** Indexing paths Ponder glob-hashes that we deliberately exclude from our identity. */
-export const PONDER_IDENTITY_INDEXING_EXCLUDES = [
-  "src/api/",
-  "src/svm-ingest/",
-  "src/lib/svm-raw-writer.ts",
-  "src/lib/svm-projection-writer.ts",
-] as const;
+export const PONDER_IDENTITY_INDEXING_EXCLUDES = ["src/api/"] as const;
 
 export const PONDER_ABIS_GENERATED_REL = "lib/contracts/abis.generated.ts";
 

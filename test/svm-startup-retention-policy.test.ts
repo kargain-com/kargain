@@ -94,7 +94,7 @@ describe("svm-startup-retention-policy", () => {
 
   it("ingest-loop and upgrade-in-place consume the owner (no parallel predicate)", () => {
     const ingest = readFileSync(
-      join(ROOT, "src/svm-ingest/ingest-loop.ts"),
+      join(ROOT, "svm-ingest/ingest-loop.ts"),
       "utf8",
     );
     const upgrade = readFileSync(
