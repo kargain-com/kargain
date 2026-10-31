@@ -35,6 +35,7 @@ import {
   SVM_PRODUCT_RPC_TIMEOUT_MS,
 } from "../lib/web3/svm-rpc.ts";
 import {
+  SVM_BINARY_IDENTITY_RPC_ABSENT_LINE,
   SVM_BINARY_IDENTITY_RPC_TIMEOUT_MS,
   SVM_BINARY_IDENTITY_RPC_UNREACHABLE_LINE,
 } from "../scripts/lib/assert-svm-binary-identity.ts";
@@ -167,6 +168,10 @@ describe("named class bounds from measurement", () => {
     assert.equal(
       SVM_BINARY_IDENTITY_RPC_UNREACHABLE_LINE,
       "svm_binary_identity_rpc_unreachable",
+    );
+    assert.equal(
+      SVM_BINARY_IDENTITY_RPC_ABSENT_LINE,
+      "svm_binary_identity_rpc_absent",
     );
   });
 });
@@ -379,6 +384,42 @@ describe("product read hang → named cause", () => {
 });
 
 describe("CLI binary identity hang → named non-zero line", () => {
+  it("unset SOLANA_RPC_URL → svm_binary_identity_rpc_absent (exit 1)", async () => {
+    // Empty string: dotenv will not override (default), owner treats empty as absent.
+    const child = spawn(
+      process.execPath,
+      ["--import", "tsx", "scripts/assert-svm-binary-identity.ts", "--eid=40168"],
+      {
+        cwd: ROOT,
+        env: {
+          ...process.env,
+          SOLANA_RPC_URL: "",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    const stderr: Buffer[] = [];
+    const stdout: Buffer[] = [];
+    child.stderr.on("data", (c: Buffer) => stderr.push(c));
+    child.stdout.on("data", (c: Buffer) => stdout.push(c));
+    const code = await new Promise<number | null>((resolve) => {
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve(null);
+      }, 15_000);
+      child.on("exit", (c) => {
+        clearTimeout(timer);
+        resolve(c);
+      });
+    });
+    assert.equal(code, 1);
+    const errText = Buffer.concat(stderr).toString("utf8");
+    const outText = Buffer.concat(stdout).toString("utf8");
+    assert.match(errText, /svm_binary_identity_rpc_absent/);
+    assert.doesNotMatch(errText, /https?:\/\//);
+    assert.doesNotMatch(outText, /https?:\/\//);
+  });
+
   it("maps unreachable to svm_binary_identity_rpc_unreachable (exit 1)", async (t) => {
     try {
       await access(path.join(ROOT, "deployments/svm-40168.json"));

@@ -13,6 +13,7 @@ import { config as loadEnv } from "dotenv";
 
 import { namespaceFromLayerZeroEid } from "../lib/web3/kargain-namespace.js";
 import { requireSvmCommercialActive } from "../lib/web3/commercial-active.js";
+import { resolveIngestSolanaRpcUrl } from "../lib/svm/ingest-config.js";
 import {
   isSolanaRpcUnreachableError,
   postSolanaJsonRpc,
@@ -23,6 +24,7 @@ import {
   formatSvmBinaryIdentitySuccessLines,
   programDataAddressFromProgramAccount,
   sliceElfFromProgramDataAccount,
+  SVM_BINARY_IDENTITY_RPC_ABSENT_LINE,
   SVM_BINARY_IDENTITY_RPC_TIMEOUT_MS,
   SVM_BINARY_IDENTITY_RPC_UNREACHABLE_LINE,
 } from "./lib/assert-svm-binary-identity.js";
@@ -36,7 +38,8 @@ loadEnv({ path: ".env.local" });
 loadEnv();
 
 const DEFAULT_429_MAX_ATTEMPTS = 6;
-const DEFAULT_RPC = "https://api.devnet.solana.com";
+/** Endpoint role printed to the operator — never the URL (may carry a key). */
+const TOOLING_RPC_ROLE = "tooling_rpc";
 
 type AccountInfoResult = {
   value: {
@@ -129,8 +132,11 @@ async function fetchProgramDataElf(
 
 async function main() {
   const eid = parseEid(process.argv.slice(2));
-  const rpcEnvPresent = Boolean(process.env.SOLANA_RPC_URL?.trim());
-  const rpc = process.env.SOLANA_RPC_URL?.trim() || DEFAULT_RPC;
+  const rpc = resolveIngestSolanaRpcUrl();
+  if (rpc == null) {
+    console.error(SVM_BINARY_IDENTITY_RPC_ABSENT_LINE);
+    process.exit(1);
+  }
 
   let evidence;
   try {
@@ -145,7 +151,7 @@ async function main() {
 
   console.log(
     `SVM binary identity — eid ${eid} namespace=${namespace} ` +
-      `rpc=${rpc} SOLANA_RPC_URL=${rpcEnvPresent ? "present" : "absent→public-devnet"} ` +
+      `endpoint_role=${TOOLING_RPC_ROLE} ` +
       `evidence=${svmDevnetEvidencePath(eid)} ` +
       `(JSON-RPC getAccountInfo only; no keypair)`,
   );

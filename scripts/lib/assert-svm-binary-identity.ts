@@ -33,6 +33,10 @@ export const SVM_BINARY_IDENTITY_RPC_TIMEOUT_MS = 3_000;
 export const SVM_BINARY_IDENTITY_RPC_UNREACHABLE_LINE =
   "svm_binary_identity_rpc_unreachable";
 
+/** Named refusal line when tooling RPC (`SOLANA_RPC_URL`) is unset. */
+export const SVM_BINARY_IDENTITY_RPC_ABSENT_LINE =
+  "svm_binary_identity_rpc_absent";
+
 /** ProgramData metadata size when upgrade authority Option is Some (loader-v3). */
 export const PROGRAMDATA_HEADER_WITH_AUTHORITY = 45;
 /** ProgramData metadata size when upgrade authority Option is None. */
