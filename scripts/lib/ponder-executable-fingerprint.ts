@@ -1,23 +1,20 @@
 /**
  * Sole owner of the Ponder *executable* fingerprint — what the container must
- * run (import graph from process entries + image/runtime deps). Answers:
- * "must we recreate the production container?"
+ * run. The import graph starts at ponder.config.ts, ponder.schema.ts, every
+ * path from the indexing-glob owner, and the API entry src/api/index.ts, then
+ * follows static imports. Image and runtime deps are hashed with that graph.
+ * Answers: "must we recreate the production container?"
  *
  * Never derived from the identity fingerprint. Identity warns about reindex;
- * executable alone gates restart.
+ * executable alone gates restart. No second walk of src/ — indexing files come
+ * from listPonderIndexingGlob.
  */
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 
+import { listPonderIndexingGlob } from "./ponder-indexing-glob.js";
 import { extractStaticImportSpecifiers } from "./static-import-specifiers.js";
-
-export const PONDER_EXECUTABLE_ENTRIES = [
-  "ponder.config.ts",
-  "ponder.schema.ts",
-  "src/index.ts",
-  "src/api/index.ts",
-] as const;
 
 export const PONDER_EXECUTABLE_ARTIFACTS = [
   "Dockerfile.ponder",
@@ -163,11 +160,31 @@ function tryResolveFile(
   return null;
 }
 
+/** Config, schema, and the API entry sit outside the indexing glob. */
+const PONDER_EXECUTABLE_FIXED_ENTRIES = [
+  "ponder.config.ts",
+  "ponder.schema.ts",
+  "src/api/index.ts",
+] as const;
+
+function ponderExecutableEntries(root: string): string[] {
+  const indexing = listPonderIndexingGlob(root);
+  for (const rel of PONDER_EXECUTABLE_FIXED_ENTRIES) {
+    if (!isReadableFile(join(root, rel))) {
+      throw new Error(`Ponder executable entry resolves to no file: ${rel}`);
+    }
+  }
+  return [
+    ...new Set<string>([...PONDER_EXECUTABLE_FIXED_ENTRIES, ...indexing]),
+  ].sort();
+}
+
 /**
  * Walk static imports from process entries.
+ * Default entries are the indexing glob plus config, schema, and the API entry.
  * Injectable fileContents map lets tests plant a graph without touching live src.
- * Relative and `@/` imports that resolve to no file throw (fail closed).
- * Bare package specifiers stay outside the graph.
+ * An entry that resolves to no file throws. Relative and `@/` imports that
+ * resolve to no file throw. Bare package specifiers stay outside the graph.
  */
 export function collectPonderExecutableGraphFiles(
   root: string,
@@ -177,22 +194,40 @@ export function collectPonderExecutableGraphFiles(
     fileContents?: Map<string, string>;
   },
 ): string[] {
-  const entries = opts?.entries ?? PONDER_EXECUTABLE_ENTRIES;
+  const entries = (opts?.entries ?? ponderExecutableEntries(root)).map((rel) =>
+    rel.replace(/\\/g, "/"),
+  );
+  if (entries.length === 0) {
+    throw new Error("Ponder executable entries are empty");
+  }
+  for (const rel of entries) {
+    const inPlant =
+      opts?.fileContents !== undefined && opts.fileContents.has(rel);
+    const onDisk = opts?.fileContents === undefined && isReadableFile(join(root, rel));
+    if (!inPlant && !onDisk) {
+      throw new Error(`Ponder executable entry resolves to no file: ${rel}`);
+    }
+  }
   const visited = new Set<string>();
   const queue = [...entries];
 
   while (queue.length > 0) {
-    const rel = queue.shift()!.replace(/\\/g, "/");
+    const rel = queue.shift()!;
     if (visited.has(rel)) continue;
     visited.add(rel);
 
-    let source: string | undefined;
+    let source: string;
     if (opts?.fileContents) {
-      source = opts.fileContents.get(rel);
-      if (source === undefined) continue;
+      const planted = opts.fileContents.get(rel);
+      if (planted === undefined) {
+        throw new Error(`Ponder executable entry resolves to no file: ${rel}`);
+      }
+      source = planted;
     } else {
       const abs = join(root, rel);
-      if (!existsSync(abs)) continue;
+      if (!existsSync(abs)) {
+        throw new Error(`Ponder executable entry resolves to no file: ${rel}`);
+      }
       source = readFileSync(abs, "utf8");
     }
 

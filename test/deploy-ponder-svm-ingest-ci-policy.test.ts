@@ -20,6 +20,19 @@ import {
   missingCiYamlGateSteps,
   parseVerifyMembers,
 } from "../lib/architecture/ci-verify-partition.ts";
+import {
+  PONDER_EXECUTABLE_ARTIFACTS,
+  collectPonderExecutableGraphFiles,
+} from "../scripts/lib/ponder-executable-fingerprint.ts";
+import {
+  parseWorkflowPushPaths,
+  uncoveredWorkflowInputs,
+  workflowPathsCover,
+} from "../scripts/lib/workflow-push-paths.ts";
+import {
+  collectStaticImportClosure,
+  resolveSvmIngestStartEntry,
+} from "./policy-scan-helpers.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const WORKFLOWS_DIR = join(ROOT, ".github/workflows");
@@ -67,10 +80,24 @@ function lacksTopLevelContentsRead(yaml: string): boolean {
   return !TOP_LEVEL_CONTENTS_READ.test(yaml);
 }
 
-function pathsBlock(yaml: string): string {
-  const m = yaml.match(/paths:\n((?: {6}- .+\n)+)/);
-  assert.ok(m, "workflow must declare on.push.paths");
-  return m[1]!;
+function ponderDeployInputs(root: string): string[] {
+  const graph = collectPonderExecutableGraphFiles(root);
+  return [
+    ...new Set([...graph, ...PONDER_EXECUTABLE_ARTIFACTS, "package.json"]),
+  ].sort();
+}
+
+function svmIngestDeployInputs(root: string): string[] {
+  const entry = resolveSvmIngestStartEntry(root);
+  const closure = collectStaticImportClosure(entry, { rootDir: root });
+  return [
+    ...new Set([
+      ...closure,
+      "Dockerfile.svm-ingest",
+      "package.json",
+      "pnpm-lock.yaml",
+    ]),
+  ].sort();
 }
 
 /** Deploy path must poll reserved /ready via the readiness-probe owner. */
@@ -652,18 +679,26 @@ function workflowsUsingSetupNode(): string[] {
 }
 
 describe("deploy-ponder-svm-ingest-ci-policy", () => {
-  it("ponder workflow omits svm-ingest paths and Dockerfile.svm-ingest", () => {
-    const yaml = readFileSync(PONDER_WF, "utf8");
-    const paths = pathsBlock(yaml);
-    assert.doesNotMatch(paths, /src\/svm-ingest/);
-    assert.doesNotMatch(paths, /Dockerfile\.svm-ingest/);
-    assert.doesNotMatch(paths, /lib\/svm/);
-    assert.match(paths, /scripts\/lib\/ponder-executable-fingerprint\.ts/);
-    assert.match(paths, /scripts\/lib\/static-import-specifiers\.ts/);
-    assert.match(paths, /lib\/passport\/trust-fields\.ts/);
-    assert.match(yaml, /docker compose build ponder/);
-    assert.match(yaml, /docker compose up -d ponder/);
-    assert.doesNotMatch(yaml, /build svm-ingest/);
+  it("ponder workflow covers executable inputs and omits svm-ingest", () => {
+    const yamlText = readFileSync(PONDER_WF, "utf8");
+    const patterns = parseWorkflowPushPaths(yamlText);
+    assert.equal(
+      patterns.some((p) => p.includes("svm-ingest")),
+      false,
+    );
+    assert.equal(patterns.includes("Dockerfile.svm-ingest"), false);
+    assert.equal(workflowPathsCover(patterns, "svm-ingest/main.ts"), false);
+    assert.equal(
+      workflowPathsCover(patterns, "Dockerfile.svm-ingest"),
+      false,
+    );
+    assert.deepEqual(
+      uncoveredWorkflowInputs(patterns, ponderDeployInputs(ROOT)),
+      [],
+    );
+    assert.match(yamlText, /docker compose build ponder/);
+    assert.match(yamlText, /docker compose up -d ponder/);
+    assert.doesNotMatch(yamlText, /build svm-ingest/);
   });
 
   it("ponder deploy verifies readiness and skips recreate on unchanged executable", () => {
@@ -1045,22 +1080,32 @@ jobs:
   });
 
   it("svm-ingest workflow exists and never builds or restarts ponder", () => {
-    const yaml = readFileSync(SVM_WF, "utf8");
-    const paths = pathsBlock(yaml);
-    assert.match(paths, /svm-ingest\/\*\*/);
-    assert.match(paths, /lib\/svm\/\*\*/);
-    assert.doesNotMatch(paths, /src\/svm-ingest/);
-    assert.doesNotMatch(paths, /src\/lib\/svm-(?:raw|projection)-writer/);
-    assert.match(paths, /Dockerfile\.svm-ingest/);
-    assert.match(yaml, /workflow_dispatch:/);
-    assert.match(yaml, /docker compose build svm-ingest/);
+    const yamlText = readFileSync(SVM_WF, "utf8");
+    const patterns = parseWorkflowPushPaths(yamlText);
+    assert.ok(patterns.includes("svm-ingest/**"));
+    assert.ok(patterns.includes("lib/svm/**"));
+    assert.equal(
+      patterns.some((p) => p.includes("src/svm-ingest")),
+      false,
+    );
+    assert.equal(
+      patterns.some((p) => /src\/lib\/svm-(?:raw|projection)-writer/.test(p)),
+      false,
+    );
+    assert.ok(patterns.includes("Dockerfile.svm-ingest"));
+    assert.deepEqual(
+      uncoveredWorkflowInputs(patterns, svmIngestDeployInputs(ROOT)),
+      [],
+    );
+    assert.match(yamlText, /workflow_dispatch:/);
+    assert.match(yamlText, /docker compose build svm-ingest/);
     assert.match(
-      yaml,
+      yamlText,
       /docker compose up -d --force-recreate svm-ingest/,
     );
-    assert.doesNotMatch(yaml, /build ponder/);
-    assert.doesNotMatch(yaml, /up -d ponder/);
-    assert.doesNotMatch(yaml, /up -d --force-recreate ponder/);
+    assert.doesNotMatch(yamlText, /build ponder/);
+    assert.doesNotMatch(yamlText, /up -d ponder/);
+    assert.doesNotMatch(yamlText, /up -d --force-recreate ponder/);
   });
 
   it("Dockerfiles pin corepack pnpm@10.6.5 matching packageManager", () => {
@@ -1612,5 +1657,109 @@ jobs:
     );
     const live = readFileSync(CI_WF, "utf8");
     assert.equal(lacksTopLevelContentsRead(live), false);
+  });
+});
+
+describe("workflow push path coverage", () => {
+  it("star stops at a slash and double-star crosses it", () => {
+    assert.equal(workflowPathsCover(["*.js"], "app.js"), true);
+    assert.equal(workflowPathsCover(["*.js"], "src/app.js"), false);
+    assert.equal(workflowPathsCover(["**.js"], "src/js/app.js"), true);
+    assert.equal(workflowPathsCover(["docs/*"], "docs/README.md"), true);
+    assert.equal(workflowPathsCover(["docs/*"], "docs/mona/octocat.txt"), false);
+    assert.equal(workflowPathsCover(["docs/**"], "docs/mona/octocat.txt"), true);
+    assert.equal(
+      workflowPathsCover(["docs/**/*.md"], "docs/README.md"),
+      true,
+    );
+    assert.equal(
+      workflowPathsCover(["docs/**/*.md"], "docs/a/markdown/file.md"),
+      true,
+    );
+    assert.equal(workflowPathsCover(["**/README.md"], "README.md"), true);
+    assert.equal(workflowPathsCover(["**/README.md"], "js/README.md"), true);
+    assert.equal(workflowPathsCover(["*.jsx?"], "page.js"), true);
+    assert.equal(workflowPathsCover(["*.jsx?"], "page.jsx"), true);
+    assert.equal(workflowPathsCover(["*.jsx?"], "dir/page.jsx"), false);
+    assert.equal(workflowPathsCover(["v[12].[0-9]+.[0-9]+"], "v1.10.1"), true);
+    assert.equal(workflowPathsCover(["v[12].[0-9]+.[0-9]+"], "v2.0.0"), true);
+    assert.equal(workflowPathsCover(["v[12].[0-9]+.[0-9]+"], "v3.0.0"), false);
+  });
+
+  it("a later negation excludes and a later positive pattern includes again", () => {
+    const excluded = ["*.md", "!README.md"];
+    assert.equal(workflowPathsCover(excluded, "hello.md"), true);
+    assert.equal(workflowPathsCover(excluded, "README.md"), false);
+    assert.equal(workflowPathsCover(excluded, "docs/hello.md"), false);
+    const reincluded = ["*.md", "!README.md", "README*"];
+    assert.equal(workflowPathsCover(reincluded, "README.md"), true);
+    assert.equal(workflowPathsCover(reincluded, "README.doc"), true);
+  });
+
+  it("empty or unparsable paths and an empty input set throw", () => {
+    assert.throws(
+      () => parseWorkflowPushPaths("name: x\n"),
+      /workflow paths block is unparsable/,
+    );
+    assert.throws(
+      () => parseWorkflowPushPaths("on: [\n"),
+      /workflow paths block is unparsable/,
+    );
+    assert.throws(
+      () => parseWorkflowPushPaths("on:\n  push:\n    paths:\n"),
+      /workflow paths block is unparsable/,
+    );
+    assert.throws(
+      () => parseWorkflowPushPaths("on:\n  push:\n    paths: []\n"),
+      /workflow paths block is empty/,
+    );
+    assert.throws(
+      () => uncoveredWorkflowInputs(["src/**"], []),
+      /deploy input set is empty/,
+    );
+    assert.throws(
+      () => uncoveredWorkflowInputs([], ["src/index.ts"]),
+      /workflow paths block is empty/,
+    );
+    assert.throws(
+      () => workflowPathsCover(["*?"], "a"),
+      /unparsable workflow path pattern/,
+    );
+  });
+
+  it("planted lib module imported by src/index.ts is uncovered when paths omit it", () => {
+    const files = new Map<string, string>([
+      ["ponder.config.ts", "export default {};\n"],
+      ["ponder.schema.ts", "export {};\n"],
+      ["src/api/index.ts", "export default {};\n"],
+      ["src/index.ts", 'import "@/lib/planted.ts";\nexport {};\n'],
+      ["lib/planted.ts", "export const planted = 1;\n"],
+    ]);
+    const inputs = [
+      ...collectPonderExecutableGraphFiles(ROOT, {
+        entries: [
+          "ponder.config.ts",
+          "ponder.schema.ts",
+          "src/index.ts",
+          "src/api/index.ts",
+        ],
+        fileContents: files,
+      }),
+      "package.json",
+    ];
+    assert.ok(inputs.includes("lib/planted.ts"));
+    const narrow = [
+      "src/**",
+      "ponder.config.ts",
+      "ponder.schema.ts",
+      "package.json",
+    ];
+    assert.deepEqual(uncoveredWorkflowInputs(narrow, inputs), [
+      "lib/planted.ts",
+    ]);
+    assert.deepEqual(
+      uncoveredWorkflowInputs([...narrow, "lib/**"], inputs),
+      [],
+    );
   });
 });

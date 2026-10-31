@@ -4,38 +4,21 @@ on:
   workflow_dispatch:
   push:
     branches: [master]
-    # Do not use a bare `src/**` — that rebuilds Ponder on every svm-ingest push.
-    # paths + paths-ignore cannot both be set on the same event; exclude by omission.
-    # svm-ingest / Dockerfile.svm-ingest / lib/svm deploy via deploy-svm-ingest.yml only.
-    # Fingerprints (not this list) decide whether a rebuild recreates the container.
+    # paths and paths-ignore cannot both be set on the same event; exclude by omission.
+    # svm-ingest/** and Dockerfile.svm-ingest are not Ponder inputs.
+    # lib/svm files the executable graph reaches are Ponder inputs.
+    # Directory patterns are enough: the executable digest decides recreate.
     paths:
       - "ponder.config.ts"
       - "ponder.schema.ts"
-      - "src/api/**"
-      - "src/index.ts"
-      - "src/bridge-handlers.ts"
-      - "src/commerce-handlers.ts"
-      - "src/lib/**"
-      - "lib/passport/trust-fields.ts"
-      - "lib/contracts/abis.generated.ts"
-      - "lib/web3/commercial-active.ts"
-      - "lib/web3/sepolia-addresses.ts"
-      - "lib/web3/deployment-addresses.ts"
+      - "src/**"
+      - "lib/**"
+      - "scripts/**"
       - "Dockerfile.ponder"
       - "docker-compose.yml"
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/deploy-ponder.yml"
-      - "scripts/lib/ponder-identity-fingerprint.ts"
-      - "scripts/lib/ponder-executable-fingerprint.ts"
-      - "scripts/lib/static-import-specifiers.ts"
-      - "scripts/lib/ponder-readiness-probe.ts"
-      - "scripts/ponder-deploy-fingerprints.ts"
-      - "scripts/ponder-ready-probe.ts"
-      - "scripts/lib/ponder-env.ts"
-      - "scripts/lib/ponder-rpc-probe.ts"
-      - "scripts/ponder-deploy-preflight.ts"
-      - "scripts/lib/deploy-preflight-output.ts"
 
 # Least privilege for GITHUB_TOKEN. Deploy uses repository secrets over SSH;
 # secrets access is not controlled by this block. No job needs write.

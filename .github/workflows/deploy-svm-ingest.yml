@@ -5,10 +5,35 @@ on:
   push:
     branches: [master]
     # Never rebuild Ponder from this workflow. Ponder stays on deploy-ponder.yml.
+    # Closure files outside svm-ingest/** and lib/svm/** are listed exactly,
+    # plus package.json and pnpm-lock.yaml. Every run recreates.
     paths:
       - "svm-ingest/**"
       - "lib/svm/**"
       - "Dockerfile.svm-ingest"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "lib/custody/normalized-event.ts"
+      - "lib/custody/origin.ts"
+      - "lib/passport/index-passport-metadata.ts"
+      - "lib/passport/metadata-constants.ts"
+      - "lib/passport/metadata-form.ts"
+      - "lib/passport/metadata-schema.ts"
+      - "lib/passport/parse-metadata-json.ts"
+      - "lib/passport/passport-entity-origin.ts"
+      - "lib/passport/trust-fields.ts"
+      - "lib/storage/ar-gateway.ts"
+      - "lib/web3/active-account.ts"
+      - "lib/web3/chain-context.ts"
+      - "lib/web3/chain-selector-state.ts"
+      - "lib/web3/commercial-active.ts"
+      - "lib/web3/commercial-native-unit.ts"
+      - "lib/web3/explorer-origin.ts"
+      - "lib/web3/kargain-namespace.ts"
+      - "lib/web3/protocol-address.ts"
+      - "lib/web3/supported-chains.ts"
+      - "lib/web3/wallet-standard-chain.ts"
+      - "svm/crates/kargain-events/events.manifest.json"
       - ".github/workflows/deploy-svm-ingest.yml"
       - "scripts/lib/svm-ingest-readiness-probe.ts"
       - "scripts/svm-ingest-ready-probe.ts"

@@ -2,6 +2,8 @@
  * Fail instruments for ponder-executable-fingerprint.
  */
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { describe, it } from "node:test";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +16,13 @@ import {
 } from "../scripts/lib/ponder-executable-fingerprint.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+const PLANTED_ENTRIES = [
+  "ponder.config.ts",
+  "ponder.schema.ts",
+  "src/index.ts",
+  "src/api/index.ts",
+] as const;
 
 function plantedGraph(apiExtra?: string): Map<string, string> {
   const files = new Map<string, string>();
@@ -59,6 +68,7 @@ describe("ponder-executable-fingerprint", () => {
     );
     const d0 = digestPonderExecutablePayload(
       buildPonderExecutablePayload(ROOT, {
+        entries: PLANTED_ENTRIES,
         fileContents: baseFiles,
         artifactContents: ARTIFACTS,
         packageJson: PKG,
@@ -66,6 +76,7 @@ describe("ponder-executable-fingerprint", () => {
     );
     const d1 = digestPonderExecutablePayload(
       buildPonderExecutablePayload(ROOT, {
+        entries: PLANTED_ENTRIES,
         fileContents: changedFiles,
         artifactContents: ARTIFACTS,
         packageJson: PKG,
@@ -96,6 +107,7 @@ describe("ponder-executable-fingerprint", () => {
     };
     const d0 = digestPonderExecutablePayload(
       buildPonderExecutablePayload(ROOT, {
+        entries: PLANTED_ENTRIES,
         fileContents: files,
         artifactContents: ARTIFACTS,
         packageJson: pkgA,
@@ -103,6 +115,7 @@ describe("ponder-executable-fingerprint", () => {
     );
     const d1 = digestPonderExecutablePayload(
       buildPonderExecutablePayload(ROOT, {
+        entries: PLANTED_ENTRIES,
         fileContents: files,
         artifactContents: ARTIFACTS,
         packageJson: pkgB,
@@ -124,6 +137,7 @@ describe("ponder-executable-fingerprint", () => {
   it("graph walk reaches src/api from entries", () => {
     const files = plantedGraph();
     const graph = collectPonderExecutableGraphFiles(ROOT, {
+      entries: PLANTED_ENTRIES,
       fileContents: files,
     });
     assert.ok(graph.includes("src/api/commerce-routes.ts"));
@@ -188,6 +202,89 @@ describe("ponder-executable-fingerprint", () => {
     assert.ok(
       graph.includes("lib/custody/fold.ts"),
       "live graph must include lib/custody/fold.ts (red on 66cdc6b)",
+    );
+  });
+
+  it("indexing glob file that nothing imports is in the graph and moves the digest", () => {
+    const plant = mkdtempSync(join(tmpdir(), "kargain-exec-orphan-"));
+    try {
+      mkdirSync(join(plant, "src/api"), { recursive: true });
+      writeFileSync(join(plant, "ponder.config.ts"), "export default {};\n");
+      writeFileSync(join(plant, "ponder.schema.ts"), "export const passport = {};\n");
+      writeFileSync(join(plant, "src/index.ts"), "export {};\n");
+      writeFileSync(join(plant, "src/api/index.ts"), "export default {};\n");
+      writeFileSync(join(plant, "src/orphan.ts"), "export const n = 1;\n");
+
+      const owned = collectPonderExecutableGraphFiles(plant);
+      assert.ok(owned.includes("src/orphan.ts"));
+
+      const former = collectPonderExecutableGraphFiles(plant, {
+        entries: PLANTED_ENTRIES,
+      });
+      assert.equal(former.includes("src/orphan.ts"), false);
+
+      const digestOf = () =>
+        digestPonderExecutablePayload(
+          buildPonderExecutablePayload(plant, {
+            artifactContents: ARTIFACTS,
+            packageJson: PKG,
+          }),
+        );
+      const before = digestOf();
+      writeFileSync(join(plant, "src/orphan.ts"), "export const n = 2;\n");
+      assert.notEqual(digestOf(), before);
+    } finally {
+      rmSync(plant, { recursive: true, force: true });
+    }
+  });
+
+  it("entry that resolves to no file throws", () => {
+    const plant = mkdtempSync(join(tmpdir(), "kargain-exec-missing-"));
+    try {
+      mkdirSync(join(plant, "src/api"), { recursive: true });
+      writeFileSync(join(plant, "ponder.schema.ts"), "export {};\n");
+      writeFileSync(join(plant, "src/index.ts"), "export {};\n");
+      writeFileSync(join(plant, "src/api/index.ts"), "export {};\n");
+      assert.throws(
+        () => collectPonderExecutableGraphFiles(plant),
+        /Ponder executable entry resolves to no file: ponder\.config\.ts/,
+      );
+    } finally {
+      rmSync(plant, { recursive: true, force: true });
+    }
+  });
+
+  it("planted entry missing from fileContents throws", () => {
+    assert.throws(
+      () =>
+        collectPonderExecutableGraphFiles(ROOT, {
+          entries: ["missing.ts"],
+          fileContents: new Map([["other.ts", "export {};\n"]]),
+        }),
+      /Ponder executable entry resolves to no file: missing\.ts/,
+    );
+  });
+
+  it("empty indexing glob throws", () => {
+    const plant = mkdtempSync(join(tmpdir(), "kargain-exec-empty-"));
+    try {
+      mkdirSync(join(plant, "src/api"), { recursive: true });
+      writeFileSync(join(plant, "ponder.config.ts"), "export default {};\n");
+      writeFileSync(join(plant, "ponder.schema.ts"), "export {};\n");
+      writeFileSync(join(plant, "src/api/only.ts"), "export {};\n");
+      assert.throws(
+        () => collectPonderExecutableGraphFiles(plant),
+        /Ponder indexing glob empty/,
+      );
+    } finally {
+      rmSync(plant, { recursive: true, force: true });
+    }
+  });
+
+  it("empty entry list throws", () => {
+    assert.throws(
+      () => collectPonderExecutableGraphFiles(ROOT, { entries: [] }),
+      /Ponder executable entries are empty/,
     );
   });
 });
