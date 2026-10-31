@@ -921,8 +921,8 @@ export async function runLiveFixedPrice(opts?: { rpc?: string }): Promise<{
     sources: cfgDecoded.value.encumbranceSources,
     rpcUrl: rpc,
     derivePda: deriveSvmPdaForProgram,
-    postRpc: async (url, method, params) => {
-      const out = await postSolanaJsonRpc(url, method, params);
+    postRpc: async (url, method, params, timeoutMs) => {
+      const out = await postSolanaJsonRpc(url, method, params, timeoutMs);
       if (method === "simulateTransaction") {
         maySimErr = (out as { value: { err: unknown } }).value.err;
       }

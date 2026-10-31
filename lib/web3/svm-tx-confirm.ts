@@ -8,6 +8,7 @@
  * `processed` as expired or landed.
  */
 
+import { isSolanaRpcUnreachableError } from "@/lib/svm/solana-json-rpc";
 import type { SvmCommercialActiveStack } from "@/lib/web3/commercial-active";
 import {
   failingProgramFromLogMessages,
@@ -141,8 +142,22 @@ function createSvmTxConfirmPortAtCommitment(
       const { signature, lastValidBlockHeight } = submission;
       const deadline = Date.now() + timeoutMs;
       while (Date.now() < deadline) {
-        const height = await opts.getBlockHeight();
-        const [row] = await opts.getSignatureStatuses([signature]);
+        let height: bigint;
+        let row: {
+          confirmationStatus?: string | null;
+          err?: unknown;
+          slot?: number | bigint | null;
+        } | null;
+        try {
+          height = await opts.getBlockHeight();
+          const statuses = await opts.getSignatureStatuses([signature]);
+          row = statuses[0] ?? null;
+        } catch (err) {
+          if (isSolanaRpcUnreachableError(err)) {
+            return { kind: "status_unknown", signature };
+          }
+          throw err;
+        }
         const status = row?.confirmationStatus ?? null;
 
         if (isSuccessStatus(status, opts.successCommitment)) {
@@ -152,7 +167,15 @@ function createSvmTxConfirmPortAtCommitment(
             continue;
           }
           if (row?.err != null) {
-            const logs = await opts.getTransactionLogMessages(signature);
+            let logs: readonly string[] | null;
+            try {
+              logs = await opts.getTransactionLogMessages(signature);
+            } catch (err) {
+              if (isSolanaRpcUnreachableError(err)) {
+                return { kind: "status_unknown", signature };
+              }
+              throw err;
+            }
             const failingProgram = failingProgramFromLogMessages(logs);
             const landed = parseAttributedSvmLandedInstructionErrorOnStack(
               row.err,

@@ -21,6 +21,7 @@ import {
 } from "../lib/svm/startup-retention.js";
 import type { SvmRawWriter } from "./svm-raw-writer.js";
 import type { ProjectionProjector } from "./projection-projector.js";
+import { isSolanaRpcUnreachableError } from "../lib/svm/solana-json-rpc.js";
 import {
   SvmIngestRpcBudgetExhaustedError,
   type FetchedBlock,
@@ -250,6 +251,16 @@ export function createIngestLoop(opts: IngestLoopOptions) {
         );
         return null;
       }
+      if (isSolanaRpcUnreachableError(err)) {
+        await recordIncident(
+          "rpc_unreachable",
+          {
+            name: err instanceof Error ? err.name : "unreachable",
+          },
+          null,
+        );
+        return null;
+      }
       throw err;
     }
   }
@@ -319,6 +330,17 @@ export function createIngestLoop(opts: IngestLoopOptions) {
           );
           return false;
         }
+        if (isSolanaRpcUnreachableError(err)) {
+          await recordIncident(
+            "rpc_unreachable",
+            {
+              name: err instanceof Error ? err.name : "unreachable",
+              slot,
+            },
+            slot,
+          );
+          return false;
+        }
         throw err;
       }
     }
@@ -341,8 +363,36 @@ export function createIngestLoop(opts: IngestLoopOptions) {
       state.catchupIncident = null;
     }
 
-    const head = await opts.rpc.getSlot();
-    await assertStartupRetention(head);
+    let head: number;
+    try {
+      head = await opts.rpc.getSlot();
+    } catch (err) {
+      if (isSolanaRpcUnreachableError(err)) {
+        await recordIncident(
+          "rpc_unreachable",
+          { phase: "getSlot", name: err instanceof Error ? err.name : "unreachable" },
+          null,
+        );
+        return;
+      }
+      throw err;
+    }
+    try {
+      await assertStartupRetention(head);
+    } catch (err) {
+      if (isSolanaRpcUnreachableError(err)) {
+        await recordIncident(
+          "rpc_unreachable",
+          {
+            phase: "startup_retention",
+            name: err instanceof Error ? err.name : "unreachable",
+          },
+          null,
+        );
+        return;
+      }
+      throw err;
+    }
 
     const primary = await discoverOrIncident({ afterSlot: undefined });
     if (primary === null) {
@@ -427,7 +477,20 @@ export function createIngestLoop(opts: IngestLoopOptions) {
     if (halted) return;
     if (state.bootstrapState) return;
 
-    const head = await opts.rpc.getSlot();
+    let head: number;
+    try {
+      head = await opts.rpc.getSlot();
+    } catch (err) {
+      if (isSolanaRpcUnreachableError(err)) {
+        await recordIncident(
+          "rpc_unreachable",
+          { phase: "follow_getSlot", name: err instanceof Error ? err.name : "unreachable" },
+          null,
+        );
+        return;
+      }
+      throw err;
+    }
     const discovered = await discoverOrIncident({
       afterSlot: state.lastContiguousSlot,
     });

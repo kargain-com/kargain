@@ -13,6 +13,7 @@ import {
   type CommercialProgramEvidenceKey,
 } from "../../lib/svm/ingest-config.js";
 import type { SvmDevnetEvidence } from "../../lib/svm/devnet-evidence.js";
+import { isSolanaRpcUnreachableError } from "../../lib/svm/solana-json-rpc.js";
 import type { SvmCommercialActiveStack } from "../../lib/web3/commercial-active.js";
 import { encodeSvmPubkeyBytes } from "../../lib/web3/protocol-address.js";
 
@@ -434,6 +435,11 @@ export async function assertSvmBinaryIdentity(args: {
     try {
       elfRegion = await fetchProgramDataElf(registryId);
     } catch (err) {
+      // Transport timeout / unreachable must not soft-fail per program —
+      // the CLI names a single unreachable line and exits non-zero.
+      if (isSolanaRpcUnreachableError(err)) {
+        throw err;
+      }
       reasons.push({
         evidenceKey: row.evidenceKey,
         programId: registryId,

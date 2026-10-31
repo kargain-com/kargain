@@ -1,6 +1,7 @@
 /**
  * Sole Solana JSON-RPC fetch helper for product + svm-ingest.
  * Stays outside @solana/web3.js response schemas (those reject transaction version 1).
+ * Every call requires an explicit per-request time bound (no hidden default).
  */
 
 type JsonRpcSuccess<T> = { jsonrpc: "2.0"; id: number; result: T };
@@ -14,7 +15,7 @@ export type SolanaJsonRpcPost = <T>(
   rpcUrl: string,
   method: string,
   params: unknown[],
-  timeoutMs?: number,
+  timeoutMs: number,
 ) => Promise<T>;
 
 /**
@@ -40,7 +41,7 @@ export const postSolanaJsonRpc: SolanaJsonRpcPost = async <T>(
   rpcUrl: string,
   method: string,
   params: unknown[],
-  timeoutMs?: number,
+  timeoutMs: number,
 ): Promise<T> => {
   const response = await fetch(rpcUrl, {
     method: "POST",
@@ -51,9 +52,7 @@ export const postSolanaJsonRpc: SolanaJsonRpcPost = async <T>(
       method,
       params,
     }),
-    ...(timeoutMs !== undefined
-      ? { signal: AbortSignal.timeout(timeoutMs) }
-      : {}),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
     throw new Error(`Solana RPC request failed: ${response.status}`);
