@@ -16,10 +16,10 @@ import {
  * getBlockHeight, getMultipleAccounts, getAccountInfo, getSignatureStatuses,
  * getTransaction).
  *
- * Bound rule: ceil_to_second(max(10 × p95, 3 × max)).
- * Measured on product_rpc (NEXT_PUBLIC_SOLANA_RPC_URL), n=100 per method.
- * Class bound = max derived across methods = 5_000 (getTransaction
- * p50=339.0 p95=403.1 max=503.3). Lighter methods derive to 1_000.
+ * Bound rule: max(3_000, ceil_to_second(max(10 × p95, 3 × max))).
+ * Measured on product_rpc (public Solana Devnet), n=100 per method.
+ * Class bound = max derived = 5_000 (getTransaction p50=366.6 p95=463.4
+ * max=477.2). Lighter methods derive to the 3_000 floor.
  */
 export const SVM_PRODUCT_RPC_TIMEOUT_MS = 5_000;
 

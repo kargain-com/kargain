@@ -18,10 +18,9 @@ import {
 /**
  * Per-request bound for ingest getBlock (JSON-RPC + wire mapper).
  *
- * Bound rule: ceil_to_second(max(10 × p95, 3 × max)).
- * Measured on ingest_rpc (SOLANA_RPC_URL), distinct followed-program slots,
- * n=66 (signature history exhausted below target 100):
- * getBlock p50=275.3 p95=392.5 max=464.7 → derived = 4_000.
+ * Bound rule: max(3_000, ceil_to_second(max(10 × p95, 3 × max))).
+ * Measured on ingest_rpc, distinct followed-program slots, n=66:
+ * getBlock p50=273.3 p95=398.6 max=509.5 → derived = 4_000.
  */
 export const SVM_INGEST_GET_BLOCK_TIMEOUT_MS = 4_000;
 
@@ -29,11 +28,11 @@ export const SVM_INGEST_GET_BLOCK_TIMEOUT_MS = 4_000;
  * Per-request bound for ingest Connection methods (getSlot,
  * getFirstAvailableBlock, getSignaturesForAddress) via Connection `fetch`.
  *
- * Bound rule: ceil_to_second(max(10 × p95, 3 × max)).
+ * Bound rule: max(3_000, ceil_to_second(max(10 × p95, 3 × max))).
  * Measured on ingest_rpc, n=100: getSignaturesForAddress
- * p50=360.5 p95=493.4 max=544.8 → derived = 5_000.
+ * p50=394.9 p95=512.8 max=575.7 → derived = 6_000.
  */
-export const SVM_INGEST_CONNECTION_TIMEOUT_MS = 5_000;
+export const SVM_INGEST_CONNECTION_TIMEOUT_MS = 6_000;
 
 export type FetchedBlock = {
   slot: number;

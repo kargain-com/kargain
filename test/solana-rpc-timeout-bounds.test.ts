@@ -143,14 +143,27 @@ describe("timeoutMs is required on SolanaJsonRpcPost", () => {
   });
 });
 
+describe("bound derivation floor", () => {
+  it("applies max(3000, ceil_to_second(max(10*p95,3*max)))", async () => {
+    const { deriveTimeoutMs, SVM_RPC_TIMEOUT_FLOOR_MS } = await import(
+      "../scripts/lib/solana-rpc-timeout-bound.ts"
+    );
+    assert.equal(SVM_RPC_TIMEOUT_FLOOR_MS, 3_000);
+    // Light class would otherwise derive to 1_000.
+    assert.equal(deriveTimeoutMs(45, 60), 3_000);
+    // Heavier class exceeds the floor.
+    assert.equal(deriveTimeoutMs(493.4, 544.8), 5_000);
+  });
+});
+
 describe("named class bounds from measurement", () => {
   it("exports per-class constants stated next to measurement + bound rule", () => {
     assert.equal(SVM_INGEST_GET_BLOCK_TIMEOUT_MS, 4_000);
-    assert.equal(SVM_INGEST_CONNECTION_TIMEOUT_MS, 5_000);
+    assert.equal(SVM_INGEST_CONNECTION_TIMEOUT_MS, 6_000);
     assert.equal(SVM_PRODUCT_RPC_TIMEOUT_MS, 5_000);
-    assert.equal(SVM_SIMULATE_RPC_TIMEOUT_MS, 1_000);
-    assert.equal(SVM_BINARY_IDENTITY_RPC_TIMEOUT_MS, 1_000);
-    assert.equal(SVM_UPGRADE_IN_PLACE_RPC_TIMEOUT_MS, 1_000);
+    assert.equal(SVM_SIMULATE_RPC_TIMEOUT_MS, 3_000);
+    assert.equal(SVM_BINARY_IDENTITY_RPC_TIMEOUT_MS, 3_000);
+    assert.equal(SVM_UPGRADE_IN_PLACE_RPC_TIMEOUT_MS, 7_000);
     assert.equal(
       SVM_BINARY_IDENTITY_RPC_UNREACHABLE_LINE,
       "svm_binary_identity_rpc_unreachable",

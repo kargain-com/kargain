@@ -371,13 +371,24 @@ export type SvmIngestRuntime = {
 };
 
 /**
+ * Sole reader of `SOLANA_RPC_URL` for ingest + tooling (CLI binary-identity,
+ * upgrade-in-place retention probes). Empty/whitespace counts as unset.
+ * Does not invent a public Devnet default.
+ */
+export function resolveIngestSolanaRpcUrl(
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  return unsetEnv(env.SOLANA_RPC_URL) ?? null;
+}
+
+/**
  * Sole runtime-config owner for svm-ingest: everything `main.ts` and the
  * deploy preflight need. Empty/whitespace env values count as unset.
  */
 export function buildSvmIngestRuntime(
   env: NodeJS.ProcessEnv = process.env,
 ): SvmIngestRuntime {
-  const rpcUrl = unsetEnv(env.SOLANA_RPC_URL);
+  const rpcUrl = resolveIngestSolanaRpcUrl(env);
   if (!rpcUrl) {
     throw new SvmIngestRuntimeRefusalError(
       "missing_solana_rpc_url",

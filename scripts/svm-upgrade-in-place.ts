@@ -66,11 +66,12 @@ import {
 
 /**
  * Per-request bound for upgrade-in-place retention probes (getFirstAvailableBlock,
- * getSlot). Bound rule: ceil_to_second(max(10 × p95, 3 × max)).
- * Measured on product_rpc, n=100: getBlockHeight (same light tip class)
- * p50=35.9 p95=47.9 max=81.7 → derived = 1_000.
+ * getSlot) on tooling endpoint (SOLANA_RPC_URL via resolveIngestSolanaRpcUrl).
+ * Bound rule: max(3_000, ceil_to_second(max(10 × p95, 3 × max))).
+ * Measured on tooling_rpc, n=100: class bound = max derived = 7_000
+ * (getFirstAvailableBlock p50=187.1 p95=210.7 max=2150.6; getSlot → 3_000).
  */
-export const SVM_UPGRADE_IN_PLACE_RPC_TIMEOUT_MS = 1_000;
+export const SVM_UPGRADE_IN_PLACE_RPC_TIMEOUT_MS = 7_000;
 
 const CALLER = "svm-upgrade-in-place.ts";
 

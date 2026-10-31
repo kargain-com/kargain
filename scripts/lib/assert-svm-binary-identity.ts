@@ -21,19 +21,21 @@ const SHA256_HEX = /^[a-f0-9]{64}$/;
 const GIT_HEAD_HEX = /^[a-f0-9]{7,40}$/;
 
 /**
- * Per-request bound for getAccountInfo in the binary-identity CLI.
- * Bound rule: ceil_to_second(max(10 × p95, 3 × max)).
- * Measured on product_rpc, n=100: getAccountInfo
- * p50=35.7 p95=43.4 max=64.3 → derived = 1_000.
+ * Per-request bound for ProgramData getAccountInfo in the binary-identity CLI
+ * (tooling endpoint = SOLANA_RPC_URL via resolveIngestSolanaRpcUrl).
+ * Bound rule: max(3_000, ceil_to_second(max(10 × p95, 3 × max))).
+ * Measured on tooling_rpc, n=100: ProgramData getAccountInfo
+ * p50=77.3 p95=142.8 max=337.3 → derived = 3_000 (floor).
  */
-export const SVM_BINARY_IDENTITY_RPC_TIMEOUT_MS = 1_000;
+export const SVM_BINARY_IDENTITY_RPC_TIMEOUT_MS = 3_000;
 
 /** Named refusal line when the configured RPC never answers within the bound. */
 export const SVM_BINARY_IDENTITY_RPC_UNREACHABLE_LINE =
   "svm_binary_identity_rpc_unreachable";
 
 /** ProgramData metadata size when upgrade authority Option is Some (loader-v3). */
-export const PROGRAMDATA_HEADER_WITH_AUTHORITY = 45;/** ProgramData metadata size when upgrade authority Option is None. */
+export const PROGRAMDATA_HEADER_WITH_AUTHORITY = 45;
+/** ProgramData metadata size when upgrade authority Option is None. */
 export const PROGRAMDATA_HEADER_NO_AUTHORITY = 13;
 /** Upgradeable Program account: u32 discriminator + 32-byte ProgramData address. */
 export const PROGRAM_ACCOUNT_LEN = 36;

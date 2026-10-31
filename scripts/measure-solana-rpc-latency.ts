@@ -5,18 +5,25 @@
  *   node --import tsx --env-file=.env.local scripts/measure-solana-rpc-latency.ts
  *
  * Endpoint ownership (no fallback between roles):
- *   ingest classes  → SOLANA_RPC_URL only
- *   product/simulate → NEXT_PUBLIC_SOLANA_RPC_URL only
+ *   ingest / tooling → resolveIngestSolanaRpcUrl() (SOLANA_RPC_URL)
+ *   product / simulate → productSvmRpcUrl() (NEXT_PUBLIC_SOLANA_RPC_URL)
  *
- * Bound rule (stated once; applied per class):
- *   derived_ms = ceil_to_second(max(10 × p95_ms, 3 × max_ms))
- *   ceil_to_second(x) = Math.ceil(x / 1000) * 1000
+ * Bound rule: scripts/lib/solana-rpc-timeout-bound.ts (floor + formula).
  */
-import { followedProgramsFromStack } from "../lib/svm/ingest-config.js";
+import {
+  followedProgramsFromStack,
+  resolveIngestSolanaRpcUrl,
+} from "../lib/svm/ingest-config.js";
 import { postSolanaJsonRpc } from "../lib/svm/solana-json-rpc.js";
 import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../lib/svm/rpc-max-supported-transaction-version.js";
 import { requireSvmCommercialActive } from "../lib/web3/commercial-active.js";
 import { namespaceFromLayerZeroEid } from "../lib/web3/kargain-namespace.js";
+import { productSvmRpcUrl } from "../lib/web3/svm-rpc.js";
+import { programDataAddressFromProgramAccount } from "./lib/assert-svm-binary-identity.js";
+import {
+  deriveTimeoutMs,
+  SVM_RPC_TIMEOUT_FLOOR_MS,
+} from "./lib/solana-rpc-timeout-bound.js";
 import { solanaGetBlockRequestConfig } from "../svm-ingest/rpc-client.js";
 
 const SAMPLE_N = 100;
@@ -25,10 +32,6 @@ const MIN_INTERVAL_MS = 500;
 const DEFAULT_EID = 40168;
 const SIG_PAGE_LIMIT = 1_000;
 
-/** Bound derivation — sole rule for every measured class. */
-export function deriveTimeoutMs(p95Ms: number, maxMs: number): number {
-  return Math.ceil(Math.max(10 * p95Ms, 3 * maxMs) / 1000) * 1000;
-}
 
 function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return NaN;
@@ -99,22 +102,29 @@ async function paced<T>(fn: () => Promise<T>): Promise<{ ms: number; value: T }>
 }
 
 function requireIngestRpcUrl(): string {
-  const url = process.env.SOLANA_RPC_URL?.trim() ?? "";
+  const url = resolveIngestSolanaRpcUrl();
   if (!url) {
-    console.error("refused: ingest_rpc_absent (SOLANA_RPC_URL)");
+    console.error("refused: ingest_rpc_absent");
     process.exit(1);
   }
   return url;
 }
 
 function requireProductRpcUrl(): string {
-  const url = process.env.NEXT_PUBLIC_SOLANA_RPC_URL?.trim() ?? "";
+  const url = productSvmRpcUrl();
   if (!url) {
-    console.error("refused: product_rpc_absent (NEXT_PUBLIC_SOLANA_RPC_URL)");
+    console.error("refused: product_rpc_absent");
     process.exit(1);
   }
   return url;
 }
+
+type AccountInfoResult = {
+  value: {
+    data: [string, string];
+    owner: string;
+  } | null;
+};
 
 async function collectDistinctIngestSlots(
   post: <T>(method: string, params: unknown[]) => Promise<T>,
@@ -143,6 +153,39 @@ async function collectDistinctIngestSlots(
   return [...slots].sort((a, b) => a - b);
 }
 
+async function resolveProgramDataAddresses(
+  post: <T>(method: string, params: unknown[]) => Promise<T>,
+  programIds: readonly string[],
+): Promise<string[]> {
+  const out: string[] = [];
+  for (const programId of programIds) {
+    const { value: info } = await paced(() =>
+      post<AccountInfoResult>("getAccountInfo", [
+        programId,
+        { encoding: "base64", commitment: "confirmed" },
+      ]),
+    );
+    if (info.value == null) {
+      console.error("refused: tooling_program_account_absent");
+      process.exit(1);
+    }
+    const [b64, encoding] = info.value.data;
+    if (encoding !== "base64" || typeof b64 !== "string") {
+      console.error("refused: tooling_program_account_encoding");
+      process.exit(1);
+    }
+    const parsed = programDataAddressFromProgramAccount(
+      new Uint8Array(Buffer.from(b64, "base64")),
+    );
+    if (!parsed.ok) {
+      console.error("refused: tooling_programdata_address");
+      process.exit(1);
+    }
+    out.push(parsed.programDataAddress);
+  }
+  return out;
+}
+
 async function main(): Promise<void> {
   const ingestUrl = requireIngestRpcUrl();
   const productUrl = requireProductRpcUrl();
@@ -150,7 +193,7 @@ async function main(): Promise<void> {
   console.log(
     `sample_n=${SAMPLE_N} measure_timeout_ms=${MEASURE_TIMEOUT_MS} ` +
       `min_interval_ms=${MIN_INTERVAL_MS} ` +
-      `bound_rule=ceil_to_second(max(10*p95,3*max))`,
+      `bound_rule=max(${SVM_RPC_TIMEOUT_FLOOR_MS},ceil_to_second(max(10*p95,3*max)))`,
   );
 
   const postIngest = <T>(method: string, params: unknown[]) =>
@@ -196,8 +239,6 @@ async function main(): Promise<void> {
 
   // --- ingest: getBlock on distinct discovered slots ---
   {
-    // Page followed-program signature history for distinct slots ingest would fetch.
-    // If history yields fewer than SAMPLE_N, measure every distinct slot and state n.
     const slots = await collectDistinctIngestSlots(
       postIngest,
       programIds,
@@ -228,6 +269,47 @@ async function main(): Promise<void> {
       class: "ingest_blocks",
       method: "getBlock",
       endpoint_role: "ingest_rpc",
+      samples,
+    });
+  }
+
+  // --- tooling: ProgramData getAccountInfo (binary-identity CLI path) ---
+  {
+    const programDataAddresses = await resolveProgramDataAddresses(
+      postIngest,
+      programIds,
+    );
+    const samples: number[] = [];
+    for (let i = 0; i < SAMPLE_N; i++) {
+      const address =
+        programDataAddresses[i % programDataAddresses.length]!;
+      const { ms } = await paced(() =>
+        postIngest("getAccountInfo", [
+          address,
+          { encoding: "base64", commitment: "confirmed" },
+        ]),
+      );
+      samples.push(ms);
+    }
+    rows.push({
+      class: "tooling_programdata",
+      method: "getAccountInfo",
+      endpoint_role: "tooling_rpc",
+      samples,
+    });
+  }
+
+  // --- tooling: upgrade-in-place retention probes ---
+  for (const method of ["getFirstAvailableBlock", "getSlot"] as const) {
+    const samples: number[] = [];
+    for (let i = 0; i < SAMPLE_N; i++) {
+      const { ms } = await paced(() => postIngest(method, []));
+      samples.push(ms);
+    }
+    rows.push({
+      class: "tooling_retention",
+      method,
+      endpoint_role: "tooling_rpc",
       samples,
     });
   }
@@ -362,14 +444,22 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  const name = err instanceof Error ? err.name : "unknown";
-  const kind =
-    err instanceof Error && /\b429\b/.test(err.message)
-      ? "rate_limited"
-      : err instanceof Error && /failed/.test(err.message)
-        ? "rpc_or_http"
-        : "other";
-  console.error(`measure_failed name=${name} kind=${kind}`);
-  process.exit(1);
-});
+function isExecutedAsCli(): boolean {
+  const entry = process.argv[1];
+  if (entry == null) return false;
+  return /measure-solana-rpc-latency\.(ts|js|mjs|cjs)$/.test(entry);
+}
+
+if (isExecutedAsCli()) {
+  main().catch((err) => {
+    const name = err instanceof Error ? err.name : "unknown";
+    const kind =
+      err instanceof Error && /\b429\b/.test(err.message)
+        ? "rate_limited"
+        : err instanceof Error && /failed/.test(err.message)
+          ? "rpc_or_http"
+          : "other";
+    console.error(`measure_failed name=${name} kind=${kind}`);
+    process.exit(1);
+  });
+}

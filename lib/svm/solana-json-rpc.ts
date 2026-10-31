@@ -43,23 +43,18 @@ export const postSolanaJsonRpc: SolanaJsonRpcPost = async <T>(
   params: unknown[],
   timeoutMs: number,
 ): Promise<T> => {
-  let response: Response;
-  try {
-    response = await fetch(rpcUrl, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method,
-        params,
-      }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch (err) {
-    // TimeoutError / AbortError / TypeError from fetch — leave as transport.
-    throw err;
-  }
+  // TimeoutError / AbortError / TypeError from fetch propagate as transport.
+  const response = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method,
+      params,
+    }),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
   if (!response.ok) {
     throw new Error(`Solana RPC request failed: ${response.status}`);
   }
