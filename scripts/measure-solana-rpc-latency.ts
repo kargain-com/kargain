@@ -1,19 +1,34 @@
 /**
- * Measure Solana JSON-RPC latency classes on the configured RPC (by role).
+ * Measure Solana JSON-RPC latency per call-site class on the owner endpoint.
  * Never prints the RPC URL, host, or any secret.
  *
  *   node --import tsx --env-file=.env.local scripts/measure-solana-rpc-latency.ts
  *
- * Env (first present wins): SOLANA_RPC_URL, then NEXT_PUBLIC_SOLANA_RPC_URL.
- * Paces at ~2 rps and backs off on 429 so measurement does not starve itself.
+ * Endpoint ownership (no fallback between roles):
+ *   ingest classes  → SOLANA_RPC_URL only
+ *   product/simulate → NEXT_PUBLIC_SOLANA_RPC_URL only
+ *
+ * Bound rule (stated once; applied per class):
+ *   derived_ms = ceil_to_second(max(10 × p95_ms, 3 × max_ms))
+ *   ceil_to_second(x) = Math.ceil(x / 1000) * 1000
  */
-import { solanaGetBlockRequestConfig } from "../svm-ingest/rpc-client.js";
+import { followedProgramsFromStack } from "../lib/svm/ingest-config.js";
 import { postSolanaJsonRpc } from "../lib/svm/solana-json-rpc.js";
 import { RPC_MAX_SUPPORTED_TRANSACTION_VERSION } from "../lib/svm/rpc-max-supported-transaction-version.js";
+import { requireSvmCommercialActive } from "../lib/web3/commercial-active.js";
+import { namespaceFromLayerZeroEid } from "../lib/web3/kargain-namespace.js";
+import { solanaGetBlockRequestConfig } from "../svm-ingest/rpc-client.js";
 
-const SAMPLE_N = 21;
+const SAMPLE_N = 100;
 const MEASURE_TIMEOUT_MS = 60_000;
 const MIN_INTERVAL_MS = 500;
+const DEFAULT_EID = 40168;
+const SIG_PAGE_LIMIT = 1_000;
+
+/** Bound derivation — sole rule for every measured class. */
+export function deriveTimeoutMs(p95Ms: number, maxMs: number): number {
+  return Math.ceil(Math.max(10 * p95Ms, 3 * maxMs) / 1000) * 1000;
+}
 
 function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return NaN;
@@ -29,13 +44,17 @@ function summarize(samples: number[]): {
   p50: number;
   p95: number;
   max: number;
+  derived_ms: number;
 } {
   const sorted = [...samples].sort((a, b) => a - b);
+  const p95 = percentile(sorted, 95);
+  const max = sorted[sorted.length - 1]!;
   return {
     n: sorted.length,
     p50: percentile(sorted, 50),
-    p95: percentile(sorted, 95),
-    max: sorted[sorted.length - 1]!,
+    p95,
+    max,
+    derived_ms: deriveTimeoutMs(p95, max),
   };
 }
 
@@ -79,56 +98,90 @@ async function paced<T>(fn: () => Promise<T>): Promise<{ ms: number; value: T }>
   throw lastErr;
 }
 
-async function main(): Promise<void> {
-  const rpcUrl =
-    process.env.SOLANA_RPC_URL?.trim() ||
-    process.env.NEXT_PUBLIC_SOLANA_RPC_URL?.trim() ||
-    "";
-  if (!rpcUrl) {
-    console.error(
-      "refused: configured_rpc_absent (set SOLANA_RPC_URL or NEXT_PUBLIC_SOLANA_RPC_URL)",
-    );
+function requireIngestRpcUrl(): string {
+  const url = process.env.SOLANA_RPC_URL?.trim() ?? "";
+  if (!url) {
+    console.error("refused: ingest_rpc_absent (SOLANA_RPC_URL)");
     process.exit(1);
   }
+  return url;
+}
+
+function requireProductRpcUrl(): string {
+  const url = process.env.NEXT_PUBLIC_SOLANA_RPC_URL?.trim() ?? "";
+  if (!url) {
+    console.error("refused: product_rpc_absent (NEXT_PUBLIC_SOLANA_RPC_URL)");
+    process.exit(1);
+  }
+  return url;
+}
+
+async function collectDistinctIngestSlots(
+  post: <T>(method: string, params: unknown[]) => Promise<T>,
+  programIds: readonly string[],
+  need: number,
+): Promise<number[]> {
+  const slots = new Set<number>();
+  for (const programId of programIds) {
+    let before: string | undefined;
+    while (slots.size < need) {
+      const { value: page } = await paced(() =>
+        post<Array<{ signature: string; slot: number }>>(
+          "getSignaturesForAddress",
+          [programId, { before, limit: SIG_PAGE_LIMIT }],
+        ),
+      );
+      if (page.length === 0) break;
+      for (const row of page) {
+        if (Number.isInteger(row.slot) && row.slot > 0) slots.add(row.slot);
+      }
+      before = page[page.length - 1]?.signature;
+      if (page.length < SIG_PAGE_LIMIT) break;
+    }
+    if (slots.size >= need) break;
+  }
+  return [...slots].sort((a, b) => a - b);
+}
+
+async function main(): Promise<void> {
+  const ingestUrl = requireIngestRpcUrl();
+  const productUrl = requireProductRpcUrl();
+
   console.log(
-    "endpoint_role=configured_devnet_rpc sample_n=" +
-      SAMPLE_N +
-      " measure_timeout_ms=" +
-      MEASURE_TIMEOUT_MS +
-      " min_interval_ms=" +
-      MIN_INTERVAL_MS,
+    `sample_n=${SAMPLE_N} measure_timeout_ms=${MEASURE_TIMEOUT_MS} ` +
+      `min_interval_ms=${MIN_INTERVAL_MS} ` +
+      `bound_rule=ceil_to_second(max(10*p95,3*max))`,
   );
 
-  const post = <T>(method: string, params: unknown[]) =>
-    postSolanaJsonRpc<T>(rpcUrl, method, params, MEASURE_TIMEOUT_MS);
+  const postIngest = <T>(method: string, params: unknown[]) =>
+    postSolanaJsonRpc<T>(ingestUrl, method, params, MEASURE_TIMEOUT_MS);
+  const postProduct = <T>(method: string, params: unknown[]) =>
+    postSolanaJsonRpc<T>(productUrl, method, params, MEASURE_TIMEOUT_MS);
 
-  const tip = (
-    await paced(() => post<number>("getSlot", [{ commitment: "confirmed" }]))
-  ).value;
-  const systemProgram = "11111111111111111111111111111111";
+  const namespace = namespaceFromLayerZeroEid(DEFAULT_EID);
+  const stack = requireSvmCommercialActive(namespace);
+  const programs = followedProgramsFromStack(stack);
+  const programIds = programs.map((p) => p.programId);
 
-  type Row = { class: string; method: string; samples: number[] };
+  type Row = {
+    class: string;
+    method: string;
+    endpoint_role: string;
+    samples: number[];
+  };
   const rows: Row[] = [];
 
+  // --- ingest: signature pages (followed programs) ---
   {
     const samples: number[] = [];
+    let progIdx = 0;
     for (let i = 0; i < SAMPLE_N; i++) {
-      const trySlot = Math.max(0, tip - (i % 8) - 1);
+      const programId = programIds[progIdx % programIds.length]!;
+      progIdx += 1;
       const { ms } = await paced(() =>
-        post<unknown>("getBlock", [trySlot, solanaGetBlockRequestConfig()]),
-      );
-      samples.push(ms);
-    }
-    rows.push({ class: "ingest_blocks", method: "getBlock", samples });
-  }
-
-  {
-    const samples: number[] = [];
-    for (let i = 0; i < SAMPLE_N; i++) {
-      const { ms } = await paced(() =>
-        post<unknown[]>("getSignaturesForAddress", [
-          systemProgram,
-          { limit: 1_000 },
+        postIngest("getSignaturesForAddress", [
+          programId,
+          { limit: SIG_PAGE_LIMIT },
         ]),
       );
       samples.push(ms);
@@ -136,10 +189,50 @@ async function main(): Promise<void> {
     rows.push({
       class: "signature_pages",
       method: "getSignaturesForAddress",
+      endpoint_role: "ingest_rpc",
       samples,
     });
   }
 
+  // --- ingest: getBlock on distinct discovered slots ---
+  {
+    // Page followed-program signature history for distinct slots ingest would fetch.
+    // If history yields fewer than SAMPLE_N, measure every distinct slot and state n.
+    const slots = await collectDistinctIngestSlots(
+      postIngest,
+      programIds,
+      SAMPLE_N,
+    );
+    const minBlocks = 40;
+    if (slots.length < minBlocks) {
+      console.error(
+        `refused: ingest_block_slots_insufficient have=${slots.length} need_min=${minBlocks}`,
+      );
+      process.exit(1);
+    }
+    if (slots.length < SAMPLE_N) {
+      console.log(
+        `note: ingest_block_n_below_target have=${slots.length} target=${SAMPLE_N} (followed-program signature history exhausted)`,
+      );
+    }
+    const blockN = Math.min(SAMPLE_N, slots.length);
+    const samples: number[] = [];
+    for (let i = 0; i < blockN; i++) {
+      const slot = slots[i]!;
+      const { ms } = await paced(() =>
+        postIngest("getBlock", [slot, solanaGetBlockRequestConfig()]),
+      );
+      samples.push(ms);
+    }
+    rows.push({
+      class: "ingest_blocks",
+      method: "getBlock",
+      endpoint_role: "ingest_rpc",
+      samples,
+    });
+  }
+
+  // --- product reads ---
   const productMethods: Array<{
     method: string;
     params: () => unknown[] | Promise<unknown[]>;
@@ -155,14 +248,14 @@ async function main(): Promise<void> {
     {
       method: "getMultipleAccounts",
       params: () => [
-        [systemProgram],
+        [programIds[0]!],
         { encoding: "base64", commitment: "confirmed" },
       ],
     },
     {
       method: "getAccountInfo",
       params: () => [
-        systemProgram,
+        programIds[0]!,
         { encoding: "base64", commitment: "confirmed" },
       ],
     },
@@ -170,8 +263,8 @@ async function main(): Promise<void> {
       method: "getSignatureStatuses",
       params: async () => {
         const { value: sigs } = await paced(() =>
-          post<Array<{ signature: string }>>("getSignaturesForAddress", [
-            systemProgram,
+          postProduct<Array<{ signature: string }>>("getSignaturesForAddress", [
+            programIds[0]!,
             { limit: 1 },
           ]),
         );
@@ -183,8 +276,8 @@ async function main(): Promise<void> {
       method: "getTransaction",
       params: async () => {
         const { value: sigs } = await paced(() =>
-          post<Array<{ signature: string }>>("getSignaturesForAddress", [
-            systemProgram,
+          postProduct<Array<{ signature: string }>>("getSignaturesForAddress", [
+            programIds[0]!,
             { limit: 1 },
           ]),
         );
@@ -206,12 +299,18 @@ async function main(): Promise<void> {
     const samples: number[] = [];
     for (let i = 0; i < SAMPLE_N; i++) {
       const params = await m.params();
-      const { ms } = await paced(() => post(m.method, params));
+      const { ms } = await paced(() => postProduct(m.method, params));
       samples.push(ms);
     }
-    rows.push({ class: "product_reads", method: m.method, samples });
+    rows.push({
+      class: "product_reads",
+      method: m.method,
+      endpoint_role: "product_rpc",
+      samples,
+    });
   }
 
+  // --- simulate ---
   {
     const wire =
       "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAEDArczbBom_Ayl_BkmCLndEgVoJX6O1NTWKehY0xRFOIlcKHwAAAAA";
@@ -219,7 +318,7 @@ async function main(): Promise<void> {
     for (let i = 0; i < SAMPLE_N; i++) {
       const { ms } = await paced(async () => {
         try {
-          return await post("simulateTransaction", [
+          return await postProduct("simulateTransaction", [
             wire,
             {
               encoding: "base64",
@@ -230,7 +329,6 @@ async function main(): Promise<void> {
           ]);
         } catch (err) {
           if (isRateLimited(err)) throw err;
-          // Answered JSON-RPC error still counts as a round-trip sample.
           return undefined;
         }
       });
@@ -239,21 +337,26 @@ async function main(): Promise<void> {
     rows.push({
       class: "simulate",
       method: "simulateTransaction",
+      endpoint_role: "product_rpc",
       samples,
     });
   }
 
-  console.log("method\tclass\tn\tp50_ms\tp95_ms\tmax_ms");
+  console.log(
+    "method\tclass\tendpoint_role\tn\tp50_ms\tp95_ms\tmax_ms\tderived_ms",
+  );
   for (const row of rows) {
     const s = summarize(row.samples);
     console.log(
       [
         row.method,
         row.class,
+        row.endpoint_role,
         s.n,
         s.p50.toFixed(1),
         s.p95.toFixed(1),
         s.max.toFixed(1),
+        s.derived_ms,
       ].join("\t"),
     );
   }

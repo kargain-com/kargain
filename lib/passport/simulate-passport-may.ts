@@ -43,10 +43,11 @@ import { svmProgramErrorName } from "@/lib/web3/svm-program-errors";
  * Per-request bound for simulatePassportMay RPC (getLatestBlockhash +
  * simulateTransaction).
  *
- * Measured on configured_devnet_rpc, n=21: simulateTransaction
- * p50=59.8 p95=77.9 max=202.9 ms. Bound = 5_000 ms.
+ * Bound rule: ceil_to_second(max(10 × p95, 3 × max)).
+ * Measured on product_rpc, n=100: simulateTransaction
+ * p50=35.9 p95=48.0 max=60.3 → derived = 1_000.
  */
-export const SVM_SIMULATE_RPC_TIMEOUT_MS = 5_000;
+export const SVM_SIMULATE_RPC_TIMEOUT_MS = 1_000;
 import { encumbranceSourcesFromConfigEntry } from "@/lib/passport/passport-commerce-facts";
 
 /** LeaveChain / OpenConsignment as carried by PassportIx::May. */

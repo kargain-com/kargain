@@ -142,74 +142,62 @@ function createSvmTxConfirmPortAtCommitment(
       const { signature, lastValidBlockHeight } = submission;
       const deadline = Date.now() + timeoutMs;
       while (Date.now() < deadline) {
-        let height: bigint;
-        let row: {
-          confirmationStatus?: string | null;
-          err?: unknown;
-          slot?: number | bigint | null;
-        } | null;
         try {
-          height = await opts.getBlockHeight();
+          const height = await opts.getBlockHeight();
           const statuses = await opts.getSignatureStatuses([signature]);
-          row = statuses[0] ?? null;
+          const row = statuses[0] ?? null;
+          const status = row?.confirmationStatus ?? null;
+
+          if (isSuccessStatus(status, opts.successCommitment)) {
+            const slot = observedSlot(row?.slot);
+            if (slot == null) {
+              await new Promise((resolve) =>
+                setTimeout(resolve, pollIntervalMs),
+              );
+              continue;
+            }
+            if (row?.err != null) {
+              const logs = await opts.getTransactionLogMessages(signature);
+              const failingProgram = failingProgramFromLogMessages(logs);
+              const landed = parseAttributedSvmLandedInstructionErrorOnStack(
+                row.err,
+                failingProgram,
+                opts.stack,
+              );
+              return {
+                kind: "landed_with_error",
+                signature,
+                slot,
+                error: row.err,
+                failingProgram,
+                landed,
+              };
+            }
+            return { kind: "landed_ok", signature, slot };
+          }
+
+          // Any present sub-success status (incl. processed / confirmed-before-finalized) → keep polling.
+          if (status != null) {
+            await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+            continue;
+          }
+
+          // No status at all — expire only when height (read first) is past lifetime.
+          if (height > lastValidBlockHeight) {
+            return {
+              kind: "expired",
+              signature,
+              lastValidBlockHeight,
+              observedBlockHeight: height,
+            };
+          }
+          await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
         } catch (err) {
           if (isSolanaRpcUnreachableError(err)) {
             return { kind: "status_unknown", signature };
           }
           throw err;
         }
-        const status = row?.confirmationStatus ?? null;
-
-        if (isSuccessStatus(status, opts.successCommitment)) {
-          const slot = observedSlot(row?.slot);
-          if (slot == null) {
-            await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-            continue;
-          }
-          if (row?.err != null) {
-            let logs: readonly string[] | null;
-            try {
-              logs = await opts.getTransactionLogMessages(signature);
-            } catch (err) {
-              if (isSolanaRpcUnreachableError(err)) {
-                return { kind: "status_unknown", signature };
-              }
-              throw err;
-            }
-            const failingProgram = failingProgramFromLogMessages(logs);
-            const landed = parseAttributedSvmLandedInstructionErrorOnStack(
-              row.err,
-              failingProgram,
-              opts.stack,
-            );
-            return {
-              kind: "landed_with_error",
-              signature,
-              slot,
-              error: row.err,
-              failingProgram,
-              landed,
-            };
-          }
-          return { kind: "landed_ok", signature, slot };
-        }
-
-        // Any present sub-success status (incl. processed / confirmed-before-finalized) → keep polling.
-        if (status != null) {
-          await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-          continue;
-        }
-
-        // No status at all — expire only when height (read first) is past lifetime.
-        if (height > lastValidBlockHeight) {
-          return {
-            kind: "expired",
-            signature,
-            lastValidBlockHeight,
-            observedBlockHeight: height,
-          };
-        }
-        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
       }
       return { kind: "status_unknown", signature };
     },

@@ -809,6 +809,13 @@ describe("deploy-preflight svm-ingest script", () => {
       isSolanaRpcUnreachableError(new TypeError("fetch failed")),
       true,
     );
+    // Answered malformed envelope is plain Error — never TypeError → unreachable.
+    assert.equal(
+      isSolanaRpcUnreachableError(
+        new Error("Solana RPC getHealth returned malformed JSON-RPC envelope"),
+      ),
+      false,
+    );
     // Message text alone never decides — including answered RPC wording.
     assert.equal(
       isSolanaRpcUnreachableError(

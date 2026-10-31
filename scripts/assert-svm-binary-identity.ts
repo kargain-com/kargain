@@ -23,6 +23,8 @@ import {
   formatSvmBinaryIdentitySuccessLines,
   programDataAddressFromProgramAccount,
   sliceElfFromProgramDataAccount,
+  SVM_BINARY_IDENTITY_RPC_TIMEOUT_MS,
+  SVM_BINARY_IDENTITY_RPC_UNREACHABLE_LINE,
 } from "./lib/assert-svm-binary-identity.js";
 import {
   requireSvmDevnetEvidence,
@@ -35,18 +37,6 @@ loadEnv();
 
 const DEFAULT_429_MAX_ATTEMPTS = 6;
 const DEFAULT_RPC = "https://api.devnet.solana.com";
-
-/**
- * Per-request bound for getAccountInfo in this CLI.
- * Product-read class on configured_devnet_rpc, n=21: getAccountInfo
- * p50=60.1 p95=75.0 max=171.6 ms. Ops ceiling = 10_000 ms (matches ADR 0012
- * preflight headroom for CLI account reads).
- */
-export const SVM_BINARY_IDENTITY_RPC_TIMEOUT_MS = 10_000;
-
-/** Named refusal line when the configured RPC never answers within the bound. */
-export const SVM_BINARY_IDENTITY_RPC_UNREACHABLE_LINE =
-  "svm_binary_identity_rpc_unreachable";
 
 type AccountInfoResult = {
   value: {
@@ -177,19 +167,11 @@ async function main() {
   console.log("\nBinary identity intact.");
 }
 
-function isExecutedAsCli(): boolean {
-  const entry = process.argv[1];
-  if (entry == null) return false;
-  return /assert-svm-binary-identity\.(ts|js|mjs|cjs)$/.test(entry);
-}
-
-if (isExecutedAsCli()) {
-  main().catch((err) => {
-    if (isSolanaRpcUnreachableError(err)) {
-      console.error(SVM_BINARY_IDENTITY_RPC_UNREACHABLE_LINE);
-      process.exit(1);
-    }
-    console.error(err instanceof Error ? err.message : err);
+main().catch((err) => {
+  if (isSolanaRpcUnreachableError(err)) {
+    console.error(SVM_BINARY_IDENTITY_RPC_UNREACHABLE_LINE);
     process.exit(1);
-  });
-}
+  }
+  console.error(err instanceof Error ? err.message : err);
+  process.exit(1);
+});

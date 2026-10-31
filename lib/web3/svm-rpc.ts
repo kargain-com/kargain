@@ -16,8 +16,10 @@ import {
  * getBlockHeight, getMultipleAccounts, getAccountInfo, getSignatureStatuses,
  * getTransaction).
  *
- * Measured on configured_devnet_rpc, n=21 (scripts/measure-solana-rpc-latency.ts):
- * max across product methods = 286.0 ms (getLatestBlockhash). Bound = 5_000 ms.
+ * Bound rule: ceil_to_second(max(10 × p95, 3 × max)).
+ * Measured on product_rpc (NEXT_PUBLIC_SOLANA_RPC_URL), n=100 per method.
+ * Class bound = max derived across methods = 5_000 (getTransaction
+ * p50=339.0 p95=403.1 max=503.3). Lighter methods derive to 1_000.
  */
 export const SVM_PRODUCT_RPC_TIMEOUT_MS = 5_000;
 

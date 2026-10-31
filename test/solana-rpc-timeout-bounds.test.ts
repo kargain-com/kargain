@@ -37,7 +37,9 @@ import {
 import {
   SVM_BINARY_IDENTITY_RPC_TIMEOUT_MS,
   SVM_BINARY_IDENTITY_RPC_UNREACHABLE_LINE,
-} from "../scripts/assert-svm-binary-identity.ts";
+} from "../scripts/lib/assert-svm-binary-identity.ts";
+import { SVM_SIMULATE_RPC_TIMEOUT_MS } from "../lib/passport/simulate-passport-may.ts";
+import { SVM_UPGRADE_IN_PLACE_RPC_TIMEOUT_MS } from "../scripts/svm-upgrade-in-place.ts";
 import {
   FIXTURE_BLOCK,
   FIXTURE_FOLLOWED_PROGRAMS,
@@ -45,6 +47,7 @@ import {
   FIXTURE_PASSPORT_PROGRAM,
 } from "./fixtures/svm-ingest/fixture-block.ts";
 import { createMemorySvmRawWriter } from "./svm-ingest-memory-writer.ts";
+
 
 const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 
@@ -141,11 +144,13 @@ describe("timeoutMs is required on SolanaJsonRpcPost", () => {
 });
 
 describe("named class bounds from measurement", () => {
-  it("exports per-class constants stated next to measurement", () => {
-    assert.equal(SVM_INGEST_GET_BLOCK_TIMEOUT_MS, 5_000);
+  it("exports per-class constants stated next to measurement + bound rule", () => {
+    assert.equal(SVM_INGEST_GET_BLOCK_TIMEOUT_MS, 4_000);
     assert.equal(SVM_INGEST_CONNECTION_TIMEOUT_MS, 5_000);
     assert.equal(SVM_PRODUCT_RPC_TIMEOUT_MS, 5_000);
-    assert.equal(SVM_BINARY_IDENTITY_RPC_TIMEOUT_MS, 10_000);
+    assert.equal(SVM_SIMULATE_RPC_TIMEOUT_MS, 1_000);
+    assert.equal(SVM_BINARY_IDENTITY_RPC_TIMEOUT_MS, 1_000);
+    assert.equal(SVM_UPGRADE_IN_PLACE_RPC_TIMEOUT_MS, 1_000);
     assert.equal(
       SVM_BINARY_IDENTITY_RPC_UNREACHABLE_LINE,
       "svm_binary_identity_rpc_unreachable",
@@ -198,12 +203,15 @@ describe("ingest getBlock hang → rpc_unreachable (retriable)", () => {
       rpc,
     });
     await loop.initCursor();
+    const refusalsBefore = writer.refusals.length;
     await loop.catchUpToHead();
     assert.equal(loop.getState().lastContiguousSlot, slotA);
     assert.equal(loop.getState().catchupIncident, "rpc_unreachable");
     assert.equal(loop.getState().halted, false);
     assert.equal(loop.isReady(), false);
     assert.ok(blockCalls >= 2);
+    // Retriable transport must not append ingest_refusal (chain/sequence only).
+    assert.equal(writer.refusals.length, refusalsBefore);
 
     // Recovery path: answering getBlock clears retriable incident (same pattern as budget).
     const recover = makeRpc({
@@ -461,6 +469,71 @@ describe("isSolanaRpcUnreachableError", () => {
         new SvmIngestRpcBudgetExhaustedError("budget"),
       ),
       false,
+    );
+  });
+
+  it("HTTP 200 null JSON body is plain Error, not unreachable", async () => {
+    const prev = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response("null", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })) as typeof fetch;
+    try {
+      await assert.rejects(
+        () =>
+          postSolanaJsonRpc("http://127.0.0.1:9", "getHealth", [], 1_000),
+        (err: unknown) => {
+          assert.equal(err instanceof Error, true);
+          assert.equal(err instanceof TypeError, false);
+          assert.equal(isSolanaRpcUnreachableError(err), false);
+          assert.match(
+            err instanceof Error ? err.message : "",
+            /malformed JSON-RPC envelope/,
+          );
+          return true;
+        },
+      );
+    } finally {
+      globalThis.fetch = prev;
+    }
+  });
+});
+
+describe("permanent catch-up incident appends ingest_refusal", () => {
+  it("startup_retention_unavailable writes sequence_gap refusal row", async () => {
+    const startSlot = FIXTURE_FOLLOWED_PROGRAMS[0]!.deploySlot;
+    const rpc = makeRpc({
+      head: startSlot + 10,
+      firstAvailable: startSlot + 1,
+      signaturesByProgram: { [FIXTURE_PASSPORT_PROGRAM]: [] },
+    });
+    const writer = createMemorySvmRawWriter();
+    const loop = createIngestLoop({
+      namespace: FIXTURE_NAMESPACE,
+      startSlot,
+      maxLagSlots: 10,
+      followedPrograms: FIXTURE_FOLLOWED_PROGRAMS,
+      writer,
+      rpc,
+    });
+    await loop.initCursor();
+    const refusalsBefore = writer.refusals.length;
+    await assert.rejects(
+      () => loop.catchUpToHead(),
+      /required slot .* before first available block/,
+    );
+    assert.equal(
+      loop.getState().catchupIncident,
+      "startup_retention_unavailable",
+    );
+    assert.equal(loop.getState().halted, true);
+    assert.ok(writer.refusals.length > refusalsBefore);
+    const row = writer.refusals[writer.refusals.length - 1]!;
+    assert.equal(row.refusalKind, "sequence_gap");
+    assert.equal(
+      (row.detail as { incident?: string }).incident,
+      "startup_retention_unavailable",
     );
   });
 });
