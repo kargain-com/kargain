@@ -50,31 +50,6 @@ function plantAdapterGraph(
   );
 }
 
-/**
- * #81 regression shape: stop expanding any file under the adapter prefix,
- * regardless of importer. Kept here only so the constructed pair can show
- * green-before / red-after for an unauthorized components importer.
- */
-function reachabilityWithPrefixStop(
-  rootDir: string,
-  prefix: string,
-): ReturnType<typeof traceStaticReachabilityToPackages> {
-  // Build the graph via the real walker with no stop, then drop hits whose
-  // path enters the prefix from anywhere (simulate opaque prefix door).
-  const unrestricted = traceStaticReachabilityToPackages(BANNED, { rootDir });
-  return unrestricted.filter((hit) => {
-    const parts = hit.reason.match(/\((.*)\)/)?.[1]?.split(" -> ") ?? [];
-    const adapterIdx = parts.findIndex(
-      (p) => p === prefix.replace(/\/$/, "") || p.startsWith(prefix),
-    );
-    // Old behaviour: once the path touches the adapter, banned pkgs past it
-    // are ignored — so a hit that only reaches banned *through* the adapter
-    // would have been greened. Drop those.
-    if (adapterIdx >= 0 && adapterIdx < parts.length - 1) return false;
-    return true;
-  });
-}
-
 describe("solana web3.js app-graph policy (S8-2)", () => {
   it("no product file statically reaches banned Solana SDKs past the Irys client door", () => {
     const violations = traceStaticReachabilityToPackages(BANNED, {
@@ -144,7 +119,7 @@ describe("solana web3.js app-graph policy (S8-2)", () => {
     assert.deepEqual(reachability, []);
   });
 
-  it("constructed: components import of the adapter is red; prefix stop was green (regression)", () => {
+  it("constructed: components import of the adapter is red", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "kargain-irys-leak-"));
     plantAdapterGraph(
       root,
@@ -152,19 +127,12 @@ describe("solana web3.js app-graph policy (S8-2)", () => {
       'export async function load() { return import("@/adapters/irys-solana/build-uploader"); }\n',
     );
 
-    const before = reachabilityWithPrefixStop(root, IRYS_SOLANA_ADAPTER_PREFIX);
-    assert.deepEqual(
-      before,
-      [],
-      "prefix stop greened unauthorized importers — the #81 regression",
-    );
-
-    const after = traceStaticReachabilityToPackages(BANNED, {
+    const hits = traceStaticReachabilityToPackages(BANNED, {
       rootDir: root,
       stopAtEdges: [IRYS_CLIENT_DOOR],
     });
-    assert.equal(after.length, 1);
-    assert.equal(after[0]?.path, "components/x.tsx");
-    assert.match(after[0]?.reason ?? "", /adapters\/irys-solana|@solana/);
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0]?.path, "components/x.tsx");
+    assert.match(hits[0]?.reason ?? "", /adapters\/irys-solana|@solana/);
   });
 });
