@@ -1029,7 +1029,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     id: "svm-rpc-max-supported-transaction-version",
     owner:
       "lib/svm/rpc-max-supported-transaction-version.ts · lib/svm/rpc-block-transactions.ts · lib/svm/solana-json-rpc.ts",
-    rule: "Sole maxSupportedTransactionVersion ceiling (1); ingest getBlock = JSON-RPC + wire mapper (never Connection.getBlock); product svm-rpc shares postSolanaJsonRpc",
+    rule: "Sole maxSupportedTransactionVersion ceiling (1); ingest getBlock = JSON-RPC + wire mapper (never Connection.getBlock); product svm-rpc shares postSolanaJsonRpc; every postSolanaJsonRpc call requires explicit timeoutMs (no hidden default); ingest Connection uses fetch+AbortSignal with its class bound",
     guardTests: [
       "svm-rpc-transaction-version-policy.test.ts",
       "svm-ingest-rpc-client-version.test.ts",

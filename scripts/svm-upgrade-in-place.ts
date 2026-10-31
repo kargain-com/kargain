@@ -30,6 +30,10 @@ import {
   evaluateStartupRetention,
   startupRetentionUnavailableMessage,
 } from "../lib/svm/startup-retention.js";
+import {
+  isSolanaRpcUnreachableError,
+  postSolanaJsonRpc,
+} from "../lib/svm/solana-json-rpc.js";
 import { namespaceFromLayerZeroEid } from "../lib/web3/kargain-namespace.js";
 import { requireDeployArtifact } from "./lib/svm-deploy-artifact.js";
 import { assertSolanaUpgradeAuthorityMatchesDeployer } from "./lib/svm-deploy-plan.js";
@@ -60,7 +64,39 @@ import {
   type UpgradeProgramStatusRow,
 } from "./lib/svm-upgrade-in-place-preflight.js";
 
+/**
+ * Per-request bound for upgrade-in-place retention probes (getFirstAvailableBlock,
+ * getSlot) on tooling endpoint (SOLANA_RPC_URL via resolveIngestSolanaRpcUrl).
+ * Bound rule: max(3_000, ceil_to_second(max(10 × p95, 3 × max))).
+ * Measured on tooling_rpc, n=100: class bound = max derived = 7_000
+ * (getFirstAvailableBlock p50=187.1 p95=210.7 max=2150.6; getSlot → 3_000).
+ */
+export const SVM_UPGRADE_IN_PLACE_RPC_TIMEOUT_MS = 7_000;
+
 const CALLER = "svm-upgrade-in-place.ts";
+
+async function upgradeInPlaceRpc<T>(
+  rpcUrl: string,
+  method: string,
+  params: unknown[],
+): Promise<T> {
+  try {
+    return await postSolanaJsonRpc<T>(
+      rpcUrl,
+      method,
+      params,
+      SVM_UPGRADE_IN_PLACE_RPC_TIMEOUT_MS,
+    );
+  } catch (err) {
+    if (isSolanaRpcUnreachableError(err)) {
+      throw new Error(
+        `${CALLER}: RPC ${method} unreachable (${err instanceof Error ? err.name : "unreachable"})`,
+      );
+    }
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`${CALLER}: RPC ${method}: ${detail}`);
+  }
+}
 
 const UPGRADABLE_EVIDENCE_KEYS = new Set(
   SVM_COMMERCIAL_PROGRAM_CENSUS.map((r) => r.evidenceKey),
@@ -113,27 +149,6 @@ function runSolana(args: string[]): { status: number; stdout: string; stderr: st
   };
 }
 
-async function rpcJsonResult(rpcUrl: string, method: string): Promise<unknown> {
-  const res = await fetch(rpcUrl, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: [] }),
-  });
-  if (!res.ok) {
-    throw new Error(`${CALLER}: RPC ${method} HTTP ${res.status}`);
-  }
-  const body = (await res.json()) as {
-    result?: unknown;
-    error?: { message?: string };
-  };
-  if (body.error) {
-    throw new Error(
-      `${CALLER}: RPC ${method} error: ${body.error.message ?? "unknown"}`,
-    );
-  }
-  return body.result;
-}
-
 async function assertConfiguredRpcRetention(
   rpcUrl: string,
   stack: SvmCommercialActiveStack,
@@ -144,9 +159,9 @@ async function assertConfiguredRpcRetention(
 }> {
   const requiredSlot = resolveIngestStartSlot(stack);
   const firstAvailableBlock = Number(
-    await rpcJsonResult(rpcUrl, "getFirstAvailableBlock"),
+    await upgradeInPlaceRpc(rpcUrl, "getFirstAvailableBlock", []),
   );
-  const headSlot = Number(await rpcJsonResult(rpcUrl, "getSlot"));
+  const headSlot = Number(await upgradeInPlaceRpc(rpcUrl, "getSlot", []));
   if (!Number.isInteger(firstAvailableBlock) || !Number.isInteger(headSlot)) {
     throw new Error(`${CALLER}: RPC retention read returned non-integer slots`);
   }

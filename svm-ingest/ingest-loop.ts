@@ -21,11 +21,8 @@ import {
 } from "../lib/svm/startup-retention.js";
 import type { SvmRawWriter } from "./svm-raw-writer.js";
 import type { ProjectionProjector } from "./projection-projector.js";
-import {
-  SvmIngestRpcBudgetExhaustedError,
-  type FetchedBlock,
-  type SvmRpcClient,
-} from "./rpc-client.js";
+import { classifyIngestRpcFailure } from "./ingest-rpc-failure.js";
+import { type FetchedBlock, type SvmRpcClient } from "./rpc-client.js";
 
 export type IngestLoopState = {
   namespace: number;
@@ -88,6 +85,12 @@ export function createIngestLoop(opts: IngestLoopOptions) {
     state.lastContiguousSlot = opts.startSlot - 1;
   }
 
+  /**
+   * Sole owner of catch-up incident recording.
+   * Always updates cursor + /ready surface. Append-only ingest_refusal
+   * (sequence_gap) only for permanent incidents — retriable transport /
+   * pagination never pollutes raw chain refusals.
+   */
   async function recordIncident(
     incident: CatchupIncident,
     detail: Record<string, unknown>,
@@ -96,28 +99,40 @@ export function createIngestLoop(opts: IngestLoopOptions) {
     state.catchupIncident = incident;
     if (!isRetriableCatchupIncident(incident)) {
       halted = true;
-    }
-    const detailKey = `${incident}:${JSON.stringify(detail)}`.slice(0, 200);
-    await opts.writer.insertIngestRefusal({
-      id: ingestRefusalRowId({
+      const detailKey = `${incident}:${JSON.stringify(detail)}`.slice(0, 200);
+      await opts.writer.insertIngestRefusal({
+        id: ingestRefusalRowId({
+          namespace: opts.namespace,
+          refusalKind: "sequence_gap",
+          slot,
+          txSignature: null,
+          logIndex: null,
+          detailKey,
+        }),
         namespace: opts.namespace,
         refusalKind: "sequence_gap",
         slot,
-        txSignature: null,
+        txIndexInBlock: null,
         logIndex: null,
-        detailKey,
-      }),
-      namespace: opts.namespace,
-      refusalKind: "sequence_gap",
-      slot,
-      txIndexInBlock: null,
-      logIndex: null,
-      txSignature: null,
-      emittingProgram: null,
-      discriminator: null,
-      detail: { incident, ...detail },
-    });
+        txSignature: null,
+        emittingProgram: null,
+        discriminator: null,
+        detail: { incident, ...detail },
+      });
+    }
     await persistCursor();
+  }
+
+  /** Record a classified RPC failure as a catch-up incident; return true if handled. */
+  async function recordClassifiedRpcFailure(
+    err: unknown,
+    extraDetail: Record<string, unknown>,
+    slot: number | null,
+  ): Promise<boolean> {
+    const classified = classifyIngestRpcFailure(err, extraDetail);
+    if (classified.kind !== "incident") return false;
+    await recordIncident(classified.incident, classified.detail, slot);
+    return true;
   }
 
   async function clearRetriableIncident(): Promise<void> {
@@ -242,12 +257,7 @@ export function createIngestLoop(opts: IngestLoopOptions) {
       }
       return result;
     } catch (err) {
-      if (err instanceof SvmIngestRpcBudgetExhaustedError) {
-        await recordIncident(
-          "rpc_budget_exhausted",
-          { message: err.message },
-          null,
-        );
+      if (await recordClassifiedRpcFailure(err, { phase: "discovery" }, null)) {
         return null;
       }
       throw err;
@@ -291,7 +301,21 @@ export function createIngestLoop(opts: IngestLoopOptions) {
       }
     }
 
-    const firstAvailable = await opts.rpc.getFirstAvailableBlock();
+    let firstAvailable: number;
+    try {
+      firstAvailable = await opts.rpc.getFirstAvailableBlock();
+    } catch (err) {
+      if (
+        await recordClassifiedRpcFailure(
+          err,
+          { phase: "getFirstAvailableBlock" },
+          null,
+        )
+      ) {
+        return false;
+      }
+      throw err;
+    }
     for (const slot of slots) {
       if (halted) return false;
       if (slot < firstAvailable) {
@@ -311,12 +335,13 @@ export function createIngestLoop(opts: IngestLoopOptions) {
       try {
         await ingestDiscoveredSlot(slot);
       } catch (err) {
-        if (err instanceof SvmIngestRpcBudgetExhaustedError) {
-          await recordIncident(
-            "rpc_budget_exhausted",
-            { message: err.message, slot },
+        if (
+          await recordClassifiedRpcFailure(
+            err,
+            { phase: "getBlock", slot },
             slot,
-          );
+          )
+        ) {
           return false;
         }
         throw err;
@@ -341,8 +366,29 @@ export function createIngestLoop(opts: IngestLoopOptions) {
       state.catchupIncident = null;
     }
 
-    const head = await opts.rpc.getSlot();
-    await assertStartupRetention(head);
+    let head: number;
+    try {
+      head = await opts.rpc.getSlot();
+    } catch (err) {
+      if (await recordClassifiedRpcFailure(err, { phase: "getSlot" }, null)) {
+        return;
+      }
+      throw err;
+    }
+    try {
+      await assertStartupRetention(head);
+    } catch (err) {
+      if (
+        await recordClassifiedRpcFailure(
+          err,
+          { phase: "startup_retention" },
+          null,
+        )
+      ) {
+        return;
+      }
+      throw err;
+    }
 
     const primary = await discoverOrIncident({ afterSlot: undefined });
     if (primary === null) {
@@ -427,7 +473,17 @@ export function createIngestLoop(opts: IngestLoopOptions) {
     if (halted) return;
     if (state.bootstrapState) return;
 
-    const head = await opts.rpc.getSlot();
+    let head: number;
+    try {
+      head = await opts.rpc.getSlot();
+    } catch (err) {
+      if (
+        await recordClassifiedRpcFailure(err, { phase: "follow_getSlot" }, null)
+      ) {
+        return;
+      }
+      throw err;
+    }
     const discovered = await discoverOrIncident({
       afterSlot: state.lastContiguousSlot,
     });

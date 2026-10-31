@@ -38,6 +38,16 @@ import {
 import type { KeyedEntry } from "@/lib/web3/keyed-multicall";
 import { productSvmRpcUrl } from "@/lib/web3/svm-rpc";
 import { svmProgramErrorName } from "@/lib/web3/svm-program-errors";
+
+/**
+ * Per-request bound for simulatePassportMay RPC (getLatestBlockhash +
+ * simulateTransaction).
+ *
+ * Bound rule: max(3_000, ceil_to_second(max(10 × p95, 3 × max))).
+ * Measured on product_rpc, n=100: simulateTransaction
+ * p50=34.8 p95=40.3 max=47.0 → derived = 3_000 (floor).
+ */
+export const SVM_SIMULATE_RPC_TIMEOUT_MS = 3_000;
 import { encumbranceSourcesFromConfigEntry } from "@/lib/passport/passport-commerce-facts";
 
 /** LeaveChain / OpenConsignment as carried by PassportIx::May. */
@@ -308,7 +318,12 @@ export async function simulatePassportMay(
   try {
     const bh = await post<{
       value: { blockhash: string; lastValidBlockHeight: number | string };
-    }>(rpcUrl, "getLatestBlockhash", [{ commitment: "confirmed" }]);
+    }>(
+      rpcUrl,
+      "getLatestBlockhash",
+      [{ commitment: "confirmed" }],
+      SVM_SIMULATE_RPC_TIMEOUT_MS,
+    );
     blockhash = bh.value.blockhash;
     lastValidBlockHeight = BigInt(bh.value.lastValidBlockHeight);
   } catch {
@@ -345,6 +360,7 @@ export async function simulatePassportMay(
           commitment: "confirmed",
         },
       ],
+      SVM_SIMULATE_RPC_TIMEOUT_MS,
     );
     const gate = mapMaySimulateErr(result.value.err);
     return gate.status === "available"

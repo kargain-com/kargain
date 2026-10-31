@@ -8,6 +8,7 @@
  * `processed` as expired or landed.
  */
 
+import { isSolanaRpcUnreachableError } from "@/lib/svm/solana-json-rpc";
 import type { SvmCommercialActiveStack } from "@/lib/web3/commercial-active";
 import {
   failingProgramFromLogMessages,
@@ -141,52 +142,62 @@ function createSvmTxConfirmPortAtCommitment(
       const { signature, lastValidBlockHeight } = submission;
       const deadline = Date.now() + timeoutMs;
       while (Date.now() < deadline) {
-        const height = await opts.getBlockHeight();
-        const [row] = await opts.getSignatureStatuses([signature]);
-        const status = row?.confirmationStatus ?? null;
+        try {
+          const height = await opts.getBlockHeight();
+          const statuses = await opts.getSignatureStatuses([signature]);
+          const row = statuses[0] ?? null;
+          const status = row?.confirmationStatus ?? null;
 
-        if (isSuccessStatus(status, opts.successCommitment)) {
-          const slot = observedSlot(row?.slot);
-          if (slot == null) {
+          if (isSuccessStatus(status, opts.successCommitment)) {
+            const slot = observedSlot(row?.slot);
+            if (slot == null) {
+              await new Promise((resolve) =>
+                setTimeout(resolve, pollIntervalMs),
+              );
+              continue;
+            }
+            if (row?.err != null) {
+              const logs = await opts.getTransactionLogMessages(signature);
+              const failingProgram = failingProgramFromLogMessages(logs);
+              const landed = parseAttributedSvmLandedInstructionErrorOnStack(
+                row.err,
+                failingProgram,
+                opts.stack,
+              );
+              return {
+                kind: "landed_with_error",
+                signature,
+                slot,
+                error: row.err,
+                failingProgram,
+                landed,
+              };
+            }
+            return { kind: "landed_ok", signature, slot };
+          }
+
+          // Any present sub-success status (incl. processed / confirmed-before-finalized) → keep polling.
+          if (status != null) {
             await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
             continue;
           }
-          if (row?.err != null) {
-            const logs = await opts.getTransactionLogMessages(signature);
-            const failingProgram = failingProgramFromLogMessages(logs);
-            const landed = parseAttributedSvmLandedInstructionErrorOnStack(
-              row.err,
-              failingProgram,
-              opts.stack,
-            );
+
+          // No status at all — expire only when height (read first) is past lifetime.
+          if (height > lastValidBlockHeight) {
             return {
-              kind: "landed_with_error",
+              kind: "expired",
               signature,
-              slot,
-              error: row.err,
-              failingProgram,
-              landed,
+              lastValidBlockHeight,
+              observedBlockHeight: height,
             };
           }
-          return { kind: "landed_ok", signature, slot };
-        }
-
-        // Any present sub-success status (incl. processed / confirmed-before-finalized) → keep polling.
-        if (status != null) {
           await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-          continue;
+        } catch (err) {
+          if (isSolanaRpcUnreachableError(err)) {
+            return { kind: "status_unknown", signature };
+          }
+          throw err;
         }
-
-        // No status at all — expire only when height (read first) is past lifetime.
-        if (height > lastValidBlockHeight) {
-          return {
-            kind: "expired",
-            signature,
-            lastValidBlockHeight,
-            observedBlockHeight: height,
-          };
-        }
-        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
       }
       return { kind: "status_unknown", signature };
     },

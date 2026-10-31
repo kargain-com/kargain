@@ -13,11 +13,29 @@ import {
   type CommercialProgramEvidenceKey,
 } from "../../lib/svm/ingest-config.js";
 import type { SvmDevnetEvidence } from "../../lib/svm/devnet-evidence.js";
+import { isSolanaRpcUnreachableError } from "../../lib/svm/solana-json-rpc.js";
 import type { SvmCommercialActiveStack } from "../../lib/web3/commercial-active.js";
 import { encodeSvmPubkeyBytes } from "../../lib/web3/protocol-address.js";
 
 const SHA256_HEX = /^[a-f0-9]{64}$/;
 const GIT_HEAD_HEX = /^[a-f0-9]{7,40}$/;
+
+/**
+ * Per-request bound for ProgramData getAccountInfo in the binary-identity CLI
+ * (tooling endpoint = SOLANA_RPC_URL via resolveIngestSolanaRpcUrl).
+ * Bound rule: max(3_000, ceil_to_second(max(10 × p95, 3 × max))).
+ * Measured on tooling_rpc, n=100: ProgramData getAccountInfo
+ * p50=77.3 p95=142.8 max=337.3 → derived = 3_000 (floor).
+ */
+export const SVM_BINARY_IDENTITY_RPC_TIMEOUT_MS = 3_000;
+
+/** Named refusal line when the configured RPC never answers within the bound. */
+export const SVM_BINARY_IDENTITY_RPC_UNREACHABLE_LINE =
+  "svm_binary_identity_rpc_unreachable";
+
+/** Named refusal line when tooling RPC (`SOLANA_RPC_URL`) is unset. */
+export const SVM_BINARY_IDENTITY_RPC_ABSENT_LINE =
+  "svm_binary_identity_rpc_absent";
 
 /** ProgramData metadata size when upgrade authority Option is Some (loader-v3). */
 export const PROGRAMDATA_HEADER_WITH_AUTHORITY = 45;
@@ -434,6 +452,11 @@ export async function assertSvmBinaryIdentity(args: {
     try {
       elfRegion = await fetchProgramDataElf(registryId);
     } catch (err) {
+      // Transport timeout / unreachable must not soft-fail per program —
+      // the CLI names a single unreachable line and exits non-zero.
+      if (isSolanaRpcUnreachableError(err)) {
+        throw err;
+      }
       reasons.push({
         evidenceKey: row.evidenceKey,
         programId: registryId,

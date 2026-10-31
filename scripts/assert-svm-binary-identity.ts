@@ -13,13 +13,20 @@ import { config as loadEnv } from "dotenv";
 
 import { namespaceFromLayerZeroEid } from "../lib/web3/kargain-namespace.js";
 import { requireSvmCommercialActive } from "../lib/web3/commercial-active.js";
-import { postSolanaJsonRpc } from "../lib/svm/solana-json-rpc.js";
+import { resolveIngestSolanaRpcUrl } from "../lib/svm/ingest-config.js";
+import {
+  isSolanaRpcUnreachableError,
+  postSolanaJsonRpc,
+} from "../lib/svm/solana-json-rpc.js";
 import {
   assertSvmBinaryIdentity,
   formatSvmBinaryIdentityFailure,
   formatSvmBinaryIdentitySuccessLines,
   programDataAddressFromProgramAccount,
   sliceElfFromProgramDataAccount,
+  SVM_BINARY_IDENTITY_RPC_ABSENT_LINE,
+  SVM_BINARY_IDENTITY_RPC_TIMEOUT_MS,
+  SVM_BINARY_IDENTITY_RPC_UNREACHABLE_LINE,
 } from "./lib/assert-svm-binary-identity.js";
 import {
   requireSvmDevnetEvidence,
@@ -31,7 +38,8 @@ loadEnv({ path: ".env.local" });
 loadEnv();
 
 const DEFAULT_429_MAX_ATTEMPTS = 6;
-const DEFAULT_RPC = "https://api.devnet.solana.com";
+/** Endpoint role printed to the operator — never the URL (may carry a key). */
+const TOOLING_RPC_ROLE = "tooling_rpc";
 
 type AccountInfoResult = {
   value: {
@@ -86,10 +94,12 @@ async function getAccountDataBase64(
   address: string,
 ): Promise<Uint8Array> {
   const result = await with429Backoff(() =>
-    postSolanaJsonRpc<AccountInfoResult>(rpcUrl, "getAccountInfo", [
-      address,
-      { encoding: "base64", commitment: "confirmed" },
-    ]),
+    postSolanaJsonRpc<AccountInfoResult>(
+      rpcUrl,
+      "getAccountInfo",
+      [address, { encoding: "base64", commitment: "confirmed" }],
+      SVM_BINARY_IDENTITY_RPC_TIMEOUT_MS,
+    ),
   );
   if (result.value == null) {
     throw new Error(`account absent on-chain (${maskBase58Id(address)})`);
@@ -122,8 +132,11 @@ async function fetchProgramDataElf(
 
 async function main() {
   const eid = parseEid(process.argv.slice(2));
-  const rpcEnvPresent = Boolean(process.env.SOLANA_RPC_URL?.trim());
-  const rpc = process.env.SOLANA_RPC_URL?.trim() || DEFAULT_RPC;
+  const rpc = resolveIngestSolanaRpcUrl();
+  if (rpc == null) {
+    console.error(SVM_BINARY_IDENTITY_RPC_ABSENT_LINE);
+    process.exit(1);
+  }
 
   let evidence;
   try {
@@ -138,7 +151,7 @@ async function main() {
 
   console.log(
     `SVM binary identity — eid ${eid} namespace=${namespace} ` +
-      `rpc=${rpc} SOLANA_RPC_URL=${rpcEnvPresent ? "present" : "absent→public-devnet"} ` +
+      `endpoint_role=${TOOLING_RPC_ROLE} ` +
       `evidence=${svmDevnetEvidencePath(eid)} ` +
       `(JSON-RPC getAccountInfo only; no keypair)`,
   );
@@ -161,6 +174,10 @@ async function main() {
 }
 
 main().catch((err) => {
+  if (isSolanaRpcUnreachableError(err)) {
+    console.error(SVM_BINARY_IDENTITY_RPC_UNREACHABLE_LINE);
+    process.exit(1);
+  }
   console.error(err instanceof Error ? err.message : err);
   process.exit(1);
 });

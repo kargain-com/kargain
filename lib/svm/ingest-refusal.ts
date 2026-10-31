@@ -20,7 +20,8 @@ export type CatchupIncident =
   | "startup_retention_unavailable"
   | "discovery_incomplete"
   | "bootstrap_range_not_enumerated"
-  | "rpc_budget_exhausted";
+  | "rpc_budget_exhausted"
+  | "rpc_unreachable";
 
 /**
  * Transient RPC/pagination / incomplete-range failures — surface on /ready until the
@@ -31,6 +32,7 @@ export const RETRIABLE_CATCHUP_INCIDENTS = [
   "discovery_incomplete",
   "bootstrap_range_not_enumerated",
   "rpc_budget_exhausted",
+  "rpc_unreachable",
 ] as const satisfies readonly CatchupIncident[];
 
 export type RetriableCatchupIncident =

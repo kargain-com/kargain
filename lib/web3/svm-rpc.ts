@@ -11,6 +11,18 @@ import {
   type SvmTxConfirmPort,
 } from "@/lib/web3/svm-tx-confirm";
 
+/**
+ * Per-request bound for product Solana JSON-RPC reads (getLatestBlockhash,
+ * getBlockHeight, getMultipleAccounts, getAccountInfo, getSignatureStatuses,
+ * getTransaction).
+ *
+ * Bound rule: max(3_000, ceil_to_second(max(10 × p95, 3 × max))).
+ * Measured on product_rpc (public Solana Devnet), n=100 per method.
+ * Class bound = max derived = 5_000 (getTransaction p50=366.6 p95=463.4
+ * max=477.2). Lighter methods derive to the 3_000 floor.
+ */
+export const SVM_PRODUCT_RPC_TIMEOUT_MS = 5_000;
+
 type SignatureStatusRow = {
   confirmationStatus?: string | null;
   err?: unknown;
@@ -89,6 +101,7 @@ export async function fetchProductSvmLatestBlockhash(opts?: {
       rpcUrl,
       "getLatestBlockhash",
       [{ commitment: "confirmed" }],
+      SVM_PRODUCT_RPC_TIMEOUT_MS,
     );
     value = result.value;
   } catch (err) {
@@ -121,9 +134,12 @@ export async function fetchProductSvmLatestBlockhash(opts?: {
   const fetchHeight =
     opts?.fetchBlockHeight ??
     (async (url: string) => {
-      const height = await postSolanaJsonRpc<number | string>(url, "getBlockHeight", [
-        { commitment: "confirmed" },
-      ]);
+      const height = await postSolanaJsonRpc<number | string>(
+        url,
+        "getBlockHeight",
+        [{ commitment: "confirmed" }],
+        SVM_PRODUCT_RPC_TIMEOUT_MS,
+      );
       return BigInt(height);
     });
 
@@ -288,10 +304,12 @@ export async function fetchProductSvmAccountsData(
   try {
     const result = await postSolanaJsonRpc<{
       value: GetAccountInfoRpcValue[];
-    }>(rpcUrl, "getMultipleAccounts", [
-      unique,
-      { encoding: "base64", commitment: "confirmed" },
-    ]);
+    }>(
+      rpcUrl,
+      "getMultipleAccounts",
+      [unique, { encoding: "base64", commitment: "confirmed" }],
+      SVM_PRODUCT_RPC_TIMEOUT_MS,
+    );
     if (!Array.isArray(result.value) || result.value.length !== unique.length) {
       return {
         ok: false,
@@ -388,14 +406,18 @@ export async function fetchProductSvmSignatureStatuses(
     rpcUrl,
     "getSignatureStatuses",
     [signatures],
+    SVM_PRODUCT_RPC_TIMEOUT_MS,
   );
   return result.value;
 }
 
 async function fetchProductSvmBlockHeight(rpcUrl: string): Promise<bigint> {
-  const height = await postSolanaJsonRpc<number | string>(rpcUrl, "getBlockHeight", [
-    { commitment: "confirmed" },
-  ]);
+  const height = await postSolanaJsonRpc<number | string>(
+    rpcUrl,
+    "getBlockHeight",
+    [{ commitment: "confirmed" }],
+    SVM_PRODUCT_RPC_TIMEOUT_MS,
+  );
   return BigInt(height);
 }
 
@@ -403,14 +425,19 @@ async function fetchProductSvmTransactionLogMessages(
   rpcUrl: string,
   signature: string,
 ): Promise<readonly string[] | null> {
-  const tx = await postSolanaJsonRpc<GetTransactionResult>(rpcUrl, "getTransaction", [
-    signature,
-    {
-      commitment: "confirmed",
-      encoding: "json",
-      maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
-    },
-  ]);
+  const tx = await postSolanaJsonRpc<GetTransactionResult>(
+    rpcUrl,
+    "getTransaction",
+    [
+      signature,
+      {
+        commitment: "confirmed",
+        encoding: "json",
+        maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
+      },
+    ],
+    SVM_PRODUCT_RPC_TIMEOUT_MS,
+  );
   return tx?.meta?.logMessages ?? null;
 }
 
@@ -466,14 +493,19 @@ export async function fetchSvmTransactionStructuredPayloads(args: {
   if (!rpcUrl) {
     throw new Error(productSvmRpcUrlRefusalCopy());
   }
-  const tx = await postSolanaJsonRpc<GetTransactionResult>(rpcUrl, "getTransaction", [
-    args.signature,
-    {
-      commitment: "confirmed",
-      encoding: "json",
-      maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
-    },
-  ]);
+  const tx = await postSolanaJsonRpc<GetTransactionResult>(
+    rpcUrl,
+    "getTransaction",
+    [
+      args.signature,
+      {
+        commitment: "confirmed",
+        encoding: "json",
+        maxSupportedTransactionVersion: RPC_MAX_SUPPORTED_TRANSACTION_VERSION,
+      },
+    ],
+    SVM_PRODUCT_RPC_TIMEOUT_MS,
+  );
   if (!tx) {
     throw new Error("Solana transaction could not be loaded after confirmation.");
   }

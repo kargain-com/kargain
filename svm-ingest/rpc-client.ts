@@ -15,6 +15,25 @@ import {
   type SolanaJsonRpcPost,
 } from "../lib/svm/solana-json-rpc.js";
 
+/**
+ * Per-request bound for ingest getBlock (JSON-RPC + wire mapper).
+ *
+ * Bound rule: max(3_000, ceil_to_second(max(10 × p95, 3 × max))).
+ * Measured on ingest_rpc, distinct followed-program slots, n=66:
+ * getBlock p50=273.3 p95=398.6 max=509.5 → derived = 4_000.
+ */
+export const SVM_INGEST_GET_BLOCK_TIMEOUT_MS = 4_000;
+
+/**
+ * Per-request bound for ingest Connection methods (getSlot,
+ * getFirstAvailableBlock, getSignaturesForAddress) via Connection `fetch`.
+ *
+ * Bound rule: max(3_000, ceil_to_second(max(10 × p95, 3 × max))).
+ * Measured on ingest_rpc, n=100: getSignaturesForAddress
+ * p50=394.9 p95=512.8 max=575.7 → derived = 6_000.
+ */
+export const SVM_INGEST_CONNECTION_TIMEOUT_MS = 6_000;
+
 export type FetchedBlock = {
   slot: number;
   transactions: FetchedBlockTransaction[];
@@ -167,6 +186,19 @@ export function solanaGetBlockRequestConfig(): {
   };
 }
 
+function connectionFetchWithTimeout(
+  timeoutMs: number,
+): typeof fetch {
+  return (input, init) => {
+    const signal = AbortSignal.timeout(timeoutMs);
+    if (init?.signal == null) {
+      return fetch(input, { ...init, signal });
+    }
+    const merged = AbortSignal.any([init.signal, signal]);
+    return fetch(input, { ...init, signal: merged });
+  };
+}
+
 export function createSolanaRpcClient(
   rpcUrl: string,
   options?: CreateSolanaRpcClientOptions,
@@ -177,6 +209,7 @@ export function createSolanaRpcClient(
       commitment: "confirmed",
       // Sole 429 owner is with429Backoff below — never dual-retry with web3.js.
       disableRetryOnRateLimit: true,
+      fetch: connectionFetchWithTimeout(SVM_INGEST_CONNECTION_TIMEOUT_MS),
     });
   const jsonRpcPost = options?.jsonRpcPost ?? postSolanaJsonRpc;
   const maxRps = options?.maxRps ?? resolveIngestMaxRps();
@@ -225,10 +258,12 @@ export function createSolanaRpcClient(
         callCounts.getBlock += 1;
         try {
           const result = await budgeted(() =>
-            jsonRpcPost<GetBlockWireResult>(rpcUrl, "getBlock", [
-              slot,
-              solanaGetBlockRequestConfig(),
-            ]),
+            jsonRpcPost<GetBlockWireResult>(
+              rpcUrl,
+              "getBlock",
+              [slot, solanaGetBlockRequestConfig()],
+              SVM_INGEST_GET_BLOCK_TIMEOUT_MS,
+            ),
           );
           if (result == null) {
             if (attempt < missingBlockRetries) continue;

@@ -5,6 +5,7 @@
  */
 
 import type { FollowedProgram } from "./ingest-config";
+import { isSolanaRpcUnreachableError } from "./solana-json-rpc";
 
 export type SignaturePageRow = {
   signature: string;
@@ -100,11 +101,15 @@ export async function discoverIngestSlots(
           limit: pageLimit,
         });
       } catch (err) {
-        // Budget owner lives in rpc-client; rethrow so ingest-loop can name rpc_budget_exhausted.
+        // Budget / unreachable owners live in rpc-client + solana-json-rpc;
+        // rethrow so ingest-loop can name rpc_budget_exhausted / rpc_unreachable.
         if (
           err instanceof Error &&
           err.name === "SvmIngestRpcBudgetExhaustedError"
         ) {
+          throw err;
+        }
+        if (isSolanaRpcUnreachableError(err)) {
           throw err;
         }
         return {

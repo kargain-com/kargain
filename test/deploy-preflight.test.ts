@@ -809,6 +809,13 @@ describe("deploy-preflight svm-ingest script", () => {
       isSolanaRpcUnreachableError(new TypeError("fetch failed")),
       true,
     );
+    // Answered malformed envelope is plain Error — never TypeError → unreachable.
+    assert.equal(
+      isSolanaRpcUnreachableError(
+        new Error("Solana RPC getHealth returned malformed JSON-RPC envelope"),
+      ),
+      false,
+    );
     // Message text alone never decides — including answered RPC wording.
     assert.equal(
       isSolanaRpcUnreachableError(
@@ -900,11 +907,12 @@ describe("postSolanaJsonRpc timeout", () => {
     }
   });
 
-  it("without timeoutMs omits AbortSignal (today's unbounded shape)", async () => {
+  it("always attaches AbortSignal when timeoutMs is required", async () => {
     const prev = globalThis.fetch;
-    let sawSignal: AbortSignal | undefined | null = "unset" as unknown as null;
+    let sawSignal: AbortSignal | undefined;
     globalThis.fetch = (async (_input, init) => {
-      sawSignal = init?.signal;
+      const signal = init?.signal;
+      if (signal != null) sawSignal = signal;
       return new Response(
         JSON.stringify({ jsonrpc: "2.0", id: 1, result: "ok" }),
         { status: 200, headers: { "content-type": "application/json" } },
@@ -915,9 +923,10 @@ describe("postSolanaJsonRpc timeout", () => {
         "https://solana.example",
         "getHealth",
         [],
+        1_000,
       );
       assert.equal(result, "ok");
-      assert.equal(sawSignal, undefined);
+      assert.ok(sawSignal instanceof AbortSignal);
     } finally {
       globalThis.fetch = prev;
     }
