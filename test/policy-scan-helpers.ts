@@ -15,12 +15,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { builtinModules } from "node:module";
 
-import { extractStaticImportSpecifiers as extractStaticImportSpecifiersOwner } from "../scripts/lib/static-import-specifiers.ts";
-
-/** Sole owner lives in scripts/lib — do not fork a second extractor. */
-export function extractStaticImportSpecifiers(source: string): string[] {
-  return extractStaticImportSpecifiersOwner(source);
-}
+import { extractStaticImportSpecifiers } from "../scripts/lib/static-import-specifiers.ts";
 
 export const POLICY_SCAN_ROOT = join(
   fileURLToPath(new URL(".", import.meta.url)),
@@ -315,17 +310,23 @@ export function collectStaticImportClosure(
   return [...visited].sort();
 }
 
+/** Opaque door: only this importer→target edge skips expanding the target. */
+export type ReachabilityStopEdge = {
+  from: string;
+  toPrefix: string;
+};
+
 type ReachabilityOptions = {
   rootDir?: string;
   startRoots?: readonly string[];
   graphRoots?: readonly string[];
   owners?: readonly string[];
   /**
-   * Repo-relative path prefixes that are opaque doors: the edge may be
-   * recorded in the path, but their local/package deps are not expanded
-   * (e.g. adapters/irys-solana owns @solana/web3.js).
+   * Declared edges that are opaque doors: when the walk arrives at a path
+   * under `toPrefix` from exactly `from`, do not expand that target's deps.
+   * Any other edge into `toPrefix` keeps expanding (and can hit banned pkgs).
    */
-  stopAtPrefixes?: readonly string[];
+  stopAtEdges?: readonly ReachabilityStopEdge[];
 };
 
 function resolvePackageRootDir(
@@ -378,16 +379,26 @@ function packageDependencies(
   }
 }
 
-function matchesStopPrefix(
-  rel: string,
-  prefixes: readonly string[] | undefined,
-): boolean {
-  if (!prefixes || prefixes.length === 0) return false;
+function matchesPathPrefix(rel: string, prefix: string): boolean {
   const normalized = rel.replace(/\\/g, "/");
-  return prefixes.some(
-    (prefix) =>
-      normalized === prefix.replace(/\/$/, "") ||
-      normalized.startsWith(prefix.endsWith("/") ? prefix : `${prefix}/`),
+  const p = prefix.endsWith("/") ? prefix : `${prefix}/`;
+  const exact = prefix.replace(/\/$/, "");
+  return normalized === exact || normalized.startsWith(p);
+}
+
+/** Stop expanding only when the previous hop is the declared importer. */
+function shouldStopAtDeclaredEdge(
+  current: { name: string; path: string[] },
+  edges: readonly ReachabilityStopEdge[] | undefined,
+): boolean {
+  if (!edges || edges.length === 0) return false;
+  const predecessor =
+    current.path.length >= 2 ? current.path[current.path.length - 2] : null;
+  if (!predecessor) return false;
+  return edges.some(
+    (edge) =>
+      predecessor === edge.from.replace(/\\/g, "/") &&
+      matchesPathPrefix(current.name, edge.toPrefix),
   );
 }
 
@@ -418,7 +429,7 @@ export function traceStaticReachabilityToPackages(
     while (queue.length > 0 && !foundPath) {
       const current = queue.shift()!;
       if (current.kind === "file") {
-        if (matchesStopPrefix(current.name, options?.stopAtPrefixes)) {
+        if (shouldStopAtDeclaredEdge(current, options?.stopAtEdges)) {
           continue;
         }
         const node = graph.get(current.name);
