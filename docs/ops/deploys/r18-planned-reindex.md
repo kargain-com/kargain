@@ -30,18 +30,7 @@ Under `.deploy.lock`, the maintainer ran `docker compose stop ponder`, then `scr
 
 ### 3. Deploy runs
 
-**Ponder — [run 41055197485](https://github.com/kargain-com/kargain/actions/runs/41055197485)**
-
-- Identity-change warning: `prior_identity=bca1a526…`, `new_identity=35153260…`.
-- `prior_executable=65f06efa…`, `new_executable=60da3ff3…`, `outcome=recreated`, `preflight=ok`.
-- `ready=ponder status=503` at 12:37:02 UTC (during backfill).
-- State file written with `35153260…` / `60da3ff3…`.
-
-**svm-ingest — [run 41055197499](https://github.com/kargain-com/kargain/actions/runs/41055197499)**
-
-- Built from the new `svm-ingest/` root.
-- All six program preflights `verdict=ok`.
-- `outcome=recreated` and `ready=svm-ingest status=200` at 12:36:39 UTC.
+See Evidence below for the `deploy_evidence` lines from each run.
 
 ## Backfill timeline (2026-10-30, UTC)
 
@@ -54,7 +43,49 @@ From Ponder logs ([#66](https://github.com/kargain-com/kargain/issues/66#issueco
 | 12:37:12 | Backfill JSON-RPC fetch finished for Base Sepolia (12s); `Completed backfill indexing across all chains (12s)` |
 | 12:37:13 | `Started live indexing` on both chains (finalized blocks 52208845 and 12026702) |
 
-## Evidence after backfill
+## Evidence
+
+### Ponder — [run 41055197485](https://github.com/kargain-com/kargain/actions/runs/41055197485)
+
+`gh run view 41055197485 --log` (identity / executable / evidence):
+
+```
+Ponder identity inputs changed — a reindex may be required before the indexer stops answering
+prior_identity=bca1a526880de93398406c6fc79088a208f72ee5ee9bdd0ec76880a6bf9c40b7 new_identity=351532601dad48253353f933d618e4ecaccd3eb7fe600c363d1e1932f625a18f
+Ponder executable fingerprint changed — recreating container
+prior_executable=65f06efa067a020252c54a2597414b4649434218e84c1637a7a470a09941001c new_executable=60da3ff331021b7bf7ccb208bb007911affc7a42c02be61f9100204264d303ff
+deploy_preflight service=ponder chain=84532 provider=0 verdict=ok
+deploy_preflight service=ponder chain=11155111 provider=0 verdict=ok
+deploy_evidence outcome=recreated
+deploy_evidence commit=64b7b99c3a36dc7680ab2b21b55937ed7aaa2c7c
+deploy_evidence node=v24.22.1
+deploy_evidence ready=ponder status=503
+deploy_evidence preflight=ok
+```
+
+`deploy_evidence` lines at **12:37:02 UTC** (`ready=ponder status=503` during backfill). State file written with `35153260…` / `60da3ff3…` ([#66](https://github.com/kargain-com/kargain/issues/66#issuecomment-6541097731)).
+
+### svm-ingest — [run 41055197499](https://github.com/kargain-com/kargain/actions/runs/41055197499)
+
+Built from the new `svm-ingest/` root. `gh run view 41055197499 --log` (preflight / evidence):
+
+```
+deploy_preflight service=svm-ingest program=kar_passport verdict=ok
+deploy_preflight service=svm-ingest program=kar_pro_staking verdict=ok
+deploy_preflight service=svm-ingest program=kar_pro_pass verdict=ok
+deploy_preflight service=svm-ingest program=kar_fixed_price verdict=ok
+deploy_preflight service=svm-ingest program=kar_ascending verdict=ok
+deploy_preflight service=svm-ingest program=kar_gateway verdict=ok
+deploy_evidence outcome=recreated
+deploy_evidence commit=64b7b99c3a36dc7680ab2b21b55937ed7aaa2c7c
+deploy_evidence node=v24.22.1
+deploy_evidence ready=svm-ingest status=200
+deploy_evidence preflight=ok
+```
+
+`deploy_evidence` lines at **12:36:39 UTC**.
+
+### After the backfill
 
 Checked 2026-10-31 ([#66](https://github.com/kargain-com/kargain/issues/66#issuecomment-6541097731)):
 
@@ -71,6 +102,6 @@ The schema drop and the merge were separated in time. The [#70](https://github.c
 | Surface | State |
 |---|---|
 | Schema | `kargain` dropped once before merge; SVM raw/projection and RPC cache schemas left intact |
-| Ponder | Recreated from `64b7b99`; live indexing from 12:37:13 UTC |
-| svm-ingest | Recreated from the new `svm-ingest/` root; `/ready` 200 at 12:36:39 UTC |
+| Ponder | Recreated from `64b7b99`; `ready=ponder status=503` at 12:37:02; live indexing from 12:37:13 UTC |
+| svm-ingest | Recreated from the new `svm-ingest/` root; `ready=svm-ingest status=200` at 12:36:39 UTC |
 | Lesson | Stop/drop and merge must not drift apart |
