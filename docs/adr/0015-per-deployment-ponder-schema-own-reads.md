@@ -145,4 +145,4 @@ Removing five literals removes the views and all three problems.
 
 ## Status
 
-Proposed. The maintainer's merge of the PR that adds this file is the acceptance. ADR 0014 then becomes `Superseded by 0015`.
+Superseded by [0016](./0016-one-writer-schema-per-indexing-identity.md).
