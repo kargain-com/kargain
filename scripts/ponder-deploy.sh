@@ -33,13 +33,13 @@ commit=$(git rev-parse HEAD)
 git archive "$commit" | docker build -f Dockerfile.ponder \
   --label "com.kargain.ponder.repository=$repo" -t "$repo:deploy" -
 
-# Ensure the host bind-mount directory exists before tooling writes into it
-# (Docker Desktop can otherwise leave the mount empty to the host). mkdir
-# runs inside the deploy image — host commands stay git/docker/builtins.
-# Probe the mount from both sides: an empty or volume-shadowed host path
-# would make the next read of `action` fail with "No such file".
-docker run --rm -v "$PWD/.ponder-deploy:/d" --entrypoint sh \
-  "$repo:deploy" -c 'mkdir -p /d/run && echo ok >/d/run/.mount_ok'
+# Ensure the host bind-mount directory exists before tooling writes into it.
+# Mount the checkout (a path that already exists) and mkdir inside it: a
+# `-v "$PWD/.ponder-deploy:..."` when that path is absent can leave Docker
+# Desktop with a volume that is not the host directory, so the next read of
+# `action` fails with "No such file". Host commands stay git/docker/builtins.
+docker run --rm -v "$PWD:/host" --entrypoint sh "$repo:deploy" \
+  -c 'mkdir -p /host/.ponder-deploy/run && echo ok >/host/.ponder-deploy/run/.mount_ok'
 if [ ! -f .ponder-deploy/run/.mount_ok ]; then
   printf 'ponder-deploy: .ponder-deploy bind mount not visible on the host\n' >&2
   exit 2
