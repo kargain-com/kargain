@@ -146,6 +146,11 @@ expect_line() {
   grep -qxF "$1" "$log_dir/$run.log" || fail "run $run: missing line: $1"
 }
 
+# Prefix match for lines whose ADR text carries a variable suffix.
+expect_prefix() {
+  grep -qF "$1" "$log_dir/$run.log" || fail "run $run: missing line containing: $1"
+}
+
 evidence_value() {
   sed -n "s/^deploy_evidence $1=//p" "$log_dir/$run.log" | tail -n 1
 }
@@ -229,7 +234,7 @@ printf '\n=== step 5: writer that fails at build returns\n'
 before5=$(schemas)
 commit_edit src/index.ts "rehearsal: failing writer" 'throw new Error("rehearsal: writer fails at build");' >/dev/null
 deploy_run 1 deploy
-expect_line 'ponder_did_not_become_ready'
+expect_prefix 'ponder_did_not_become_ready'
 expect_line 'deploy_evidence outcome=returned'
 [ "$(evidence_value schema)" = "$schema2" ] || fail "step 5 did not return to $schema2"
 [ "$(schemas)" = "$before5" ] || fail "step 5 created a schema: $(schemas)"
