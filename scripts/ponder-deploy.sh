@@ -36,8 +36,14 @@ git archive "$commit" | docker build -f Dockerfile.ponder \
 # Ensure the host bind-mount directory exists before tooling writes into it
 # (Docker Desktop can otherwise leave the mount empty to the host). mkdir
 # runs inside the deploy image — host commands stay git/docker/builtins.
-docker run --rm -v "$PWD/.ponder-deploy:/d" --entrypoint mkdir \
-  "$repo:deploy" -p /d/run
+# Probe the mount from both sides: an empty or volume-shadowed host path
+# would make the next read of `action` fail with "No such file".
+docker run --rm -v "$PWD/.ponder-deploy:/d" --entrypoint sh \
+  "$repo:deploy" -c 'mkdir -p /d/run && echo ok >/d/run/.mount_ok'
+if [ ! -f .ponder-deploy/run/.mount_ok ]; then
+  printf 'ponder-deploy: .ponder-deploy bind mount not visible on the host\n' >&2
+  exit 2
+fi
 
 step() {
   "${compose[@]}" --profile deploy run --rm -T ponder-deploy \

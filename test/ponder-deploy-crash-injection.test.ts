@@ -51,9 +51,15 @@ const OPS: Op[] = [
   { operation: "deploy", commit: SIM_COMMITS.c2, label: "deploy c2 (API only)" },
   { operation: "deploy", commit: SIM_COMMITS.c3, label: "deploy c3 (indexing, same build_id)" },
   { operation: "deploy", commit: SIM_COMMITS.c4, label: "deploy c4 (never answers)" },
-  { operation: "deploy", commit: SIM_COMMITS.c5, label: "deploy c5 (recreate fails)" },
   { operation: "rollback", commit: SIM_COMMITS.c1, label: "rollback" },
 ];
+
+/** Host recreate failure — sequential coverage only (not in OPS: explore branches explode). */
+const OP_RECREATE_FAIL: Op = {
+  operation: "deploy",
+  commit: SIM_COMMITS.c5,
+  label: "deploy c5 (recreate fails)",
+};
 
 type RunResult = { exit: number | "crash"; lines: string[]; mutations: number };
 
@@ -244,8 +250,8 @@ describe("ponder deploy crash injection (ADR 0016 §14)", () => {
       [OPS[1]!, /deploy_evidence outcome=unchanged/],
       [OPS[2]!, /deploy_evidence switch=catching_up status=503/],
       [OPS[3]!, /deploy_evidence outcome=returned/],
-      [OPS[4]!, /deploy_evidence outcome=returned/],
-      [OPS[5]!, /deploy_evidence outcome=recreated/],
+      [OP_RECREATE_FAIL, /deploy_evidence outcome=returned/],
+      [OPS[4]!, /deploy_evidence outcome=recreated/],
     ];
     for (const [op, expected] of seq) {
       const r = await runOnce(data, op, null, undefined);
