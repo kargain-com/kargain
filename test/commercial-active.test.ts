@@ -186,16 +186,17 @@ describe("resolveCommercialStack is registry-only (ADR 0016 §a)", () => {
   const PLANTED = "0x000000000000000000000000000000000000dEaD";
 
   /**
-   * Temp manifests synthesized from COMMERCIAL_ACTIVE (deployments/*.json are
+   * Temp manifests synthesized from COMMERCIAL_ACTIVE (live deploy records are
    * gitignored and absent on CI). Every registry address is the planted value
    * and every block is 1 — a control that the runtime path ignores them.
+   * Writes only under KARGAIN_DEPLOYMENTS_DIR (never the repo deploy records).
    */
   function withPlantedManifestsAndEnv<T>(fn: () => T): T {
     const prevDir = process.env.KARGAIN_DEPLOYMENTS_DIR;
     const prevEnv = new Map(
       [...REMOVED_START_KEYS, ...REMOVED_ADDRESS_KEYS].map((k) => [k, process.env[k]]),
     );
-    const temp = mkdtempSync(join(tmpdir(), "kargain-deployments-"));
+    const temp = mkdtempSync(join(tmpdir(), "kargain-planted-stack-"));
     for (const id of [HUB, ETH]) {
       const evm = requireEvmCommercialActive(id);
       const blocks = Object.fromEntries(
