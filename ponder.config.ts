@@ -10,30 +10,30 @@ import {
 import { buildPonderRuntime } from "./scripts/lib/ponder-env.js";
 
 /**
- * Indexing is configured via server .env (never committed):
+ * Commercial chains, addresses and start blocks come from COMMERCIAL_ACTIVE
+ * only (ADR 0016 §a, SPEC §I.12.12) — a change is a reviewed registry change,
+ * never a server edit. Transport and database come from the server .env:
  *
- *   PONDER_START_BLOCK_84532=<N>       — Base Sepolia backfill
- *   PONDER_START_BLOCK_11155111=<N>    — Ethereum Sepolia backfill
- *   PONDER_START_BLOCK_31337=0         — local Hardhat replay
  *   PONDER_RPC_URLS_84532              — comma-separated https list (required; no default)
  *   PONDER_RPC_URLS_11155111           — comma-separated https list (required; no default)
  *   PONDER_GETLOGS_BLOCK_RANGE_84532   — eth_getLogs window (required; no default)
  *   PONDER_GETLOGS_BLOCK_RANGE_11155111
- *   PONDER_RPC_URL_31337               — local Hardhat only
  *
  * Every provider in a commercial list must pass `pnpm ponder:rpc-probe` at the
  * configured window. RPC lists and windows are outside Ponder build_id — profile
  * switches are `.env` + container recreate, no reindex.
  *
- * Addresses (SPEC §I.12.12): per chainId via resolveCommercialStack —
- *   optional PONDER_* env (84532 debug) → deployments/<chainId>.json → COMMERCIAL_ACTIVE
- *   VPS needs no deployments/*.json when COMMERCIAL_ACTIVE is current in git.
+ * Local mode (`PONDER_ENABLE_LOCAL=1`) adds the Hardhat chain from
+ * PONDER_*_ADDRESS / deployments/31337.json, PONDER_START_BLOCK_31337 and
+ * PONDER_RPC_URL_31337; it changes nothing on commercial chains. The deploy
+ * preflight refuses it. Every env read in this closure is classified by
+ * scripts/lib/ponder-indexing-env-census.ts.
  *
  * FixedPrice / Ascending: registered when addresses resolve (local always after
  * deploy:local; commercial chains at Nuclear #2). See docs/indexer/MIGRATION-V2.md.
  *
- * After Nuclear redeploy: one full ponder-reindex.sql covers both chains —
- * see docs/indexer/OPERATIONS.md
+ * Each indexing identity writes its own schema; the deploy switches to it
+ * (ADR 0016). See docs/indexer/OPERATIONS.md.
  */
 const {
   chains,

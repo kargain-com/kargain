@@ -1,17 +1,39 @@
 /**
- * Sole owner of the Ponder deploy readiness probe.
+ * Sole owner of the Ponder deploy readiness probe (ADR 0010, ADR 0016 §g).
  *
- * Success = reserved GET /ready answered with any HTTP status (200 caught up,
- * 503 backfill). Failure = no listener within the deadline — crash-loop / dead
- * process. Never invents a custom /health route.
+ * Modes:
+ * - answered — any HTTP status on the reserved GET /ready within the deadline
+ *   (200 caught up, 503 backfill). No answer = crash loop / dead process.
+ * - ready200 — HTTP 200 within the deadline. At the deadline the result says
+ *   whether the last attempt was answered (catching up) or not (stopped).
+ *
+ * Never invents a custom /health route.
  */
-export const PONDER_READY_DEFAULT_URL = "http://127.0.0.1:42069/ready";
+/** The writer on the Compose network, as seen from `ponder-deploy` (ADR 0016 §e). */
+export const PONDER_READY_DEFAULT_URL = "http://ponder:42069/ready";
 export const PONDER_READY_TIMEOUT_MS = 90_000;
+export const PONDER_READY200_TIMEOUT_MS = 600_000;
 export const PONDER_READY_INTERVAL_MS = 2_000;
 
+export type PonderReadyMode = "answered" | "ready200";
+
 export type PonderReadyProbeResult =
-  | { ok: true; status: number; url: string; elapsedMs: number }
-  | { ok: false; url: string; timeoutMs: number; elapsedMs: number };
+  | {
+      ok: true;
+      mode: PonderReadyMode;
+      status: number;
+      url: string;
+      elapsedMs: number;
+    }
+  | {
+      ok: false;
+      mode: PonderReadyMode;
+      url: string;
+      timeoutMs: number;
+      elapsedMs: number;
+      /** Status of the last attempt when it was answered; null when it was not. */
+      lastStatus: number | null;
+    };
 
 export function ponderDidNotBecomeReadyMessage(
   url: string,
@@ -29,7 +51,7 @@ export type PonderReadyProbeDeps = {
 };
 
 /**
- * Poll until /ready returns any HTTP status, or the timeout expires.
+ * Poll /ready until the mode's success criterion, or the timeout expires.
  * Connection refused / network errors continue until timeout — they are not
  * readiness. No continue-on-error; timeout is the named failure.
  */
@@ -38,10 +60,14 @@ export async function waitForPonderReady(
     url?: string;
     timeoutMs?: number;
     intervalMs?: number;
+    mode?: PonderReadyMode;
   } & PonderReadyProbeDeps,
 ): Promise<PonderReadyProbeResult> {
+  const mode: PonderReadyMode = opts?.mode ?? "answered";
   const url = opts?.url ?? PONDER_READY_DEFAULT_URL;
-  const timeoutMs = opts?.timeoutMs ?? PONDER_READY_TIMEOUT_MS;
+  const timeoutMs =
+    opts?.timeoutMs ??
+    (mode === "ready200" ? PONDER_READY200_TIMEOUT_MS : PONDER_READY_TIMEOUT_MS);
   const intervalMs = opts?.intervalMs ?? PONDER_READY_INTERVAL_MS;
   const fetchFn = opts?.fetch ?? globalThis.fetch.bind(globalThis);
   const sleep =
@@ -50,30 +76,37 @@ export async function waitForPonderReady(
   const now = opts?.now ?? Date.now;
 
   const started = now();
+  let lastStatus: number | null = null;
   for (;;) {
     const elapsedMs = now() - started;
     if (elapsedMs >= timeoutMs) {
-      return { ok: false, url, timeoutMs, elapsedMs };
+      return { ok: false, mode, url, timeoutMs, elapsedMs, lastStatus };
     }
     try {
       const res = await fetchFn(url, { method: "GET", redirect: "manual" });
-      // Any HTTP status proves the process answered (200 or 503 both OK).
-      return {
-        ok: true,
-        status: res.status,
-        url,
-        elapsedMs: now() - started,
-      };
+      lastStatus = res.status;
+      if (mode === "answered" || res.status === 200) {
+        return {
+          ok: true,
+          mode,
+          status: res.status,
+          url,
+          elapsedMs: now() - started,
+        };
+      }
     } catch {
-      // Not listening yet — keep polling until deadline.
+      // Not listening (or no longer listening) — keep polling until deadline.
+      lastStatus = null;
     }
     const remaining = timeoutMs - (now() - started);
     if (remaining <= 0) {
       return {
         ok: false,
+        mode,
         url,
         timeoutMs,
         elapsedMs: now() - started,
+        lastStatus,
       };
     }
     await sleep(Math.min(intervalMs, remaining));

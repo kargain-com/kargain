@@ -4,6 +4,7 @@
 import type pg from "pg";
 
 import type { AttestationRow, ProvenancePassportRecord } from "../../src/lib/ponder-passport-provenance.js";
+import { ensureTestWriterSchema } from "./writer-schema.js";
 
 export type MemoryProvenanceState = {
   evmRecords: ProvenancePassportRecord[];
@@ -90,6 +91,7 @@ function parseUnionRecordQuery(
 export function createProvenanceMemoryPool(
   state: MemoryProvenanceState,
 ): pg.Pool {
+  ensureTestWriterSchema();
   return {
     query: async (sql: string, params?: unknown[]) => {
       const parsed = parseUnionRecordQuery(sql, params ?? []);

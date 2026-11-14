@@ -1,8 +1,8 @@
-# Ponder indexer operations (VPS reindex runbook)
+# Ponder indexer operations (VPS deploy runbook)
 
-Use this after **any** change to `ponder.schema.ts` or to indexed handlers that alter stored row shape (e.g. G1 trust fields; passport denorm columns; cover photos; delegation notifications; **July 2026 C3 dual-chain:** `chainId` + chain-scoped verifier keys; **September 2026 S7c-3:** drop stored `passport.custodyChain` / add `custody_determining_event`).
+Ponder deploys follow [ADR 0016](../adr/0016-one-writer-schema-per-indexing-identity.md): one writer, one Postgres schema per **indexing identity**, an automatic switch, a rollback by dispatch, and retention of exactly two schemas. There is **no manual schema drop** in any procedure here — a manual drop would delete the rollback schema.
 
-Without reindex, new columns stay empty on historical passports and trust UX (G2 banner, buy-risk context), **listing card cover photos**, **notifications feed**, or **dual-chain custody / verifier identity** will be wrong until new on-chain events occur. Browse filter SQL that only changes the query expression (Asking USD CASE) needs an indexer **image redeploy**, not this wipe.
+A change to `ponder.schema.ts`, an indexed handler, the registry (`COMMERCIAL_ACTIVE` addresses or start blocks), `Dockerfile.ponder` or the lockfile changes the indexing identity. The next deploy then starts the writer on a fresh schema `k_<40 hex>` and backfills it (from the RPC cache when warm). A change that reaches only `src/api/` or `docker-compose.yml` is a restart in place on the same schema.
 
 ---
 
@@ -15,12 +15,12 @@ Without reindex, new columns stay empty on historical passports and trust UX (G2
 | Hub contracts | `COMMERCIAL_ACTIVE[84532]` / SPEC I.9.1 — `indexFromBlock` **46119704** |
 | Eth contracts | `COMMERCIAL_ACTIVE[11155111]` / SPEC I.9.2 — `indexFromBlock` **11591966** |
 | Solana | `COMMERCIAL_ACTIVE[2000040168]` — start cursor `min(blocks.*)` (staking floor **490463509**); writer = `svm-ingest` |
-| Hub start block | `PONDER_START_BLOCK_84532=46119704` |
-| Eth start block | `PONDER_START_BLOCK_11155111=11591966` |
+| Start blocks | `COMMERCIAL_ACTIVE[chainId].blocks.*` only (ADR 0016 §a); no env key |
 | Hub RPC | `PONDER_RPC_URLS_84532` (comma-separated https; required; no default) · `PONDER_GETLOGS_BLOCK_RANGE_84532` |
 | Eth RPC | `PONDER_RPC_URLS_11155111` · `PONDER_GETLOGS_BLOCK_RANGE_11155111` — probe with `pnpm ponder:rpc-probe` before any `.env` change |
-| Address resolution | Per-chain `COMMERCIAL_ACTIVE` in git (`lib/web3/commercial-active.ts`); optional local `deployments/<chainId>.json` on deploy machine only |
-| Docker | `docker compose build ponder` / `svm-ingest` after code pull + post-build prune |
+| Address resolution | Per-chain `COMMERCIAL_ACTIVE` in git (`lib/web3/commercial-active.ts`) only; `deployments/<chainId>.json` is never read by the indexer |
+| Ponder deploy | Deploy Ponder workflow → [`scripts/ponder-deploy.sh`](../../scripts/ponder-deploy.sh) (no manual `docker compose build ponder`) |
+| Writer | `kargain-ponder:writer`; its schema is the image's `ENV DATABASE_SCHEMA`; record in `/opt/kargain/.ponder-deploy/state.json` |
 
 **C3 schema (July 2026):** `chainId` on commerce/passport/records/uri-history/verifier; verifier PK `` `${chainId}-${address}` ``. **S7c-3:** stored `passport.custodyChain` removed — fold at read via `custody_determining_event` + `bridge_crossing`.
 
@@ -28,18 +28,18 @@ Without reindex, new columns stay empty on historical passports and trust UX (G2
 
 Historical: Nuclear #4 hub **44957457** / Eth **11404204** — superseded by Nuclear #7 **46119704** / **11591966**. Runbook: [ops/deploys/nuclear-7.md](../ops/deploys/nuclear-7.md).
 
-**Handlers:** dual-chain event indexing in `src/index.ts` + gateway crossings in `src/bridge-handlers.ts` — deploy + **reindex required** when schema changes.
+**Handlers:** dual-chain event indexing in `src/index.ts` + gateway crossings in `src/bridge-handlers.ts` — a handler or schema change is an indexing change, so the deploy switches to a fresh schema.
 
 ---
 
 ## S9 cutover — COMPLETE in code (historical checklist)
 
-**September 2026:** `bridge_crossing`, **`custody_determining_event`**, and SVM ingest/projection landed; S9-A (N7 EVM) and S9-B (Solana commercial + `svm-ingest`) are **closed**. Do **not** read the steps below as open work — they are the completed cutover record. Raw/projection schemas are **not** dropped by `ponder-reindex.sql`.
+**September 2026:** `bridge_crossing`, **`custody_determining_event`**, and SVM ingest/projection landed; S9-A (N7 EVM) and S9-B (Solana commercial + `svm-ingest`) are **closed**. Do **not** read the steps below as open work — they are the completed cutover record. Raw/projection schemas are **never** selected by Ponder deploy retention.
 
 ### S9-A — EVM (N7 + schema reindex) — DONE
 
 1. Cut over `COMMERCIAL_ACTIVE` + SPEC I.9 to Nuclear #7 (`indexFromBlock` **46119704** / **11591966**) — **done**.
-2. Full `ponder-reindex.sql` dual-chain; gateway start blocks from `COMMERCIAL_ACTIVE[chainId].blocks.bridgeGateway`.
+2. Full dual-chain schema wipe and backfill (the procedure of that time); gateway start blocks from `COMMERCIAL_ACTIVE[chainId].blocks.bridgeGateway`.
 3. Apply empty [`projection-schema.sql`](../../svm-ingest/db/projection-schema.sql) so UNION HTTP had an empty SVM arm before S9-B.
 4. Smoke Ponder `/ready` then `GET /read-path-ready`.
 5. Smoke fold-at-read via [`src/lib/ponder-passport-custody.ts`](../../src/lib/ponder-passport-custody.ts).
@@ -108,7 +108,7 @@ Default `SVM_INGEST_CATCHUP_MAX_LAG_SLOTS=216000` (~24h at ~400ms/slot). After b
 3. If RPC was transient: restore RPC, restart; service catches up within window.
 4. Verify `/ready` 200 and run `pnpm svm-raw:replay-digest` on a snapshot if validating rebuild integrity.
 
-**Never** add `DROP SCHEMA kargain_svm_raw` to `ponder-reindex.sql` — EVM reindex must not touch SVM raw (policy test enforces).
+Ponder deploy retention selects only `k_<40 hex>` and `kargain`, so it can never drop `kargain_svm_raw` or `kargain_svm_projection` (`test/ponder-deploy-retention-policy.test.ts`).
 
 ### Schema bootstrap
 
@@ -131,7 +131,7 @@ Rollback (canonical detail: [ops/deploys/s9-b-solana-cutover.md](../ops/deploys/
 
 1. `docker compose stop svm-ingest`
 2. Revert the cutover commit if product-side Solana reachability must close immediately.
-3. **`kargain_svm_raw` is never dropped as part of rollback** (same for `kargain_svm_projection`). Ponder reindex does not own those schemas.
+3. **`kargain_svm_raw` is never dropped as part of rollback** (same for `kargain_svm_projection`). Ponder deploy retention does not own those schemas.
 4. A later intentional rebuild (drop both SVM schemas, restart from evidence `min(deploySlot)`) is a new enable — not rollback.
 
 
@@ -139,7 +139,7 @@ Rollback (canonical detail: [ops/deploys/s9-b-solana-cutover.md](../ops/deploys/
 
 Commercial RPC is a **list** plus an explicit `eth_getLogs` window. There is no default URL and no singular `PONDER_RPC_URL_<chainId>` for 84532 / 11155111. Every provider in a list must pass `pnpm ponder:rpc-probe` at the configured window before the `.env` change.
 
-**Profiles** (`.env` edit + `docker compose up -d --force-recreate ponder`; no reindex — `chains` RPC/window are outside Ponder `build_id`):
+**Profiles** (`.env` edit + `docker compose up -d --no-build --force-recreate ponder`; no schema change — RPC lists and windows are transport, outside the indexing identity and Ponder `build_id`):
 
 | Profile | When | Example |
 |---------|------|---------|
@@ -152,93 +152,76 @@ PONDER_RPC_URLS_84532=https://base-sepolia.gateway.tenderly.co
 PONDER_GETLOGS_BLOCK_RANGE_84532=50000
 PONDER_RPC_URLS_11155111=https://rpc.sepolia.ethpandaops.io
 PONDER_GETLOGS_BLOCK_RANGE_11155111=30000
-PONDER_START_BLOCK_84532=46119704
-PONDER_START_BLOCK_11155111=11591966
 
 # steady example (Base), after /ready 200 and probe pass:
 # PONDER_RPC_URLS_84532=https://base-sepolia.gateway.tenderly.co,https://84532.rpc.thirdweb.com,https://sepolia.base.org
 # PONDER_GETLOGS_BLOCK_RANGE_84532=200
 ```
 
-### Start block — keep numeric values after sync
+### Start blocks and addresses
 
-**Do not** switch `PONDER_START_BLOCK_84532` or `PONDER_START_BLOCK_11155111` to `latest` after backfill on Ponder **0.16**.
+Start blocks and addresses come from `COMMERCIAL_ACTIVE` in git only. They decide which rows exist, so they change through a reviewed registry change, never through a server edit. The server `.env` sets **no** start-block key, **no** `PONDER_*_ADDRESS` key and **no** `DATABASE_SCHEMA`; the deploy preflight refuses each by key (`reason=removed_env_key key=<KEY>`, `reason=database_schema_override`, `reason=local_mode_set key=<KEY>`) before any mutation.
 
-Ponder embeds contract `startBlock` in the app `build_id`. Changing a numeric start block → `latest` changes `build_id` and triggers:
+### Deploy model (ADR 0016)
 
-```
-MigrationError: Schema "kargain" was previously used by a different Ponder app.
-```
+**Identities** — one owner, [`scripts/lib/ponder-executable-fingerprint.ts`](../../scripts/lib/ponder-executable-fingerprint.ts), one graph walk over the image's tree:
 
-After backfill reaches chain head, **leave the same numeric start blocks**. Ponder continues **live indexing** on both chains.
+| Identity | Files | Decides |
+|----------|-------|---------|
+| **Indexing** | closure of `ponder.config.ts`, `ponder.schema.ts` and the indexing glob, plus `Dockerfile.ponder`, `pnpm-lock.yaml`, `package.json` runtime slice | The schema: `k_` + first 40 hex |
+| **Executable** | indexing set plus the `src/api/index.ts` closure and `docker-compose.yml` | Whether the writer restarts |
 
-| When | Start blocks |
-|------|----------------|
-| One-time backfill after `ponder-reindex.sql` | Hub **46119704** + Eth **11591966** (or checkpoints) |
-| Steady production (after sync) | **Same numeric values** — do not set `latest` |
-| Fresh deploy after schema wipe | Reset both to manifest `indexFromBlock` when running `ponder-reindex.sql` again |
+Every `process.env` read in the indexing closure is classified `database`, `transport` or `local` by [`scripts/lib/ponder-indexing-env-census.ts`](../../scripts/lib/ponder-indexing-env-census.ts); none can change rows on a commercial chain. Neither identity is Ponder's `build_id`; the evidence prints `build_id` as read from the schema's `_ponder_meta`.
 
-### Deploy fingerprints + readiness (CI — Problem A)
+**Images and state:**
 
-Ponder’s own `build_id` is framework-internal (config contracts + schema file + indexing sources under `src/`, hashed by Ponder 0.16). This repo **never reproduces** that id. A `MigrationError` on start remains the named refusal when a new image disagrees with the live schema.
+- Base image `kargain-ponder:deploy`, built from `git archive <DEPLOY_SHA>` (untracked files never reach it).
+- Writer image `kargain-ponder:<commit>` = base + `ENV DATABASE_SCHEMA=<schema>`. The `ponder` service runs `kargain-ponder:writer`; re-pointing that tag is the only switch.
+- `.ponder-deploy/state.json` = `{current, previous, switching}`. A disagreeing observation, an unreadable file or an unknown field refuses with `deploy_state_invalid: <detail>` and changes nothing.
+- Tooling runs in the one-off Compose service `ponder-deploy` (profile `deploy`); the host runs only `git`, `flock` and `docker`.
 
-What CI owns instead — two digests, neither equal to `build_id`:
+**Deploy** (every push to `master`, or dispatch with `operation: deploy`):
 
-| Digest | Owner | Answers |
-|--------|-------|---------|
-| **Identity** | `scripts/lib/ponder-identity-fingerprint.ts` | Might a reindex be required? (chains, addresses, start blocks, `abis.generated.ts` digest, schema, EVM indexing sources — not RPC URLs) |
-| **Executable** | `scripts/lib/ponder-executable-fingerprint.ts` | Must we recreate the container? (import graph from process entries + Dockerfile/compose/lock + `package.json` runtime slice: `dependencies` / `packageManager` / patches / `ponder:start`) |
+1. Build the base image; compute both identities; validate the state.
+2. Executable identity equals `current` → `outcome=unchanged`, nothing restarts; retention runs.
+3. Otherwise preflight (RPC lists, refused keys), derive the writer image, switch: write `switching`, retag, `up -d --no-build --force-recreate ponder`, require any `/ready` answer within 90s.
+   - Answered → commit the state, run retention, wait up to 600s for `/ready` 200 (`switch=ready` or `switch=catching_up`).
+   - Not answered → `ponder_did_not_become_ready`; the tag returns to `current` (`outcome=returned`, exit 1). The failed commit's schema is left empty or partial and is dropped by retention.
 
-Rules:
+**Rollback** — dispatch Deploy Ponder with `operation: rollback`. It switches to `previous` without a preflight; that schema was written by its own identity, so the start is a crash recovery. After it, `previous` is the ref rolled back from. The next push to `master` ships `master` again. Refusals: `deploy_rollback_failed: no_previous` · `deploy_rollback_failed: previous_image_missing`.
 
-1. **A green Deploy Ponder job is not proof of a live indexer** unless the readiness probe passed. The job polls reserved `GET http://127.0.0.1:42069/ready` after recreate; **any HTTP answer** (200 caught up **or** 503 backfill) counts as “process up.” No answer within 90s fails the job by name (`ponder_did_not_become_ready`). Custom `/health` is banned.
-2. **Executable digest alone gates recreate.** If it matches `/opt/kargain/.ponder-deploy-fingerprints`, the job prints that executable inputs are unchanged and **leaves the running service alone** (no build / no `up`).
-3. **Identity digest never suppresses recreate.** When it differs from the stored value, the job prints **before** rebuild that a reindex may be required. The founder still runs `ponder-reindex.sql` from this runbook — CI does not wipe.
-4. **`package.json` `scripts.test:*` edits do not change the executable digest** (runtime slice only). Path triggers may still fire the workflow; the fingerprint decides whether production restarts.
-5. **Image copy residual:** `Dockerfile.ponder` still `COPY . .`, so `svm-ingest/` is present in the image tree, but it sits **outside** Ponder’s indexing dir (`src/`) and is not hashed or executed for `build_id`. Narrowing the Ponder image copy list remains a separate unit.
+**Retention** (after every commit, return and unchanged run): drop every schema named `k_<40 hex>` or `kargain` that is not `current`'s or `previous`'s; remove every `kargain-ponder` tag except `current`, `previous`, `writer` and `deploy`; label-scoped dangling prune plus `docker builder prune -f --filter until=72h`. `public`, `ponder_sync`, `ponder_rpc_cache_1`, `kargain_svm_raw` and `kargain_svm_projection` are never selected. `ponder db prune` is not used.
 
-First deploy after this unit lands: expect either skip-recreate (if the running image’s executable set already matches) or rebuild+probe **without** an identity “reindex may be required” warning unless bake inputs changed. The pending commits ahead of `origin/master` (test-suite membership + svm-ingest loop + CI gates) do **not** change schema / addresses / start blocks — **no reindex expected** for that push alone.
+**Interrupted runs** resume on the next run: a set `switching` is repeated before the run's own operation (`deploy_evidence resolved=committed` when it commits). A failed return prints `deploy_return_failed` and leaves `switching` set for the next run.
 
-### Deploy new Ponder code (schema change)
+**First run** (the merge of ADR 0016): with no `state.json` and the old fingerprints file present, the run adopts the running writer on schema `kargain` as the legacy ref (`adopted=legacy schema=kargain`), then, in the same run, deploys the commit and switches to `k_<indexing>`. `kargain` is the first `previous` and is dropped by retention at the next switch of any kind.
 
-1. `docker compose stop ponder`
-2. `ponder-reindex.sql` — **before** starting the new image
-3. Backfill with both RPCs + both numeric start blocks (one reindex covers hub + spoke)
-4. After 100% sync on both chains, keep the same start blocks and RPCs
+**Evidence** (ADR 0016 §k): the first line is `deploy_evidence operation=<deploy|rollback>`; a switch prints `outcome=recreated`, `commit=`, `schema=`, `indexing=`, `executable=`, `build_id=`, `node=`, `ready=ponder status=`, then `switch=`. A green job proves the writer answered; `switch=ready` proves catch-up.
 
-**Restart without code/image change:** `docker compose stop ponder` → edit `.env` (RPC only) → `docker compose up -d ponder` (no `--build` unless the image changed).
+**Server preconditions:** remove every commercial start-block key and every `PONDER_*_ADDRESS` key from `/opt/kargain/.env`, and set no `DATABASE_SCHEMA`.
+
+**Restart without code/image change** (RPC `.env` edit): `docker compose up -d --no-build --force-recreate ponder` — the writer tag and its schema are unchanged.
 
 ---
 
-## When to reindex
+## When the schema switches
 
-| Trigger | Example |
-|---------|---------|
-| Schema migration | New columns on `passport`, new tables |
-| **Nuclear #7 / S9-A (September 2026) — LIVE** | Full commercial redeploy both chains — reindex from hub **46119704** + Eth **11591966**. Runbook: [ops/deploys/nuclear-7.md](../ops/deploys/nuclear-7.md). |
-| **Nuclear #4 (August 2, 2026) — HISTORICAL** | Superseded / denylisted. Start blocks were **44957457** / **11404204**. Runbook: [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md). |
-| Older Nuclear / commerce schema triggers | Superseded by Nuclear #4 reindex (same wipe covers modes, claims, challenge terminals, place columns, party indexes, etc.). Local Hardhat: `pnpm deploy:local` then index from block 0. |
-| Outstanding obligation party indexes | Included in Nuclear #4 full reindex — required for `GET /accounts/:address/obligations` + commerce notification stamps |
-| Notifications feed | `disputeOpenedAt` on `passport` (June 2026 notifications stack) |
-| Contract redeploy | KarPassport / FixedPrice / Ascending / gateway address change (Nuclear / Phase 5) |
-| Handler shape change | New denormalized fields written on mint / URI update / dispute / bridge |
-| Stuck / corrupt sync | Ponder refuses to start after config change |
-| `MigrationError` after deploy | New `ponder.schema.ts` in Docker image without `ponder-reindex.sql` |
+| Change | Deploy result |
+|--------|---------------|
+| `ponder.schema.ts`, handlers under `src/` (indexing glob), code they reach under `lib/` | New schema, backfill |
+| `COMMERCIAL_ACTIVE` addresses or start blocks (Nuclear redeploy, new contract) | New schema, backfill (uncached when the start block moves earlier) |
+| `Dockerfile.ponder`, `pnpm-lock.yaml`, `package.json` runtime slice, `patches/` | New schema, backfill (cached) |
+| `src/api/**` reached only from `src/api/index.ts`, `docker-compose.yml` | Restart in place, same schema |
+| `.env` RPC lists or `eth_getLogs` windows | Manual recreate, same schema (transport) |
+| `package.json` `scripts.test:*`, frontend, contracts-only, `svm-ingest/**` | `outcome=unchanged` or no Ponder run |
 
-**Do not reindex** for frontend-only or contract-only changes that do not touch Ponder schema or indexing logic.
+The maintainer schedules changes that need an uncached backfill (a new chain, an earlier start block). While a new schema fills, the app reads it and lists are briefly incomplete; `/ready` is 503 until caught up.
 
-Examples that **do not** require reindex:
+Examples that **do not** restart Ponder:
 
-- **`svm-ingest/**` / `Dockerfile.svm-ingest` only** — separate compose service; CI [`.github/workflows/deploy-svm-ingest.yml`](../../.github/workflows/deploy-svm-ingest.yml) runs `docker compose build svm-ingest && docker compose up -d --force-recreate svm-ingest` and **never** builds or restarts Ponder. Manual: same compose commands. [`.github/workflows/deploy-ponder.yml`](../../.github/workflows/deploy-ponder.yml) must **not** list `svm-ingest/**` or `Dockerfile.svm-ingest` (they are not Ponder inputs). Files under `lib/svm/` that the executable graph reaches **are** Ponder inputs and match that workflow's `paths`; the executable digest, not the path list, decides whether the run recreates the container. A needless Ponder rebuild can still exit with `MigrationError` if the baked image’s contract `build_id` (addresses / start blocks from `COMMERCIAL_ACTIVE`) no longer matches the DB — that is not an SVM-ingest signal to wipe.
-- **VPS deploys wait on trunk CI.** Both deploy workflows `needs: gates` ([`ci.yml`](../../.github/workflows/ci.yml): compile → typecheck → lint → `test:ci` → build). Full live-manifest match (`commercial-active-manifest-policy`) stays on the deploy machine via `pnpm test:verify`; CI runs the derived partition without that suite. **Deploy Ponder** additionally fingerprints identity vs executable and probes reserved `/ready` after recreate — a green job that skipped recreate left the prior container running; a green job that recreated proved the process answered (200 or 503), not that backfill finished.
-- Phase 5 polish UI (PR5a–d): typed record labels, attestation form, browse chain-status sample (`getPassportStatus` via wagmi on the client)
-- Irys upload hardening (June 2026): client-side only — no Ponder schema change
-- Basescan verify (`pnpm verify:sepolia`, `--auction-only` after auction deploy) — ops-only, no indexer impact; HHE80009 bytecode mismatch exits 0 by default
-- Shell / nav / filter **UI** refactors that do not change Ponder schema or handler output shape
-- Notifications / watchlist **frontend** only (no `ponder.schema.ts` change)
-- Owner consignment read API (July 2026): superseded by consignment mandate routes — **redeploy ponder image only** when schema unchanged; no `ponder-reindex.sql` expected (if `MigrationError`, see below)
-- Asking USD browse SQL (August 2026): `consignmentPriceUsdSql` consumes `askingUsdcFacts` — **redeploy ponder image only**; no schema wipe (query expression, not stored row shape)
-- Challenges browse `status` CSV / `IN` (August 2026): `GET /challenges` — **redeploy ponder image only**; no schema wipe
+- **`svm-ingest/**` / `Dockerfile.svm-ingest` only** — separate compose service; CI [`.github/workflows/deploy-svm-ingest.yml`](../../.github/workflows/deploy-svm-ingest.yml) runs `docker compose build svm-ingest && docker compose up -d --force-recreate svm-ingest` and **never** builds or restarts Ponder. [`.github/workflows/deploy-ponder.yml`](../../.github/workflows/deploy-ponder.yml) must **not** list `svm-ingest/**` or `Dockerfile.svm-ingest` (they are not Ponder inputs). Files under `lib/svm/` that the executable graph reaches **are** Ponder inputs and match that workflow's `paths`; the executable identity, not the path list, decides whether the run restarts the writer.
+- **VPS deploys wait on trunk CI.** Both deploy workflows `needs: gates` ([`ci.yml`](../../.github/workflows/ci.yml): compile → typecheck → lint → `test:ci` → build). Full live-manifest match (`commercial-active-manifest-policy`) stays on the deploy machine via `pnpm test:verify`; CI runs the derived partition without that suite.
+- Frontend-only, Irys, Basescan verify, shell / nav / filter UI, notifications / watchlist frontend changes.
 
 ---
 
@@ -246,20 +229,19 @@ Examples that **do not** require reindex:
 
 - SSH access to the VPS with the repo and `docker-compose.yml`
 - **`git pull`** so Ponder uses committed `COMMERCIAL_ACTIVE` (84532 + 11155111) from `lib/web3/commercial-active.ts`
-- **`PONDER_RPC_URLS_84532`** + **`PONDER_RPC_URLS_11155111`**, matching **`PONDER_GETLOGS_BLOCK_RANGE_*`**, and both numeric start blocks (see RPC profiles above); confirm with `pnpm ponder:rpc-probe`
-- Remove stale `deployments/<chainId>.json` on the VPS if present (gitignored local artifacts override committed — `pnpm ponder:config` warns on drift)
+- **`PONDER_RPC_URLS_84532`** + **`PONDER_RPC_URLS_11155111`** and matching **`PONDER_GETLOGS_BLOCK_RANGE_*`** (see RPC profiles above); confirm with `pnpm ponder:rpc-probe`
+- No start-block key, no `PONDER_*_ADDRESS` key and no `DATABASE_SCHEMA` in `.env` (the preflight refuses each)
 
 ---
 
 ## Docker disk hygiene
 
-The July 2026 VPS disk incident came from accumulated unused `ponder` images after repeated `docker compose build ponder` runs, not from Postgres data or the relay LMDB. Keep Docker cleanup attached to the deploy flow instead of relying on ad hoc recovery.
+The July 2026 VPS disk incident came from accumulated unused `ponder` images after repeated builds, not from Postgres data or the relay LMDB. Keep Docker cleanup attached to the deploy flow instead of relying on ad hoc recovery.
 
 ### Repo-managed controls
 
 - `docker-compose.yml` uses the Docker `local` logging driver with capped rotation for `postgres`, `ponder`, `cloudflared`, and `strfry`.
-- `.github/workflows/deploy-ponder.yml` prunes dangling images and old build cache after a successful `ponder` deploy.
-- `scripts/ponder-reindex.sh` prints the same post-rebuild cleanup steps for manual VPS runs.
+- Ponder deploy retention removes `kargain-ponder` tags outside the state, prunes dangling images labelled for that repository, and runs `docker builder prune -f --filter until=72h` (ADR 0016 §j).
 
 ### Host-level Docker defaults (manual VPS step)
 
@@ -327,75 +309,38 @@ systemctl list-timers | grep docker-prune
 
 ## Steps (production VPS)
 
-Run from the repository root on the server.
+Every Ponder deploy, schema change and rollback goes through the Deploy Ponder workflow; there is no manual build, drop or start-block step.
 
-### 1. Deploy new code
+### 1. Deploy or roll back
 
-```bash
-git pull origin master
-pnpm install   # if dependencies changed
-docker compose build ponder   # only when indexer code / schema changed
-docker image prune -f
-docker builder prune -f --filter until=72h
-```
+- **Deploy:** push to `master` (path-filtered), or dispatch Deploy Ponder with `operation: deploy`.
+- **Rollback:** dispatch Deploy Ponder with `operation: rollback`.
 
-### 2. Stop Ponder
+The job runs `gates`, takes the server lock, checks out the pinned SHA and execs `scripts/ponder-deploy.sh <operation> kargain kargain-ponder`. Read its `deploy_evidence` lines.
 
-```bash
-docker compose stop ponder
-```
-
-### 3. Reset database schemas
-
-**Option A — helper script (recommended):**
-
-```bash
-chmod +x scripts/ponder-reindex.sh   # once
-./scripts/ponder-reindex.sh
-```
-
-**Option B — manual SQL:**
-
-```bash
-docker compose exec -T postgres \
-  psql -U ponder -d kargain_ponder -v ON_ERROR_STOP=1 \
-  < scripts/ponder-reindex.sql
-```
-
-This drops schema `kargain` only (truncate alone is **not** enough when start block or contract config changes). The active RPC cache schema `ponder_rpc_cache_1` is never dropped; leftover `ponder_sync` is also left untouched.
-
-### 4. Verify stack and environment
+### 2. Verify stack and environment
 
 ```bash
 pnpm ponder:config
 ```
 
-Contract addresses resolve automatically **per chain** (SPEC §I.12.12): optional `PONDER_*` env (84532 debug) → local `deployments/<chainId>.json` → **`COMMERCIAL_ACTIVE[chainId]`** in [`lib/web3/commercial-active.ts`](../../lib/web3/commercial-active.ts). After a Nuclear redeploy, update `COMMERCIAL_ACTIVE` + SPEC I.9.x in git and **`git pull` on the VPS** — do not paste address exports into `.env`, and do not require copying gitignored manifests onto the server.
+Contract addresses and start blocks resolve **per chain** from **`COMMERCIAL_ACTIVE[chainId]`** in [`lib/web3/commercial-active.ts`](../../lib/web3/commercial-active.ts) (SPEC §I.12.12). After a Nuclear redeploy, update `COMMERCIAL_ACTIVE` + SPEC I.9.x in git; the deploy of that commit switches schema.
 
-**VPS `.env` — infrastructure only (Nuclear backfill profile):**
+**VPS `.env` — infrastructure only (backfill profile):**
 
 ```bash
 PONDER_RPC_URLS_84532=https://base-sepolia.gateway.tenderly.co
 PONDER_GETLOGS_BLOCK_RANGE_84532=50000
 PONDER_RPC_URLS_11155111=https://rpc.sepolia.ethpandaops.io
 PONDER_GETLOGS_BLOCK_RANGE_11155111=30000
-PONDER_START_BLOCK_84532=46119704
-PONDER_START_BLOCK_11155111=11591966
 DATABASE_URL=...                    # Postgres for Ponder
 ```
 
-Optional advanced overrides (84532 only): `PONDER_KAR_PASSPORT_ADDRESS`, `PONDER_KAR_PRO_PASS_ADDRESS`, `PONDER_KAR_PRO_STAKING_ADDRESS`, `PONDER_FIXED_PRICE_CONSIGNMENT_ADDRESS`, `PONDER_ASCENDING_CONSIGNMENT_ADDRESS`, … only when debugging.
-
-**Per-contract start blocks:** from `COMMERCIAL_ACTIVE[chainId].blocks` (or local manifest when present). Confirm with `pnpm ponder:config` after pull.
-
-For G1 schema-only updates (same contract addresses), keep existing infra env; still set start blocks to each `indexFromBlock` for a full replay unless you intentionally use higher checkpoints.
-
-### 5. Start Ponder and wait for sync
+### 3. Wait for sync
 
 ```bash
-docker compose up -d --force-recreate ponder
-
-docker compose exec ponder printenv PONDER_RPC_URLS_84532 PONDER_GETLOGS_BLOCK_RANGE_84532 PONDER_START_BLOCK_84532 PONDER_RPC_URLS_11155111 PONDER_GETLOGS_BLOCK_RANGE_11155111 PONDER_START_BLOCK_11155111
+docker compose exec ponder printenv DATABASE_SCHEMA PONDER_RPC_URLS_84532 PONDER_GETLOGS_BLOCK_RANGE_84532 PONDER_RPC_URLS_11155111 PONDER_GETLOGS_BLOCK_RANGE_11155111
+cat .ponder-deploy/state.json
 docker inspect kargain-ponder-1 --format '{{json .HostConfig.LogConfig}}'
 ```
 
@@ -405,9 +350,9 @@ docker inspect kargain-ponder-1 --format '{{json .HostConfig.LogConfig}}'
 |---------|---------------------|-------------|-------------------|
 | Ponder reserved `GET /ready` | Sync / catch-up for the Ponder process | HTTP 200 when caught up (503 during backfill) | That the custom EVM+SVM UNION read path can execute |
 | Ponder reserved `GET /status` | Tip / lag vs RPC | Tip near public RPC | Read-path UNION executability |
-| `GET /read-path-ready` | Schema shape + UNION probes (`READ_PATH_REQUIRED_RELATIONS` / `READ_PATH_PROBE_NAMES`) | Relations present and empty-arm probes run | Tip catch-up; bootstrap progress |
+| `GET /read-path-ready` | Schema shape + UNION probes (`readPathRequiredRelations()` on the writer's schema / `READ_PATH_PROBE_NAMES`) | Relations present and empty-arm probes run | Tip catch-up; bootstrap progress |
 | svm-ingest `GET /ready` (:42100) | Bootstrap / incident / lag (`bootstrapState`, `incident`, `lagSlots`, `lastContiguousSlot`) | Caught up with no incident | That Ponder EVM indexing is live |
-| Deploy probe (CI) | Process answered reserved `/ready` | Any HTTP answer within timeout | Tip catch-up (200 **or** 503 counts as “up”) |
+| Deploy probe (CI) | `answered`: the writer answered `/ready` within 90s; then `ready200`: 200 within 600s | `switch=ready status=200` | `switch=catching_up` is a green job that has not caught up |
 
 ```bash
 # Wait for Ponder catch-up (not logs):
@@ -420,9 +365,7 @@ curl -s http://127.0.0.1:42100/ready | python3 -m json.tool
 
 `docker compose logs ponder` remains available for incident debug (MigrationError, RPC WARN). It is **not** the acceptance path for “are we caught up?”
 
-**Do not** change `PONDER_START_BLOCK_84532` to `latest` after sync (see above).
-
-### 6. Smoke checks
+### 4. Smoke checks
 
 ```bash
 curl -si https://ponder.kargain.com/ready | head -5    # expect HTTP/2 200 when caught up (503 during backfill)
@@ -438,7 +381,7 @@ curl -s https://ponder.kargain.com/passports/<tokenId> | jq '.status, .disputeDe
 curl -s 'https://ponder.kargain.com/agents/0x0000000000000000000000000000000000000001/mandates?active=false' | jq '.total, .page, .limit'
 ```
 
-**Browse Phase 1 filter divergence (B1) — run after a schema/index reindex to prove filters are live:**
+**Browse Phase 1 filter divergence (B1) — run after a schema switch to prove filters are live:**
 
 ```bash
 # Unfiltered active page vs a filter that must empty the set (bodies + total must differ).
@@ -454,22 +397,22 @@ curl -s 'https://ponder.kargain.com/consignments?limit=50&active=true&fuelType=P
 
 **Tip check:** compare `/status` block numbers to public RPC `eth_blockNumber` for 84532 and 11155111 — lag ≤ ~5 blocks is live.
 
-**EXPLAIN ANALYZE (optional, VPS Postgres only):** confirm planner uses `lower(make)` / `lower(fuel_type)` expression indexes on filtered browse. Not available from the public HTTP API — run on the indexer DB host after reindex. With one live lot the plan is not diagnostic; revisit when `consignment` volume grows (see MIGRATION-V2). Does **not** block Phase 2 HTTP cache headers.
+**EXPLAIN ANALYZE (optional, VPS Postgres only):** confirm planner uses `lower(make)` / `lower(fuel_type)` expression indexes on filtered browse. Not available from the public HTTP API — run on the indexer DB host after a schema switch. With one live lot the plan is not diagnostic; revisit when `consignment` volume grows (see MIGRATION-V2). Does **not** block Phase 2 HTTP cache headers.
 
 Replace `<tokenId>` with a known minted passport. `/health` is Ponder’s reserved liveness route (empty body is normal); use `/ready` and `/status` for sync state, and `GET /read-path-ready` for the custom read-path check that names missing relations. The examples use `python3 -m json.tool` because it is present on the VPS without requiring `jq`. Custom app routes are listed in [indexer/README.md](./README.md#http-api).
 
-### 6.0 App ↔ indexer shipping (normative, keep light)
+### 4.0 App ↔ indexer shipping (normative, keep light)
 
-Monorepo reality: **one `git push` to `master` deploys the Next app on Vercel automatically.** The Ponder indexer is a **separate** VPS process (this runbook). There is **no** separate “app deploy” step after reindex.
+Monorepo reality: **one `git push` to `master` deploys the Next app on Vercel automatically.** The Ponder indexer is a **separate** VPS process (this runbook). There is **no** separate “app deploy” step after a Ponder deploy.
 
 **Default practice (do this; do not invent heavier orchestration):**
 
 1. Push schema/index/handler changes to `master` as usual (Vercel ships the app).
-2. On the VPS, pull and run this reindex runbook **as soon as practical**.
+2. The Deploy Ponder run of that push switches schema; watch its `switch=` line.
 3. Smoke `/ready` + `/read-path-ready` + `/status` (tip) + **B1** above. Until `/read-path-ready` and B1 pass, treat the read path as unproven — during the window the UI may send browse params the old indexer ignores (**fail-open**: wider unfiltered results, not corrupt money/custody), or the indexer may be caught up while the unioned projection path is unreadable.
 4. Do **not** build staging-branch / Ignore-Build / two-commit / “indexer-before-push” rituals unless a change fails closed on money, custody, or auth, or the ignore-window becomes hours of user-visible lies.
 
-### 6.1 Browse Phase 1 cutover proof (August 14, 2026)
+### 4.1 Browse Phase 1 cutover proof (August 14, 2026)
 
 Recorded against [ponder.kargain.com](https://ponder.kargain.com) after the Phase 1 index reindex (~12:19 UTC):
 
@@ -487,7 +430,7 @@ Recorded against [ponder.kargain.com](https://ponder.kargain.com) after the Phas
 | EXPLAIN ANALYZE | **Not run** from agent host (no indexer DB access); optional residual on VPS |
 | App | **Live** on Vercel from `master` push `cbe07d2` (automatic; not a second ops step) |
 
-### 6.2 Cloudflare Cache Rules (Phase 2 — maintainer; not agent-run)
+### 4.2 Cloudflare Cache Rules (Phase 2 — maintainer; not agent-run)
 
 Ponder JSON paths are **not** in Cloudflare’s default cacheable extensions, so without Cache Rules you will keep seeing `CF-Cache-Status: DYNAMIC` even after origin sends `Cache-Control`. Origin headers alone are insufficient; rules make the path **eligible**, then origin `Cache-Control` / Edge TTL govern storage.
 
@@ -542,7 +485,7 @@ curl -sSI 'https://ponder.kargain.com/consignments?limit=1' | tr -d '\r' | grep 
 PONDER_ENABLE_LOCAL=1 PONDER_START_BLOCK_31337=0 pnpm ponder:dev
 ```
 
-After schema change, drop local DB or run `ponder-reindex.sql` against your local Postgres, then restart from block `0`.
+After a schema change, delete the local PGlite directory (`.ponder/pglite`, or `PONDER_PGLITE_DIR`) or your local Postgres database, then restart from block `0`. Production schemas are never dropped by hand.
 
 Local agent auction lifecycle (chain + Ponder phase polls) is covered by `./scripts/e2e-local.sh`.
 
@@ -557,14 +500,14 @@ Local agent auction lifecycle (chain + Ponder phase polls) is covered by `./scri
 | `404` HTML from `rpc.sepolia.org` | Endpoint is dead — use a real Sepolia JSON-RPC URL in `PONDER_RPC_URLS_11155111` |
 | `Unable to find available JSON-RPC provider` | Every URL in the list failed; probe and replace with providers that pass at the configured window |
 | `Cannot read properties of undefined (reading 'id')` in handlers | Ensure image has `context.chain.id` indexing (not `event.chain`) — pull + rebuild |
-| `MigrationError` / "different Ponder app" | Run `ponder-reindex.sql`, then backfill again. **If data already synced:** do not switch start block to `latest` — revert to the numeric block used at backfill |
-| `MigrationError` immediately after `git pull` + new image | Expected when `ponder.schema.ts` changed — run step 3 (SQL) before starting new container |
-| Ponder exits on start (“build_id”) | Run full `ponder-reindex.sql`, not table truncate only |
+| `MigrationError` / "different Ponder app" | The schema was written by another identity — a defect of ADR 0016 §a (a server env key or untracked file changed `build_id`). Do not drop the schema; check the preflight refusals and `deploy_evidence` lines, then roll back by dispatch |
+| `deploy_state_invalid: <detail>` | Nothing changed. Compare `.ponder-deploy/state.json` with `docker inspect` of `kargain-ponder:writer` and the container; restore the observed state, then re-run |
+| `deploy_return_failed` | `switching` stays set; the next run repeats the return. Inspect `docker compose logs ponder` first |
 | Slow / stalled Base backfill | Use backfill profile (e.g. Tenderly + large window); do not rely on pruned public endpoints for history |
 | Empty `fuelType` on old rows | Expected until metadata URIs are re-fetched during replay; ensure Arweave reachable from VPS |
-| API shows v1 `passport id 0` after v2 deploy | Rebuild ponder image + `ponder-reindex.sh`; confirm `pnpm ponder:config` → v2 karPassport |
+| API shows v1 `passport id 0` after v2 deploy | Confirm `pnpm ponder:config` → v2 karPassport and that `COMMERCIAL_ACTIVE` on the deployed commit names it |
 | API 404 for passport | Token minted on deprecated pre-v1.1 contract — not in current index |
-| Env change ignored | Use `docker compose up -d --force-recreate ponder` (not `restart` alone) after editing `.env` |
+| Env change ignored | Use `docker compose up -d --no-build --force-recreate ponder` (not `restart` alone) after editing `.env` |
 
 ---
 
@@ -572,18 +515,20 @@ Local agent auction lifecycle (chain + Ponder phase polls) is covered by `./scri
 
 | File | Purpose |
 |------|---------|
-| `scripts/ponder-reindex.sh` | Stop ponder + run SQL on Docker Postgres |
-| `scripts/ponder-reindex.sql` | DROP SCHEMA kargain only (`ponder_rpc_cache_1` / `ponder_sync` never dropped) |
+| `scripts/ponder-deploy.sh` | Host side of the Ponder deploy (git, docker); run by the Deploy Ponder workflow |
+| `scripts/ponder-deploy-step.ts` | Tooling side (in `ponder-deploy`): state, switch, retention, probes |
+| `scripts/lib/ponder-deploy-switch.ts` | Deploy, rollback, resumption and first run (ADR 0016 §f–§k) |
+| `scripts/lib/ponder-deploy-retention.ts` | Schema and image retention (owned names only) |
 | `scripts/ponder-config.ts` | Read-only stack diagnostic (`pnpm ponder:config`) |
 | `scripts/ponder-rpc-probe.ts` | CLI: probe every commercial RPC at the configured getLogs window (`pnpm ponder:rpc-probe`) |
 | `scripts/lib/ponder-rpc-probe.ts` | Sole owner of RPC capability verdicts |
-| `scripts/lib/resolve-sepolia-stack.ts` | `resolveCommercialStack`: env → manifest → `COMMERCIAL_ACTIVE` |
+| `scripts/lib/resolve-sepolia-stack.ts` | `resolveCommercialStack`: `COMMERCIAL_ACTIVE` only |
 | `Dockerfile.ponder` | Copy `patches/` before `pnpm install` (Docker build on VPS) |
-| `scripts/lib/ponder-env.ts` | Dual-chain RPC lists, getLogs windows, contract start blocks |
+| `scripts/lib/ponder-env.ts` | Dual-chain RPC lists, getLogs windows, registry start blocks, local mode |
 | `scripts/verify.ts` | Basescan verify active Sepolia stack |
 | `scripts/deploy.ts` | Nuclear commercial deploy (84532 / 11155111) |
-| `lib/web3/commercial-active.ts` | **Committed** per-chain stacks (VPS / CI fallback) |
-| `deployments/<chainId>.json` | Local deploy artifact — not in git; optional override when present |
+| `lib/web3/commercial-active.ts` | **Committed** per-chain stacks — the only commercial address and start-block source |
+| `deployments/<chainId>.json` | Deploy artifact; compared with the registry by deploy-machine asserts; never read by the indexer for commercial chains |
 | [contracts/SPEC.md Part I.9.1](../contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) | **Active** Base Sepolia addresses |
 | [contracts/SPEC.md Part I.9.2](../contracts/SPEC.md#i92-active-deployment-ethereum-sepolia-11155111) | **Active** Ethereum Sepolia addresses |
 | [contracts/SPEC.md Part II.4](../contracts/SPEC.md#ii4-historical-deployment-base-sepolia-84532) | **Historical** v1.x Sepolia addresses |

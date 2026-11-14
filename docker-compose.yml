@@ -24,8 +24,11 @@ services:
     networks:
       - kargain
 
+  # The writer tag is the only pointer to the running image; each writer image
+  # carries its own DATABASE_SCHEMA (ADR 0016 §c). build: is for local use.
   ponder:
     <<: *default-logging
+    image: ${PONDER_IMAGE_REPOSITORY:-kargain-ponder}:writer
     build:
       context: .
       dockerfile: Dockerfile.ponder
@@ -35,13 +38,23 @@ services:
         condition: service_healthy
     env_file:
       - .env
-    environment:
+    environment: &ponder-environment
       DATABASE_URL: ${DATABASE_URL:-postgresql://ponder:${POSTGRES_PASSWORD}@postgres:5432/kargain_ponder}
-      PONDER_START_BLOCK_84532: ${PONDER_START_BLOCK_84532:-latest}
-      PONDER_START_BLOCK: ${PONDER_START_BLOCK:-latest}
-      DATABASE_SCHEMA: kargain
     ports:
       - "127.0.0.1:42069:42069"
+    networks:
+      - kargain
+
+  # Deploy tooling (ADR 0016 §e): one-off, run by scripts/ponder-deploy.sh.
+  ponder-deploy:
+    <<: *default-logging
+    image: ${PONDER_IMAGE_REPOSITORY:-kargain-ponder}:deploy
+    profiles: [deploy]
+    env_file:
+      - .env
+    environment: *ponder-environment
+    volumes:
+      - ./.ponder-deploy:/app/.ponder-deploy
     networks:
       - kargain
 

@@ -22,8 +22,10 @@ import {
   PonderEnvRefusalError,
   resolveCommercialRpcUrls,
   resolveGetLogsBlockRange,
-  resolveChainStartBlockWithKey,
+  resolveLocalStartBlock,
+  commercialIndexFromBlock,
 } from "../scripts/lib/ponder-env.ts";
+import { PONDER_INDEXING_ENV_CENSUS } from "../scripts/lib/ponder-indexing-env-census.ts";
 import {
   PONDER_RPC_PROBE_TIMEOUT_MS,
   probePonderRpcCapability,
@@ -38,6 +40,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+/** Removed by ADR 0016 §a; spelled in parts so the removal grep stays empty. */
+const REMOVED_START_BLOCK_KEY = ["PONDER", "START", "BLOCK"].join("_");
 const PLANTED_HOST = "planted-provider.example";
 const PLANTED_HTTPS = `https://${PLANTED_HOST}/rpc`;
 const RPC_A = "https://rpc-a.example";
@@ -59,8 +63,6 @@ function baseCommercialEnv(extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     [`PONDER_RPC_URLS_${SPOKE_CHAIN_ID}`]: "https://rpc-b.example",
     [`PONDER_GETLOGS_BLOCK_RANGE_${SEPOLIA_CHAIN_ID}`]: "1000",
     [`PONDER_GETLOGS_BLOCK_RANGE_${SPOKE_CHAIN_ID}`]: "1000",
-    [`PONDER_START_BLOCK_${SEPOLIA_CHAIN_ID}`]: "100",
-    [`PONDER_START_BLOCK_${SPOKE_CHAIN_ID}`]: "200",
     ...extra,
   } as NodeJS.ProcessEnv;
 }
@@ -136,23 +138,6 @@ function hangingFetch(): typeof fetch {
   };
 }
 
-/** Start-block resolution reads process.env, not the probe deps env. */
-function withNumericStartBlocks<T>(fn: () => Promise<T>): Promise<T> {
-  const prev84532 = process.env.PONDER_START_BLOCK_84532;
-  const prev11155111 = process.env.PONDER_START_BLOCK_11155111;
-  process.env.PONDER_START_BLOCK_84532 = "100";
-  process.env.PONDER_START_BLOCK_11155111 = "200";
-  return fn().finally(() => {
-    if (prev84532 === undefined) delete process.env.PONDER_START_BLOCK_84532;
-    else process.env.PONDER_START_BLOCK_84532 = prev84532;
-    if (prev11155111 === undefined) {
-      delete process.env.PONDER_START_BLOCK_11155111;
-    } else {
-      process.env.PONDER_START_BLOCK_11155111 = prev11155111;
-    }
-  });
-}
-
 type RpcOut = {
   httpStatus?: number;
   result?: unknown;
@@ -179,8 +164,7 @@ function chainIdForUrl(url: string): number {
 }
 
 function startHexForUrl(url: string): string {
-  const start = chainIdForUrl(url) === SPOKE_CHAIN_ID ? 200 : 100;
-  return `0x${start.toString(16)}`;
+  return `0x${commercialIndexFromBlock(chainIdForUrl(url)).toString(16)}`;
 }
 
 function sampleLog(address = "0x0000000000000000000000000000000000000001") {
@@ -267,7 +251,10 @@ function runPreflightCli(
     else env[key] = value;
   }
   // Force ponder.config to see our overrides, not a developer .env bleed.
-  delete env.PONDER_ENABLE_LOCAL;
+  for (const { key, class: cls } of PONDER_INDEXING_ENV_CENSUS) {
+    if (cls === "local") delete env[key];
+  }
+  delete env.DATABASE_SCHEMA;
   const result = spawnSync(
     process.execPath,
     ["--import", "tsx", scriptRel],
@@ -305,20 +292,20 @@ describe("deploy-preflight typed refusals", () => {
     );
   });
 
-  it("invalid start block refuses with invalid_start_block", () => {
-    const prev = process.env.PONDER_START_BLOCK_84532;
-    process.env.PONDER_START_BLOCK_84532 = "not-a-block";
+  it("invalid local start block refuses with invalid_start_block", () => {
+    const prev = process.env.PONDER_START_BLOCK_31337;
+    process.env.PONDER_START_BLOCK_31337 = "not-a-block";
     try {
       assert.throws(
-        () => resolveChainStartBlockWithKey(SEPOLIA_CHAIN_ID),
+        () => resolveLocalStartBlock(),
         (err: unknown) =>
           err instanceof PonderEnvRefusalError &&
           err.code === "invalid_start_block" &&
-          err.envKey === "PONDER_START_BLOCK_84532",
+          err.envKey === "PONDER_START_BLOCK_31337",
       );
     } finally {
-      if (prev === undefined) delete process.env.PONDER_START_BLOCK_84532;
-      else process.env.PONDER_START_BLOCK_84532 = prev;
+      if (prev === undefined) delete process.env.PONDER_START_BLOCK_31337;
+      else process.env.PONDER_START_BLOCK_31337 = prev;
     }
   });
 
@@ -471,39 +458,68 @@ describe("deploy-preflight ponder script", () => {
 
   it("green path prints ok provider lines and exits 0", async () => {
     const { lines, write } = captureWrite();
-    await withNumericStartBlocks(async () => {
+    const code = await runPonderDeployPreflight({
+      evaluateConfig: async () => ({}),
+      env: baseCommercialEnv(),
+      fetch: happyFetch(),
+      stdoutWrite: write,
+    });
+    assert.equal(code, 0);
+    const joined = lines.join("");
+    assert.match(joined, /verdict=ok/);
+    assert.doesNotMatch(joined, /refused/);
+    assert.doesNotMatch(joined, /deploy_evidence/);
+    for (const line of lines) {
+      assert.match(
+        line,
+        /^deploy_preflight service=ponder chain=\d+ provider=\d+ verdict=ok\n$/,
+      );
+    }
+  });
+
+  for (const [key, reason] of [
+    [`${REMOVED_START_BLOCK_KEY}_84532`, "removed_env_key"],
+    [REMOVED_START_BLOCK_KEY, "removed_env_key"],
+    ["PONDER_KAR_PASSPORT_ADDRESS", "removed_env_key"],
+    ["DATABASE_SCHEMA", "database_schema_override"],
+    ["PONDER_ENABLE_LOCAL", "local_mode_set"],
+    ["NEXT_PUBLIC_ENABLE_LOCAL_CHAIN", "local_mode_set"],
+  ] as const) {
+    it(`constructed: ${key} set refuses with ${reason} before config or probe`, async () => {
+      const { lines, write } = captureWrite();
+      let evaluated = false;
+      let fetched = false;
       const code = await runPonderDeployPreflight({
-        evaluateConfig: async () => ({}),
-        env: baseCommercialEnv(),
-        fetch: happyFetch(),
+        evaluateConfig: async () => {
+          evaluated = true;
+          return {};
+        },
+        env: baseCommercialEnv({ [key]: "1" }),
+        fetch: async (...args) => {
+          fetched = true;
+          return happyFetch()(...args);
+        },
         stdoutWrite: write,
       });
-      assert.equal(code, 0);
-      const joined = lines.join("");
-      assert.match(joined, /verdict=ok/);
-      assert.doesNotMatch(joined, /refused/);
-      assert.doesNotMatch(joined, /deploy_evidence/);
-      for (const line of lines) {
-        assert.match(
-          line,
-          /^deploy_preflight service=ponder chain=\d+ provider=\d+ verdict=ok\n$/,
-        );
-      }
+      assert.equal(code, 1);
+      assert.deepEqual(lines, [
+        `deploy_preflight service=ponder verdict=refused reason=${reason} key=${key}\n`,
+      ]);
+      assert.equal(evaluated, false);
+      assert.equal(fetched, false);
     });
-  });
+  }
 });
 
 describe("ADR 0013 preflight refuses on provider evidence", () => {
   async function runWithFetch(fetchFn: typeof fetch, env?: NodeJS.ProcessEnv) {
     const { lines, write } = captureWrite();
-    const code = await withNumericStartBlocks(() =>
-      runPonderDeployPreflight({
-        evaluateConfig: async () => ({}),
-        env: env ?? baseCommercialEnv(),
-        fetch: fetchFn,
-        stdoutWrite: write,
-      }),
-    );
+    const code = await runPonderDeployPreflight({
+      evaluateConfig: async () => ({}),
+      env: env ?? baseCommercialEnv(),
+      fetch: fetchFn,
+      stdoutWrite: write,
+    });
     return { code, lines, joined: lines.join("") };
   }
 
@@ -693,8 +709,6 @@ describe("ADR 0013 preflight refuses on provider evidence", () => {
       env[`PONDER_RPC_URLS_${SPOKE_CHAIN_ID}`] = RPC_B;
       env[`PONDER_GETLOGS_BLOCK_RANGE_${SEPOLIA_CHAIN_ID}`] = "1000";
       env[`PONDER_GETLOGS_BLOCK_RANGE_${SPOKE_CHAIN_ID}`] = "1000";
-      env.PONDER_START_BLOCK_84532 = "100";
-      env.PONDER_START_BLOCK_11155111 = "200";
       delete env.PONDER_ENABLE_LOCAL;
       const result = spawnSync(
         process.execPath,
@@ -935,21 +949,14 @@ describe("postSolanaJsonRpc timeout", () => {
 
 describe("deploy-preflight ponder probe timeout", () => {
   it("jsonRpc timeout maps to unreachable verdict", async () => {
-    const prevStart = process.env.PONDER_START_BLOCK_11155111;
-    process.env.PONDER_START_BLOCK_11155111 = "100";
-    try {
-      const result = await probePonderRpcCapability(SPOKE_CHAIN_ID, {
-        env: {
-          [`PONDER_RPC_URLS_${SPOKE_CHAIN_ID}`]: "https://hang.example",
-          [`PONDER_GETLOGS_BLOCK_RANGE_${SPOKE_CHAIN_ID}`]: "1000",
-        } as NodeJS.ProcessEnv,
-        fetch: hangingFetch(),
-      });
-      assert.equal(result.providers[0]?.verdict, "unreachable");
-      assert.equal(result.ok, false);
-    } finally {
-      if (prevStart === undefined) delete process.env.PONDER_START_BLOCK_11155111;
-      else process.env.PONDER_START_BLOCK_11155111 = prevStart;
-    }
+    const result = await probePonderRpcCapability(SPOKE_CHAIN_ID, {
+      env: {
+        [`PONDER_RPC_URLS_${SPOKE_CHAIN_ID}`]: "https://hang.example",
+        [`PONDER_GETLOGS_BLOCK_RANGE_${SPOKE_CHAIN_ID}`]: "1000",
+      } as NodeJS.ProcessEnv,
+      fetch: hangingFetch(),
+    });
+    assert.equal(result.providers[0]?.verdict, "unreachable");
+    assert.equal(result.ok, false);
   });
 });

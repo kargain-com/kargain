@@ -2,17 +2,17 @@
 
 | Document | Lifecycle | You need it when… |
 |----------|-----------|-------------------|
-| [OPERATIONS.md](./OPERATIONS.md) | **Permanent** | Running a reindex on VPS, RPC/start-block issues, Postgres reset |
+| [OPERATIONS.md](./OPERATIONS.md) | **Permanent** | Ponder deploy and rollback (ADR 0016), RPC profiles, readiness, Docker hygiene |
 | [MIGRATION-V2.md](./MIGRATION-V2.md) | **Reference** | v2 event/schema mapping, FX display extension (§6) |
 | [ops/deploys/nuclear-7.md](../ops/deploys/nuclear-7.md) | **Current (S9-A)** | Nuclear #7 dual-chain — branch cutover; VPS reindex at Merge |
 | [ops/deploys/nuclear-4.md](../ops/deploys/nuclear-4.md) | **Historical** | Nuclear #4 dual-chain (superseded by N7) |
 | [ops/deploys/archive/84532-v2.md](../ops/deploys/archive/84532-v2.md) | **Historical** | June 2026 v2 deploy + VPS cutover record |
 
-**Branch (Nuclear #7 / S9-B):** committed start blocks hub **46119704** / Eth **11591966** plus live Solana commercial namespace **2000040168**. **Browse Phase 1 live** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)): Vercel on `master` push; VPS reindex ASAP after schema. Smoke: `/read-path-ready`, `/consignments` (+ B1), payment-tokens, obligations, notifications. **S7b–c:** `bridge_crossing` + **`custody_determining_event`**; HTTP custody fold — **`custodyChain` | `custodyUnresolved`**. **S7c-1/2:** **`kargain_svm_raw`** + **`kargain_svm_projection`** — provenance UNION always includes SVM arm. Physical EVM columns **snake_case**. **S9-B:** `svm-ingest` discovers slots via `getSignaturesForAddress` (per-program floors from registry `blocks`), fetches `getBlock` only for those slots, asserts RPC retention at the required start cursor, and reports first bootstrap separately from post-bootstrap discovered-backlog lag.
+**Branch (Nuclear #7 / S9-B):** committed start blocks hub **46119704** / Eth **11591966** plus live Solana commercial namespace **2000040168**. **Browse Phase 1 live** 2026-08-14 ([OPERATIONS.md §4.0–§4.1](./OPERATIONS.md)): Vercel on `master` push; the Ponder deploy switches to a fresh schema on an indexing change (ADR 0016). Smoke: `/read-path-ready`, `/consignments` (+ B1), payment-tokens, obligations, notifications. **S7b–c:** `bridge_crossing` + **`custody_determining_event`**; HTTP custody fold — **`custodyChain` | `custodyUnresolved`**. **S7c-1/2:** **`kargain_svm_raw`** + **`kargain_svm_projection`** — provenance UNION always includes SVM arm. Physical EVM columns **snake_case**. **S9-B:** `svm-ingest` discovers slots via `getSignaturesForAddress` (per-program floors from registry `blocks`), fetches `getBlock` only for those slots, asserts RPC retention at the required start cursor, and reports first bootstrap separately from post-bootstrap discovered-backlog lag.
 
 ## SVM raw ingest (S7c-1)
 
-Separate Node service — **not** inside the Ponder image. Append-only Postgres schema **`kargain_svm_raw`** (`structured_payload`, `ingest_refusal`, `ingest_cursor`). Sole INSERT owner: [`svm-ingest/svm-raw-writer.ts`](../../svm-ingest/svm-raw-writer.ts). Ponder reindex (`scripts/ponder-reindex.sql`) drops `kargain` only — raw survives; active cache `ponder_rpc_cache_1` (and leftover `ponder_sync`) are never dropped (policy: `test/ponder-reindex-svm-isolation-policy.test.ts`).
+Separate Node service — **not** inside the Ponder image. Append-only Postgres schema **`kargain_svm_raw`** (`structured_payload`, `ingest_refusal`, `ingest_cursor`). Sole INSERT owner: [`svm-ingest/svm-raw-writer.ts`](../../svm-ingest/svm-raw-writer.ts). Ponder deploy retention ([ADR 0016 §h](../adr/0016-one-writer-schema-per-indexing-identity.md)) drops only Ponder-owned schemas (`k_<40 hex>` or `kargain`) outside the deploy state — raw survives; `ponder_sync` and the RPC cache `ponder_rpc_cache_1` are never dropped (policy: `test/ponder-deploy-retention-policy.test.ts`).
 
 | Item | Value |
 |------|--------|
@@ -41,14 +41,9 @@ Materialized schema **`kargain_svm_projection`** — tables `passport_record`, `
 
 Do **not** copy address tables here. Resolution is **per-chain** (SPEC §I.12.12):
 
-**Addresses (per chainId, SPEC §I.12.12):**
-- Committed: `lib/web3/commercial-active.ts` (`COMMERCIAL_ACTIVE`) — VPS / CI after `git pull`
-- Optional local: `deployments/<chainId>.json` (gitignored deploy artifact; overrides when present)
-- Optional debug (84532 only): `PONDER_*_ADDRESS` env
+**Addresses and start blocks (per chainId, SPEC §I.12.12):** `COMMERCIAL_ACTIVE` in `lib/web3/commercial-active.ts` is the only source for commercial chains ([ADR 0016 §a](../adr/0016-one-writer-schema-per-indexing-identity.md)). Per-contract start blocks are `COMMERCIAL_ACTIVE[chainId].blocks.*` (Nuclear #7 `indexFromBlock`: hub **46119704** · Eth **11591966**). No env key and no `deployments/<chainId>.json` changes what a commercial chain indexes; the deploy refuses by key when a removed start-block key or a `PONDER_*_ADDRESS` key is set. `PONDER_*_ADDRESS` and `deployments/31337.json` name the local Hardhat chain only.
 - Diagnostic: `pnpm ponder:config`
 - Reference: [contracts/SPEC.md Part I.9.1](../contracts/SPEC.md#i91-active-deployment-base-sepolia-84532) + Eth nuclear table
-
-**Start blocks:** `PONDER_START_BLOCK_84532=46119704` · `PONDER_START_BLOCK_11155111=11591966` (Nuclear #7 / S9-A). Per-contract start blocks from each manifest’s `blocks.*`.
 
 ## Dual-chain identity (C3 · July 2026)
 
@@ -98,7 +93,7 @@ Holds and ascending terms stay **embedded** in `GET /consignments/:id` (no stand
 
 ## Verifier lifecycle (bounded indexing)
 
-Ponder observes a **bounded event window** (start block, reindex checkpoints). KarProPass / KarProStaking handlers use [`src/lib/ponder-verifier-lifecycle.ts`](../../src/lib/ponder-verifier-lifecycle.ts): **creation** events (`ProPassMinted`, `VerifierJoined`) upsert `verifier` rows keyed by `` `${chainId}-${address}` ``; **mutation** and **deactivation** events patch only when a row exists — no row means the desired inactive/absent state already holds (idempotent no-op, not an error). KarPro Arweave metadata denorms `slug` plus Place fields (`locationLabel`, `locationPlaceId`, `locationCountryCode`) on mint/profile update (empty when incomplete or missing).
+Ponder observes a **bounded event window** (registry start blocks). KarProPass / KarProStaking handlers use [`src/lib/ponder-verifier-lifecycle.ts`](../../src/lib/ponder-verifier-lifecycle.ts): **creation** events (`ProPassMinted`, `VerifierJoined`) upsert `verifier` rows keyed by `` `${chainId}-${address}` ``; **mutation** and **deactivation** events patch only when a row exists — no row means the desired inactive/absent state already holds (idempotent no-op, not an error). KarPro Arweave metadata denorms `slug` plus Place fields (`locationLabel`, `locationPlaceId`, `locationCountryCode`) on mint/profile update (empty when incomplete or missing).
 
 Passport rows include trust fields (`hadDispute`, `disputeOpenedAt`, `lastDisputeTerminal`, …) and nullable `disputeDeposit` (set on `ChallengeOpened` / legacy `DisputeDepositPaid`, cleared on challenge terminals). `lastDisputeTerminal` is `confirm` | `reject` | `expire` | `withdraw` | `""` — distinguishes expire-lapse from Confirm for product copy. Owner feed: `passport.dispute_expired` when terminal is expire; `passport.dispute_resolved` for confirm/reject. BondedChallenge `Challenge*` events also populate the shared `challenge` table — see `GET /challenges` above.
 
@@ -108,7 +103,7 @@ Custom routes live in [`src/api/index.ts`](../../src/api/index.ts) (passport, ve
 
 **App reads:** product code builds Ponder URLs and tagged reads only through [`lib/web3/ponder-fetch.ts`](../../lib/web3/ponder-fetch.ts) (`ponderFetch(tag, url)` → `"use cache"` + `cacheTag`; tags = `INDEXER_QUERY_KEY_PREFIXES`). Invalidation: `syncReads` → `updateTag`. Do not hand-build `${PONDER_SQL_API_URL}/…` paths in actions/lib.
 
-**Response cache headers (indexer → edge):** one middleware on the Hono `app` ([`ponder-http-cache-middleware.ts`](../../src/lib/ponder-http-cache-middleware.ts)) sets `Cache-Control` + weak `ETag` and answers `If-None-Match` with **304**. Freshness class per route is data in [`ponder-http-freshness.ts`](../../src/lib/ponder-http-freshness.ts) (`config` / `catalog` / `entity` / `account` / `ephemeral` — **not** Truth layers T1–T6). Protocol projections keep **zero** edge TTL; Cloudflare may enable only `ephemeral` + `config` ([OPERATIONS.md §6.2](./OPERATIONS.md)). No CF purge from user txs. A Hono route without a class fails closed (500 + `private, no-store`); coverage: `test/ponder-http-freshness-policy.test.ts`.
+**Response cache headers (indexer → edge):** one middleware on the Hono `app` ([`ponder-http-cache-middleware.ts`](../../src/lib/ponder-http-cache-middleware.ts)) sets `Cache-Control` + weak `ETag` and answers `If-None-Match` with **304**. Freshness class per route is data in [`ponder-http-freshness.ts`](../../src/lib/ponder-http-freshness.ts) (`config` / `catalog` / `entity` / `account` / `ephemeral` — **not** Truth layers T1–T6). Protocol projections keep **zero** edge TTL; Cloudflare may enable only `ephemeral` + `config` ([OPERATIONS.md §4.2](./OPERATIONS.md)). No CF purge from user txs. A Hono route without a class fails closed (500 + `private, no-store`); coverage: `test/ponder-http-freshness-policy.test.ts`.
 
 | Endpoint | Purpose |
 |----------|---------|
@@ -137,7 +132,7 @@ Do **not** define these in `src/api/index.ts` — Ponder owns them ([docs](https
 
 `GET /read-path-ready` is **not** reserved: it is Kargain's own route in `src/api/index.ts`, and it complements `/ready` by checking read-path executability rather than indexer sync state.
 
-Smoke checks after reindex: [OPERATIONS.md §6](./OPERATIONS.md#6-smoke-checks).
+Smoke checks after a deploy: [OPERATIONS.md §4](./OPERATIONS.md#4-smoke-checks).
 
 ## Local dev database (PGlite — no Docker)
 

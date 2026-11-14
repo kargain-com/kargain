@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -25,24 +25,14 @@ import {
   ponderAddressesFromStack,
   resolveCommercialStack,
 } from "../scripts/lib/resolve-sepolia-stack.ts";
+import {
+  buildPonderIndexingConfig,
+  type ContractBlockKey,
+} from "../scripts/lib/ponder-env.ts";
 
 const HUB = 84532;
 const ETH = 11155111;
 const SOLANA = namespaceFromLayerZeroEid(40168);
-
-/** Point the deployment loader at an empty temp dir so repo manifests are invisible. */
-function withEmptyDeploymentsDir<T>(fn: () => T): T {
-  const prev = process.env.KARGAIN_DEPLOYMENTS_DIR;
-  const temp = mkdtempSync(join(tmpdir(), "kargain-deployments-"));
-  process.env.KARGAIN_DEPLOYMENTS_DIR = temp;
-  try {
-    return fn();
-  } finally {
-    if (prev === undefined) delete process.env.KARGAIN_DEPLOYMENTS_DIR;
-    else process.env.KARGAIN_DEPLOYMENTS_DIR = prev;
-    rmSync(temp, { recursive: true, force: true });
-  }
-}
 
 describe("COMMERCIAL_ACTIVE registry", () => {
   it("requireEvmCommercialActive narrows to EVM stack with chainId", () => {
@@ -182,53 +172,91 @@ describe("COMMERCIAL_ACTIVE registry", () => {
   });
 });
 
-describe("resolveCommercialStack committed fallback", () => {
-  it("returns committed Eth stack matching SPEC I.9.2 Nuclear #7", () => {
-    const prev = {
-      passport: process.env.PONDER_KAR_PASSPORT_ADDRESS,
-      pro: process.env.PONDER_KAR_PRO_PASS_ADDRESS,
-      staking: process.env.PONDER_KAR_PRO_STAKING_ADDRESS,
-    };
-    withEmptyDeploymentsDir(() => {
-      try {
-        delete process.env.PONDER_KAR_PASSPORT_ADDRESS;
-        delete process.env.PONDER_KAR_PRO_PASS_ADDRESS;
-        delete process.env.PONDER_KAR_PRO_STAKING_ADDRESS;
+describe("resolveCommercialStack is registry-only (ADR 0016 §a)", () => {
+  const REMOVED_START_KEYS = [
+    ["PONDER", "START_BLOCK"].join("_"),
+    ...[HUB, ETH].map((id) => [["PONDER", "START_BLOCK"].join("_"), id].join("_")),
+  ];
+  const REMOVED_ADDRESS_KEYS = [
+    "PONDER_KAR_PASSPORT_ADDRESS",
+    "PONDER_KAR_PRO_PASS_ADDRESS",
+    "PONDER_KAR_PRO_STAKING_ADDRESS",
+    "PONDER_FIXED_PRICE_CONSIGNMENT_ADDRESS",
+  ];
+  const PLANTED = "0x000000000000000000000000000000000000dEaD";
 
-        const eth = resolveCommercialStack(ETH);
-        assert.equal(eth.source, "committed");
-        assert.equal(eth.karPassport, "0x1FFdEC27d14567B34548BA63269c0745227f1949");
-        assert.equal(eth.indexFromBlock, 11_591_966);
-        assert.equal(eth.bridgeGateway, "0x910631Df5aA4d47Ce20a6D485cd9DdC2E68D8eBc");
-
-        const bundle = ponderAddressesFromStack(eth);
-        assert.equal(bundle.karPassport, eth.karPassport);
-        assert.equal(bundle.fixedPriceConsignment, eth.fixedPriceConsignment);
-        assert.equal(bundle.ascendingConsignment, eth.ascendingConsignment);
-
-        const hub = resolveCommercialStack(HUB);
-        assert.ok(hub.source === "committed" || hub.source === "env");
-        assert.equal(hub.karPassport, SEPOLIA_ACTIVE.karPassport);
-        assert.equal(hub.fixedPriceConsignment, SEPOLIA_ACTIVE.fixedPriceConsignment);
-      } finally {
-        if (prev.passport) process.env.PONDER_KAR_PASSPORT_ADDRESS = prev.passport;
-        else delete process.env.PONDER_KAR_PASSPORT_ADDRESS;
-        if (prev.pro) process.env.PONDER_KAR_PRO_PASS_ADDRESS = prev.pro;
-        else delete process.env.PONDER_KAR_PRO_PASS_ADDRESS;
-        if (prev.staking) process.env.PONDER_KAR_PRO_STAKING_ADDRESS = prev.staking;
-        else delete process.env.PONDER_KAR_PRO_STAKING_ADDRESS;
+  /** Repo manifests with every registry address replaced and every block moved. */
+  function withPlantedManifestsAndEnv<T>(fn: () => T): T {
+    const prevDir = process.env.KARGAIN_DEPLOYMENTS_DIR;
+    const prevEnv = new Map(
+      [...REMOVED_START_KEYS, ...REMOVED_ADDRESS_KEYS].map((k) => [k, process.env[k]]),
+    );
+    const temp = mkdtempSync(join(tmpdir(), "kargain-deployments-"));
+    for (const id of [HUB, ETH]) {
+      const evm = requireEvmCommercialActive(id);
+      let text = readFileSync(join(process.cwd(), "deployments", `${id}.json`), "utf8");
+      text = text.replaceAll(evm.karPassport, PLANTED).replace(/"(\w*[bB]lock\w*)":\s*\d+/g, '"$1": 1');
+      writeFileSync(join(temp, `${id}.json`), text);
+    }
+    process.env.KARGAIN_DEPLOYMENTS_DIR = temp;
+    for (const k of REMOVED_START_KEYS) process.env[k] = "1";
+    for (const k of REMOVED_ADDRESS_KEYS) process.env[k] = PLANTED;
+    try {
+      return fn();
+    } finally {
+      if (prevDir === undefined) delete process.env.KARGAIN_DEPLOYMENTS_DIR;
+      else process.env.KARGAIN_DEPLOYMENTS_DIR = prevDir;
+      for (const [k, v] of prevEnv) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
       }
-    });
+      rmSync(temp, { recursive: true, force: true });
+    }
+  }
+
+  /** Every value the config hands ponder.config.ts, with each contract entry evaluated. */
+  function indexingConfigFacts(config: ReturnType<typeof buildPonderIndexingConfig>) {
+    const { contractEntry, ...data } = config;
+    const entries = Object.entries(config.addresses).map(([key, hub]) => [
+      key,
+      contractEntry(hub, key as ContractBlockKey, {
+        ethereumSepoliaAddress:
+          config.ethereumSepoliaAddresses?.[key as keyof typeof config.addresses],
+      }),
+    ]);
+    return { data, entries };
+  }
+
+  it("returns the committed Eth stack matching SPEC I.9.2 Nuclear #7", () => {
+    const eth = resolveCommercialStack(ETH);
+    assert.equal(eth.karPassport, "0x1FFdEC27d14567B34548BA63269c0745227f1949");
+    assert.equal(eth.indexFromBlock, 11_591_966);
+    assert.equal(eth.bridgeGateway, "0x910631Df5aA4d47Ce20a6D485cd9DdC2E68D8eBc");
+
+    const bundle = ponderAddressesFromStack(eth);
+    assert.equal(bundle.karPassport, eth.karPassport);
+    assert.equal(bundle.fixedPriceConsignment, eth.fixedPriceConsignment);
+    assert.equal(bundle.ascendingConsignment, eth.ascendingConsignment);
+
+    const hub = resolveCommercialStack(HUB);
+    assert.equal(hub.karPassport, SEPOLIA_ACTIVE.karPassport);
+    assert.equal(hub.fixedPriceConsignment, SEPOLIA_ACTIVE.fixedPriceConsignment);
   });
 
-  it("falls back to committed when no local manifest", () => {
-    withEmptyDeploymentsDir(() => {
-      delete process.env.PONDER_KAR_PASSPORT_ADDRESS;
-      delete process.env.PONDER_KAR_PRO_PASS_ADDRESS;
-      delete process.env.PONDER_KAR_PRO_STAKING_ADDRESS;
-      const eth = resolveCommercialStack(ETH);
-      assert.equal(eth.source, "committed");
-      assert.equal(eth.karPassport, requireCommercialActive(ETH).karPassport);
+  it("planted manifests and removed env keys change nothing in the stack or the indexing config", () => {
+    const baseline = {
+      hub: resolveCommercialStack(HUB),
+      eth: resolveCommercialStack(ETH),
+      config: buildPonderIndexingConfig(),
+    };
+    withPlantedManifestsAndEnv(() => {
+      for (const id of [HUB, ETH]) {
+        const planted = readFileSync(join(process.env.KARGAIN_DEPLOYMENTS_DIR!, `${id}.json`), "utf8");
+        assert.ok(planted.includes(PLANTED), `control: ${id} manifest carries the planted address`);
+      }
+      assert.deepEqual(resolveCommercialStack(HUB), baseline.hub);
+      assert.deepEqual(resolveCommercialStack(ETH), baseline.eth);
+      assert.deepEqual(indexingConfigFacts(buildPonderIndexingConfig()), indexingConfigFacts(baseline.config));
     });
   });
 

@@ -1,13 +1,17 @@
 /**
- * Sole owner of the Ponder *executable* fingerprint — what the container must
- * run. The import graph starts at ponder.config.ts, ponder.schema.ts, every
- * path from the indexing-glob owner, and the API entry src/api/index.ts, then
- * follows static imports. Image and runtime deps are hashed with that graph.
- * Answers: "must we recreate the production container?"
+ * Sole owner of the two Ponder identities (ADR 0016 §b), computed from one
+ * graph walk over a given tree (the image's own `/app` on the deploy machine):
  *
- * Never derived from the identity fingerprint. Identity warns about reindex;
- * executable alone gates restart. No second walk of src/ — indexing files come
- * from listPonderIndexingGlob.
+ * - Indexing identity — the static-import closure of ponder.config.ts,
+ *   ponder.schema.ts and every indexing-glob file, plus Dockerfile.ponder,
+ *   pnpm-lock.yaml and the runtime slice of package.json. With registry-only
+ *   indexing (§a) it covers every input of Ponder's build_id and all code
+ *   reachable from indexing handlers. Its first 40 hex name the schema.
+ * - Executable identity — the indexing files plus the src/api/index.ts closure
+ *   and docker-compose.yml. Equal executable → nothing starts.
+ *
+ * Neither equals or predicts build_id. Indexing files come from the
+ * indexing-glob owner; there is no second walk of src/.
  */
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -16,12 +20,23 @@ import { dirname, join, relative, resolve } from "node:path";
 import { listPonderIndexingGlob } from "./ponder-indexing-glob.js";
 import { extractStaticImportSpecifiers } from "./static-import-specifiers.js";
 
-export const PONDER_EXECUTABLE_ARTIFACTS = [
+/** Config and schema sit outside the indexing glob. */
+export const PONDER_INDEXING_FIXED_ENTRIES = [
+  "ponder.config.ts",
+  "ponder.schema.ts",
+] as const;
+
+export const PONDER_API_ENTRY = "src/api/index.ts" as const;
+
+export const PONDER_INDEXING_ARTIFACTS = [
   "Dockerfile.ponder",
-  "docker-compose.yml",
   "pnpm-lock.yaml",
 ] as const;
 
+export const PONDER_EXECUTABLE_ARTIFACTS = [
+  ...PONDER_INDEXING_ARTIFACTS,
+  "docker-compose.yml",
+] as const;
 
 export type PackageRuntimeSlice = {
   dependencies: Record<string, string>;
@@ -30,14 +45,26 @@ export type PackageRuntimeSlice = {
   ponderStart: string | null;
 };
 
-export type PonderExecutableFile = {
+export type PonderIdentityFile = {
   path: string;
   sha256: string;
 };
 
-export type PonderExecutablePayload = {
-  files: PonderExecutableFile[];
+export type PonderIdentityPayload = {
+  files: PonderIdentityFile[];
   packageRuntime: PackageRuntimeSlice;
+};
+
+export type PonderGraph = {
+  /** Static-import closure of the indexing entries. */
+  indexing: string[];
+  /** Static-import closure of the indexing entries and the API entry. */
+  executable: string[];
+};
+
+export type PonderIdentities = {
+  indexing: { digest: string; payload: PonderIdentityPayload };
+  executable: { digest: string; payload: PonderIdentityPayload };
 };
 
 function sha256Bytes(buf: Buffer | string): string {
@@ -57,8 +84,8 @@ function sortKeys(value: unknown): unknown {
   return value;
 }
 
-export function digestPonderExecutablePayload(
-  payload: PonderExecutablePayload,
+export function digestPonderIdentityPayload(
+  payload: PonderIdentityPayload,
 ): string {
   return sha256Bytes(JSON.stringify(sortKeys(payload)));
 }
@@ -80,7 +107,6 @@ export function packageRuntimeSlice(pkg: {
     ponderStart: pkg.scripts?.["ponder:start"] ?? null,
   };
 }
-
 
 function isLocalSpecifier(spec: string): boolean {
   return (
@@ -160,121 +186,127 @@ function tryResolveFile(
   return null;
 }
 
-/** Config, schema, and the API entry sit outside the indexing glob. */
-const PONDER_EXECUTABLE_FIXED_ENTRIES = [
-  "ponder.config.ts",
-  "ponder.schema.ts",
-  "src/api/index.ts",
-] as const;
-
-function ponderExecutableEntries(root: string): string[] {
+function ponderIndexingEntries(root: string): string[] {
   const indexing = listPonderIndexingGlob(root);
-  for (const rel of PONDER_EXECUTABLE_FIXED_ENTRIES) {
-    if (!isReadableFile(join(root, rel))) {
-      throw new Error(`Ponder executable entry resolves to no file: ${rel}`);
-    }
-  }
   return [
-    ...new Set<string>([...PONDER_EXECUTABLE_FIXED_ENTRIES, ...indexing]),
+    ...new Set<string>([...PONDER_INDEXING_FIXED_ENTRIES, ...indexing]),
   ].sort();
 }
 
+export type PonderGraphOptions = {
+  indexingEntries?: readonly string[];
+  apiEntries?: readonly string[];
+  /** rel path → source text; when set, only these + resolved locals are walked */
+  fileContents?: Map<string, string>;
+};
+
+function readSource(
+  root: string,
+  rel: string,
+  planted: Map<string, string> | undefined,
+): string {
+  if (planted) {
+    const text = planted.get(rel);
+    if (text === undefined) {
+      throw new Error(`Ponder identity entry resolves to no file: ${rel}`);
+    }
+    return text;
+  }
+  const abs = join(root, rel);
+  if (!isReadableFile(abs)) {
+    throw new Error(`Ponder identity entry resolves to no file: ${rel}`);
+  }
+  return readFileSync(abs, "utf8");
+}
+
+function closureOf(
+  entries: readonly string[],
+  edges: ReadonlyMap<string, readonly string[]>,
+): string[] {
+  const seen = new Set<string>();
+  const queue = [...entries];
+  while (queue.length > 0) {
+    const rel = queue.shift()!;
+    if (seen.has(rel)) continue;
+    seen.add(rel);
+    for (const next of edges.get(rel) ?? []) {
+      if (!seen.has(next)) queue.push(next);
+    }
+  }
+  return [...seen].sort();
+}
+
 /**
- * Walk static imports from process entries.
- * Default entries are the indexing glob plus config, schema, and the API entry.
- * Injectable fileContents map lets tests plant a graph without touching live src.
+ * One walk of static imports from the indexing entries and the API entry.
+ * Each file is read once; both closures are reachability over the same edges.
  * An entry that resolves to no file throws. Relative and `@/` imports that
  * resolve to no file throw. Bare package specifiers stay outside the graph.
  */
-export function collectPonderExecutableGraphFiles(
+export function collectPonderGraph(
   root: string,
-  opts?: {
-    entries?: readonly string[];
-    /** rel path → source text; when set, only these + resolved locals are walked */
-    fileContents?: Map<string, string>;
-  },
-): string[] {
-  const entries = (opts?.entries ?? ponderExecutableEntries(root)).map((rel) =>
-    rel.replace(/\\/g, "/"),
-  );
-  if (entries.length === 0) {
-    throw new Error("Ponder executable entries are empty");
+  opts?: PonderGraphOptions,
+): PonderGraph {
+  const normalize = (rel: string) => rel.replace(/\\/g, "/");
+  const indexingEntries = (
+    opts?.indexingEntries ?? ponderIndexingEntries(root)
+  ).map(normalize);
+  const apiEntries = (opts?.apiEntries ?? [PONDER_API_ENTRY]).map(normalize);
+  if (indexingEntries.length === 0) {
+    throw new Error("Ponder indexing entries are empty");
   }
-  for (const rel of entries) {
-    const inPlant =
-      opts?.fileContents !== undefined && opts.fileContents.has(rel);
-    const onDisk = opts?.fileContents === undefined && isReadableFile(join(root, rel));
-    if (!inPlant && !onDisk) {
-      throw new Error(`Ponder executable entry resolves to no file: ${rel}`);
-    }
-  }
-  const visited = new Set<string>();
-  const queue = [...entries];
+  const planted = opts?.fileContents;
 
+  const edges = new Map<string, string[]>();
+  const queue = [...indexingEntries, ...apiEntries];
   while (queue.length > 0) {
     const rel = queue.shift()!;
-    if (visited.has(rel)) continue;
-    visited.add(rel);
-
-    let source: string;
-    if (opts?.fileContents) {
-      const planted = opts.fileContents.get(rel);
-      if (planted === undefined) {
-        throw new Error(`Ponder executable entry resolves to no file: ${rel}`);
-      }
-      source = planted;
-    } else {
-      const abs = join(root, rel);
-      if (!existsSync(abs)) {
-        throw new Error(`Ponder executable entry resolves to no file: ${rel}`);
-      }
-      source = readFileSync(abs, "utf8");
-    }
-
+    if (edges.has(rel)) continue;
+    const source = readSource(root, rel, planted);
+    const out: string[] = [];
     for (const spec of extractStaticImportSpecifiers(source)) {
       if (!isLocalSpecifier(spec)) continue;
-      const absFrom = join(root, rel);
-      const resolved = resolveLocalImport(
-        absFrom,
-        spec,
-        root,
-        opts?.fileContents,
-      );
+      const resolved = resolveLocalImport(join(root, rel), spec, root, planted);
       if (!resolved) {
         throw new Error(
           `Unresolved local import ${JSON.stringify(spec)} from ${rel}`,
         );
       }
-      const nextRel = relative(root, resolved).replace(/\\/g, "/");
-      if (opts?.fileContents && !opts.fileContents.has(nextRel)) {
-        // Planted graphs only follow files present in the map.
-        continue;
-      }
-      if (!visited.has(nextRel)) queue.push(nextRel);
+      const nextRel = normalize(relative(root, resolved));
+      // Planted graphs only follow files present in the map.
+      if (planted && !planted.has(nextRel)) continue;
+      out.push(nextRel);
+      if (!edges.has(nextRel)) queue.push(nextRel);
     }
+    edges.set(rel, out);
   }
 
-  return [...visited].sort();
+  return {
+    indexing: closureOf(indexingEntries, edges),
+    executable: closureOf([...indexingEntries, ...apiEntries], edges),
+  };
 }
 
-export function buildPonderExecutablePayload(
+/** Indexing files absent from the executable set — empty for a sound pair. */
+export function indexingFilesMissingFromExecutable(
+  indexing: PonderIdentityPayload,
+  executable: PonderIdentityPayload,
+): string[] {
+  const exec = new Set(executable.files.map((f) => f.path));
+  return indexing.files.map((f) => f.path).filter((p) => !exec.has(p));
+}
+
+export type PonderIdentitiesOptions = PonderGraphOptions & {
+  packageJson?: Parameters<typeof packageRuntimeSlice>[0];
+  artifactContents?: Map<string, string>;
+};
+
+export function computePonderIdentities(
   root: string,
-  opts?: {
-    entries?: readonly string[];
-    fileContents?: Map<string, string>;
-    packageJson?: Parameters<typeof packageRuntimeSlice>[0];
-    artifactContents?: Map<string, string>;
-  },
-): PonderExecutablePayload {
-  const graphRels = collectPonderExecutableGraphFiles(root, {
-    entries: opts?.entries,
-    fileContents: opts?.fileContents,
-  });
+  opts?: PonderIdentitiesOptions,
+): PonderIdentities {
+  const graph = collectPonderGraph(root, opts);
 
-  const artifactRels = [...PONDER_EXECUTABLE_ARTIFACTS];
-  const allRels = [...new Set([...graphRels, ...artifactRels])].sort();
-
-  const files: PonderExecutableFile[] = allRels.map((rel) => {
+  const fileOf = (rel: string): PonderIdentityFile => {
     let body: string | Buffer;
     if (opts?.fileContents?.has(rel)) {
       body = opts.fileContents.get(rel)!;
@@ -284,23 +316,36 @@ export function buildPonderExecutablePayload(
       body = readFileSync(join(root, rel));
     }
     return { path: rel, sha256: sha256Bytes(body) };
-  });
+  };
 
   const pkg =
     opts?.packageJson ??
     (JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as Parameters<
       typeof packageRuntimeSlice
     >[0]);
+  const packageRuntime = packageRuntimeSlice(pkg);
 
+  const payloadOf = (
+    graphRels: readonly string[],
+    artifacts: readonly string[],
+  ): PonderIdentityPayload => ({
+    files: [...new Set([...graphRels, ...artifacts])].sort().map(fileOf),
+    packageRuntime,
+  });
+
+  const indexing = payloadOf(graph.indexing, PONDER_INDEXING_ARTIFACTS);
+  const executable = payloadOf(graph.executable, PONDER_EXECUTABLE_ARTIFACTS);
+  const missing = indexingFilesMissingFromExecutable(indexing, executable);
+  if (missing.length > 0) {
+    throw new Error(
+      `Ponder executable set lacks indexing files: ${missing.join(", ")}`,
+    );
+  }
   return {
-    files,
-    packageRuntime: packageRuntimeSlice(pkg),
+    indexing: { digest: digestPonderIdentityPayload(indexing), payload: indexing },
+    executable: {
+      digest: digestPonderIdentityPayload(executable),
+      payload: executable,
+    },
   };
-}
-
-export function computePonderExecutableFingerprint(
-  root: string,
-  opts?: Parameters<typeof buildPonderExecutablePayload>[1],
-): string {
-  return digestPonderExecutablePayload(buildPonderExecutablePayload(root, opts));
 }
