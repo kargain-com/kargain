@@ -7,6 +7,11 @@
 #
 # Defaults: origin/master and HEAD of this checkout (both must be committed).
 # The caller's environment supplies the commercial RPC lists and windows.
+# Those RPCs must serve the registry start blocks (COMMERCIAL_ACTIVE); a
+# pruned publicnode tip is not enough. Optional master-only start-block
+# keys (the commercial PONDER_START_BLOCK* names master still reads) are
+# written into .env for step 0, then removed before the first ADR 0016
+# deploy — the new preflight refuses them.
 #
 # Owns only: Compose project kargain-rehearsal (its containers, network and
 # Postgres volume), images of repository kargain-rehearsal-ponder, and a
@@ -97,6 +102,12 @@ git -C "$clone" -c advice.detachedHead=false checkout -q "$master_sha"
 {
   printf 'POSTGRES_PASSWORD=rehearsal\n'
   for key in "${required_env[@]}"; do printf '%s=%s\n' "$key" "${!key}"; done
+  # Master still reads these; the ADR 0016 preflight refuses them (stripped below).
+  # Names built in parts so the removal grep stays empty.
+  for suffix in '_84532' '_11155111' ''; do
+    key="$(printf 'PONDER_START_BLOCK%s' "$suffix")"
+    if [ -n "${!key:-}" ]; then printf '%s=%s\n' "$key" "${!key}"; fi
+  done
 } >"$clone/.env"
 # The developer's stack may publish the same port; the deploy reaches ponder
 # over the Compose network only.
@@ -175,6 +186,13 @@ printf '{"identity": "%s", "executable": "%s"}' "$identity" "$executable" >"$clo
 [ "$(schemas)" = "kargain " ] || fail "master writer schemas: $(schemas)"
 
 git -C "$clone" -c advice.detachedHead=false checkout -q "$impl_sha"
+
+# ADR 0016 §a: removed keys and local mode must not remain in the env the
+# preflight resolves for ponder (master needed the start blocks above).
+{
+  printf 'POSTGRES_PASSWORD=rehearsal\n'
+  for key in "${required_env[@]}"; do printf '%s=%s\n' "$key" "${!key}"; done
+} >"$clone/.env"
 
 printf '\n=== step 1: first run adopts legacy, then switches\n'
 deploy_run 0 deploy
