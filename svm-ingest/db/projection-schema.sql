@@ -1,4 +1,4 @@
--- SVM provenance + custody projection (S7c-2 / S7c-3) — dropped/rebuilt by svm-ingest; never by ponder-reindex.sql
+-- SVM provenance + custody projection (S7c-2 / S7c-3) — dropped/rebuilt by svm-ingest; never by Ponder deploy retention (ADR 0016 §h)
 CREATE SCHEMA IF NOT EXISTS kargain_svm_projection;
 
 CREATE TABLE IF NOT EXISTS kargain_svm_projection.passport_record (

@@ -1,8 +1,11 @@
 /**
- * Deploy preflight for ponder (ADR 0012): evaluate ponder.config.ts, then probe
- * every commercial RPC provider. Prints only ADR §4 `deploy_preflight` lines —
- * never URLs, messages, or `deploy_evidence` (workflow owns evidence).
+ * Deploy preflight for ponder (ADR 0012, ADR 0016 §a/§c): refuse removed keys,
+ * a DATABASE_SCHEMA override and local mode in the env Compose resolves for
+ * `ponder`, evaluate ponder.config.ts, then probe every commercial RPC
+ * provider. Prints only `deploy_preflight` lines — never URLs, messages, or
+ * `deploy_evidence` (the deploy owner prints evidence).
  */
+import { ponderDeployEnvRefusal } from "./lib/ponder-indexing-env-census.js";
 import { PonderEnvRefusalError } from "./lib/ponder-env.js";
 import {
   ponderRpcProbeVerdictRefusesDeploy,
@@ -33,6 +36,12 @@ export async function runPonderDeployPreflight(
 ): Promise<number> {
   const print = createDeployPreflightPrinter(deps?.stdoutWrite);
   const evaluate = deps?.evaluateConfig ?? evaluatePonderConfig;
+
+  const envRefusal = ponderDeployEnvRefusal(deps?.env ?? process.env);
+  if (envRefusal) {
+    print.refused("ponder", envRefusal.reason, envRefusal.key);
+    return 1;
+  }
 
   try {
     await evaluate();

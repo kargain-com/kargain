@@ -53,6 +53,70 @@ describe("ponder-readiness-probe", () => {
     }
   });
 
+  it("ready200: a 503 writer ends catching up with the last answered status", async () => {
+    const server = createServer((_req, res) => {
+      res.statusCode = 503;
+      res.end("backfill");
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    try {
+      const result = await waitForPonderReady({
+        url: `http://127.0.0.1:${port}/ready`,
+        mode: "ready200",
+        timeoutMs: 200,
+        intervalMs: 20,
+      });
+      assert.equal(result.ok, false);
+      if (result.ok) throw new Error("unreachable");
+      assert.equal(result.mode, "ready200");
+      assert.equal(result.lastStatus, 503);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve())),
+      );
+    }
+  });
+
+  it("ready200: a writer that stops answering ends with lastStatus null", async () => {
+    const result = await waitForPonderReady({
+      url: "http://127.0.0.1:1/ready",
+      mode: "ready200",
+      timeoutMs: 80,
+      intervalMs: 20,
+    });
+    assert.equal(result.ok, false);
+    if (result.ok) throw new Error("unreachable");
+    assert.equal(result.lastStatus, null);
+  });
+
+  it("ready200: 503 then 200 succeeds with 200", async () => {
+    let calls = 0;
+    const server = createServer((_req, res) => {
+      calls += 1;
+      res.statusCode = calls < 3 ? 503 : 200;
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    try {
+      const result = await waitForPonderReady({
+        url: `http://127.0.0.1:${port}/ready`,
+        mode: "ready200",
+        timeoutMs: 2_000,
+        intervalMs: 20,
+      });
+      assert.equal(result.ok, true);
+      if (!result.ok) throw new Error("unreachable");
+      assert.equal(result.status, 200);
+      assert.equal(calls, 3);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve())),
+      );
+    }
+  });
+
   it("accepts HTTP 200 as ready", async () => {
     const server = createServer((_req, res) => {
       res.statusCode = 200;

@@ -1,4 +1,4 @@
--- SVM raw ingest layer (S7c-1) — append-only; never dropped by ponder-reindex.sql
+-- SVM raw ingest layer (S7c-1) — append-only; never dropped by Ponder deploy retention (ADR 0016 §h)
 CREATE SCHEMA IF NOT EXISTS kargain_svm_raw;
 
 CREATE OR REPLACE FUNCTION kargain_svm_raw.deny_mutation()

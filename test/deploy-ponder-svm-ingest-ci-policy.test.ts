@@ -22,7 +22,7 @@ import {
 } from "../lib/architecture/ci-verify-partition.ts";
 import {
   PONDER_EXECUTABLE_ARTIFACTS,
-  collectPonderExecutableGraphFiles,
+  collectPonderGraph,
 } from "../scripts/lib/ponder-executable-fingerprint.ts";
 import {
   parseWorkflowPushPaths,
@@ -38,6 +38,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const WORKFLOWS_DIR = join(ROOT, ".github/workflows");
 const CI_WF = join(WORKFLOWS_DIR, "ci.yml");
 const PONDER_WF = join(WORKFLOWS_DIR, "deploy-ponder.yml");
+const PONDER_HOST_SCRIPT = join(ROOT, "scripts/ponder-deploy.sh");
 const SVM_WF = join(WORKFLOWS_DIR, "deploy-svm-ingest.yml");
 const PKG = JSON.parse(
   readFileSync(join(ROOT, "package.json"), "utf8"),
@@ -80,10 +81,20 @@ function lacksTopLevelContentsRead(yaml: string): boolean {
   return !TOP_LEVEL_CONTENTS_READ.test(yaml);
 }
 
+/** Writer inputs plus the deploy tooling: host script and the step closure. */
 function ponderDeployInputs(root: string): string[] {
-  const graph = collectPonderExecutableGraphFiles(root);
+  const graph = collectPonderGraph(root).executable;
+  const tooling = collectPonderGraph(root, {
+    apiEntries: ["scripts/ponder-deploy-step.ts"],
+  }).executable;
   return [
-    ...new Set([...graph, ...PONDER_EXECUTABLE_ARTIFACTS, "package.json"]),
+    ...new Set([
+      ...graph,
+      ...tooling,
+      ...PONDER_EXECUTABLE_ARTIFACTS,
+      "package.json",
+      "scripts/ponder-deploy.sh",
+    ]),
   ].sort();
 }
 
@@ -100,24 +111,147 @@ function svmIngestDeployInputs(root: string): string[] {
   ].sort();
 }
 
-/** Deploy path must poll reserved /ready via the readiness-probe owner. */
-export function ponderDeployLacksReadinessProbe(yaml: string): string | null {
-  if (!/ponder-ready-probe/.test(yaml)) {
-    return "deploy path lacks ponder-ready-probe readiness verification";
+const PONDER_HOST_EXEC =
+  'exec scripts/ponder-deploy.sh "$PONDER_OPERATION" kargain kargain-ponder';
+
+/**
+ * ADR 0016 §e: after the lock, the Ponder SSH script only fetches, checks out
+ * the pinned SHA and execs the tracked host script.
+ */
+export function ponderRemoteScriptDefect(script: string): string | null {
+  if (/\$\{\{/.test(script)) {
+    return "deploy remote script must not interpolate a workflow expression";
   }
-  if (!/\/ready/.test(yaml) && !/ponder-ready-probe/.test(yaml)) {
-    return "deploy path lacks /ready readiness verification";
+  const lines = deployScriptActiveLines(script).map((l) => l.trim());
+  const flockEnd = lines.findIndex((l) => l === "fi");
+  const tail = lines.slice(flockEnd + 1);
+  const expected = [
+    "git fetch https://github.com/kargain-com/kargain.git master",
+    'git checkout --force "$DEPLOY_SHA"',
+    PONDER_HOST_EXEC,
+  ];
+  if (flockEnd < 0 || JSON.stringify(tail) !== JSON.stringify(expected)) {
+    return "ponder remote script must be lock, fetch, checkout, exec scripts/ponder-deploy.sh";
   }
   return null;
 }
 
-/** Deploy path must skip recreate when the executable fingerprint is unchanged. */
-export function ponderDeployLacksExecutableSkip(yaml: string): string | null {
-  if (!/executable inputs unchanged/.test(yaml)) {
-    return "deploy path lacks executable-fingerprint skip-recreate branch";
+/**
+ * ADR 0016 §e/§l: the deploy job opens SSH only — no Node, install or digest
+ * step — and passes `operation` through env, defaulting to deploy.
+ */
+export function ponderDeployJobDefect(yamlText: string): string | null {
+  const doc = yaml.load(yamlText) as Record<string, unknown> | null;
+  const on = (doc?.on ?? {}) as Record<string, unknown>;
+  const dispatch = (on.workflow_dispatch ?? {}) as Record<string, unknown>;
+  const inputs = (dispatch.inputs ?? {}) as Record<string, unknown>;
+  const operation = (inputs.operation ?? {}) as Record<string, unknown>;
+  if (
+    operation.type !== "choice" ||
+    JSON.stringify(operation.options) !== JSON.stringify(["deploy", "rollback"]) ||
+    operation.default !== "deploy"
+  ) {
+    return "workflow_dispatch lacks the operation choice deploy|rollback";
   }
-  if (!/EXECUTABLE_DIGEST/.test(yaml)) {
-    return "deploy path lacks EXECUTABLE_DIGEST comparison";
+  const jobs = (doc?.jobs ?? {}) as Record<string, unknown>;
+  const deploy = (jobs.deploy ?? {}) as Record<string, unknown>;
+  const steps = Array.isArray(deploy.steps)
+    ? (deploy.steps as Record<string, unknown>[])
+    : [];
+  for (const step of steps) {
+    const uses = typeof step.uses === "string" ? step.uses : "";
+    const run = typeof step.run === "string" ? step.run : "";
+    if (/actions\/(?:setup-node|checkout)@/.test(uses)) {
+      return `deploy job must not use ${uses.split("@")[0]}`;
+    }
+    if (/\b(?:pnpm|node|corepack)\b/.test(run)) {
+      return "deploy job must not run node, pnpm or corepack";
+    }
+  }
+  const ssh = steps.find(
+    (s) => typeof s.uses === "string" && s.uses.includes("appleboy/ssh-action"),
+  );
+  const env = (ssh?.env ?? {}) as Record<string, unknown>;
+  const withBlock = (ssh?.with ?? {}) as Record<string, unknown>;
+  if (env.PONDER_OPERATION !== "${{ inputs.operation || 'deploy' }}") {
+    return "SSH step must pass PONDER_OPERATION through env";
+  }
+  const envs = String(withBlock.envs ?? "").split(",");
+  if (!envs.includes("PONDER_OPERATION") || !envs.includes("DEPLOY_SHA")) {
+    return "SSH step envs must forward DEPLOY_SHA and PONDER_OPERATION";
+  }
+  return null;
+}
+
+const BASH_BUILTINS = new Set([
+  "if", "then", "else", "elif", "fi", "case", "esac", "for", "in", "while",
+  "until", "do", "done", "function", "!", "{", "}", "[", "[[", "]]", ":",
+  "set", "shopt", "local", "export", "read", "printf", "echo", "exit",
+  "return", "exec", "cd", "true", "false", "test", "shift", "break",
+  "continue", "trap", "wait", "kill", "type", "command", "builtin", "unset",
+  "declare", "readonly", "eval", "source", ".", "pwd", "getopts", "umask",
+]);
+
+/** First words of every simple command in a bash script (approximate, line-based). */
+export function bashCommandWords(script: string): string[] {
+  const words: string[] = [];
+  for (const raw of deployScriptActiveLines(script.replace(/\\\n/g, " "))) {
+    const line = raw
+      .replace(/^\s*[A-Za-z_]\w*=\([^)]*\)\s*$/, "")
+      .replace(/^\s*\w+\(\)\s*\{\s*$/, "")
+      .replace(/"\$\{(\w+)\[@\]\}"/g, "@array:$1")
+      .replace(/\$\{[^}]*\}/g, "$v")
+      .replace(/'[^']*'/g, "''")
+      .replace(/"(?:[^"\\]|\\.)*"/g, '""')
+      .replace(/^\s*[\w.*-]+(?:\s*\|\s*[\w.*-]+)*\)\s*/, "");
+    for (let seg of line.split(/\$\(|<\(|\|\||&&|[|;]/)) {
+      seg = seg.trim().replace(/^[()]+/, "").trim();
+      while (/^[A-Za-z_][A-Za-z0-9_]*=\S*\s*/.test(seg)) {
+        seg = seg.replace(/^[A-Za-z_][A-Za-z0-9_]*=\S*\s*/, "");
+      }
+      const word = seg.split(/\s+/)[0] ?? "";
+      if (word === "" || word.startsWith("<") || word.startsWith(">")) continue;
+      words.push(word);
+    }
+  }
+  return words;
+}
+
+/**
+ * ADR 0016 §e/§l: the host script uses git, docker and bash builtins only
+ * (no python3, host node, or host scripts mount), builds from a clean
+ * archive, never `docker compose build`, recreates with `--no-build`, and
+ * prunes images by label only.
+ */
+export function ponderHostScriptDefect(script: string): string | null {
+  const functions = new Set(
+    [...script.matchAll(/^([a-z_][a-z0-9_]*)\(\)\s*\{/gm)].map((m) => m[1]!),
+  );
+  const dockerArrays = new Set(
+    [...script.matchAll(/^\s*([a-z_][a-z0-9_]*)=\(docker\b/gm)].map((m) => m[1]!),
+  );
+  for (const word of bashCommandWords(script)) {
+    if (BASH_BUILTINS.has(word) || functions.has(word)) continue;
+    if (word === "git" || word === "docker") continue;
+    if (word.startsWith("@array:") && dockerArrays.has(word.slice(7))) continue;
+    return `ponder host script runs ${word}`;
+  }
+  if (/\/app\/scripts/.test(script) || /-v\s+\S*scripts/.test(script)) {
+    return "ponder host script must not mount host scripts";
+  }
+  if (/compose\S*\s+build\b|"\$\{compose\[@\]\}"\s+build\b/.test(script)) {
+    return "ponder host script must not run docker compose build";
+  }
+  if (!/^git archive "\$commit" \| docker build -f Dockerfile\.ponder\b/m.test(script)) {
+    return "ponder host script must build from git archive";
+  }
+  if (!/up -d --no-build --force-recreate ponder\b/.test(script)) {
+    return "ponder host script must recreate with --no-build";
+  }
+  for (const m of script.matchAll(/docker image prune[^\n]*/g)) {
+    if (!/--filter "label=com\.kargain\.ponder\.repository=\$repo"/.test(m[0])) {
+      return "ponder host script prunes images without the repository label";
+    }
   }
   return null;
 }
@@ -224,24 +358,29 @@ export function deployScriptGitPullDefect(script: string): string | null {
 }
 
 /**
- * command_timeout: 30m must sit on each appleboy SSH step's own with: block.
+ * command_timeout must sit on each appleboy SSH step's own with: block
+ * (ADR 0016 §k: 45m for ponder; 30m for svm-ingest).
  */
-export function deploySshCommandTimeoutDefect(yamlText: string): string | null {
+export function deploySshCommandTimeoutDefect(
+  yamlText: string,
+  expected: string,
+): string | null {
+  const lacks = `deploy SSH step lacks command_timeout: ${expected}`;
   const doc = yaml.load(yamlText);
   if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
-    return "deploy SSH step lacks command_timeout: 30m";
+    return lacks;
   }
   const jobs = (doc as Record<string, unknown>).jobs;
   if (!jobs || typeof jobs !== "object" || Array.isArray(jobs)) {
-    return "deploy SSH step lacks command_timeout: 30m";
+    return lacks;
   }
   const deploy = (jobs as Record<string, unknown>).deploy;
   if (!deploy || typeof deploy !== "object" || Array.isArray(deploy)) {
-    return "deploy SSH step lacks command_timeout: 30m";
+    return lacks;
   }
   const steps = (deploy as Record<string, unknown>).steps;
   if (!Array.isArray(steps)) {
-    return "deploy SSH step lacks command_timeout: 30m";
+    return lacks;
   }
   let sshSteps = 0;
   for (const step of steps) {
@@ -253,14 +392,14 @@ export function deploySshCommandTimeoutDefect(yamlText: string): string | null {
     sshSteps += 1;
     const withBlock = (step as Record<string, unknown>).with;
     if (!withBlock || typeof withBlock !== "object" || Array.isArray(withBlock)) {
-      return "deploy SSH step lacks command_timeout: 30m";
+      return lacks;
     }
-    if ((withBlock as Record<string, unknown>).command_timeout !== "30m") {
-      return "deploy SSH step lacks command_timeout: 30m";
+    if ((withBlock as Record<string, unknown>).command_timeout !== expected) {
+      return lacks;
     }
   }
   if (sshSteps === 0) {
-    return "deploy SSH step lacks command_timeout: 30m";
+    return lacks;
   }
   return null;
 }
@@ -268,19 +407,13 @@ export function deploySshCommandTimeoutDefect(yamlText: string): string | null {
 /** Evidence lines on the extracted script: shapes + ready=status not ready=ok. */
 export function deployScriptEvidenceDefect(
   script: string,
-  opts: { requireUnchanged: boolean; service: "ponder" | "svm-ingest" },
+  opts: { service: "svm-ingest" },
 ): string | null {
   if (/ready=\S+\s+ok\b/.test(script)) {
     return "deploy evidence must use ready=<service> status=<code> not ready=… ok";
   }
   if (!/deploy_evidence outcome=recreated/.test(script)) {
     return "deploy script lacks deploy_evidence outcome=recreated";
-  }
-  if (
-    opts.requireUnchanged &&
-    !/deploy_evidence outcome=unchanged/.test(script)
-  ) {
-    return "deploy script lacks deploy_evidence outcome=unchanged";
   }
   const readyRe = new RegExp(
     `deploy_evidence ready=${opts.service} status=`,
@@ -300,7 +433,7 @@ export function deployScriptEvidenceDefect(
  */
 export function deployScriptPreflightAdjacencyDefect(
   script: string,
-  service: "ponder" | "svm-ingest",
+  service: "svm-ingest",
 ): string | null {
   const lines = deployScriptActiveLines(script);
   const buildRe = new RegExp(
@@ -309,10 +442,9 @@ export function deployScriptPreflightAdjacencyDefect(
   const preflightRe = new RegExp(
     String.raw`docker compose run --rm --no-deps --entrypoint node ${service} --import tsx scripts/${service}-deploy-preflight\.ts`,
   );
-  const upRe =
-    service === "ponder"
-      ? /^docker compose up -d ponder\b/
-      : /^docker compose up -d --force-recreate svm-ingest\b/;
+  const upRe = new RegExp(
+    String.raw`^docker compose up -d --force-recreate ${service}\b`,
+  );
 
   let buildIdx = -1;
   let preflightIdx = -1;
@@ -376,7 +508,7 @@ export function deployScriptPreflightRefusalDefect(
  */
 export function deployScriptEvidenceSourcesDefect(
   script: string,
-  service: "ponder" | "svm-ingest",
+  service: "svm-ingest",
 ): string | null {
   if (/deploy_evidence commit=\$DEPLOY_SHA\b/.test(script)) {
     return "deploy evidence commit must come from git rev-parse HEAD";
@@ -696,48 +828,97 @@ describe("deploy-ponder-svm-ingest-ci-policy", () => {
       uncoveredWorkflowInputs(patterns, ponderDeployInputs(ROOT)),
       [],
     );
-    assert.match(yamlText, /docker compose build ponder/);
-    assert.match(yamlText, /docker compose up -d ponder/);
+    assert.doesNotMatch(yamlText, /\bdocker (?:compose|run|build|image)\b/);
     assert.doesNotMatch(yamlText, /build svm-ingest/);
+    assert.doesNotMatch(yamlText, /continue-on-error/);
   });
 
-  it("ponder deploy verifies readiness and skips recreate on unchanged executable", () => {
-    const yaml = readFileSync(PONDER_WF, "utf8");
-    assert.equal(ponderDeployLacksReadinessProbe(yaml), null);
-    assert.equal(ponderDeployLacksExecutableSkip(yaml), null);
-    assert.match(yaml, /ponder-deploy-fingerprints/);
-    assert.match(yaml, /IDENTITY_DIGEST/);
-    assert.match(
-      yaml,
-      /Ponder executable inputs unchanged — leaving running service alone/,
+  it("ponder deploy job opens SSH only and passes operation through env", () => {
+    const yamlText = readFileSync(PONDER_WF, "utf8");
+    assert.equal(ponderDeployJobDefect(yamlText), null);
+    const scripts = extractDeployRemoteScripts(yamlText);
+    assert.equal(scripts.length, 1);
+    assert.equal(ponderRemoteScriptDefect(scripts[0]!), null);
+  });
+
+  it("ponder host script uses git, docker and builtins only", () => {
+    const script = readFileSync(PONDER_HOST_SCRIPT, "utf8");
+    assert.ok(bashCommandWords(script).length > 0, "command scan must see commands");
+    assert.equal(ponderHostScriptDefect(script), null);
+    assert.equal(bashSyntaxDefect(script), null);
+  });
+
+  it("constructed: ${{ inputs.operation }} inside the SSH script is red", () => {
+    const live = extractDeployRemoteScripts(readFileSync(PONDER_WF, "utf8"))[0]!;
+    const planted = live.replace(
+      '"$PONDER_OPERATION"',
+      '"${{ inputs.operation }}"',
     );
-    assert.match(yaml, /a reindex may be required/);
-    assert.doesNotMatch(yaml, /continue-on-error/);
-  });
-
-  it("constructed: deploy YAML without readiness probe is red", () => {
-    const planted = `
-deploy:
-  steps:
-    - run: docker compose build ponder
-    - run: docker compose up -d ponder
-`;
+    assert.notEqual(planted, live);
     assert.equal(
-      ponderDeployLacksReadinessProbe(planted),
-      "deploy path lacks ponder-ready-probe readiness verification",
+      ponderRemoteScriptDefect(planted),
+      "deploy remote script must not interpolate a workflow expression",
     );
   });
 
-  it("constructed: deploy YAML without executable skip is red", () => {
-    const planted = `
-deploy:
-  steps:
-    - run: node --import tsx scripts/ponder-ready-probe.ts
-    - run: docker compose up -d ponder
-`;
+  it("constructed: docker work in the ponder SSH script is red", () => {
+    const live = extractDeployRemoteScripts(readFileSync(PONDER_WF, "utf8"))[0]!;
+    const planted = live.replace(
+      PONDER_HOST_EXEC,
+      `docker compose build ponder\n${PONDER_HOST_EXEC}`,
+    );
     assert.equal(
-      ponderDeployLacksExecutableSkip(planted),
-      "deploy path lacks executable-fingerprint skip-recreate branch",
+      ponderRemoteScriptDefect(planted),
+      "ponder remote script must be lock, fetch, checkout, exec scripts/ponder-deploy.sh",
+    );
+  });
+
+  it("constructed: a Node or install step in the deploy job is red", () => {
+    const live = readFileSync(PONDER_WF, "utf8");
+    const withInstall = live.replace(
+      "      - name: Deploy Ponder to VPS",
+      "      - name: Install\n        run: pnpm install --frozen-lockfile\n\n      - name: Deploy Ponder to VPS",
+    );
+    assert.equal(
+      ponderDeployJobDefect(withInstall),
+      "deploy job must not run node, pnpm or corepack",
+    );
+    const withoutEnv = live.replace(
+      "PONDER_OPERATION: ${{ inputs.operation || 'deploy' }}",
+      "PONDER_OPERATION: deploy",
+    );
+    assert.equal(
+      ponderDeployJobDefect(withoutEnv),
+      "SSH step must pass PONDER_OPERATION through env",
+    );
+  });
+
+  it("constructed: docker compose build ponder, host python3 or a host scripts mount is red", () => {
+    const live = readFileSync(PONDER_HOST_SCRIPT, "utf8");
+    const anchor = "step --begin";
+    assert.ok(live.includes(anchor));
+    const plant = (line: string) => live.replace(anchor, `${line}\n${anchor}`);
+    assert.equal(
+      ponderHostScriptDefect(plant("docker compose build ponder")),
+      "ponder host script must not run docker compose build",
+    );
+    assert.equal(
+      ponderHostScriptDefect(plant(`python3 -c "import json"`)),
+      "ponder host script runs python3",
+    );
+    assert.equal(
+      ponderHostScriptDefect(
+        plant("docker run --rm -v /opt/kargain/scripts:/app/scripts:ro x"),
+      ),
+      "ponder host script must not mount host scripts",
+    );
+    assert.equal(
+      ponderHostScriptDefect(plant("node --import tsx scripts/x.ts")),
+      "ponder host script runs node",
+    );
+    assert.equal(
+      ponderHostScriptDefect(plant("docker image prune -f")),
+      "ponder host script prunes images without the repository label",
     );
   });
 
@@ -747,36 +928,38 @@ deploy:
     for (const name of files) {
       const yamlText = readFileSync(join(WORKFLOWS_DIR, name), "utf8");
       const group = EXPECTED_CONCURRENCY_GROUP[name as keyof typeof EXPECTED_CONCURRENCY_GROUP];
-      const service = name === "deploy-ponder.yml" ? "ponder" : "svm-ingest";
+      const isPonder = name === "deploy-ponder.yml";
       assert.equal(deployConcurrencyDefect(yamlText, group), null, name);
-      assert.equal(deploySshCommandTimeoutDefect(yamlText), null, name);
+      assert.equal(
+        deploySshCommandTimeoutDefect(yamlText, isPonder ? "45m" : "30m"),
+        null,
+        name,
+      );
       const scripts = extractDeployRemoteScripts(yamlText);
       assert.ok(scripts.length > 0, `${name} must expose a remote script`);
       for (const script of scripts) {
         assert.equal(deployScriptPipefailDefect(script), null, name);
         assert.equal(deployScriptLockDefect(script), null, name);
         assert.equal(deployScriptGitPullDefect(script), null, name);
+        assert.equal(bashSyntaxDefect(script), null, name);
+        if (isPonder) continue;
         assert.equal(
-          deployScriptEvidenceDefect(script, {
-            requireUnchanged: name === "deploy-ponder.yml",
-            service,
-          }),
+          deployScriptEvidenceDefect(script, { service: "svm-ingest" }),
           null,
           name,
         );
         assert.equal(
-          deployScriptEvidenceSourcesDefect(script, service),
+          deployScriptEvidenceSourcesDefect(script, "svm-ingest"),
           null,
           name,
         );
         assert.equal(
-          deployScriptPreflightAdjacencyDefect(script, service),
+          deployScriptPreflightAdjacencyDefect(script, "svm-ingest"),
           null,
           name,
         );
         assert.equal(deployScriptPreflightRefusalDefect(script), null, name);
         assert.equal(deployScriptScriptsMountDefect(script), null, name);
-        assert.equal(bashSyntaxDefect(script), null, name);
       }
     }
   });
@@ -910,8 +1093,7 @@ flock -w 900 9
 `;
     assert.equal(
       deployScriptEvidenceDefect(planted, {
-        requireUnchanged: true,
-        service: "ponder",
+        service: "svm-ingest",
       }),
       "deploy script lacks deploy_evidence outcome=recreated",
     );
@@ -920,14 +1102,12 @@ flock -w 900 9
   it("constructed: ready=… ok instead of ready=<service> status=<code> is red", () => {
     const planted = `set -euo pipefail
 echo "deploy_evidence outcome=recreated"
-echo "deploy_evidence outcome=unchanged"
-echo "deploy_evidence ready=ponder ok"
+echo "deploy_evidence ready=svm-ingest ok"
 echo "deploy_evidence preflight=ok"
 `;
     assert.equal(
       deployScriptEvidenceDefect(planted, {
-        requireUnchanged: true,
-        service: "ponder",
+        service: "svm-ingest",
       }),
       "deploy evidence must use ready=<service> status=<code> not ready=… ok",
     );
@@ -936,13 +1116,11 @@ echo "deploy_evidence preflight=ok"
   it("constructed: deploy without preflight=ok evidence is red", () => {
     const planted = `set -euo pipefail
 echo "deploy_evidence outcome=recreated"
-echo "deploy_evidence outcome=unchanged"
-echo "deploy_evidence ready=ponder status=$READY_STATUS"
+echo "deploy_evidence ready=svm-ingest status=$READY_STATUS"
 `;
     assert.equal(
       deployScriptEvidenceDefect(planted, {
-        requireUnchanged: true,
-        service: "ponder",
+        service: "svm-ingest",
       }),
       "deploy script lacks deploy_evidence preflight=ok",
     );
@@ -950,23 +1128,23 @@ echo "deploy_evidence ready=ponder status=$READY_STATUS"
 
   it("constructed: deploy script with up before preflight is red", () => {
     const planted = `set -euo pipefail
-docker compose build ponder
-docker compose up -d ponder
-docker compose run --rm --no-deps --entrypoint node ponder --import tsx scripts/ponder-deploy-preflight.ts
+docker compose build svm-ingest
+docker compose up -d --force-recreate svm-ingest
+docker compose run --rm --no-deps --entrypoint node svm-ingest --import tsx scripts/svm-ingest-deploy-preflight.ts
 `;
     assert.equal(
-      deployScriptPreflightAdjacencyDefect(planted, "ponder"),
-      "deploy script must run preflight between build and up for ponder",
+      deployScriptPreflightAdjacencyDefect(planted, "svm-ingest"),
+      "deploy script must run preflight between build and up for svm-ingest",
     );
   });
 
   it("constructed: deploy script without refusal evidence line is red", () => {
     const planted = `set -euo pipefail
-docker compose build ponder
-if ! docker compose run --rm --no-deps --entrypoint node ponder --import tsx scripts/ponder-deploy-preflight.ts; then
+docker compose build svm-ingest
+if ! docker compose run --rm --no-deps --entrypoint node svm-ingest --import tsx scripts/svm-ingest-deploy-preflight.ts; then
   exit 1
 fi
-docker compose up -d ponder
+docker compose up -d --force-recreate svm-ingest
 echo "deploy_evidence preflight=ok"
 `;
     assert.equal(
@@ -977,11 +1155,11 @@ echo "deploy_evidence preflight=ok"
 
   it("constructed: preflight refusal branch without exit 1 is red", () => {
     const planted = `set -euo pipefail
-docker compose build ponder
-if ! docker compose run --rm --no-deps --entrypoint node ponder --import tsx scripts/ponder-deploy-preflight.ts; then
+docker compose build svm-ingest
+if ! docker compose run --rm --no-deps --entrypoint node svm-ingest --import tsx scripts/svm-ingest-deploy-preflight.ts; then
   echo "deploy_evidence outcome=refused"
 fi
-docker compose up -d ponder
+docker compose up -d --force-recreate svm-ingest
 echo "deploy_evidence preflight=ok"
 `;
     assert.equal(
@@ -993,14 +1171,14 @@ echo "deploy_evidence preflight=ok"
   it("constructed: evidence commit echoes DEPLOY_SHA is red", () => {
     const planted = `set -euo pipefail
 DEPLOYED_COMMIT=$(git rev-parse HEAD)
-NODE_VER=$(docker compose exec -T ponder node --version)
+NODE_VER=$(docker compose exec -T svm-ingest node --version)
 echo "deploy_evidence outcome=recreated"
 echo "deploy_evidence commit=$DEPLOY_SHA"
 echo "deploy_evidence node=$NODE_VER"
-echo "deploy_evidence ready=ponder status=$READY_STATUS"
+echo "deploy_evidence ready=svm-ingest status=$READY_STATUS"
 `;
     assert.equal(
-      deployScriptEvidenceSourcesDefect(planted, "ponder"),
+      deployScriptEvidenceSourcesDefect(planted, "svm-ingest"),
       "deploy evidence commit must come from git rev-parse HEAD",
     );
   });
@@ -1012,11 +1190,11 @@ NODE_VER=$(docker run --rm --entrypoint node "$IMAGE_ID" --version)
 echo "deploy_evidence outcome=recreated"
 echo "deploy_evidence commit=$DEPLOYED_COMMIT"
 echo "deploy_evidence node=$NODE_VER"
-echo "deploy_evidence ready=ponder status=$READY_STATUS"
+echo "deploy_evidence ready=svm-ingest status=$READY_STATUS"
 `;
     assert.equal(
-      deployScriptEvidenceSourcesDefect(planted, "ponder"),
-      "deploy evidence node must come from docker compose exec -T ponder",
+      deployScriptEvidenceSourcesDefect(planted, "svm-ingest"),
+      "deploy evidence node must come from docker compose exec -T svm-ingest",
     );
   });
 
@@ -1024,7 +1202,7 @@ echo "deploy_evidence ready=ponder status=$READY_STATUS"
     const planted = `set -euo pipefail
 READY_STATUS=$(docker run --rm --network host \\
   --entrypoint node "$IMAGE_ID" \\
-  --import tsx /app/scripts/ponder-ready-probe.ts)
+  --import tsx /app/scripts/svm-ingest-ready-probe.ts)
 `;
     assert.equal(
       deployScriptScriptsMountDefect(planted),
@@ -1049,7 +1227,7 @@ jobs:
             set -euo pipefail
 `;
     assert.equal(
-      deploySshCommandTimeoutDefect(planted),
+      deploySshCommandTimeoutDefect(planted, "30m"),
       "deploy SSH step lacks command_timeout: 30m",
     );
   });
@@ -1067,7 +1245,7 @@ jobs:
             set -euo pipefail
 `;
     assert.equal(
-      deploySshCommandTimeoutDefect(planted),
+      deploySshCommandTimeoutDefect(planted, "30m"),
       "deploy SSH step lacks command_timeout: 30m",
     );
   });
@@ -1736,15 +1914,11 @@ describe("workflow push path coverage", () => {
       ["lib/planted.ts", "export const planted = 1;\n"],
     ]);
     const inputs = [
-      ...collectPonderExecutableGraphFiles(ROOT, {
-        entries: [
-          "ponder.config.ts",
-          "ponder.schema.ts",
-          "src/index.ts",
-          "src/api/index.ts",
-        ],
+      ...collectPonderGraph(ROOT, {
+        indexingEntries: ["ponder.config.ts", "ponder.schema.ts", "src/index.ts"],
+        apiEntries: ["src/api/index.ts"],
         fileContents: files,
-      }),
+      }).executable,
       "package.json",
     ];
     assert.ok(inputs.includes("lib/planted.ts"));

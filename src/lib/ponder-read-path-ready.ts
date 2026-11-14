@@ -13,19 +13,31 @@ import {
   buildUnionUriHistorySql,
 } from "./ponder-passport-provenance.js";
 import { indexerReadNamespaceIds } from "./ponder-read-namespaces.js";
+import { ponderQualifiedTable } from "./ponder-writer-schema.js";
 
-export const READ_PATH_REQUIRED_RELATIONS = [
-  "kargain.consignment",
-  "kargain.passport",
-  "kargain.passport_record",
-  "kargain.passport_uri_history",
-  "kargain.bridge_crossing",
-  "kargain.custody_determining_event",
+const SVM_PROJECTION_REQUIRED = [
   "kargain_svm_projection.passport",
   "kargain_svm_projection.passport_record",
   "kargain_svm_projection.passport_uri_history",
   "kargain_svm_projection.custody_determining_event",
 ] as const;
+
+const WRITER_REQUIRED_TABLES = [
+  "consignment",
+  "passport",
+  "passport_record",
+  "passport_uri_history",
+  "bridge_crossing",
+  "custody_determining_event",
+] as const;
+
+/** Relations the read path must see; writer tables come from DATABASE_SCHEMA. */
+export function readPathRequiredRelations(): readonly string[] {
+  return [
+    ...WRITER_REQUIRED_TABLES.map((t) => ponderQualifiedTable(t)),
+    ...SVM_PROJECTION_REQUIRED,
+  ];
+}
 
 export const READ_PATH_PROBE_NAMES = [
   "passport_entity_union",
@@ -87,8 +99,9 @@ export type ReadPathReadyResult =
     };
 
 async function missingRelations(pool: pg.Pool): Promise<string[]> {
+  const required = readPathRequiredRelations();
   const checks = await Promise.all(
-    READ_PATH_REQUIRED_RELATIONS.map(async (rel) => {
+    required.map(async (rel) => {
       const res = await pool.query<{ reg: string | null }>(
         "SELECT to_regclass($1::text) AS reg",
         [rel],
@@ -124,11 +137,11 @@ async function runProbeQueries(
     includeSvmProjection: true,
   });
   const browseSql = `SELECT c.id
-    FROM kargain.consignment c
+    FROM ${ponderQualifiedTable("consignment")} c
     LEFT JOIN ${buildPassportEntityUnionSubquery(namespaces, true)} p ON c.token_id = p.id
     LIMIT 0`;
   const custodySql = `SELECT token_id
-    FROM kargain.custody_determining_event
+    FROM ${ponderQualifiedTable("custody_determining_event")}
     WHERE token_id = $1
     UNION ALL
     SELECT token_id
@@ -136,7 +149,7 @@ async function runProbeQueries(
     WHERE token_id = $1 AND chain_id = ANY($2::int[])
     UNION ALL
     SELECT token_id
-    FROM kargain.bridge_crossing
+    FROM ${ponderQualifiedTable("bridge_crossing")}
     WHERE token_id = $1
     LIMIT 0`;
 
@@ -154,11 +167,12 @@ async function runProbeQueries(
 export async function resolveReadPathReadiness(
   pool: pg.Pool = getEntityPool(),
 ): Promise<ReadPathReadyResult> {
+  const checkedRelations = readPathRequiredRelations();
   const absent = await missingRelations(pool);
   if (absent.length > 0) {
     return {
       ready: false,
-      checkedRelations: READ_PATH_REQUIRED_RELATIONS,
+      checkedRelations,
       missingRelations: absent,
     };
   }
@@ -167,7 +181,7 @@ export async function resolveReadPathReadiness(
   const probeQueries = await runProbeQueries(pool, namespaces);
   return {
     ready: true,
-    checkedRelations: READ_PATH_REQUIRED_RELATIONS,
+    checkedRelations,
     probeQueries,
   };
 }

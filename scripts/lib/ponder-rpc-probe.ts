@@ -3,9 +3,8 @@
  * Maintainer runs this before any commercial `.env` RPC / getLogs window change.
  */
 import {
+  commercialIndexFromBlock,
   commercialPonderRegistryAddresses,
-  PonderEnvRefusalError,
-  resolveChainStartBlockWithKey,
   resolveCommercialRpcUrls,
   resolveGetLogsBlockRange,
 } from "./ponder-env.js";
@@ -187,16 +186,7 @@ export async function probePonderRpcCapability(
   const fetchFn = deps?.fetch ?? globalThis.fetch.bind(globalThis);
 
   const addresses = commercialPonderRegistryAddresses(chainId);
-  const { startBlock: startRaw, envKey: startEnvKey } =
-    resolveChainStartBlockWithKey(chainId);
-  if (startRaw === "latest" || typeof startRaw !== "number") {
-    throw new PonderEnvRefusalError(
-      "probe_requires_numeric_start_block",
-      startEnvKey,
-      `probe_requires_numeric_start_block: chain ${chainId} start is ${String(startRaw)}`,
-    );
-  }
-  const startBlock = startRaw;
+  const startBlock = commercialIndexFromBlock(chainId);
   const window = resolveGetLogsBlockRange(chainId, env);
   const urls = resolveCommercialRpcUrls(chainId, env);
   const toBlock = startBlock + window - 1;

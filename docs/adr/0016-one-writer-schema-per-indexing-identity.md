@@ -146,6 +146,8 @@ The identity fingerprint is deleted; the indexing identity replaces it with a de
 
   A crash before step 3 repeats the first run. `kargain` becomes the first `previous` at the first switch.
 
+  *Correction (2026-11-13):* if the probe in step 2 is not answered, the run prints `ponder_did_not_become_ready` and exits 1 without writing `state.json` or deleting the old file, so the next run repeats the first run. There is no image to return to: the legacy image is the running image on the schema it already ran on.
+
 ### g. Switch
 
 One procedure serves deploy, rollback and resumption. Under the ADR 0010 lock, for a target ref:
@@ -274,10 +276,10 @@ The same reasons rule out keying by `build_id`: it cannot be computed before the
   - retention selecting a protected, current, previous or non-owned schema;
   - each `deploy_state_invalid` cause, including a moved writer tag;
   - `docker compose build ponder`, host `python3`, or a host `scripts/` mount in the deploy.
-- **Local Docker rehearsal** through the real deploy script, with real images indexing a local Hardhat chain, starting from `master`'s writer on `kargain`. Target: under 20 minutes.
+- **Local Docker rehearsal** through the real deploy script, with real images indexing Base Sepolia and Ethereum Sepolia through public keyless RPCs (*correction, 2026-11-13:* the preflight refuses local mode and commercial RPCs must be https, so a local chain cannot pass the real deploy script), starting from `master`'s writer on `kargain`. Target: under 20 minutes.
   1. First run: legacy adopted; switch to `k_<I1>`.
-  2. An API-only commit: restart in place on `k_<I1>`.
-  3. An indexing commit: switch to `k_<I2>`; `kargain` dropped.
+  2. An API-only commit: restart in place on `k_<I1>`; `kargain` dropped (*correction, 2026-11-14:* step 1's ref becomes `previous`).
+  3. An indexing commit: switch to `k_<I2>`.
   4. A no-op dispatch: `unchanged`.
   5. A commit whose writer fails at build: returned; its schema never created.
   6. `rollback`, then a deploy of `master`: crash recoveries on retained schemas.

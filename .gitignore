@@ -37,7 +37,7 @@ ignition/deployments/
 # ponder
 .ponder/
 ponder/.ponder
-.ponder-deploy-fingerprints
+.ponder-deploy/
 .deploy.lock
 
 # vincent commons derivation output (pnpm vincent:derive)

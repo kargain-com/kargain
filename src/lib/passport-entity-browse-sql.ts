@@ -33,6 +33,7 @@ import {
   emptyStatusCounts,
   foldStatusCounts,
 } from "./ponder-consignment-browse";
+import { ponderQualifiedTable } from "./ponder-writer-schema.js";
 
 export type { ConsignmentBrowseFilters } from "../../lib/marketplace/consignment-browse-filters.js";
 
@@ -147,7 +148,7 @@ function rateLit(v: bigint | null | undefined): string {
 }
 
 /**
- * SQL expression: consignment Asking → USD 1e8 (alias `c` on kargain.consignment).
+ * SQL expression: consignment Asking → USD 1e8 (alias `c` on the writer consignment table).
  */
 export function consignmentPriceUsdRawSql(rates: PartialFxRates | null): string {
   const fiatScale = FIAT_SCALE.toString();
@@ -389,7 +390,7 @@ function buildBrowseFromClause(args: {
     args.namespaces,
     args.includeSvmProjection,
   );
-  return `kargain.consignment c
+  return `${ponderQualifiedTable("consignment")} c
     LEFT JOIN ${unionSubquery} p ON c.token_id = p.id AND p.entity_origin = 'minted'`;
 }
 

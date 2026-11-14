@@ -1,5 +1,6 @@
 /**
- * Fail instruments for ponder-executable-fingerprint.
+ * Fail instruments for the two Ponder identities (ADR 0016 §b): one walk,
+ * indexing ⊆ executable, API-only edits move only the executable identity.
  */
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -9,39 +10,35 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  buildPonderExecutablePayload,
-  collectPonderExecutableGraphFiles,
-  digestPonderExecutablePayload,
+  collectPonderGraph,
+  computePonderIdentities,
+  indexingFilesMissingFromExecutable,
   packageRuntimeSlice,
+  type PonderIdentitiesOptions,
 } from "../scripts/lib/ponder-executable-fingerprint.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-const PLANTED_ENTRIES = [
-  "ponder.config.ts",
-  "ponder.schema.ts",
-  "src/index.ts",
-  "src/api/index.ts",
-] as const;
+const INDEXING_ENTRIES = ["ponder.config.ts", "ponder.schema.ts", "src/index.ts"];
+const API_ENTRIES = ["src/api/index.ts"];
 
-function plantedGraph(apiExtra?: string): Map<string, string> {
-  const files = new Map<string, string>();
-  files.set("ponder.config.ts", 'export default {};\n');
-  files.set("ponder.schema.ts", 'export const passport = {};\n');
-  files.set(
-    "src/index.ts",
-    'import "./commerce-handlers";\nexport {};\n',
-  );
-  files.set("src/commerce-handlers.ts", "export const h = 1;\n");
-  files.set(
-    "src/api/index.ts",
-    'import "./commerce-routes";\nexport default {};\n',
-  );
-  files.set(
-    "src/api/commerce-routes.ts",
-    apiExtra ?? "export function register() {}\n",
-  );
-  return files;
+function plantedGraph(opts?: {
+  api?: string;
+  handler?: string;
+  shared?: string;
+}): Map<string, string> {
+  return new Map<string, string>([
+    ["ponder.config.ts", "export default {};\n"],
+    ["ponder.schema.ts", "export const passport = {};\n"],
+    ["src/index.ts", 'import "./commerce-handlers";\nexport {};\n'],
+    [
+      "src/commerce-handlers.ts",
+      opts?.handler ?? 'import { s } from "../lib/shared";\nexport const h = s;\n',
+    ],
+    ["lib/shared.ts", opts?.shared ?? "export const s = 1;\n"],
+    ["src/api/index.ts", 'import "./commerce-routes";\nexport default {};\n'],
+    ["src/api/commerce-routes.ts", opts?.api ?? "export function register() {}\n"],
+  ]);
 }
 
 const ARTIFACTS = new Map<string, string>([
@@ -60,129 +57,157 @@ const PKG = {
   },
 };
 
+function identitiesOf(
+  files: Map<string, string>,
+  over?: Partial<PonderIdentitiesOptions>,
+) {
+  return computePonderIdentities(ROOT, {
+    indexingEntries: INDEXING_ENTRIES,
+    apiEntries: API_ENTRIES,
+    fileContents: files,
+    artifactContents: ARTIFACTS,
+    packageJson: PKG,
+    ...over,
+  });
+}
+
 describe("ponder-executable-fingerprint", () => {
-  it("constructed: src/api change alters executable digest", () => {
-    const baseFiles = plantedGraph("export function register() { return 1; }\n");
-    const changedFiles = plantedGraph(
-      "export function register() { return 2; /* api change */ }\n",
-    );
-    const d0 = digestPonderExecutablePayload(
-      buildPonderExecutablePayload(ROOT, {
-        entries: PLANTED_ENTRIES,
-        fileContents: baseFiles,
-        artifactContents: ARTIFACTS,
-        packageJson: PKG,
-      }),
-    );
-    const d1 = digestPonderExecutablePayload(
-      buildPonderExecutablePayload(ROOT, {
-        entries: PLANTED_ENTRIES,
-        fileContents: changedFiles,
-        artifactContents: ARTIFACTS,
-        packageJson: PKG,
-      }),
-    );
-    assert.notEqual(d0, d1, "API edit must force executable digest change");
-    assert.match(d0, /^[a-f0-9]{64}$/);
-    assert.match(d1, /^[a-f0-9]{64}$/);
+  it("constructed: an API-only edit moves the executable identity, not the indexing one", () => {
+    const a = identitiesOf(plantedGraph({ api: "export const r = 1;\n" }));
+    const b = identitiesOf(plantedGraph({ api: "export const r = 2;\n" }));
+    assert.notEqual(a.executable.digest, b.executable.digest);
+    assert.equal(a.indexing.digest, b.indexing.digest);
+    assert.match(a.indexing.digest, /^[a-f0-9]{64}$/);
   });
 
-  it("constructed: scripts.test:* package.json edit does NOT alter digest", () => {
-    const files = plantedGraph();
-    const pkgA = {
-      ...PKG,
-      scripts: {
-        ...PKG.scripts,
-        "test:verify": "node --test test/a.test.ts",
+  it("constructed: an edit to a module an indexing handler imports moves both identities", () => {
+    const a = identitiesOf(plantedGraph({ shared: "export const s = 1;\n" }));
+    const b = identitiesOf(plantedGraph({ shared: "export const s = 2;\n" }));
+    assert.notEqual(a.indexing.digest, b.indexing.digest);
+    assert.notEqual(a.executable.digest, b.executable.digest);
+  });
+
+  it("constructed: a lockfile or Dockerfile edit moves the indexing identity; compose only the executable", () => {
+    const base = identitiesOf(plantedGraph());
+    const lock = identitiesOf(plantedGraph(), {
+      artifactContents: new Map([...ARTIFACTS, ["pnpm-lock.yaml", "lockfileVersion: '9.1'\n"]]),
+    });
+    const dockerfile = identitiesOf(plantedGraph(), {
+      artifactContents: new Map([...ARTIFACTS, ["Dockerfile.ponder", "FROM node:24\n"]]),
+    });
+    const compose = identitiesOf(plantedGraph(), {
+      artifactContents: new Map([...ARTIFACTS, ["docker-compose.yml", "services: {a: {}}\n"]]),
+    });
+    assert.notEqual(lock.indexing.digest, base.indexing.digest);
+    assert.notEqual(dockerfile.indexing.digest, base.indexing.digest);
+    assert.equal(compose.indexing.digest, base.indexing.digest);
+    assert.notEqual(compose.executable.digest, base.executable.digest);
+  });
+
+  it("constructed: a Ponder version bump moves the indexing identity", () => {
+    const base = identitiesOf(plantedGraph());
+    const bumped = identitiesOf(plantedGraph(), {
+      packageJson: { ...PKG, dependencies: { ponder: "^0.16.7" } },
+    });
+    assert.notEqual(bumped.indexing.digest, base.indexing.digest);
+  });
+
+  it("constructed: scripts.test:* package.json edit moves neither identity", () => {
+    const a = identitiesOf(plantedGraph());
+    const b = identitiesOf(plantedGraph(), {
+      packageJson: {
+        ...PKG,
+        scripts: {
+          ...PKG.scripts,
+          "test:verify": "node --test test/a.test.ts test/brand-new-policy.test.ts",
+          "test:passport-ui": "node --test test/extra.test.ts",
+        },
       },
-    };
-    const pkgB = {
-      ...PKG,
-      scripts: {
-        ...PKG.scripts,
-        "test:verify":
-          "node --test test/a.test.ts test/brand-new-policy.test.ts",
-        "test:passport-ui": "node --test test/extra.test.ts",
-      },
-    };
-    const d0 = digestPonderExecutablePayload(
-      buildPonderExecutablePayload(ROOT, {
-        entries: PLANTED_ENTRIES,
-        fileContents: files,
-        artifactContents: ARTIFACTS,
-        packageJson: pkgA,
-      }),
-    );
-    const d1 = digestPonderExecutablePayload(
-      buildPonderExecutablePayload(ROOT, {
-        entries: PLANTED_ENTRIES,
-        fileContents: files,
-        artifactContents: ARTIFACTS,
-        packageJson: pkgB,
-      }),
-    );
-    assert.equal(d0, d1, "test-suite membership must not recreate the container");
+    });
+    assert.equal(a.indexing.digest, b.indexing.digest);
+    assert.equal(a.executable.digest, b.executable.digest);
   });
 
   it("packageRuntimeSlice omits scripts.test keys", () => {
     const slice = packageRuntimeSlice(PKG);
     assert.equal(slice.ponderStart, "ponder start");
     assert.deepEqual(slice.dependencies, { ponder: "^0.16.6" });
+    assert.equal(JSON.stringify(slice).includes("test:verify"), false);
+  });
+
+  it("one walk: the indexing closure excludes API-only files; the executable closure has both", () => {
+    const graph = collectPonderGraph(ROOT, {
+      indexingEntries: INDEXING_ENTRIES,
+      apiEntries: API_ENTRIES,
+      fileContents: plantedGraph(),
+    });
+    assert.ok(graph.indexing.includes("lib/shared.ts"));
+    assert.equal(graph.indexing.includes("src/api/commerce-routes.ts"), false);
+    assert.ok(graph.executable.includes("src/api/commerce-routes.ts"));
+    assert.ok(graph.executable.includes("lib/shared.ts"));
+  });
+
+  it("live: the executable file set contains the indexing file set", () => {
+    const ids = computePonderIdentities(ROOT);
+    assert.deepEqual(
+      indexingFilesMissingFromExecutable(ids.indexing.payload, ids.executable.payload),
+      [],
+    );
+    assert.ok(ids.indexing.payload.files.length > 0);
+    assert.ok(ids.indexing.payload.files.some((f) => f.path === "pnpm-lock.yaml"));
+    assert.ok(ids.executable.payload.files.some((f) => f.path === "src/api/index.ts"));
     assert.equal(
-      JSON.stringify(slice).includes("test:verify"),
+      ids.indexing.payload.files.some((f) => f.path === "docker-compose.yml"),
       false,
     );
   });
 
-  it("graph walk reaches src/api from entries", () => {
-    const files = plantedGraph();
-    const graph = collectPonderExecutableGraphFiles(ROOT, {
-      entries: PLANTED_ENTRIES,
-      fileContents: files,
-    });
-    assert.ok(graph.includes("src/api/commerce-routes.ts"));
-    assert.ok(graph.includes("src/index.ts"));
-  });
-
-  it("live Ponder executable graph contains no svm-ingest/ file", () => {
-    const graph = collectPonderExecutableGraphFiles(ROOT);
-    const hits = graph.filter((p) => p === "svm-ingest" || p.startsWith("svm-ingest/"));
-    assert.deepEqual(hits, []);
-  });
-
-  it("live executable fingerprint is 64-hex", () => {
-    const payload = buildPonderExecutablePayload(ROOT);
-    const digest = digestPonderExecutablePayload(payload);
-    assert.match(digest, /^[a-f0-9]{64}$/);
-    assert.ok(payload.files.some((f) => f.path === "src/api/index.ts"));
-    assert.ok(payload.files.some((f) => f.path === "Dockerfile.ponder"));
-    assert.equal(payload.packageRuntime.ponderStart, "ponder start");
-  });
-
-  it("planted: relative .js import resolves to .ts source in the graph", () => {
-    const files = new Map<string, string>([
-      ["entry.ts", 'import "./a.js";\nexport {};\n'],
-      ["a.ts", "export const a = 1;\n"],
-    ]);
-    const graph = collectPonderExecutableGraphFiles(ROOT, {
-      entries: ["entry.ts"],
-      fileContents: files,
-    });
-    assert.ok(
-      graph.includes("a.ts"),
-      "planted ./a.js → a.ts edge must be included in the graph",
+  it("constructed: an indexing set not contained in the executable set is named", () => {
+    const ids = identitiesOf(plantedGraph());
+    const shrunk = {
+      ...ids.executable.payload,
+      files: ids.executable.payload.files.filter((f) => f.path !== "lib/shared.ts"),
+    };
+    assert.deepEqual(
+      indexingFilesMissingFromExecutable(ids.indexing.payload, shrunk),
+      ["lib/shared.ts"],
     );
   });
 
+  it("live Ponder graph contains no svm-ingest/ file", () => {
+    const graph = collectPonderGraph(ROOT);
+    const hits = graph.executable.filter(
+      (p) => p === "svm-ingest" || p.startsWith("svm-ingest/"),
+    );
+    assert.deepEqual(hits, []);
+  });
+
+  it("live indexing graph includes ponder-env.ts, the registry and custody/fold.ts", () => {
+    const { indexing } = collectPonderGraph(ROOT);
+    assert.ok(indexing.includes("scripts/lib/ponder-env.ts"));
+    assert.ok(indexing.includes("lib/web3/commercial-active.ts"));
+    assert.ok(indexing.includes("lib/custody/fold.ts"));
+  });
+
+  it("planted: relative .js import resolves to .ts source in the graph", () => {
+    const graph = collectPonderGraph(ROOT, {
+      indexingEntries: ["entry.ts"],
+      apiEntries: [],
+      fileContents: new Map([
+        ["entry.ts", 'import "./a.js";\nexport {};\n'],
+        ["a.ts", "export const a = 1;\n"],
+      ]),
+    });
+    assert.ok(graph.indexing.includes("a.ts"));
+  });
+
   it("planted: unresolved relative import throws with file and specifier", () => {
-    const files = new Map<string, string>([
-      ["entry.ts", 'import "./missing.js";\nexport {};\n'],
-    ]);
     assert.throws(
       () =>
-        collectPonderExecutableGraphFiles(ROOT, {
-          entries: ["entry.ts"],
-          fileContents: files,
+        collectPonderGraph(ROOT, {
+          indexingEntries: ["entry.ts"],
+          apiEntries: [],
+          fileContents: new Map([["entry.ts", 'import "./missing.js";\nexport {};\n']]),
         }),
       (err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
@@ -193,19 +218,7 @@ describe("ponder-executable-fingerprint", () => {
     );
   });
 
-  it("live graph includes ponder-env.ts and custody/fold.ts", () => {
-    const graph = collectPonderExecutableGraphFiles(ROOT);
-    assert.ok(
-      graph.includes("scripts/lib/ponder-env.ts"),
-      "live graph must include scripts/lib/ponder-env.ts (red on 66cdc6b)",
-    );
-    assert.ok(
-      graph.includes("lib/custody/fold.ts"),
-      "live graph must include lib/custody/fold.ts (red on 66cdc6b)",
-    );
-  });
-
-  it("indexing glob file that nothing imports is in the graph and moves the digest", () => {
+  it("indexing glob file that nothing imports is in the indexing graph and moves its digest", () => {
     const plant = mkdtempSync(join(tmpdir(), "kargain-exec-orphan-"));
     try {
       mkdirSync(join(plant, "src/api"), { recursive: true });
@@ -215,21 +228,12 @@ describe("ponder-executable-fingerprint", () => {
       writeFileSync(join(plant, "src/api/index.ts"), "export default {};\n");
       writeFileSync(join(plant, "src/orphan.ts"), "export const n = 1;\n");
 
-      const owned = collectPonderExecutableGraphFiles(plant);
-      assert.ok(owned.includes("src/orphan.ts"));
-
-      const former = collectPonderExecutableGraphFiles(plant, {
-        entries: PLANTED_ENTRIES,
-      });
-      assert.equal(former.includes("src/orphan.ts"), false);
-
+      assert.ok(collectPonderGraph(plant).indexing.includes("src/orphan.ts"));
       const digestOf = () =>
-        digestPonderExecutablePayload(
-          buildPonderExecutablePayload(plant, {
-            artifactContents: ARTIFACTS,
-            packageJson: PKG,
-          }),
-        );
+        computePonderIdentities(plant, {
+          artifactContents: ARTIFACTS,
+          packageJson: PKG,
+        }).indexing.digest;
       const before = digestOf();
       writeFileSync(join(plant, "src/orphan.ts"), "export const n = 2;\n");
       assert.notEqual(digestOf(), before);
@@ -246,8 +250,8 @@ describe("ponder-executable-fingerprint", () => {
       writeFileSync(join(plant, "src/index.ts"), "export {};\n");
       writeFileSync(join(plant, "src/api/index.ts"), "export {};\n");
       assert.throws(
-        () => collectPonderExecutableGraphFiles(plant),
-        /Ponder executable entry resolves to no file: ponder\.config\.ts/,
+        () => collectPonderGraph(plant),
+        /Ponder identity entry resolves to no file: ponder\.config\.ts/,
       );
     } finally {
       rmSync(plant, { recursive: true, force: true });
@@ -257,11 +261,12 @@ describe("ponder-executable-fingerprint", () => {
   it("planted entry missing from fileContents throws", () => {
     assert.throws(
       () =>
-        collectPonderExecutableGraphFiles(ROOT, {
-          entries: ["missing.ts"],
+        collectPonderGraph(ROOT, {
+          indexingEntries: ["missing.ts"],
+          apiEntries: [],
           fileContents: new Map([["other.ts", "export {};\n"]]),
         }),
-      /Ponder executable entry resolves to no file: missing\.ts/,
+      /Ponder identity entry resolves to no file: missing\.ts/,
     );
   });
 
@@ -272,19 +277,16 @@ describe("ponder-executable-fingerprint", () => {
       writeFileSync(join(plant, "ponder.config.ts"), "export default {};\n");
       writeFileSync(join(plant, "ponder.schema.ts"), "export {};\n");
       writeFileSync(join(plant, "src/api/only.ts"), "export {};\n");
-      assert.throws(
-        () => collectPonderExecutableGraphFiles(plant),
-        /Ponder indexing glob empty/,
-      );
+      assert.throws(() => collectPonderGraph(plant), /Ponder indexing glob empty/);
     } finally {
       rmSync(plant, { recursive: true, force: true });
     }
   });
 
-  it("empty entry list throws", () => {
+  it("empty indexing entry list throws", () => {
     assert.throws(
-      () => collectPonderExecutableGraphFiles(ROOT, { entries: [] }),
-      /Ponder executable entries are empty/,
+      () => collectPonderGraph(ROOT, { indexingEntries: [] }),
+      /Ponder indexing entries are empty/,
     );
   });
 });

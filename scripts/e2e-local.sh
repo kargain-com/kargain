@@ -66,7 +66,6 @@ export PONDER_ENABLE_LOCAL=1
 # Index only the Hardhat chain — `/ready` must not wait on a public Sepolia RPC.
 export PONDER_LOCAL_ONLY=1
 export PONDER_RPC_URL_31337=http://127.0.0.1:8545
-export PONDER_START_BLOCK=0
 export PONDER_START_BLOCK_31337=0
 export PONDER_SQL_API_URL="${PONDER_SQL_API_URL:-http://localhost:42069}"
 unset PONDER_DATABASE_URL DATABASE_PRIVATE_URL PONDER_PGLITE_DIR
@@ -108,7 +107,7 @@ if ! docker exec "${E2E_PG_NAME}" pg_isready -U ponder -d kargain_ponder >/dev/n
 fi
 
 export DATABASE_URL="postgresql://ponder:${E2E_PG_PASSWORD}@127.0.0.1:${E2E_PG_PORT}/kargain_ponder"
-# UNION owners qualify EVM tables as kargain.* (same as VPS compose).
+# Local writer schema; product SQL qualifies through src/lib/ponder-writer-schema.ts.
 export DATABASE_SCHEMA=kargain
 
 echo "==> Applying empty kargain_svm_projection (UNION arm)…"

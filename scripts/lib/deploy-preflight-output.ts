@@ -39,9 +39,15 @@ export function createDeployPreflightPrinter(
         `deploy_preflight service=svm-ingest program=${opts.evidenceKey} verdict=${opts.verdict}\n`,
       );
     },
-    refused(service: DeployPreflightService, reason: string): void {
+    /** `key=` names the env key for the ADR 0016 §a env refusals. */
+    refused(
+      service: DeployPreflightService,
+      reason: string,
+      key?: string,
+    ): void {
+      const keyField = key === undefined ? "" : ` key=${key}`;
       write(
-        `deploy_preflight service=${service} verdict=refused reason=${reason}\n`,
+        `deploy_preflight service=${service} verdict=refused reason=${reason}${keyField}\n`,
       );
     },
   };
