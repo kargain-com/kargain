@@ -185,7 +185,11 @@ describe("resolveCommercialStack is registry-only (ADR 0016 §a)", () => {
   ];
   const PLANTED = "0x000000000000000000000000000000000000dEaD";
 
-  /** Repo manifests with every registry address replaced and every block moved. */
+  /**
+   * Temp manifests synthesized from COMMERCIAL_ACTIVE (deployments/*.json are
+   * gitignored and absent on CI). Every registry address is the planted value
+   * and every block is 1 — a control that the runtime path ignores them.
+   */
   function withPlantedManifestsAndEnv<T>(fn: () => T): T {
     const prevDir = process.env.KARGAIN_DEPLOYMENTS_DIR;
     const prevEnv = new Map(
@@ -194,9 +198,32 @@ describe("resolveCommercialStack is registry-only (ADR 0016 §a)", () => {
     const temp = mkdtempSync(join(tmpdir(), "kargain-deployments-"));
     for (const id of [HUB, ETH]) {
       const evm = requireEvmCommercialActive(id);
-      let text = readFileSync(join(process.cwd(), "deployments", `${id}.json`), "utf8");
-      text = text.replaceAll(evm.karPassport, PLANTED).replace(/"(\w*[bB]lock\w*)":\s*\d+/g, '"$1": 1');
-      writeFileSync(join(temp, `${id}.json`), text);
+      const blocks = Object.fromEntries(
+        Object.keys(evm.blocks).map((key) => [key, 1]),
+      );
+      writeFileSync(
+        join(temp, `${id}.json`),
+        `${JSON.stringify(
+          {
+            chainId: id,
+            generation: "v2",
+            karPassport: PLANTED,
+            karProPass: PLANTED,
+            karProStaking: PLANTED,
+            usdc: PLANTED,
+            nativeFeed: PLANTED,
+            timelock: PLANTED,
+            bridgeGateway: PLANTED,
+            fixedPriceConsignment: PLANTED,
+            ascendingConsignment: PLANTED,
+            deployedAt: "planted",
+            indexFromBlock: 1,
+            blocks,
+          },
+          null,
+          2,
+        )}\n`,
+      );
     }
     process.env.KARGAIN_DEPLOYMENTS_DIR = temp;
     for (const k of REMOVED_START_KEYS) process.env[k] = "1";
