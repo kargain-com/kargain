@@ -59,12 +59,19 @@ describe("ponder passport entity policy", () => {
   });
 
   it("product default always UNION ALL; omit arm is test-only", () => {
-    assert.equal(resolveIncludeSvmProjection(), true);
-    assert.match(buildPassportEntityUnionSubquery([84532], true), /UNION ALL/);
-    assert.doesNotMatch(
-      buildPassportEntityUnionSubquery([84532], false),
-      /UNION ALL/,
-    );
+    const prev = process.env.DATABASE_SCHEMA;
+    process.env.DATABASE_SCHEMA = "kargain";
+    try {
+      assert.equal(resolveIncludeSvmProjection(), true);
+      assert.match(buildPassportEntityUnionSubquery([84532], true), /UNION ALL/);
+      assert.doesNotMatch(
+        buildPassportEntityUnionSubquery([84532], false),
+        /UNION ALL/,
+      );
+    } finally {
+      if (prev === undefined) delete process.env.DATABASE_SCHEMA;
+      else process.env.DATABASE_SCHEMA = prev;
+    }
   });
 
   it("api routes do not select passport table directly", () => {

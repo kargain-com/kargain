@@ -9,9 +9,8 @@ import { readFileSync } from "node:fs";
 
 import { extractStaticImportSpecifiers } from "../scripts/lib/static-import-specifiers.ts";
 import {
-  buildPonderExecutablePayload,
-  collectPonderExecutableGraphFiles,
-  digestPonderExecutablePayload,
+  collectPonderGraph,
+  computePonderIdentities,
 } from "../scripts/lib/ponder-executable-fingerprint.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -65,16 +64,17 @@ import "./real";
       ["b.ts", "export const b = 1;\n"],
       ["c.ts", "export const x = 1;\n"],
     ]);
-    const graph = collectPonderExecutableGraphFiles(ROOT, {
-      entries: ["entry.ts"],
+    const graph = collectPonderGraph(ROOT, {
+      indexingEntries: ["entry.ts"],
+      apiEntries: [],
       fileContents: files,
-    });
+    }).executable;
     assert.ok(graph.includes("b.ts"), "side-effect ./b must be in the graph");
     assert.ok(graph.includes("c.ts"), "named ./c must be in the graph");
   });
 
   it("live graph includes src/bridge-handlers.ts", () => {
-    const graph = collectPonderExecutableGraphFiles(ROOT);
+    const graph = collectPonderGraph(ROOT).executable;
     assert.ok(
       graph.includes("src/bridge-handlers.ts"),
       "side-effect import from src/index.ts must reach bridge-handlers",
@@ -82,21 +82,19 @@ import "./real";
   });
 
   it("live: bridge-handlers content participates in the executable digest", () => {
-    const graph = collectPonderExecutableGraphFiles(ROOT);
+    const graph = collectPonderGraph(ROOT).executable;
     assert.ok(graph.includes("src/bridge-handlers.ts"));
     const fileContents = new Map(
       graph.map((rel) => [rel, readFileSync(join(ROOT, rel), "utf8")] as const),
     );
-    const before = digestPonderExecutablePayload(
-      buildPonderExecutablePayload(ROOT, { fileContents }),
-    );
+    const before = computePonderIdentities(ROOT, { fileContents }).executable
+      .digest;
     fileContents.set(
       "src/bridge-handlers.ts",
       `${fileContents.get("src/bridge-handlers.ts")!}\n// fingerprint-probe\n`,
     );
-    const after = digestPonderExecutablePayload(
-      buildPonderExecutablePayload(ROOT, { fileContents }),
-    );
+    const after = computePonderIdentities(ROOT, { fileContents }).executable
+      .digest;
     assert.notEqual(
       before,
       after,

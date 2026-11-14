@@ -1,15 +1,15 @@
 import { LOCALHOST_CHAIN_ID } from "../../lib/web3/local-chain.js";
 import type { DeploymentBlocks } from "./load-deployment.js";
 import {
-  ponderCommercialAddresses,
   ponderLocalAddresses,
-  ponderSepoliaAddresses,
-  sepoliaBlocksForPonder,
-  sepoliaIndexFromBlock,
   SEPOLIA_CHAIN_ID,
   SPOKE_CHAIN_ID,
   type PonderAddressBundle,
 } from "./load-deployment.js";
+import {
+  ponderAddressesFromStack,
+  resolveCommercialStack,
+} from "./resolve-sepolia-stack.js";
 
 export type ContractBlockKey = keyof DeploymentBlocks;
 
@@ -19,8 +19,7 @@ export type PonderEnvRefusalCode =
   | "missing_rpc_urls"
   | "empty_rpc_urls"
   | "invalid_rpc_url"
-  | "duplicate_rpc_url"
-  | "probe_requires_numeric_start_block";
+  | "duplicate_rpc_url";
 
 /** Typed config refusal: closed code + env key. Preflight reads `.code` / `.envKey` only. */
 export class PonderEnvRefusalError extends Error {
@@ -35,136 +34,36 @@ export class PonderEnvRefusalError extends Error {
   }
 }
 
-function parseStartBlock(
-  envKey: string,
-  raw: string | undefined,
-): number | "latest" | undefined {
+const LOCAL_START_BLOCK_KEY = "PONDER_START_BLOCK_31337";
+
+/** Local Hardhat start only (`PONDER_START_BLOCK_31337`); unset → 0. */
+export function resolveLocalStartBlock(): number {
+  const raw = process.env.PONDER_START_BLOCK_31337;
   const trimmed = raw?.trim();
-  if (!trimmed || trimmed === "latest") return "latest";
+  if (!trimmed) return 0;
   const block = Number.parseInt(trimmed, 10);
-  if (!Number.isFinite(block) || block < 0) {
+  if (!/^\d+$/.test(trimmed) || !Number.isFinite(block)) {
     throw new PonderEnvRefusalError(
       "invalid_start_block",
-      envKey,
+      LOCAL_START_BLOCK_KEY,
       `Invalid start block value: ${raw}`,
     );
   }
   return block;
 }
 
-type CommercialChainBundle = {
-  addresses: PonderAddressBundle;
-  blocks: DeploymentBlocks;
-  indexFromBlock: number;
-};
-
-let ethereumSepoliaBundle: CommercialChainBundle | null | undefined;
-
-function loadEthereumSepoliaBundle(): CommercialChainBundle {
-  if (ethereumSepoliaBundle !== undefined && ethereumSepoliaBundle !== null) {
-    return ethereumSepoliaBundle;
-  }
-  const loaded = ponderCommercialAddresses(SPOKE_CHAIN_ID);
-  ethereumSepoliaBundle = loaded;
-  return loaded;
+/** Commercial chain start: the registry `indexFromBlock` (ADR 0016 §a). */
+export function commercialIndexFromBlock(chainId: number): number {
+  return resolveCommercialStack(chainId).indexFromBlock;
 }
 
-/**
- * Per-chain start block with the env key that supplied (or should supply) it.
- * Used by the RPC probe precondition so `probe_requires_numeric_start_block`
- * names the correct key (legacy `PONDER_START_BLOCK` when that won on Base Sepolia).
- */
-export function resolveChainStartBlockWithKey(chainId: number): {
-  startBlock: number | "latest";
-  envKey: string;
-} {
-  if (chainId === LOCALHOST_CHAIN_ID) {
-    const envKey = "PONDER_START_BLOCK_31337";
-    const parsed = parseStartBlock(envKey, process.env[envKey]);
-    return {
-      startBlock: parsed === "latest" || parsed === undefined ? 0 : parsed,
-      envKey,
-    };
-  }
-
-  if (chainId === SEPOLIA_CHAIN_ID) {
-    const specificKey = "PONDER_START_BLOCK_84532";
-    const specific = parseStartBlock(specificKey, process.env[specificKey]);
-    if (specific !== undefined && specific !== "latest") {
-      return { startBlock: specific, envKey: specificKey };
-    }
-
-    const legacyKey = "PONDER_START_BLOCK";
-    const legacy = parseStartBlock(legacyKey, process.env[legacyKey]);
-    if (legacy !== undefined && legacy !== "latest") {
-      return { startBlock: legacy, envKey: legacyKey };
-    }
-
-    return { startBlock: sepoliaIndexFromBlock(), envKey: specificKey };
-  }
-
-  if (chainId === SPOKE_CHAIN_ID) {
-    const envKey = "PONDER_START_BLOCK_11155111";
-    const specific = parseStartBlock(envKey, process.env[envKey]);
-    if (specific !== undefined && specific !== "latest") {
-      return { startBlock: specific, envKey };
-    }
-    return {
-      startBlock: loadEthereumSepoliaBundle().indexFromBlock,
-      envKey,
-    };
-  }
-
-  throw new Error(`Unsupported Ponder chain id: ${chainId}`);
-}
-
-/** Per-chain start block — decouples commercial chains from localhost. */
-export function resolveChainStartBlock(chainId: number): number | "latest" {
-  return resolveChainStartBlockWithKey(chainId).startBlock;
-}
-
-function resolveCommercialContractStartBlock(
-  blocks: DeploymentBlocks,
-  indexFrom: number,
-  contract: ContractBlockKey,
-  chainStart: number | "latest",
-): number | "latest" {
-  if (chainStart === "latest") return "latest";
-
-  const contractBlock = blocks[contract];
-  if (contractBlock !== undefined) return contractBlock;
-
-  if (indexFrom !== undefined) return Math.max(chainStart, indexFrom);
-
-  return chainStart;
-}
-
-export function resolveContractStartBlock(
+/** Commercial contract start: registry per-contract block, else the chain start. */
+function commercialContractStartBlock(
   chainId: number,
   contract: ContractBlockKey,
-): number | "latest" {
-  const chainStart = resolveChainStartBlock(chainId);
-  if (chainId === LOCALHOST_CHAIN_ID) {
-    return chainStart === "latest" ? 0 : chainStart;
-  }
-  if (chainId === SEPOLIA_CHAIN_ID) {
-    return resolveCommercialContractStartBlock(
-      sepoliaBlocksForPonder(),
-      sepoliaIndexFromBlock(),
-      contract,
-      chainStart,
-    );
-  }
-  if (chainId === SPOKE_CHAIN_ID) {
-    const bundle = loadEthereumSepoliaBundle();
-    return resolveCommercialContractStartBlock(
-      bundle.blocks,
-      bundle.indexFromBlock,
-      contract,
-      chainStart,
-    );
-  }
-  throw new Error(`Unsupported Ponder chain id: ${chainId}`);
+): number {
+  const stack = resolveCommercialStack(chainId);
+  return stack.blocks[contract] ?? stack.indexFromBlock;
 }
 
 type PonderDatabaseConfig =
@@ -176,11 +75,17 @@ type PonderDatabaseConfig =
  * so Docker Postgres is not required. Production always provides DATABASE_URL
  * (docker-compose) and stays on Postgres.
  */
-function resolvePonderDatabase(enableLocal: boolean): PonderDatabaseConfig {
-  const connectionString =
+/** The Postgres connection string Ponder writes through, when one is set. */
+export function resolvePonderConnectionString(): string | undefined {
+  return (
     process.env.DATABASE_URL ??
     process.env.PONDER_DATABASE_URL ??
-    process.env.DATABASE_PRIVATE_URL;
+    process.env.DATABASE_PRIVATE_URL
+  );
+}
+
+function resolvePonderDatabase(enableLocal: boolean): PonderDatabaseConfig {
+  const connectionString = resolvePonderConnectionString();
 
   if (connectionString) {
     return { kind: "postgres", connectionString };
@@ -198,13 +103,22 @@ function resolvePonderDatabase(enableLocal: boolean): PonderDatabaseConfig {
   return { kind: "postgres", connectionString };
 }
 
+/** The two transport keys of a commercial chain, each read by name. */
+function commercialTransportEnv(chainId: number): NodeJS.ProcessEnv {
+  return {
+    [`PONDER_RPC_URLS_${chainId}`]: process.env[`PONDER_RPC_URLS_${chainId}`],
+    [`PONDER_GETLOGS_BLOCK_RANGE_${chainId}`]:
+      process.env[`PONDER_GETLOGS_BLOCK_RANGE_${chainId}`],
+  };
+}
+
 /**
  * Required eth_getLogs window for a commercial chain.
  * Env: `PONDER_GETLOGS_BLOCK_RANGE_<chainId>` — positive integer, no default.
  */
 export function resolveGetLogsBlockRange(
   chainId: number,
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = commercialTransportEnv(chainId),
 ): number {
   const key = `PONDER_GETLOGS_BLOCK_RANGE_${chainId}`;
   const raw = env[key];
@@ -240,7 +154,7 @@ export function resolveGetLogsBlockRange(
  */
 export function resolveCommercialRpcUrls(
   chainId: number,
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = commercialTransportEnv(chainId),
 ): string[] {
   const key = `PONDER_RPC_URLS_${chainId}`;
   const raw = env[key];
@@ -324,29 +238,34 @@ export type PonderIndexingConfig = {
     | {
         chain: "localhost" | "baseSepolia";
         address: `0x${string}`;
-        startBlock: number | "latest";
+        startBlock: number;
       }
     | {
-        chain: Record<
-          string,
-          { address: `0x${string}`; startBlock: number | "latest" }
-        >;
+        chain: Record<string, { address: `0x${string}`; startBlock: number }>;
       };
 };
 
 /**
  * Indexing assembly only: chain names/ids, addresses, start blocks, contracts.
- * No RPC URLs or eth_getLogs windows — those are transport and outside build_id.
+ * Commercial chains come from COMMERCIAL_ACTIVE alone (ADR 0016 §a); local mode
+ * (`PONDER_ENABLE_LOCAL=1`) adds the localhost chain and changes nothing on
+ * commercial chains. No RPC URLs or eth_getLogs windows — those are transport
+ * and outside build_id.
  */
 export function buildPonderIndexingConfig(): PonderIndexingConfig {
   const enableLocal = process.env.PONDER_ENABLE_LOCAL === "1";
   // Local-dev-only: index just the Hardhat chain (skip commercial backfill).
   // Used by the E2E harness so `/ready` does not wait on a public RPC.
   const localOnly = enableLocal && process.env.PONDER_LOCAL_ONLY === "1";
-  const sepoliaAddresses = ponderSepoliaAddresses();
+  const sepoliaAddresses = ponderAddressesFromStack(
+    resolveCommercialStack(SEPOLIA_CHAIN_ID),
+  );
   const localAddresses = enableLocal ? ponderLocalAddresses() : null;
+  const localStart = enableLocal ? resolveLocalStartBlock() : 0;
 
-  const ethereumSepolia = localOnly ? null : loadEthereumSepoliaBundle();
+  const ethereumSepoliaAddresses = localOnly
+    ? null
+    : ponderAddressesFromStack(resolveCommercialStack(SPOKE_CHAIN_ID));
 
   const chains: Record<string, PonderIndexingChain> = {};
 
@@ -361,7 +280,7 @@ export function buildPonderIndexingConfig(): PonderIndexingConfig {
 
   /**
    * Multi-network contract entry — addresses and start blocks are per-chain
-   * from commercial manifests (SPEC §I.12.12). Never address-only.
+   * from the registry (SPEC §I.12.12). Never address-only.
    */
   function contractEntry(
     hubAddress: `0x${string}`,
@@ -371,7 +290,6 @@ export function buildPonderIndexingConfig(): PonderIndexingConfig {
       localAddress?: `0x${string}`;
     },
   ) {
-    const hubStart = resolveContractStartBlock(SEPOLIA_CHAIN_ID, contract);
     const ethAddress = opts?.ethereumSepoliaAddress;
     const localAddress = opts?.localAddress;
 
@@ -379,29 +297,27 @@ export function buildPonderIndexingConfig(): PonderIndexingConfig {
       return {
         chain: "localhost" as const,
         address: localAddress,
-        startBlock: resolveContractStartBlock(LOCALHOST_CHAIN_ID, contract),
+        startBlock: localStart,
       };
     }
 
+    const hubStart = commercialContractStartBlock(SEPOLIA_CHAIN_ID, contract);
     const commercial: Record<
       string,
-      { address: `0x${string}`; startBlock: number | "latest" }
+      { address: `0x${string}`; startBlock: number }
     > = {
       baseSepolia: { address: hubAddress, startBlock: hubStart },
     };
 
-    if (ethAddress && ethereumSepolia) {
+    if (ethAddress && ethereumSepoliaAddresses) {
       commercial.ethereumSepolia = {
         address: ethAddress,
-        startBlock: resolveContractStartBlock(SPOKE_CHAIN_ID, contract),
+        startBlock: commercialContractStartBlock(SPOKE_CHAIN_ID, contract),
       };
     }
 
     if (enableLocal && localAddress) {
-      commercial.localhost = {
-        address: localAddress,
-        startBlock: resolveContractStartBlock(LOCALHOST_CHAIN_ID, contract),
-      };
+      commercial.localhost = { address: localAddress, startBlock: localStart };
     }
 
     const keys = Object.keys(commercial);
@@ -437,7 +353,7 @@ export function buildPonderIndexingConfig(): PonderIndexingConfig {
   return {
     chains,
     addresses: sepoliaAddresses,
-    ethereumSepoliaAddresses: ethereumSepolia?.addresses ?? null,
+    ethereumSepoliaAddresses,
     localAddresses,
     localOnly,
     optionalAddresses,
@@ -483,15 +399,10 @@ export function buildPonderRuntime() {
 export function commercialPonderRegistryAddresses(
   chainId: number,
 ): `0x${string}`[] {
-  const bundle =
-    chainId === SEPOLIA_CHAIN_ID
-      ? ponderSepoliaAddresses()
-      : chainId === SPOKE_CHAIN_ID
-        ? loadEthereumSepoliaBundle().addresses
-        : null;
-  if (!bundle) {
+  if (chainId !== SEPOLIA_CHAIN_ID && chainId !== SPOKE_CHAIN_ID) {
     throw new Error(`Unsupported commercial Ponder chain id: ${chainId}`);
   }
+  const bundle = ponderAddressesFromStack(resolveCommercialStack(chainId));
   const addresses: `0x${string}`[] = [
     bundle.karPassport,
     bundle.karProPass,

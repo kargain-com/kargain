@@ -838,7 +838,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "svm-projection-passport-index-policy.test.ts",
       "svm-projection-digest-catalog-policy.test.ts",
       "svm-projection-replay-digest-pg.test.ts",
-      "ponder-reindex-svm-isolation-policy.test.ts",
+      "ponder-deploy-retention-policy.test.ts",
       "ponder-indexing-glob-svm-isolation-policy.test.ts",
       "ponder-passport-provenance-policy.test.ts",
       "svm-ingest-loop.test.ts",
@@ -849,7 +849,7 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "ponder-indexing-glob",
     owner: "scripts/lib/ponder-indexing-glob.ts",
-    rule: "Sole owner of the Ponder indexing-file glob (src/ js/mjs/ts/mts, api+test/spec ignored, dot:false); identity and the executable fingerprint consume it (entries, no second src walk); svm-ingest:start static import closure ∩ glob = ∅ (closure via policy-scan-helpers collectStaticImportClosure)",
+    rule: "Sole owner of the Ponder indexing-file glob (src/ js/mjs/ts/mts, api+test/spec ignored, dot:false); the indexing and executable identities consume it (entries, no second src walk); svm-ingest:start static import closure ∩ glob = ∅ (closure via policy-scan-helpers collectStaticImportClosure)",
     guardTests: [
       "ponder-indexing-glob-svm-isolation-policy.test.ts",
       "ponder-executable-fingerprint.test.ts",
@@ -1044,8 +1044,8 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "deploy-ponder-svm-ingest-ci",
     owner:
-      ".github/workflows/ci.yml · .github/workflows/deploy-ponder.yml · .github/workflows/deploy-svm-ingest.yml · lib/architecture/ci-verify-partition.ts · scripts/lib/workflow-push-paths.ts · scripts/lib/ponder-readiness-probe.ts · scripts/lib/svm-ingest-readiness-probe.ts",
-    rule: "Trunk CI (ci.yml) runs compile/typecheck/lint/every CI_GATE_SCRIPTS member/build (sole owner lib/architecture/ci-verify-partition); Install includes svm/lab frozen-lockfile (svm/tsconfig paths); deploy workflows needs: gates via workflow_call; test:ci = test:verify ∖ DEPLOY_MACHINE_VERIFY_SUITES; TOOLCHAIN_GATES (svm/svm-stand/svm-ingest/e2e) are named exclusions not trunk CI; Ponder never lists svm-ingest paths; svm-ingest never builds ponder; ponder deploy probes /ready and skips recreate on unchanged executable fingerprint; svm-ingest deploy probes /ready via scripts/lib/svm-ingest-readiness-probe.ts (HTTP 200 only); secrets context and job-level secrets: only inside jobs.deploy of .github/workflows/deploy-ponder.yml and deploy-svm-ingest.yml (sole owner deploy-vps-secret-policy); those workflows allow only push to master (push keys ⊆ branches|paths|paths-ignore) and workflow_dispatch; each gates job is exactly uses ./.github/workflows/ci.yml; each deploy job needs: gates and has no if; per-service concurrency + server .deploy.lock flock; SHA-pinned checkout; deploy_evidence lines; on.push.paths is parsed and matched only by scripts/lib/workflow-push-paths.ts; every Ponder deploy input (executable graph, executable artifacts, package.json) and every svm-ingest deploy input (svm-ingest:start closure, Dockerfile.svm-ingest, package.json, pnpm-lock.yaml) matches one",
+      ".github/workflows/ci.yml · .github/workflows/deploy-ponder.yml · .github/workflows/deploy-svm-ingest.yml · lib/architecture/ci-verify-partition.ts · scripts/lib/workflow-push-paths.ts · scripts/ponder-deploy.sh · scripts/lib/svm-ingest-readiness-probe.ts",
+    rule: "Trunk CI (ci.yml) runs compile/typecheck/lint/every CI_GATE_SCRIPTS member/build (sole owner lib/architecture/ci-verify-partition); Install includes svm/lab frozen-lockfile (svm/tsconfig paths); deploy workflows needs: gates via workflow_call; test:ci = test:verify ∖ DEPLOY_MACHINE_VERIFY_SUITES; TOOLCHAIN_GATES (svm/svm-stand/svm-ingest/e2e) are named exclusions not trunk CI; Ponder never lists svm-ingest paths; svm-ingest never builds ponder; ponder deploy job is require-master plus one SSH step that locks, checks out DEPLOY_SHA and execs scripts/ponder-deploy.sh with the dispatch operation passed by env (no inline evidence, docker, or install in the workflow), and the host script runs only git, docker and bash builtins (no compose build, no unscoped image prune); svm-ingest deploy probes /ready via scripts/lib/svm-ingest-readiness-probe.ts (HTTP 200 only); secrets context and job-level secrets: only inside jobs.deploy of .github/workflows/deploy-ponder.yml and deploy-svm-ingest.yml (sole owner deploy-vps-secret-policy); those workflows allow only push to master (push keys ⊆ branches|paths|paths-ignore) and workflow_dispatch; each gates job is exactly uses ./.github/workflows/ci.yml; each deploy job needs: gates and has no if; per-service concurrency + server .deploy.lock flock; SHA-pinned checkout; deploy_evidence lines; on.push.paths is parsed and matched only by scripts/lib/workflow-push-paths.ts; every Ponder deploy input (executable graph, executable artifacts, package.json) and every svm-ingest deploy input (svm-ingest:start closure, Dockerfile.svm-ingest, package.json, pnpm-lock.yaml) matches one",
     guardTests: [
       "deploy-ponder-svm-ingest-ci-policy.test.ts",
       "deploy-vps-secret-policy.test.ts",
@@ -1056,15 +1056,34 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   {
     id: "ponder-deploy-identity",
     owner:
-      "scripts/lib/ponder-identity-fingerprint.ts · scripts/lib/ponder-executable-fingerprint.ts · scripts/lib/static-import-specifiers.ts · scripts/lib/ponder-readiness-probe.ts",
-    rule: "Two fingerprints (identity = may need reindex; executable = must recreate) plus reserved /ready probe; neither equals Ponder build_id; scripts.test:* never recreates; static imports via static-import-specifiers (ts.preProcessFile) so side-effect imports are not dropped; executable entries are ponder.config.ts, ponder.schema.ts, the indexing glob, and src/api/index.ts",
+      "scripts/lib/ponder-executable-fingerprint.ts · scripts/lib/ponder-indexing-env-census.ts · scripts/lib/static-import-specifiers.ts · scripts/lib/ponder-readiness-probe.ts",
+    rule: "ADR 0016 §b: two identities from one import-graph walk — indexing (ponder.config.ts, ponder.schema.ts, the indexing glob, Dockerfile.ponder, pnpm-lock.yaml, package runtime slice) names the schema k_<40 hex>; executable adds src/api/index.ts and docker-compose.yml and decides recreate; indexing ⊆ executable or refuse; neither is Ponder build_id; static imports via static-import-specifiers (ts.preProcessFile); every process.env read in the indexing closure is classified by the census (database | transport | local) in both directions; a deploy env carrying a removed start-block or address key, DATABASE_SCHEMA, or local mode refuses by key; readiness modes answered (any HTTP answer) and ready200",
     guardTests: [
-      "ponder-identity-fingerprint.test.ts",
       "ponder-executable-fingerprint.test.ts",
+      "ponder-indexing-env-census-policy.test.ts",
       "static-import-specifiers.test.ts",
       "ponder-readiness-probe.test.ts",
+      "deploy-preflight.test.ts",
       "deploy-ponder-svm-ingest-ci-policy.test.ts",
     ],
+  },
+  {
+    id: "ponder-deploy-switch",
+    owner:
+      "scripts/lib/ponder-deploy-switch.ts · scripts/lib/ponder-deploy-state.ts · scripts/lib/ponder-deploy-retention.ts · scripts/lib/ponder-deploy-journal.ts · scripts/ponder-deploy-step.ts",
+    rule: "ADR 0016 §e–§k: <repo>:writer is the only writer pointer and .ponder-deploy/state.json {current, previous, switching} the only record; switching is written ahead of any retag and resolved on the next run; state replaces on rename; first run adopts the running container as legacy schema kargain only after /ready answers; observation defects refuse by name before any effect; current and previous never share a schema; retention drops only owned schemas (k_<40 hex> or kargain) outside {current, previous} and never kargain_svm_*, ponder_sync or the RPC cache; host effects go through the step journal and replay to the same point",
+    guardTests: [
+      "ponder-deploy-state.test.ts",
+      "ponder-deploy-crash-injection.test.ts",
+      "ponder-deploy-retention-policy.test.ts",
+      "ponder-deploy-journal.test.ts",
+    ],
+  },
+  {
+    id: "ponder-writer-schema",
+    owner: "src/lib/ponder-writer-schema.ts",
+    rule: "ADR 0016 §d: product raw SQL qualifies every Ponder table through ponderQualifiedTable, whose schema is the writer image's DATABASE_SCHEMA validated as k_<40 hex> or kargain (missing or invalid refuses by name); no src/ read names kargain.<table> (only kargain_svm_* is literal)",
+    guardTests: ["ponder-writer-schema.test.ts", "ponder-writer-schema-policy.test.ts"],
   },
   {
     id: "lib-src-layering",

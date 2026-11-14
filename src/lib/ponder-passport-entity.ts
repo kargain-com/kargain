@@ -12,6 +12,7 @@ import {
 } from "../../lib/passport/passport-entity-origin.js";
 
 import { indexerReadNamespaceIds } from "./ponder-read-namespaces.js";
+import { ponderQualifiedTable } from "./ponder-writer-schema.js";
 
 export type PassportEntityRow = {
   id: string;
@@ -85,8 +86,7 @@ export type VerifierVerificationCountRow = {
   total: number;
 };
 
-const PASSPORT_ENTITY_EVM_SELECT = `SELECT
-  id,
+const PASSPORT_ENTITY_SELECT_LIST = `id,
   chain_id,
   entity_origin,
   owner,
@@ -122,47 +122,16 @@ const PASSPORT_ENTITY_EVM_SELECT = `SELECT
   location_country_code,
   dispute_deposit,
   created_at,
-  updated_at
-FROM kargain.passport`;
+  updated_at`;
+
+function passportEntityEvmSelect(): string {
+  return `SELECT
+  ${PASSPORT_ENTITY_SELECT_LIST}
+FROM ${ponderQualifiedTable("passport")}`;
+}
 
 const PASSPORT_ENTITY_SVM_SELECT = `SELECT
-  id,
-  chain_id,
-  entity_origin,
-  owner,
-  status,
-  verifier,
-  verified_at,
-  token_uri,
-  cover_photo_uri,
-  vin,
-  make,
-  model,
-  year,
-  mileage_km,
-  last_disputer,
-  dispute_reason,
-  dispute_withdrawn_at,
-  last_verification_reset_at,
-  duplicate_vin,
-  last_metadata_change_at,
-  verification_reset_count,
-  had_dispute,
-  last_dispute_resolved_at,
-  last_dispute_terminal,
-  dispute_opened_at,
-  fuel_type,
-  body_type,
-  transmission,
-  condition,
-  vehicle_type,
-  colour,
-  location_label,
-  location_place_id,
-  location_country_code,
-  dispute_deposit,
-  created_at,
-  updated_at
+  ${PASSPORT_ENTITY_SELECT_LIST}
 FROM kargain_svm_projection.passport`;
 
 const PASSPORT_STATUS_ORDER_SQL = `CASE status
@@ -313,7 +282,7 @@ function buildPassportEntityUnionSubqueryWithParam(
   includeSvm: boolean,
   namespaceParam: string,
 ): string {
-  const evm = `${PASSPORT_ENTITY_EVM_SELECT}
+  const evm = `${passportEntityEvmSelect()}
     WHERE chain_id = ANY(${namespaceParam}::int[])`;
   if (!includeSvm) return `(${evm})`;
   const svm = `${PASSPORT_ENTITY_SVM_SELECT}

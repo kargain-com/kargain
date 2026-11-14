@@ -350,6 +350,7 @@ export function loadSpokeDeployment(): SpokeDeploymentManifest | null {
   return normalizeSpokeManifest(raw);
 }
 
+/** Local Hardhat addresses only: `PONDER_*_ADDRESS` never name a commercial chain (ADR 0016 §a). */
 export function ponderLocalAddresses(): LocalStackAddresses {
   const fromEnv = {
     chainId: LOCALHOST_CHAIN_ID,
@@ -393,15 +394,6 @@ export function ponderLocalAddresses(): LocalStackAddresses {
     "PONDER_ENABLE_LOCAL=1 but no addresses — run `pnpm deploy:local` or set PONDER_*_ADDRESS env vars",
   );
 }
-
-export {
-  ponderAddressesFromStack,
-  ponderCommercialAddresses,
-  ponderSepoliaAddresses,
-  resolveCommercialStack,
-  sepoliaBlocksForPonder,
-  sepoliaIndexFromBlock,
-} from "./resolve-sepolia-stack.js";
 
 export type {
   SvmDevnetEvidence,

@@ -13,7 +13,7 @@
 | ClaimablePayouts claims surface (July 2026) | ✅ `pending_claim` + `claim_credit` + account API + notifications; covered by Nuclear full reindex |
 | Commerce modes indexing (July 2026) | ✅ Schema + handlers + `/consignments*` / `/challenges` / mandate / `/commerce-*` routes — Nuclear #7 addresses on `COMMERCIAL_ACTIVE`; Solana via `svm-ingest` ([OPERATIONS.md](./OPERATIONS.md)) |
 | Outstanding obligation party indexes (July 2026) | ✅ Schema indexes + `GET /accounts/:address/obligations` + commerce notification stamps — included in Nuclear full reindex ([OPERATIONS.md](./OPERATIONS.md)) |
-| Passport browse filter indexes (August 2026) | ✅ Expression indexes on `passport` (column + `lower(col)` as in schema). **No index** for `colour` / `search` (`ILIKE '%…%'` — revisit ~50k rows / measured latency; no `pg_trgm` yet). **VPS reindex + B1 done** 2026-08-14 ([OPERATIONS.md §6.0–§6.1](./OPERATIONS.md)) |
+| Passport browse filter indexes (August 2026) | ✅ Expression indexes on `passport` (column + `lower(col)` as in schema). **No index** for `colour` / `search` (`ILIKE '%…%'` — revisit ~50k rows / measured latency; no `pg_trgm` yet). **VPS reindex + B1 done** 2026-08-14 ([OPERATIONS.md §4.0–§4.1](./OPERATIONS.md)) |
 | **Bridge guid crossings (S7b · September 2026)** | ✅ `KarPassportBridgeGateway` indexed dual-chain; append-only `bridge_crossing` stream (`ONFTSent` / `ONFTReceived`); receive-side correlation with `PassportBridgeMinted` / `CustodyLockSet(unlock)` in same tx. **No HTTP consumer yet** — S7c fold. **Production reindex deferred to S9 cutover** ([OPERATIONS.md §S9 bridge crossings](./OPERATIONS.md)) |
 | **SVM raw ingest (S7c-1 · September 2026)** | ✅ Append-only **`kargain_svm_raw`** via separate **`svm-ingest`** service; six production BPF programs; ordering `(slot, tx_index_in_block, log_index)`; four refusal kinds; chain-free replay digest. **VPS enable deferred to S9** ([OPERATIONS.md §SVM ingest](./OPERATIONS.md)) |
 | **SVM provenance projection + UNION reads (S7c-2 · September 2026)** | ✅ Materialized **`kargain_svm_projection`** (`passport_record`, `passport_uri_history`) rebuilt from raw by **`svm-ingest`**; Hono provenance reads UNION EVM + SVM in one SQL via [`src/lib/ponder-passport-provenance.ts`](../../src/lib/ponder-passport-provenance.ts). Production enable deferred to **S9** ([OPERATIONS.md §S9](./OPERATIONS.md)) |
@@ -28,7 +28,7 @@ Generation v2 contracts emit different events and use different listing fields t
 
 Identical commercial stacks on Base Sepolia (**84532**) and Ethereum Sepolia (**11155111**). Addresses only from `deployments/<chainId>.json`. Entity/API keys include `chainId`; **usable-copy location** is derived at read from stream B + guid crossings (S7c-3) — HTTP `custodyChain` when resolved, `custodyUnresolved` when not. `passport_record` / `passport_uri_history` are written by both networks into one table (UNION by global `tokenId`).
 
-**Related:** [contracts/SPEC.md Part 0](../contracts/SPEC.md#part-0--conventions) (versioning) · [OPERATIONS.md](./OPERATIONS.md) (reindex runbook) · [SPEC §I.12](../contracts/SPEC.md#i12-multi-chain-architecture-normative)
+**Related:** [contracts/SPEC.md Part 0](../contracts/SPEC.md#part-0--conventions) (versioning) · [OPERATIONS.md](./OPERATIONS.md) (deploy runbook) · [SPEC §I.12](../contracts/SPEC.md#i12-multi-chain-architecture-normative)
 
 **Versioning:** **Generation v2** = new stack at new addresses. **Semver** = each contract's `VERSION()` (e.g. FixedPriceConsignment `2.3.0-rc.1`, AscendingConsignment `2.2.0-rc.1`). Indexer migration follows generation, not semver major alone.
 
@@ -210,7 +210,7 @@ Generation v2 deployed **June 27, 2026** (`pnpm deploy:sepolia`). **Do not copy 
 
 | Field | Use |
 |-------|-----|
-| `indexFromBlock` | **43399242** — set `PONDER_START_BLOCK_84532` (do not reuse v1 start block) |
+| `indexFromBlock` | **43399242** — the v2 hub start block (do not reuse v1 start block); start blocks now come from `COMMERCIAL_ACTIVE` only ([ADR 0016 §a](../adr/0016-one-writer-schema-per-indexing-identity.md)) |
 | `karPassport`, `marketplace`, … | Committed `SEPOLIA_ACTIVE` after git pull (`pnpm ponder:config` to verify) |
 | `generation` | `"v2"` — distinguish from v1.x rows if dual-indexing |
 
@@ -236,7 +236,7 @@ Generation v2 is a **fresh deploy** at new addresses — v1.x event history stay
 1. ~~Export ABIs; regenerate `abis.generated.ts`~~ — ✅
 2. ~~Update `ponder.schema.ts` + reindex~~ — ✅ (reindex after VPS deploy)
 3. ~~Rewrite handlers in `src/index.ts` for generation v2 events~~ — ✅
-4. ~~Set `PONDER_START_BLOCK_84532`~~ — ✅ **43399242** on production VPS
+4. ~~Set the hub start block~~ — ✅ **43399242** on production VPS (historical env key; superseded by registry start blocks)
 5. Deploy Ponder; smoke `GET /consignments`, `GET /passports/:tokenId` after mint/open on Nuclear modes
 6. ~~Update `lib/web3/sepolia-addresses.ts`~~ — ✅
 
