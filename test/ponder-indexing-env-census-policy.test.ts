@@ -20,8 +20,8 @@ import {
 } from "../scripts/lib/ponder-indexing-env-census.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-/** Removed by ADR 0016 §a; spelled in parts so the removal grep stays empty. */
-const REMOVED_START_BLOCK_KEY = ["PONDER", "START", "BLOCK"].join("_");
+/** Removed by ADR 0016 §a. */
+const REMOVED_START_BLOCK_KEY = "PONDER_START_BLOCK";
 
 function liveReads(): ProcessEnvRead[] {
   const { indexing } = collectPonderGraph(ROOT);

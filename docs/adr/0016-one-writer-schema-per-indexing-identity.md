@@ -278,8 +278,8 @@ The same reasons rule out keying by `build_id`: it cannot be computed before the
   - `docker compose build ponder`, host `python3`, or a host `scripts/` mount in the deploy.
 - **Local Docker rehearsal** through the real deploy script, with real images indexing Base Sepolia and Ethereum Sepolia through public keyless RPCs (*correction, 2026-11-13:* the preflight refuses local mode and commercial RPCs must be https, so a local chain cannot pass the real deploy script), starting from `master`'s writer on `kargain`. Target: under 20 minutes.
   1. First run: legacy adopted; switch to `k_<I1>`.
-  2. An API-only commit: restart in place on `k_<I1>`.
-  3. An indexing commit: switch to `k_<I2>`; `kargain` dropped.
+  2. An API-only commit: restart in place on `k_<I1>`; `kargain` dropped (*correction, 2026-11-14:* step 1's ref becomes `previous`).
+  3. An indexing commit: switch to `k_<I2>`.
   4. A no-op dispatch: `unchanged`.
   5. A commit whose writer fails at build: returned; its schema never created.
   6. `rollback`, then a deploy of `master`: crash recoveries on retained schemas.

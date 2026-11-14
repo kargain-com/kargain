@@ -40,8 +40,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-/** Removed by ADR 0016 §a; spelled in parts so the removal grep stays empty. */
-const REMOVED_START_BLOCK_KEY = ["PONDER", "START", "BLOCK"].join("_");
+/** Removed by ADR 0016 §a. */
+const REMOVED_START_BLOCK_KEY = "PONDER_START_BLOCK";
 const PLANTED_HOST = "planted-provider.example";
 const PLANTED_HTTPS = `https://${PLANTED_HOST}/rpc`;
 const RPC_A = "https://rpc-a.example";

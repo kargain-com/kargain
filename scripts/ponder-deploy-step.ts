@@ -19,6 +19,7 @@ import {
   completePendingEntry,
   createJournaledWorld,
   HostActionRequested,
+  JournalDivergence,
   type ContainerEffects,
   type DeployJournal,
 } from "./lib/ponder-deploy-journal.js";
@@ -147,6 +148,10 @@ async function main(argv: readonly string[]): Promise<void> {
     });
     action = `exit ${code}`;
   } catch (err) {
+    if (err instanceof JournalDivergence) {
+      process.stdout.write(`${err.message}\n`);
+      process.exit(1);
+    }
     if (!(err instanceof HostActionRequested)) throw err;
     action = err.action;
   }
@@ -154,6 +159,10 @@ async function main(argv: readonly string[]): Promise<void> {
 }
 
 main(process.argv.slice(2)).catch((err: unknown) => {
+  if (err instanceof JournalDivergence) {
+    process.stdout.write(`${err.message}\n`);
+    process.exit(1);
+  }
   process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
   process.exit(2);
 });

@@ -23,8 +23,7 @@ case "$operation" in
 esac
 
 # Pre-ADR 0016 deploy record; read once by the first run, then deleted.
-# Name built in parts so the removal grep stays empty (ADR §f still adopts it).
-legacy_file="$(printf '%s%s' '.ponder-deploy-' 'fingerprints')"
+legacy_file=.ponder-deploy-fingerprints
 action_file=.ponder-deploy/run/action
 export PONDER_IMAGE_REPOSITORY="$repo"
 compose=(docker compose -p "$project")
@@ -97,18 +96,20 @@ while :; do
   out=""
   case "$verb" in
     exit) exit "${argv[0]}" ;;
-    observe) out=$(observe "${argv[@]}") ;;
-    derive) out=$(derive "${argv[@]}") ;;
-    tag) out=$(docker tag "${argv[0]}" "$repo:writer") ;;
-    recreate) out=$("${compose[@]}" up -d --no-build --force-recreate ponder) ;;
+    observe) out=$(observe "${argv[@]}") || status=$? ;;
+    derive) out=$(derive "${argv[@]}") || status=$? ;;
+    tag) out=$(docker tag "${argv[0]}" "$repo:writer") || status=$? ;;
+    recreate) out=$("${compose[@]}" up -d --no-build --force-recreate ponder) || status=$? ;;
     node) out=$("${compose[@]}" exec -T ponder node --version) || status=$? ;;
-    tags) out=$(docker image ls --format '{{.Tag}}' "$repo") ;;
-    rmi) out=$(docker rmi "${argv[0]}") ;;
+    tags) out=$(docker image ls --format '{{.Tag}}' "$repo") || status=$? ;;
+    rmi) out=$(docker rmi "${argv[0]}") || status=$? ;;
     prune)
-      out=$(docker image prune -f --filter "label=com.kargain.ponder.repository=$repo")
-      docker builder prune -f --filter until=72h >/dev/null
+      out=$(docker image prune -f --filter "label=com.kargain.ponder.repository=$repo") || status=$?
+      if [ "$status" -eq 0 ]; then
+        docker builder prune -f --filter until=72h >/dev/null || status=$?
+      fi
       ;;
-    delete_legacy_file) out=$(git clean -f -x -q -- "$legacy_file") ;;
+    delete_legacy_file) out=$(git clean -f -x -q -- "$legacy_file") || status=$? ;;
     *)
       printf 'ponder-deploy: unknown action %s\n' "$verb" >&2
       exit 2

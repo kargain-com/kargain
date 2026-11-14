@@ -28,8 +28,7 @@ project=kargain-rehearsal
 repo=kargain-rehearsal-ponder
 production_repo=kargain-ponder
 # The pre-ADR 0016 deploy record the first run adopts.
-# Name built in parts so the removal grep stays empty (ADR §f still adopts it).
-legacy_file="$(printf '%s%s' '.ponder-deploy-' 'fingerprints')"
+legacy_file=.ponder-deploy-fingerprints
 required_env=(
   PONDER_RPC_URLS_84532
   PONDER_GETLOGS_BLOCK_RANGE_84532
@@ -103,9 +102,7 @@ git -C "$clone" -c advice.detachedHead=false checkout -q "$master_sha"
   printf 'POSTGRES_PASSWORD=rehearsal\n'
   for key in "${required_env[@]}"; do printf '%s=%s\n' "$key" "${!key}"; done
   # Master still reads these; the ADR 0016 preflight refuses them (stripped below).
-  # Names built in parts so the removal grep stays empty.
-  for suffix in '_84532' '_11155111' ''; do
-    key="$(printf 'PONDER_START_BLOCK%s' "$suffix")"
+  for key in PONDER_START_BLOCK_84532 PONDER_START_BLOCK_11155111 PONDER_START_BLOCK; do
     if [ -n "${!key:-}" ]; then printf '%s=%s\n' "$key" "${!key}"; fi
   done
 } >"$clone/.env"
@@ -180,10 +177,8 @@ until writer_answers; do
   [ "$SECONDS" -lt "$deadline" ] || fail "master writer did not answer /ready"
   sleep 3
 done
-# Master's CLI path (removed on the implementation commit); spelled in parts
-# so the removal grep stays empty.
-fp_cli="$(printf 'scripts/ponder-deploy-%s.ts' 'fingerprints')"
-fingerprints=$(in_clone "${compose[@]}" exec -T ponder node --import tsx "$fp_cli" 2>/dev/null)
+# Master's CLI path (removed on the implementation commit).
+fingerprints=$(in_clone "${compose[@]}" exec -T ponder node --import tsx scripts/ponder-deploy-fingerprints.ts 2>/dev/null)
 identity=$(sed -n 's/^identity=//p' <<<"$fingerprints")
 executable=$(sed -n 's/^executable=//p' <<<"$fingerprints")
 [ -n "$identity" ] && [ -n "$executable" ] || fail "master fingerprints not printed"

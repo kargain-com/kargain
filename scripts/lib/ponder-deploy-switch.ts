@@ -10,6 +10,8 @@
  * other state, so a crash anywhere is resumed by the next run.
  */
 import {
+  PONDER_READY_DEFAULT_URL,
+  PONDER_READY_TIMEOUT_MS,
   ponderDidNotBecomeReadyMessage,
   type PonderReadyMode,
   type PonderReadyProbeResult,
@@ -63,7 +65,8 @@ export type DeployWorld = {
   observe(images: readonly string[]): Promise<DeployObservation>;
   derive(req: DeriveRequest): Promise<void>;
   tagWriter(image: string): Promise<void>;
-  recreate(): Promise<void>;
+  /** Host `compose up` status: 0 answered the recreate; non-zero is §g failure. */
+  recreate(): Promise<number>;
   writerNodeVersion(): Promise<string | null>;
   listRepositoryTags(): Promise<string[]>;
   removeImageTag(image: string): Promise<void>;
@@ -102,6 +105,17 @@ async function stateInvalid(run: Run, detail: string): Promise<number> {
   return 1;
 }
 
+function unansweredProbe(): Extract<PonderReadyProbeResult, { ok: false }> {
+  return {
+    ok: false,
+    mode: "answered",
+    url: PONDER_READY_DEFAULT_URL,
+    timeoutMs: PONDER_READY_TIMEOUT_MS,
+    elapsedMs: 0,
+    lastStatus: null,
+  };
+}
+
 async function didNotBecomeReady(
   run: Run,
   result: Extract<PonderReadyProbeResult, { ok: false }>,
@@ -109,6 +123,13 @@ async function didNotBecomeReady(
   await run.world.print(
     ponderDidNotBecomeReadyMessage(result.url, result.timeoutMs),
   );
+}
+
+/** Non-zero recreate is the same as an unanswered probe (ADR 0016 §g). */
+async function recreateThenAnswered(run: Run): Promise<PonderReadyProbeResult> {
+  const status = await run.world.recreate();
+  if (status !== 0) return unansweredProbe();
+  return run.world.probe("answered");
 }
 
 async function observedSchema(run: Run): Promise<string> {
@@ -166,8 +187,7 @@ async function firstRun(run: Run): Promise<DeployState | number> {
     executable,
   });
   await world.tagWriter(legacyImage);
-  await world.recreate();
-  const answered = await world.probe("answered");
+  const answered = await recreateThenAnswered(run);
   if (!answered.ok) {
     if (input.planted?.firstRunWritesStateUnanswered) {
       await world.writeState(adopted);
@@ -200,8 +220,7 @@ async function switchSteps(
   if (!target) throw new Error("switchSteps requires switching");
 
   await world.tagWriter(target.image);
-  await world.recreate();
-  const answered = await world.probe("answered");
+  const answered = await recreateThenAnswered(run);
 
   if (answered.ok) {
     const committed: DeployState = {
@@ -246,7 +265,13 @@ async function switchSteps(
 
   await didNotBecomeReady(run, answered);
   await world.tagWriter(state.current.image);
-  await world.recreate();
+  const returnStatus = await world.recreate();
+  if (returnStatus !== 0) {
+    await world.print(
+      `deploy_return_failed: ${refLabel(state.current)} did not answer; switching left set`,
+    );
+    return { kind: "ended", exit: 1 };
+  }
   const restored = await world.probe("answered");
   if (!restored.ok) {
     await world.print(

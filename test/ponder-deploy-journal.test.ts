@@ -86,9 +86,10 @@ async function executeHost(world: DeployWorld, action: string): Promise<HostResu
     case "tag":
       await world.tagWriter(args[0]!);
       return ok();
-    case "recreate":
-      await world.recreate();
-      return ok();
+    case "recreate": {
+      const status = await world.recreate();
+      return status === 0 ? ok() : { status, output: "recreate failed\n" };
+    }
     case "node": {
       const v = await world.writerNodeVersion();
       return v === null ? { status: 1, output: "" } : ok(`${v}\n`);
@@ -285,5 +286,75 @@ describe("ponder-deploy-journal", () => {
       "deploy_state_invalid: state_unreadable",
     ]);
     assert.equal(simKey(data), before);
+  });
+
+  it("target recreate non-zero returns to current like an unanswered probe", async () => {
+    const data = initialSimData("ready");
+    await runDirect(data, "deploy", SIM_COMMITS.c1);
+    data.recreateCallCount = 0;
+    const r = await runDirect(data, "deploy", SIM_COMMITS.c5);
+    assert.equal(r.exit, 1);
+    assert.ok(r.lines.some((l) => l.startsWith("ponder_did_not_become_ready:")));
+    assert.ok(r.lines.some((l) => l.includes("outcome=returned")));
+  });
+
+  it("return recreate non-zero is deploy_return_failed without a further probe", async () => {
+    const data = initialSimData("ready");
+    await runDirect(data, "deploy", SIM_COMMITS.c1);
+    data.recreateCallCount = 0;
+    data.failRecreateCalls = [2];
+    const r = await runDirect(data, "deploy", SIM_COMMITS.c4);
+    assert.equal(r.exit, 1);
+    assert.ok(r.lines.some((l) => l.startsWith("ponder_did_not_become_ready:")));
+    assert.ok(r.lines.some((l) => l.startsWith("deploy_return_failed:")));
+    assert.ok(!r.lines.some((l) => l.includes("outcome=returned")));
+  });
+
+  it("first-run recreate non-zero exits 1 without writing state.json", async () => {
+    const data = initialSimData("ready");
+    data.failRecreateCalls = [1];
+    const r = await runDirect(data, "deploy", SIM_COMMITS.c1);
+    assert.equal(r.exit, 1);
+    assert.ok(r.lines.some((l) => l.startsWith("ponder_did_not_become_ready:")));
+    assert.equal(data.stateFile, null);
+  });
+
+  it("non-zero status on requireOk host verbs is JournalDivergence", async () => {
+    const data = initialSimData("ready");
+    simBuildBase(data, SIM_COMMITS.c1);
+    const sim = simWorld(data, SIM_COMMITS.c1, null);
+    const journal: DeployJournal = {
+      operation: "deploy",
+      commit: SIM_COMMITS.c1.commit,
+      repository: SIM_REPO,
+      entries: [],
+    };
+    const save = (j: DeployJournal) => {
+      Object.assign(journal, j);
+    };
+    const world = createJournaledWorld(journal, save, containerEffectsOf(sim.world, []));
+    let action: string | null = null;
+    try {
+      await runPonderDeploy(world, {
+        operation: "deploy",
+        commit: SIM_COMMITS.c1.commit,
+        repository: SIM_REPO,
+      });
+    } catch (err) {
+      if (err instanceof HostActionRequested) action = err.action;
+      else throw err;
+    }
+    assert.ok(action?.startsWith("observe "));
+    completePendingEntry(journal, { status: 7, output: "boom\n" });
+    const world2 = createJournaledWorld(journal, save, containerEffectsOf(sim.world, []));
+    await assert.rejects(
+      runPonderDeploy(world2, {
+        operation: "deploy",
+        commit: SIM_COMMITS.c1.commit,
+        repository: SIM_REPO,
+      }),
+      (err: unknown) =>
+        err instanceof JournalDivergence && err.message === "deploy_journal_divergence: observe_status_7",
+    );
   });
 });

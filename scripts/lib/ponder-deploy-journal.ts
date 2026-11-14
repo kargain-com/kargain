@@ -244,7 +244,9 @@ export function createJournaledWorld(
         (r) => requireOk("derive", r),
       ),
     tagWriter: (image) => host("tag", [image], (r) => requireOk("tag", r)),
-    recreate: () => host("recreate", [], (r) => requireOk("recreate", r)),
+    // Non-zero recreate is "not answered" / return-failed in the switch owner
+    // (ADR 0016 §g); do not throw here.
+    recreate: () => host("recreate", [], (r) => r.status),
     writerNodeVersion: () =>
       host("node", [], (r) => {
         const v = r.output.trim();

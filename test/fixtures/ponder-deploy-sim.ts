@@ -44,6 +44,8 @@ export type SimCommit = {
   executable: string;
   buildId: string;
   answers: Answers;
+  /** Host `compose up` for this commit's writer image returns non-zero. */
+  recreateFails?: boolean;
 };
 
 const hex = (seed: string, len: number) =>
@@ -55,6 +57,7 @@ function commitOf(
   executable: string,
   buildId: string,
   answers: Answers,
+  recreateFails = false,
 ): SimCommit {
   return {
     commit: hex(`commit-${name}`, 40),
@@ -62,18 +65,20 @@ function commitOf(
     executable: hex(`executable-${executable}`, 64),
     buildId: `build-${buildId}`,
     answers,
+    ...(recreateFails ? { recreateFails: true } : {}),
   };
 }
 
 /**
  * c2 changes only the API (same indexing); c3 changes indexing yet keeps
- * c1's build_id; c4 never answers.
+ * c1's build_id; c4 never answers; c5's recreate fails on the host.
  */
 export const SIM_COMMITS = {
   c1: commitOf("c1", "I1", "X1", "B1", "ready"),
   c2: commitOf("c2", "I1", "X2", "B1", "ready"),
   c3: commitOf("c3", "I2", "X3", "B1", "catching"),
   c4: commitOf("c4", "I4", "X4", "B4", "never"),
+  c5: commitOf("c5", "I5", "X5", "B5", "ready", true),
 } as const;
 
 export const LEGACY_IDENTITY = "legacy";
@@ -85,6 +90,7 @@ type Image = {
   answers: Answers;
   schema: string | null;
   labels: string;
+  recreateFails?: boolean;
 };
 
 type Container = {
@@ -103,6 +109,9 @@ export type SimData = {
   stateFile: string | null;
   legacyFile: string | null;
   violations: string[];
+  /** 1-based recreate call indexes that return non-zero without starting. */
+  failRecreateCalls: number[];
+  recreateCallCount: number;
 };
 
 export class SimCrash extends Error {
@@ -161,6 +170,8 @@ export function initialSimData(legacyAnswers: Answers): SimData {
       executable: LEGACY_EXECUTABLE,
     }),
     violations: [],
+    failRecreateCalls: [],
+    recreateCallCount: 0,
   };
 }
 
@@ -205,6 +216,7 @@ export function simBareUp(data: SimData, checkedOut: SimCommit): void {
       answers: checkedOut.answers,
       schema: null,
       labels: "",
+      recreateFails: checkedOut.recreateFails === true,
     };
     target = imageId(built);
     data.images[target] = built;
@@ -317,6 +329,7 @@ export function simWorld(
         ...base,
         schema: req.schema,
         labels: `${req.commit ?? "legacy"}/${req.indexing ?? "none"}/${req.executable}`,
+        recreateFails: checkedOut.recreateFails === true,
       };
       const id = imageId(derived);
       mutate(() => {
@@ -337,7 +350,14 @@ export function simWorld(
     recreate: async () => {
       const id = data.tags[WRITER];
       if (!id) throw new Error("sim: --no-build with no writer image");
-      mutate(() => startContainer(data, id, data.images[id]!.schema, true));
+      data.recreateCallCount += 1;
+      const call = data.recreateCallCount;
+      const img = data.images[id]!;
+      if (data.failRecreateCalls.includes(call) || img.recreateFails === true) {
+        return 1;
+      }
+      mutate(() => startContainer(data, id, img.schema, true));
+      return 0;
     },
     writerNodeVersion: async () => (data.container?.answering ? "v24.22.1" : null),
     listRepositoryTags: async () =>
@@ -371,6 +391,7 @@ export function simBuildBase(data: SimData, c: SimCommit): void {
     answers: c.answers,
     schema: null,
     labels: `${SIM_REPO}`,
+    recreateFails: c.recreateFails === true,
   };
   const id = imageId(base);
   data.images[id] = base;
@@ -387,6 +408,8 @@ export function cloneSim(data: SimData): SimData {
     stateFile: data.stateFile,
     legacyFile: data.legacyFile,
     violations: [...data.violations],
+    failRecreateCalls: [...data.failRecreateCalls],
+    recreateCallCount: data.recreateCallCount,
   };
 }
 

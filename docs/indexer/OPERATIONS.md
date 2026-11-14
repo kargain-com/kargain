@@ -194,7 +194,7 @@ Every `process.env` read in the indexing closure is classified `database`, `tran
 
 **Interrupted runs** resume on the next run: a set `switching` is repeated before the run's own operation (`deploy_evidence resolved=committed` when it commits). A failed return prints `deploy_return_failed` and leaves `switching` set for the next run.
 
-**First run** (the merge of ADR 0016): with no `state.json` and the old fingerprints file present, the run adopts the running writer on schema `kargain` as the legacy ref (`adopted=legacy schema=kargain`), then, in the same run, deploys the commit and switches to `k_<indexing>`. `kargain` is the first `previous` and is dropped by retention at the next switch of any kind.
+**First run** (the merge of ADR 0016): with no `state.json` and the old fingerprints file present, the run adopts the running writer on schema `kargain` as the legacy ref (`adopted=legacy schema=kargain`), then, in the same run, deploys the commit and switches to `k_<indexing>`. `kargain` is the first `previous` and is dropped by retention at the next switch of any kind. Do not run a manual `docker compose up` while that first ADR 0016 deploy is in progress. If the job prints `first_run_schema_not_legacy`, stop and report; do not edit `.ponder-deploy/` or image tags.
 
 **Evidence** (ADR 0016 §k): the first line is `deploy_evidence operation=<deploy|rollback>`; a switch prints `outcome=recreated`, `commit=`, `schema=`, `indexing=`, `executable=`, `build_id=`, `node=`, `ready=ponder status=`, then `switch=`. A green job proves the writer answered; `switch=ready` proves catch-up.
 
