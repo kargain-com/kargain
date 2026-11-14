@@ -30,6 +30,10 @@ export PONDER_IMAGE_REPOSITORY="$repo"
 compose=(docker compose -p "$project")
 commit=$(git rev-parse HEAD)
 
+# Host must own the bind-mount directory before the tooling container writes
+# into it; otherwise Docker Desktop can leave the mount empty to the host.
+mkdir -p .ponder-deploy/run
+
 # Clean build context: only the commit's tracked files reach the image.
 git archive "$commit" | docker build -f Dockerfile.ponder \
   --label "com.kargain.ponder.repository=$repo" -t "$repo:deploy" -
