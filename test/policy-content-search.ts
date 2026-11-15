@@ -4,10 +4,32 @@
  * Host rg is not installed on GitHub Actions runners. Policy suites must not
  * shell out to it — they call this module instead (line-oriented, default-rg
  * semantics unless multiline is set).
+ *
+ * Tracked-file listing has one owner: {@link listTrackedFiles} (`git ls-files`).
+ * Policies that scan the tree must use it and never open untracked or gitignored files.
  */
 
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
+
+/**
+ * Sole tracked-file listing owner (`git ls-files -z`).
+ * Returns repository-relative paths. Never walks the working tree.
+ */
+export function listTrackedFiles(
+  cwd: string,
+  pathspecs: readonly string[] = [],
+): string[] {
+  const out = execFileSync("git", ["ls-files", "-z", ...pathspecs], {
+    cwd,
+    encoding: "buffer",
+  });
+  return out
+    .toString("utf8")
+    .split("\0")
+    .filter((p) => p.length > 0);
+}
 
 export type ContentSearchOpts = {
   /** Absolute paths: files and/or directories. */

@@ -260,12 +260,12 @@ async function printDryRunCompare() {
     {
       chainId: 84532,
       chain: baseSepolia,
-      rpc: process.env.PONDER_RPC_URL_84532 ?? SEPOLIA_PUBLIC_RPC,
+      rpc: SEPOLIA_PUBLIC_RPC,
     },
     {
       chainId: 11155111,
       chain: sepolia,
-      rpc: process.env.PONDER_RPC_URL_11155111 ?? ETHEREUM_SEPOLIA_PUBLIC_RPC,
+      rpc: ETHEREUM_SEPOLIA_PUBLIC_RPC,
     },
   ];
   for (const { chainId, chain, rpc } of rpcPairs) {

@@ -1,24 +1,84 @@
 /**
  * Policy: commercial Ponder chains take ethGetLogsBlockRange + rpc list from env;
  * no URL literal fallback; no maxRequestsPerSecond.
+ * Tracked tree: no singular PONDER_RPC_URL_<digits> except census local keys
+ * and docs/ops/deploys/** / this suite.
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { PONDER_INDEXING_ENV_CENSUS } from "../scripts/lib/ponder-indexing-env-census.ts";
 import {
   buildPonderRuntime,
   resolveCommercialRpcUrls,
   resolveGetLogsBlockRange,
 } from "../scripts/lib/ponder-env.ts";
+import { listTrackedFiles } from "./policy-content-search.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PONDER_ENV = join(ROOT, "scripts/lib/ponder-env.ts");
+const SELF_PATH = "test/ponder-rpc-runtime-policy.test.ts";
 
 const HUB = 84532;
 const SPOKE = 11155111;
+
+const SINGULAR_RPC_RE = /PONDER_RPC_URL_(\d+)\b/g;
+
+export type SingularPonderRpcUrlHit = {
+  path: string;
+  line: number;
+  key: string;
+};
+
+/** Allowed singular keys = census `local` entries matching PONDER_RPC_URL_<digits>. */
+export function allowedLocalSingularRpcKeys(
+  census: typeof PONDER_INDEXING_ENV_CENSUS = PONDER_INDEXING_ENV_CENSUS,
+): ReadonlySet<string> {
+  return new Set(
+    census
+      .filter((e) => e.class === "local" && /^PONDER_RPC_URL_\d+$/.test(e.key))
+      .map((e) => e.key),
+  );
+}
+
+export function findSingularPonderRpcUrlViolations(
+  files: ReadonlyArray<{ path: string; source: string }>,
+  opts: {
+    allowedKeys: ReadonlySet<string>;
+    selfPath: string;
+  },
+): SingularPonderRpcUrlHit[] {
+  const hits: SingularPonderRpcUrlHit[] = [];
+  for (const file of files) {
+    if (file.path === opts.selfPath) continue;
+    if (file.path.startsWith("docs/ops/deploys/")) continue;
+    const lines = file.source.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
+      SINGULAR_RPC_RE.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = SINGULAR_RPC_RE.exec(line)) !== null) {
+        const key = `PONDER_RPC_URL_${m[1]!}`;
+        if (opts.allowedKeys.has(key)) continue;
+        hits.push({ path: file.path, line: i + 1, key });
+      }
+    }
+  }
+  return hits;
+}
+
+function trackedSources(
+  relPaths: readonly string[],
+): Array<{ path: string; source: string }> {
+  return relPaths.map((rel) => ({
+    path: rel,
+    source: readFileSync(join(ROOT, rel), "utf8"),
+  }));
+}
 
 function withEnv<T>(env: NodeJS.ProcessEnv, fn: () => T): T {
   const keys = Object.keys(env);
@@ -145,15 +205,73 @@ describe("ponder-rpc-runtime-policy", () => {
       "no ETHEREUM_SEPOLIA_PUBLIC_RPC duplicate in ponder-env",
     );
     assert.equal(
-      /PONDER_RPC_URL_84532|PONDER_RPC_URL_11155111/.test(src),
-      false,
-      "no singular commercial PONDER_RPC_URL_*",
-    );
-    assert.equal(
       /\?\?[\s\n]*["']https:\/\//.test(src),
       false,
       "no ?? https URL fallback",
     );
+  });
+
+  it("tracked tree: no singular PONDER_RPC_URL_<digits> except census local", () => {
+    const allowed = allowedLocalSingularRpcKeys();
+    const files = trackedSources(listTrackedFiles(ROOT));
+    assert.deepEqual(
+      findSingularPonderRpcUrlViolations(files, {
+        allowedKeys: allowed,
+        selfPath: SELF_PATH,
+      }),
+      [],
+    );
+  });
+
+  it("negative: planted PONDER_RPC_URL_84532 in temp tracked copy is red then green", () => {
+    const allowed = allowedLocalSingularRpcKeys();
+    const dir = mkdtempSync(join(tmpdir(), "kargain-singular-rpc-"));
+    try {
+      const rel = "scripts/planted-singular-rpc.ts";
+      const plantedSource =
+        'const x = process.env.PONDER_RPC_URL_84532 ?? "";\n';
+      writeFileSync(join(dir, "planted.ts"), plantedSource);
+      const planted = [{ path: rel, source: plantedSource }];
+      const hits = findSingularPonderRpcUrlViolations(planted, {
+        allowedKeys: allowed,
+        selfPath: SELF_PATH,
+      });
+      assert.equal(hits.length, 1);
+      assert.equal(hits[0]?.path, rel);
+      assert.equal(hits[0]?.line, 1);
+      assert.equal(hits[0]?.key, "PONDER_RPC_URL_84532");
+
+      const clean = [
+        { path: rel, source: 'const x = process.env.PONDER_RPC_URLS_84532 ?? "";\n' },
+      ];
+      assert.deepEqual(
+        findSingularPonderRpcUrlViolations(clean, {
+          allowedKeys: allowed,
+          selfPath: SELF_PATH,
+        }),
+        [],
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("negative: planted PONDER_RPC_URL_8453 (id not in registry) is red", () => {
+    const allowed = allowedLocalSingularRpcKeys();
+    const planted = [
+      {
+        path: "scripts/planted-odd-id.ts",
+        source: "export const k = \"PONDER_RPC_URL_8453\";\n",
+      },
+    ];
+    const hits = findSingularPonderRpcUrlViolations(planted, {
+      allowedKeys: allowed,
+      selfPath: SELF_PATH,
+    });
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0]?.path, "scripts/planted-odd-id.ts");
+    assert.equal(hits[0]?.line, 1);
+    assert.equal(hits[0]?.key, "PONDER_RPC_URL_8453");
   });
 
   it("negative: maxRequestsPerSecond and ponder-max-rps are gone", () => {

@@ -10,12 +10,14 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  listTrackedFiles,
   searchContent,
   searchPaths,
   searchUnder,
 } from "./policy-content-search.ts";
 
 const TEST_DIR = join(fileURLToPath(new URL(".", import.meta.url)));
+const ROOT = join(TEST_DIR, "..");
 const OWNER = "policy-content-search.ts";
 const HOST_RG = /(?:execFileSync|spawnSync|execSync)\(\s*["']rg["']/;
 
@@ -39,10 +41,23 @@ function listTestTsFiles(dir: string = TEST_DIR): string[] {
 }
 
 describe("policy-content-search-policy", () => {
-  it("owner exports searchContent / searchPaths / searchUnder", () => {
+  it("owner exports searchContent / searchPaths / searchUnder / listTrackedFiles", () => {
     assert.equal(typeof searchContent, "function");
     assert.equal(typeof searchPaths, "function");
     assert.equal(typeof searchUnder, "function");
+    assert.equal(typeof listTrackedFiles, "function");
+  });
+
+  it("listTrackedFiles returns tracked paths only (includes this suite)", () => {
+    const tracked = listTrackedFiles(ROOT);
+    assert.ok(
+      tracked.includes("test/policy-content-search-policy.test.ts"),
+      "suite itself is tracked",
+    );
+    assert.equal(
+      tracked.some((p) => p.includes("\0")),
+      false,
+    );
   });
 
   it("no test suite shells out to host rg (except never the owner)", () => {
