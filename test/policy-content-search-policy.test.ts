@@ -73,14 +73,9 @@ describe("policy-content-search-policy", () => {
     const root = mkdtempSync(join(tmpdir(), "kargain-pcs-symlink-"));
     try {
       execFileSync("git", ["init"], { cwd: root });
-      execFileSync("git", ["config", "user.email", "test@example.com"], {
-        cwd: root,
-      });
-      execFileSync("git", ["config", "user.name", "test"], { cwd: root });
       writeFileSync(join(root, "regular.txt"), "ok\n");
       symlinkSync("regular.txt", join(root, "link.txt"));
       execFileSync("git", ["add", "regular.txt", "link.txt"], { cwd: root });
-      execFileSync("git", ["commit", "-m", "plant"], { cwd: root });
       const tracked = listTrackedFiles(root);
       assert.deepEqual(tracked, ["regular.txt"]);
       assert.equal(tracked.includes("link.txt"), false);
