@@ -42,6 +42,12 @@ Start here. Each area has **one canonical document**; other files link in — th
 | [ops/deploys/phase2-checkpoint-dossier.md](./ops/deploys/phase2-checkpoint-dossier.md) | §7.6 Phase 2 mainnet dossier — prepared, not activated |
 | [ops/recovery-bridge.md](./ops/recovery-bridge.md) | Bridge recovery ops (testnet EOA vs mainnet Timelock) |
 
+## Architecture decisions
+
+| Document | Purpose |
+|----------|---------|
+| [adr/README.md](./adr/README.md) | Architecture decision records — when required, statuses, template, index |
+
 ## Product onboarding
 
 [README.md](../README.md) — setup, architecture, routes (links here for depth).
