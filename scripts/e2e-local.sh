@@ -34,7 +34,7 @@ cleanup() {
     kill "${NODE_PID}" 2>/dev/null || true
   fi
   if [[ "${STARTED_E2E_PG}" == "1" ]]; then
-    docker rm -f "${E2E_PG_NAME}" >/dev/null 2>&1 || true
+    docker rm -f -v "${E2E_PG_NAME}" >/dev/null 2>&1 || true
   fi
 }
 
@@ -86,7 +86,7 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 echo "==> Starting ephemeral Postgres (${E2E_PG_NAME} on :${E2E_PG_PORT})…"
-docker rm -f "${E2E_PG_NAME}" >/dev/null 2>&1 || true
+docker rm -f -v "${E2E_PG_NAME}" >/dev/null 2>&1 || true
 docker run -d --name "${E2E_PG_NAME}" \
   -e POSTGRES_USER=ponder \
   -e POSTGRES_PASSWORD="${E2E_PG_PASSWORD}" \
