@@ -2,7 +2,7 @@
  * Ban `--skip-new-upgrade-authority-signer-check` in executable trees.
  * Env UA ≡ deployer: one owner (`assertSolanaUpgradeAuthorityMatchesDeployer`);
  * refuse any read of `SOLANA_UPGRADE_AUTHORITY` outside the owner module and its CLI
- * (WORKING-METHOD §6 — pin the rule, not a spelling; no allowlist).
+ * (docs/engineering/enforcement.md — pin the rule, not a spelling; no allowlist).
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
