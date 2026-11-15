@@ -20,6 +20,11 @@ export type DockerHarness = {
   readonly containerNames: readonly string[];
   /** Image repositories this harness builds. */
   readonly imageRepositories: readonly string[];
+  /**
+   * Docker image label filters (`label=key=value`) identifying untagged images
+   * this harness builds (e.g. rehearsal `com.kargain.ponder.repository=…`).
+   */
+  readonly imageLabels?: readonly string[];
 };
 
 export type DockerDeveloperStack = {
@@ -53,6 +58,9 @@ export const DOCKER_OWNED_SCRIPTS: readonly DockerOwnedScript[] = [
     composeProject: "kargain-rehearsal",
     containerNames: [],
     imageRepositories: ["kargain-rehearsal-ponder"],
+    imageLabels: [
+      "com.kargain.ponder.repository=kargain-rehearsal-ponder",
+    ],
   },
   {
     script: "scripts/dev-local.sh",
@@ -249,32 +257,180 @@ function dockerRmHasVolumeFlag(line: string): boolean {
   return /-v\b/.test(line) || /\brm\s+-[a-zA-Z]*v[a-zA-Z]*\b/.test(line);
 }
 
-function handlerRemovesOwnedTarget(
+/** Strip matching quotes from a shell token. */
+function unquoteShell(token: string): string {
+  if (
+    (token.startsWith('"') && token.endsWith('"')) ||
+    (token.startsWith("'") && token.endsWith("'"))
+  ) {
+    return token.slice(1, -1);
+  }
+  return token;
+}
+
+/**
+ * Resolve a shell word to a concrete string using scalar assignments.
+ * Handles literals, `$VAR`, `${VAR}`, and `${VAR:-default}`.
+ */
+export function resolveShellWord(
+  word: string,
+  scalars: ReadonlyMap<string, string>,
+): string | null {
+  const w = unquoteShell(word.trim());
+  if (!w) return null;
+  const defaulted = /^\$\{([A-Za-z_][A-Za-z0-9_]*):-(.*)\}$/.exec(w);
+  if (defaulted) {
+    const name = defaulted[1]!;
+    const def = defaulted[2]!;
+    return scalars.get(name) ?? def;
+  }
+  const braced = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(w);
+  if (braced) return scalars.get(braced[1]!) ?? null;
+  const simple = /^\$([A-Za-z_][A-Za-z0-9_]*)$/.exec(w);
+  if (simple) return scalars.get(simple[1]!) ?? null;
+  if (w.includes("$")) return null;
+  return w;
+}
+
+/**
+ * Scalar `name=value` / `name="${…:-default}"` and array
+ * `name=(…)` assignments from active shell lines.
+ */
+export function parseShellAssignments(source: string): {
+  scalars: Map<string, string>;
+  arrays: Map<string, string[]>;
+} {
+  const scalars = new Map<string, string>();
+  const arrays = new Map<string, string[]>();
+  for (const line of shellActiveLines(source)) {
+    const arr = /^([A-Za-z_][A-Za-z0-9_]*)=\((.*)\)\s*$/.exec(line.trim());
+    if (arr) {
+      const name = arr[1]!;
+      const inner = arr[2]!.trim();
+      const tokens: string[] = [];
+      let cur = "";
+      let quote: "'" | '"' | null = null;
+      for (let i = 0; i < inner.length; i++) {
+        const ch = inner[i]!;
+        if (quote) {
+          if (ch === quote) quote = null;
+          else cur += ch;
+          continue;
+        }
+        if (ch === "'" || ch === '"') {
+          quote = ch;
+          continue;
+        }
+        if (/\s/.test(ch)) {
+          if (cur) {
+            tokens.push(cur);
+            cur = "";
+          }
+          continue;
+        }
+        cur += ch;
+      }
+      if (cur) tokens.push(cur);
+      arrays.set(name, tokens);
+      continue;
+    }
+    const scalar = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line.trim());
+    if (!scalar) continue;
+    const name = scalar[1]!;
+    let raw = scalar[2]!.trim();
+    // `${VAR:-default}` form assigned as the RHS of E2E_PG_NAME=…
+    const defAssign = /^"\$\{([A-Za-z_][A-Za-z0-9_]*):-(.*)\}"$/.exec(raw);
+    if (defAssign && defAssign[1] === name) {
+      scalars.set(name, defAssign[2]!);
+      continue;
+    }
+    const singleDef = /^'\$\{([A-Za-z_][A-Za-z0-9_]*):-(.*)\}'$/.exec(raw);
+    if (singleDef && singleDef[1] === name) {
+      scalars.set(name, singleDef[2]!);
+      continue;
+    }
+    raw = unquoteShell(raw);
+    const nestedDef = /^\$\{([A-Za-z_][A-Za-z0-9_]*):-(.*)\}$/.exec(raw);
+    if (nestedDef && nestedDef[1] === name) {
+      scalars.set(name, nestedDef[2]!);
+      continue;
+    }
+    // Plain literal or already-resolved value
+    if (!raw.includes("$")) {
+      scalars.set(name, raw);
+    } else {
+      const resolved = resolveShellWord(raw, scalars);
+      if (resolved != null) scalars.set(name, resolved);
+    }
+  }
+  return { scalars, arrays };
+}
+
+function resolveComposeProjectFromTokens(
+  tokens: readonly string[],
+  scalars: ReadonlyMap<string, string>,
+): string | null {
+  for (let i = 0; i < tokens.length - 1; i++) {
+    if (tokens[i] === "-p" || tokens[i] === "--project-name") {
+      return resolveShellWord(tokens[i + 1]!, scalars);
+    }
+  }
+  return null;
+}
+
+/**
+ * True when the trap handler removes an owner-listed container (rm -f -v)
+ * or Compose project (down -v), resolving literals and in-script assignments.
+ */
+export function handlerRemovesOwnedTarget(
   handlerBody: string,
+  fullSource: string,
   harness: DockerHarness,
 ): boolean {
-  const active = shellActiveLines(handlerBody).join("\n");
-  const hasDownV =
-    /\bdown\s+-v\b/.test(active) || /\bdown\b[^\n]*\s-v\b/.test(active);
-  // Compose project may be referenced via an array/`$project` set outside the
-  // handler; the owned name is required in the full script by the caller.
-  if (harness.composeProject != null && hasDownV) {
-    return true;
-  }
-  if (/docker\s+rm\b[^\n]*-v\b/.test(active)) {
-    for (const name of harness.containerNames) {
-      if (active.includes(name)) return true;
+  const { scalars, arrays } = parseShellAssignments(fullSource);
+  const handlerLines = shellActiveLines(handlerBody);
+
+  for (const line of handlerLines) {
+    if (/\bdocker\s+rm\b/.test(line) && dockerRmHasVolumeFlag(line)) {
+      const argv = dockerArgvFromShellLine(line);
+      if (!argv || argv[0] !== "rm") continue;
+      const targetWord = argv[argv.length - 1]!;
+      const resolved = resolveShellWord(targetWord, scalars);
+      if (resolved != null && harness.containerNames.includes(resolved)) {
+        return true;
+      }
     }
-    // Variable form (`"$E2E_PG_NAME"`) when the owned default appears in-script.
-    if (harness.containerNames.length > 0) return true;
+  }
+
+  if (harness.composeProject == null) return false;
+
+  for (const line of handlerLines) {
+    if (!(/\bdown\s+-v\b/.test(line) || /\bdown\b[^\n]*\s-v\b/.test(line))) {
+      continue;
+    }
+    // Literal -p on the down line (possibly via docker compose …)
+    const inline = /-p\s+(\S+)/.exec(line);
+    if (inline) {
+      const resolved = resolveShellWord(inline[1]!, scalars);
+      if (resolved === harness.composeProject) return true;
+    }
+    // "${compose[@]}" / ${compose[@]} expansion
+    const arrUse = /\$\{([A-Za-z_][A-Za-z0-9_]*)\[@\]\}/.exec(line);
+    if (arrUse) {
+      const tokens = arrays.get(arrUse[1]!);
+      if (tokens) {
+        const project = resolveComposeProjectFromTokens(tokens, scalars);
+        if (project === harness.composeProject) return true;
+      }
+    }
   }
   return false;
 }
 
 /**
  * Harness must trap EXIT INT TERM with a handler that removes the
- * owner-listed project (down -v) or containers (rm -f -v). The owner-listed
- * name must appear in the harness source. Any docker rm without -v is red.
+ * owner-listed project (down -v) or containers (rm -f -v), resolving
+ * the target to the owner-listed name. Any docker rm without -v is red.
  */
 export function harnessCleanupDefect(
   source: string,
@@ -299,19 +455,11 @@ export function harnessCleanupDefect(
     }
   }
 
-  const ownedNames: string[] = [];
-  if (harness.composeProject != null) ownedNames.push(harness.composeProject);
-  ownedNames.push(...harness.containerNames);
-  if (ownedNames.length === 0) {
+  if (harness.composeProject == null && harness.containerNames.length === 0) {
     return "harness owner lists no compose project or container name";
   }
-  for (const name of ownedNames) {
-    if (!source.includes(name)) {
-      return `harness source lacks owner-listed name ${name}`;
-    }
-  }
 
-  if (!handlerRemovesOwnedTarget(body, harness)) {
+  if (!handlerRemovesOwnedTarget(body, source, harness)) {
     return "harness trap handler does not remove owner-listed project or containers with -v";
   }
   return null;
@@ -445,12 +593,11 @@ export function pruneRemovalDefects(
       }
     }
 
-    const allowed = permittedRemovalsForScript(f.path, permitted);
-    const lines = f.path.endsWith(".sh")
-      ? shellActiveLines(f.source)
-      : f.source.split("\n").filter((l) => l.trim().length > 0);
+    // Shell argv matching only — TypeScript is covered by the spawn check above.
+    if (!f.path.endsWith(".sh")) continue;
 
-    for (const line of lines) {
+    const allowed = permittedRemovalsForScript(f.path, permitted);
+    for (const line of shellActiveLines(f.source)) {
       const argv = dockerArgvFromShellLine(line);
       if (!argv) continue;
       const forbidden = isForbiddenPruneArgv(argv);

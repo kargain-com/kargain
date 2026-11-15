@@ -2,12 +2,13 @@
  * pnpm docker:clean — free local Docker space safely.
  * Removes harness leftovers (scoped from the owner), dangling images, and
  * build cache older than 72 h. Never touches the developer-stack project.
+ *
+ * Query first, then remove only what exists. Every non-zero exit is a failure.
  */
 import { spawnSync } from "node:child_process";
 
 import {
   DOCKER_CLEAN_SCRIPT,
-  DEVELOPER_STACK_PROJECT,
   PERMITTED_UNSCOPED_REMOVALS,
   dockerCleanRefusal,
   dockerHarnesses,
@@ -29,37 +30,18 @@ function runDocker(args: string[]): RunResult {
   };
 }
 
-/** Absence of the named target is success for rm / rmi / network rm / volume rm. */
-function isAbsentTarget(args: string[], stderr: string): boolean {
-  const verb = args[0];
-  const msg = stderr.toLowerCase();
-  if (verb === "rm" || verb === "rmi" || verb === "volume" || verb === "network") {
-    if (
-      /no such (container|image|volume|network)/.test(msg) ||
-      /not found/.test(msg) ||
-      /no such object/.test(msg)
-    ) {
-      return true;
-    }
-  }
-  if (verb === "compose" && args.includes("down")) {
-    if (
-      /no container/.test(msg) ||
-      /not found/.test(msg) ||
-      /no such/.test(msg) ||
-      /project.*not found/.test(msg)
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
 function systemDf(label: string): void {
   process.stdout.write(`\n==> docker system df (${label})\n`);
   const r = runDocker(["system", "df"]);
   process.stdout.write(r.stdout);
   if (r.stderr) process.stderr.write(r.stderr);
+}
+
+function idsFrom(stdout: string): string[] {
+  return stdout
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 function main(): void {
@@ -70,25 +52,20 @@ function main(): void {
   }
 
   let failed = false;
-  const noteFailure = (args: string[], r: RunResult): void => {
+  const requireOk = (args: string[]): string => {
+    const r = runDocker(args);
+    if (r.status === 0) return r.stdout;
     process.stderr.write(
       `docker:clean: docker ${args.join(" ")} failed (${r.status})\n${r.stderr}`,
     );
     failed = true;
-  };
-
-  const remove = (args: string[]): string => {
-    const r = runDocker(args);
-    if (r.status === 0) return r.stdout;
-    if (isAbsentTarget(args, r.stderr)) return r.stdout;
-    noteFailure(args, r);
     return r.stdout;
   };
 
   systemDf("before");
 
   for (const h of dockerHarnesses()) {
-    removeHarness(h, remove);
+    removeHarness(h, requireOk);
   }
 
   for (const entry of permittedRemovalsForScript(
@@ -96,7 +73,7 @@ function main(): void {
     PERMITTED_UNSCOPED_REMOVALS,
   )) {
     process.stdout.write(`==> docker ${entry.argv.join(" ")}\n`);
-    remove([...entry.argv]);
+    requireOk([...entry.argv]);
   }
 
   systemDf("after");
@@ -105,19 +82,14 @@ function main(): void {
 
 function removeHarness(
   h: DockerHarness,
-  remove: (args: string[]) => string,
+  requireOk: (args: string[]) => string,
 ): void {
   if (h.composeProject != null) {
-    if (h.composeProject === DEVELOPER_STACK_PROJECT) {
-      process.stderr.write(
-        `docker:clean: target resolves to developer-stack project ${DEVELOPER_STACK_PROJECT}\n`,
-      );
-      process.exit(1);
-    }
     process.stdout.write(
       `==> Removing Compose project ${h.composeProject} (volumes)\n`,
     );
-    remove([
+    // Absent project: `compose -p <name> down -v` exits 0.
+    requireOk([
       "compose",
       "-p",
       h.composeProject,
@@ -127,36 +99,45 @@ function removeHarness(
       "--timeout",
       "5",
     ]);
-    const vols = remove([
+    const vols = requireOk([
       "volume",
       "ls",
       "-q",
       "--filter",
       `label=com.docker.compose.project=${h.composeProject}`,
     ]);
-    for (const id of vols.split("\n").map((s) => s.trim()).filter(Boolean)) {
-      remove(["volume", "rm", "-f", id]);
+    for (const id of idsFrom(vols)) {
+      requireOk(["volume", "rm", "-f", id]);
     }
-    const nets = remove([
+    const nets = requireOk([
       "network",
       "ls",
       "-q",
       "--filter",
       `label=com.docker.compose.project=${h.composeProject}`,
     ]);
-    for (const id of nets.split("\n").map((s) => s.trim()).filter(Boolean)) {
-      remove(["network", "rm", id]);
+    for (const id of idsFrom(nets)) {
+      requireOk(["network", "rm", id]);
     }
   }
 
   for (const name of h.containerNames) {
     process.stdout.write(`==> Removing container ${name} (with volumes)\n`);
-    remove(["rm", "-f", "-v", name]);
+    // Exact name match; remove only if present.
+    const found = requireOk([
+      "ps",
+      "-aq",
+      "--filter",
+      `name=^/${name}$`,
+    ]);
+    for (const id of idsFrom(found)) {
+      requireOk(["rm", "-f", "-v", id]);
+    }
   }
 
   for (const repo of h.imageRepositories) {
     process.stdout.write(`==> Removing images ${repo}:*\n`);
-    const listed = remove([
+    const listed = requireOk([
       "images",
       repo,
       "--format",
@@ -166,21 +147,20 @@ function removeHarness(
       .split("\n")
       .map((s) => s.trim())
       .filter((s) => s.length > 0 && !s.endsWith(":<none>"))) {
-      remove(["rmi", "-f", ref]);
+      requireOk(["rmi", "-f", ref]);
     }
-    const dangling = remove([
+  }
+
+  for (const label of h.imageLabels ?? []) {
+    process.stdout.write(`==> Removing images with label ${label}\n`);
+    const ids = requireOk([
       "images",
       "-q",
       "--filter",
-      `reference=${repo}`,
-      "--filter",
-      "dangling=true",
+      `label=${label}`,
     ]);
-    for (const id of dangling
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean)) {
-      remove(["rmi", "-f", id]);
+    for (const id of idsFrom(ids)) {
+      requireOk(["rmi", "-f", id]);
     }
   }
 }

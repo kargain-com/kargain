@@ -101,20 +101,21 @@ describe("local-docker policy", () => {
     assert.deepEqual(harnessCleanupDefects(trackedShellScripts()), []);
   });
 
-  it("2 constructed: cleanup without rm is red when pre-start rm remains", () => {
+  it("2 constructed: handler removing a differently named container is red then green", () => {
     const live = readFileSync(
       path.join(ROOT, "scripts/e2e-local.sh"),
       "utf8",
     );
     assert.equal(harnessCleanupDefect(live, E2E_HARNESS), null);
 
-    // Delete the rm from cleanup() only; leave the pre-start rm -f -v.
+    // Cleanup removes a different container; owner name still appears in the file.
     const red = live.replace(
-      /if \[\[ "\$\{STARTED_E2E_PG\}" == "1" \]\]; then\n    docker rm -f -v "\$\{E2E_PG_NAME\}" >\/dev\/null 2>&1 \|\| true\n  fi/,
-      'if [[ "${STARTED_E2E_PG}" == "1" ]]; then\n    :\n  fi',
+      /docker rm -f -v "\$\{E2E_PG_NAME\}" >\/dev\/null 2>&1 \|\| true\n  fi\n\}/,
+      'docker rm -f -v "other-container" >/dev/null 2>&1 || true\n  fi\n}',
     );
     assert.notEqual(red, live);
-    assert.match(red, /docker rm -f -v "\$\{E2E_PG_NAME\}"/);
+    assert.match(red, /kargain-e2e-pg/);
+    assert.match(red, /docker rm -f -v "other-container"/);
     assert.equal(
       harnessCleanupDefect(red, E2E_HARNESS),
       "harness trap handler does not remove owner-listed project or containers with -v",
