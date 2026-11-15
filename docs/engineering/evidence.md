@@ -17,15 +17,15 @@ A tier-3 conclusion must not be presented as a chain read. Derive contract facts
 
 ## Measuring what is live
 
-1. A change is done when it is merged with green CI; an uncommitted tree or an unpushed branch is not a result — only the accepted commit counts.
-2. A production claim needs `git show master:<path>` and a deploy record under [`docs/ops/deploys/`](../ops/deploys/), not a file on a working branch.
-3. A claim about what the user sees requires opening the component that renders it — output is not reading.
-5. Every count in an issue is a floor with its method; a larger measured set wins.
-10. The committed registry ([`lib/web3/commercial-active.ts`](../../lib/web3/commercial-active.ts)) is the only runtime source of addresses and program ids; deploy evidence files are deploy-machine asserts outside the runtime graph.
-11. A deployed binary is not its source: "program emits X" is proven by build identity (hash of the `.so` against the current source build).
-22. A key is sound only if it covers every input of what it identifies: environment, files read at run time, the build context, transitive imports, dependency versions. A framework's own hash is not an identity of the code that wrote the data ([ADR 0016](../adr/0016-one-writer-schema-per-indexing-identity.md#context) Context §3).
+- A change is done when it is merged with green CI; an uncommitted tree or an unpushed branch is not a result — only the accepted commit counts.
+- A production claim needs `git show master:<path>` and a deploy record under [`docs/ops/deploys/`](../ops/deploys/), not a file on a working branch.
+- A claim about what the user sees requires opening the component that renders it — output is not reading.
+- Every count in an issue is a floor with its method; a larger measured set wins.
+- The committed registry ([`lib/web3/commercial-active.ts`](../../lib/web3/commercial-active.ts)) is the only runtime source of addresses and program ids; deploy evidence files are deploy-machine asserts outside the runtime graph.
+- A deployed binary is not its source: "program emits X" is proven by build identity (hash of the `.so` against the current source build).
+- A key is sound only if it covers every input of what it identifies: environment, files read at run time, the build context, transitive imports, dependency versions. A framework's own hash is not an identity of the code that wrote the data ([ADR 0016](../adr/0016-one-writer-schema-per-indexing-identity.md#context) Context §3).
 
-Tip claims are measured after fetch against the published tip, never incremented from memory. Present-tense law must not be taken from session memory; measure before stating what is live. Historical facts go in past tense, marked superseded or denylisted — never rewritten as present law.
+Tip claims are measured after fetch against the published tip, never incremented from memory. Present-tense law must not be taken from chat or unpublished notes; measure before stating what is live. Historical facts go in past tense, marked superseded or denylisted — never rewritten as present law.
 
 ## Search discipline
 
@@ -42,22 +42,22 @@ An enumerated search list is a floor, never a ceiling. Before writing "N places 
 
 ## Empty results and readiness
 
-12. An empty result has three explanations — nothing to observe, nothing to observe with, nobody to call. Exclude the last two before concluding the first.
-13. Visited is not complete: an empty sample does not confirm catch-up, clear a backfill flag, or move a watermark.
-14. Silence is not health: progress facts live on the readiness surface (`/ready`, `/status`, `/read-path-ready`), not in logs.
+- An empty result has three explanations — nothing to observe, nothing to observe with, nobody to call. Exclude the last two before concluding the first.
+- Visited is not complete: an empty sample does not confirm catch-up, clear a backfill flag, or move a watermark.
+- Silence is not health: progress facts live on the readiness surface (`/ready`, `/status`, `/read-path-ready`), not in logs.
 
 ## Property, placement, and models
 
 - Name a predicate for the **property**, not for the use — a use-shaped name invites a sibling for every caller.
 - With no users, legacy is weight, not a requirement; ask whether anything needs migrating before designing a migration.
-- Do not reopen closed identity models or closed read-path / performance ships without a demonstrated hole.
+- Do not reopen closed identity models, or a finished browse-path or performance initiative, without a demonstrated hole.
 - When a guard is added, ask where else the same input arrives.
-- Deployment cost is a planning question, not an architectural one — fix the source, plan the wave separately.
+- Deployment cost is a planning question, not an architectural one — fix the source; schedule the deploy separately.
 - Quote the invariant into the brief; do not cite it from memory of its purpose. Where a document claims monotonicity or impossibility, check the arithmetic as written.
 - Presence is not placement: check phase and subject, not that a call appears somewhere. "Not shown" is not automatically "withheld" — check whether the model owes the information.
 - A shortfall from an under-scoped brief is rework now, not backlog.
-6. Reachability is decided by the type, not by field optionality (`string` includes `""`); express the invariant as a brand before removing a guard.
-16. A test against a home-made model tests the model: SQL is executed by the engine, not parsed with regular expressions.
-17. Comparing two outputs of the same generator is not parity.
-18. A class that does not name what exactly it covers explains everything and checks nothing.
-20. Two encodings of one fact is the recurring defect class — also as "invented value instead of a named absence" and "a guard that cannot fail".
+- Reachability is decided by the type, not by field optionality (`string` includes `""`); express the invariant as a brand before removing a guard.
+- A test against a home-made model tests the model: SQL is executed by the engine, not parsed with regular expressions.
+- Comparing two outputs of the same generator is not parity.
+- A class that does not name what exactly it covers explains everything and checks nothing.
+- Two encodings of one fact is the recurring defect class — also as "invented value instead of a named absence" and "a guard that cannot fail".

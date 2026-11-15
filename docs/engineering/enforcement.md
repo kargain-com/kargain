@@ -32,15 +32,15 @@ A green suite that pins the wrong thing certifies silence.
 3. **Stay red while the product is broken.** Deferred product state must not be asserted as the desired end-state; pin debt as an explicit failing or ratchet obligation, or leave it unpinned until the surface works.
 4. **Reachable from a `test:*` gate.** Update the choke-point registry when adding a new owner.
 
-21. A pin that fixes wrong behaviour is inverted in place, never deleted or renamed — so the ratchet remains named.
+- A pin that fixes wrong behaviour is inverted in place, never deleted or renamed — so the ratchet remains named.
 
-A new classification axis must not reuse an existing canonical axis name-shape (including Truth-layer `T#` forms). Parallel `T-…` labels for a different concern will be read as a continuation of the first.
+A new classification axis must not reuse an existing canonical axis name-shape. Parallel labels that look like a continuation of another axis will be read as one.
 
 ## Production vs test environment
 
-7. Never bend production to fit a test environment; fix types or the environment.
-19. Debt is not carried: debt created by a change is closed in the same change; inherited debt gets its own unit before the next phase.
-23. A state machine that changes production (deploy, migration, bridge, settlement) is proven by an exhaustive crash-injection test over its real owners, with planted defects turning it red, not by reasoning about the success path.
+- Never bend production to fit a test environment; fix types or the environment.
+- Debt is not carried: debt created by a change is closed in the same change; inherited debt gets its own unit before the next phase.
+- A state machine that changes production (deploy, migration, bridge, settlement) is proven by an exhaustive crash-injection test over its real owners, with planted defects turning it red, not by reasoning about the success path.
 
 ## Recurring defect classes
 

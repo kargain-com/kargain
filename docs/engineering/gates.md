@@ -9,6 +9,7 @@ Always run `pnpm build`, `pnpm typecheck`, and `pnpm lint` on every PR (see AGEN
 | Change type | Targeted group(s) |
 |-------------|-------------------|
 | Deploy plan, addresses, Nuclear ordering, error/ABI policy, module choke-point / import-ban policy, commerce Hardhat suites folded into verify, typecheck project membership | `pnpm test:verify` |
+| `.gitignore`, `.dockerignore`, and scripts that run Docker | `pnpm test:verify` (local-docker policy) |
 | Scripts / Hardhat / Node tooling under `scripts/` (beyond policy) | `pnpm typecheck` · relevant `test:*` |
 | Test-suite TypeScript under `test/` (beyond the owning group) | `pnpm typecheck` · owning `test:*` |
 | Commerce / settlement / challenge / consignment / claims presentation and policy | `pnpm test:commerce-ui` |
@@ -47,7 +48,7 @@ Deploy-path changes also prove deploy policy suites (`test:verify`, including su
 
 ## Reading gate results
 
-9. A gate is worth more than the review that produced it; keep and name the gate.
+- A gate is worth more than the review that produced it; keep and name the gate.
 
 Say what a test-count delta **is** (added / relocated / double-counted). A falling test count is not automatically a regression — state the arithmetic. Never quote a fixed test count; say "all passing" ([`AGENTS.md`](../../AGENTS.md#gates)).
 

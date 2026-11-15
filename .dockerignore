@@ -55,5 +55,7 @@ docs/ops/relay-strfry.md
 !docs/design-spec.md
 !docs/adr/
 !docs/adr/**
+!docs/engineering/
+!docs/engineering/**
 **/.DS_Store
 .git

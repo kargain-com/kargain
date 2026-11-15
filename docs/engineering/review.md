@@ -23,15 +23,15 @@ Demand the gate result even when the report reads as complete — an omitted gat
 
 ## Stop rules and commits
 
-8. A stop rule in a brief is a stop; one review → one commit; two units accepted separately are never one commit.
-4. A requirement that contradicts the canonical plan is a defect in the requirement; refusing with a reference to the plan is correct.
-15. Keys are never printed or committed; temporary CLI keypairs are deleted after use ([`AGENTS.md`](../../AGENTS.md#how-work-flows)).
-24. When a decision is superseded, every open issue and tracked document that relies on it is corrected in the same change.
-25. A decision names the future steps it must not block and shows that each is an extension, not a rewrite.
+- A stop rule in a brief is a stop; one review → one commit; two units accepted separately are never one commit.
+- A requirement that contradicts the canonical plan is a defect in the requirement; refusing with a reference to the plan is correct.
+- Keys are never printed or committed; temporary CLI keypairs are deleted after use ([`AGENTS.md`](../../AGENTS.md#how-work-flows)).
+- When a decision is superseded, every open issue and tracked document that relies on it is corrected in the same change.
+- A decision names the future steps it must not block and shows that each is an extension, not a rewrite.
 
 A behaviour-preserving refactor and a behaviour-changing feature ship as separate commits, refactor first — bisect, acceptance, and rollback require the split.
 
-Cosmetic or comment-only corrections to deployed contracts do not ship alone (solc metadata hashes the entire source); they ride with the next implementation change. Record the debt with an explicit trigger.
+A comment-only correction to a deployed contract is made in that contract's next implementation change; the issue that tracks it names that change.
 
 ## Documentation conflicts and references
 
