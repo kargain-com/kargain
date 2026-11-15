@@ -5,7 +5,6 @@
  * Plants are in-memory — never write a pragma into the scanned tree.
  */
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
@@ -16,19 +15,14 @@ import {
   findTsNocheckViolations,
   sourceHasTsNocheckPragma,
 } from "../lib/architecture/ts-nocheck.ts";
+import { listTrackedFiles } from "./policy-content-search.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function trackedTsFiles(): Array<{ path: string; source: string }> {
-  const out = execFileSync(
-    "git",
-    ["ls-files", "-z", "*.ts", "*.tsx"],
-    { cwd: ROOT, encoding: "buffer" },
+  const rels = listTrackedFiles(ROOT, ["*.ts", "*.tsx"]).filter((p) =>
+    /\.tsx?$/.test(p),
   );
-  const rels = out
-    .toString("utf8")
-    .split("\0")
-    .filter((p) => p.length > 0 && /\.tsx?$/.test(p));
   return rels.map((rel) => ({
     path: rel,
     source: readFileSync(path.join(ROOT, rel), "utf8"),

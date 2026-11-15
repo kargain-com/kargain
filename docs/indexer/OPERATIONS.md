@@ -324,6 +324,8 @@ The job runs `gates`, takes the server lock, checks out the pinned SHA and execs
 pnpm ponder:config
 ```
 
+Reports each commercial stack from the registry, then for every commercial chain (the same set `buildPonderRuntime` uses, localhost excluded) the provider count in `PONDER_RPC_URLS_<id>` and the `PONDER_GETLOGS_BLOCK_RANGE_<id>` window — or a refusal as `code` and `envKey`. It prints no RPC URL. It exits non-zero when any transport variable is refused, after printing every line.
+
 Contract addresses and start blocks resolve **per chain** from **`COMMERCIAL_ACTIVE[chainId]`** in [`lib/web3/commercial-active.ts`](../../lib/web3/commercial-active.ts) (SPEC §I.12.12). After a Nuclear redeploy, update `COMMERCIAL_ACTIVE` + SPEC I.9.x in git; the deploy of that commit switches schema.
 
 **VPS `.env` — infrastructure only (backfill profile):**

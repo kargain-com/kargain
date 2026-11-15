@@ -3,19 +3,30 @@
  * Host ripgrep is absent on GitHub Actions; Node owner is the only door.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import {
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  listTrackedFiles,
   searchContent,
   searchPaths,
   searchUnder,
 } from "./policy-content-search.ts";
 
 const TEST_DIR = join(fileURLToPath(new URL(".", import.meta.url)));
+const ROOT = join(TEST_DIR, "..");
 const OWNER = "policy-content-search.ts";
 const HOST_RG = /(?:execFileSync|spawnSync|execSync)\(\s*["']rg["']/;
 
@@ -39,10 +50,38 @@ function listTestTsFiles(dir: string = TEST_DIR): string[] {
 }
 
 describe("policy-content-search-policy", () => {
-  it("owner exports searchContent / searchPaths / searchUnder", () => {
+  it("owner exports searchContent / searchPaths / searchUnder / listTrackedFiles", () => {
     assert.equal(typeof searchContent, "function");
     assert.equal(typeof searchPaths, "function");
     assert.equal(typeof searchUnder, "function");
+    assert.equal(typeof listTrackedFiles, "function");
+  });
+
+  it("listTrackedFiles returns tracked paths only (includes this suite)", () => {
+    const tracked = listTrackedFiles(ROOT);
+    assert.ok(
+      tracked.includes("test/policy-content-search-policy.test.ts"),
+      "suite itself is tracked",
+    );
+    assert.equal(
+      tracked.some((p) => p.includes("\0")),
+      false,
+    );
+  });
+
+  it("listTrackedFiles excludes a tracked symlink in a temp repo", () => {
+    const root = mkdtempSync(join(tmpdir(), "kargain-pcs-symlink-"));
+    try {
+      execFileSync("git", ["init"], { cwd: root });
+      writeFileSync(join(root, "regular.txt"), "ok\n");
+      symlinkSync("regular.txt", join(root, "link.txt"));
+      execFileSync("git", ["add", "regular.txt", "link.txt"], { cwd: root });
+      const tracked = listTrackedFiles(root);
+      assert.deepEqual(tracked, ["regular.txt"]);
+      assert.equal(tracked.includes("link.txt"), false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("no test suite shells out to host rg (except never the owner)", () => {
