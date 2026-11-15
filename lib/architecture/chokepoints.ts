@@ -1117,6 +1117,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
     guardTests: ["ts-nocheck-policy.test.ts"],
   },
   {
+    id: "local-docker",
+    owner: "lib/architecture/local-docker.ts",
+    rule: "Scripts that run Docker are classified; harnesses trap and remove with volumes; unscoped prune only where assigned; .dockerignore ⊇ .gitignore build-context form",
+    guardTests: ["local-docker-policy.test.ts"],
+  },
+  {
     id: "svm-6d2-measure",
     owner: "svm/lab/scripts/measure-6d2.ts",
     rule: "6d-2 time-proof measure names H1–H4 and TransferV1 isolation A/B/C; policy pins names only (no live LiteSVM/validator gate)",

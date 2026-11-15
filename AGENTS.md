@@ -100,6 +100,13 @@ A result counts only on the commit being accepted. Never quote a fixed test coun
 | Layer suites | CI | All run in CI; [`.github/workflows/ci.yml`](.github/workflows/ci.yml) is the list |
 | `pnpm test:e2e` | local — attach output on PR head | Local E2E against a running Hardhat node |
 
+## Local Docker
+
+- **A script owns what it creates.** A script that starts containers uses its own Compose project (`kargain-<script>`) or uniquely named containers — never the developer's `kargain` project. On exit, success or failure (`trap … EXIT INT TERM`), it removes its containers with their volumes (`docker rm -f -v` / `docker compose -p <project> down -v`), its networks, and the images it built.
+- **A script never removes what it does not own.** `docker system prune`, `docker volume prune`, `docker image prune -a` and removal by unscoped filters are forbidden in scripts. The only unscoped removals are the build-cache and dangling-image cleanup of `pnpm docker:clean` and the server deploy retention of ADR 0016 §j.
+- **Local output stays out of images.** Every directory a script writes under the repository root is listed in `.gitignore`, and `.dockerignore` excludes everything `.gitignore` excludes: a build context holds tracked files only. Scratch clones, chain data and database data are written outside the repository.
+- **`pnpm docker:clean`** frees space safely: build cache older than 72 h, dangling images, and leftovers of `kargain-*` harness projects. It never touches the `kargain` project or its volumes. Run it after long local runs, or when `docker system df` shows reclaimable build cache.
+
 ## Documentation map (single sources)
 
 | Topic | Source |
