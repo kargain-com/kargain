@@ -1,10 +1,11 @@
 /**
  * LIVE stand proof returns must be chain observations — not expected constants.
  *
- * Rule (WORKING-METHOD §1 / §6): a value returned by a validator proof for the
- * outer suite to assert must come from a chain read in that proof. Expected
- * scenario constants (`PHASE.*`, `ERR.*`, boolean/number literals, pubkey
- * strings taken only from Keypair/PDA) belong in the proof's internal asserts.
+ * Rule (docs/engineering/evidence.md; docs/engineering/enforcement.md): a value
+ * returned by a validator proof for the outer suite to assert must come from a
+ * chain read in that proof. Expected scenario constants (`PHASE.*`, `ERR.*`,
+ * boolean/number literals, pubkey strings taken only from Keypair/PDA) belong
+ * in the proof's internal asserts.
  *
  * Scope: `svm/stand/live-*.ts` modules that `test/svm-stand.test.ts` imports.
  * Pin the rule on the final returned object shape — not one forbidden spelling.

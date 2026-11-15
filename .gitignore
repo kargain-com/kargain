@@ -78,6 +78,8 @@ svm/lab/test-ledger/
 !/docs/design-spec.md
 !/docs/adr/
 !/docs/adr/**
+!/docs/engineering/
+!/docs/engineering/**
 
 # OS junk — must follow docs/ops un-ignore or .DS_Store reappears as untracked
 **/.DS_Store

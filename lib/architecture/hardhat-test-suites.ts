@@ -6,7 +6,7 @@
  * `test:*` gates. This module is the only enumeration Hardhat is allowed to
  * run; the runner passes the list as explicit `testFiles`.
  *
- * Commerce contract suites may also appear in `test:verify` (WORKING-METHOD §8
+ * Commerce contract suites may also appear in `test:verify` (docs/engineering/gates.md
  * fold). Local E2E (`test/e2e-local.test.ts`) imports Hardhat but is owned by
  * `test:e2e` only — never by this list.
  */

@@ -3,7 +3,7 @@
  *
  * Canonical in-repo list (Cursor cannot read the system prompt). Maintainer
  * prose: docs/REFERENCE.md § Architectural choke-points. Enforcement idiom:
- * docs/WORKING-METHOD.md §6. Meta-test: test/architectural-enforcement-meta.test.ts.
+ * docs/engineering/enforcement.md. Meta-test: test/architectural-enforcement-meta.test.ts.
  *
  * A choke-point is a module (or small set) that owns one rule; consumers must
  * not re-implement or bypass it. Every entry names ≥1 guarding test that is

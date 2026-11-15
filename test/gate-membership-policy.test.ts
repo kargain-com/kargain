@@ -24,7 +24,7 @@ const PKG = JSON.parse(
   fs.readFileSync(path.join(ROOT, "package.json"), "utf8"),
 ) as { scripts: Record<string, string> };
 
-/** Mirrors WORKING-METHOD §8 gate map rows (targeted ship gates). */
+/** Mirrors docs/engineering/gates.md change-type rows (targeted ship gates). */
 export const TARGETED_GATE_SCRIPTS = [
   "test:verify",
   "test:commerce-ui",

@@ -121,6 +121,7 @@ A result counts only on the commit being accepted. Never quote a fixed test coun
 | Env | [`.env.example`](.env.example) |
 | On-chain operations | [`docs/ops/deploys/`](docs/ops/deploys/) |
 | Decisions | [`docs/adr/`](docs/adr/) |
+| Engineering method | [`docs/engineering/`](docs/engineering/) |
 
 Tool- or editor-specific configuration stays out of the repository. This file and the docs it links are the only rule files.
 
