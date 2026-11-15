@@ -3,7 +3,16 @@
  * Host ripgrep is absent on GitHub Actions; Node owner is the only door.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import {
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -58,6 +67,26 @@ describe("policy-content-search-policy", () => {
       tracked.some((p) => p.includes("\0")),
       false,
     );
+  });
+
+  it("listTrackedFiles excludes a tracked symlink in a temp repo", () => {
+    const root = mkdtempSync(join(tmpdir(), "kargain-pcs-symlink-"));
+    try {
+      execFileSync("git", ["init"], { cwd: root });
+      execFileSync("git", ["config", "user.email", "test@example.com"], {
+        cwd: root,
+      });
+      execFileSync("git", ["config", "user.name", "test"], { cwd: root });
+      writeFileSync(join(root, "regular.txt"), "ok\n");
+      symlinkSync("regular.txt", join(root, "link.txt"));
+      execFileSync("git", ["add", "regular.txt", "link.txt"], { cwd: root });
+      execFileSync("git", ["commit", "-m", "plant"], { cwd: root });
+      const tracked = listTrackedFiles(root);
+      assert.deepEqual(tracked, ["regular.txt"]);
+      assert.equal(tracked.includes("link.txt"), false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("no test suite shells out to host rg (except never the owner)", () => {

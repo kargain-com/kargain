@@ -5,8 +5,7 @@
  * and docs/ops/deploys/** / this suite.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -22,20 +21,21 @@ import { listTrackedFiles } from "./policy-content-search.ts";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PONDER_ENV = join(ROOT, "scripts/lib/ponder-env.ts");
 const SELF_PATH = "test/ponder-rpc-runtime-policy.test.ts";
+const PLANT_SCRIPT = "scripts/deploy.ts";
 
 const HUB = 84532;
 const SPOKE = 11155111;
 
 const SINGULAR_RPC_RE = /PONDER_RPC_URL_(\d+)\b/g;
 
-export type SingularPonderRpcUrlHit = {
+type SingularPonderRpcUrlHit = {
   path: string;
   line: number;
   key: string;
 };
 
 /** Allowed singular keys = census `local` entries matching PONDER_RPC_URL_<digits>. */
-export function allowedLocalSingularRpcKeys(
+function allowedLocalSingularRpcKeys(
   census: typeof PONDER_INDEXING_ENV_CENSUS = PONDER_INDEXING_ENV_CENSUS,
 ): ReadonlySet<string> {
   return new Set(
@@ -45,7 +45,7 @@ export function allowedLocalSingularRpcKeys(
   );
 }
 
-export function findSingularPonderRpcUrlViolations(
+function findSingularPonderRpcUrlViolations(
   files: ReadonlyArray<{ path: string; source: string }>,
   opts: {
     allowedKeys: ReadonlySet<string>;
@@ -78,6 +78,26 @@ function trackedSources(
     path: rel,
     source: readFileSync(join(ROOT, rel), "utf8"),
   }));
+}
+
+function withPlantedKey(
+  files: ReadonlyArray<{ path: string; source: string }>,
+  path: string,
+  key: string,
+): {
+  planted: Array<{ path: string; source: string }>;
+  plantLine: number;
+} {
+  const base = files.find((f) => f.path === path);
+  assert.ok(base, `tracked set must include ${path}`);
+  const plantLine = 1;
+  const plantedSource = `const __plant = process.env.${key};\n${base.source}`;
+  return {
+    planted: files.map((f) =>
+      f.path === path ? { path, source: plantedSource } : f,
+    ),
+    plantLine,
+  };
 }
 
 function withEnv<T>(env: NodeJS.ProcessEnv, fn: () => T): T {
@@ -213,7 +233,16 @@ describe("ponder-rpc-runtime-policy", () => {
 
   it("tracked tree: no singular PONDER_RPC_URL_<digits> except census local", () => {
     const allowed = allowedLocalSingularRpcKeys();
-    const files = trackedSources(listTrackedFiles(ROOT));
+    const tracked = listTrackedFiles(ROOT);
+    assert.ok(
+      tracked.includes("scripts/deploy.ts"),
+      "scanned set must include scripts/deploy.ts",
+    );
+    assert.ok(
+      tracked.includes("scripts/ponder-config.ts"),
+      "scanned set must include scripts/ponder-config.ts",
+    );
+    const files = trackedSources(tracked);
     assert.deepEqual(
       findSingularPonderRpcUrlViolations(files, {
         allowedKeys: allowed,
@@ -223,55 +252,49 @@ describe("ponder-rpc-runtime-policy", () => {
     );
   });
 
-  it("negative: planted PONDER_RPC_URL_84532 in temp tracked copy is red then green", () => {
+  it("negative: planted PONDER_RPC_URL_84532 in tracked deploy.ts copy is red then green", () => {
     const allowed = allowedLocalSingularRpcKeys();
-    const dir = mkdtempSync(join(tmpdir(), "kargain-singular-rpc-"));
-    try {
-      const rel = "scripts/planted-singular-rpc.ts";
-      const plantedSource =
-        'const x = process.env.PONDER_RPC_URL_84532 ?? "";\n';
-      writeFileSync(join(dir, "planted.ts"), plantedSource);
-      const planted = [{ path: rel, source: plantedSource }];
-      const hits = findSingularPonderRpcUrlViolations(planted, {
+    const tracked = listTrackedFiles(ROOT);
+    assert.ok(tracked.includes(PLANT_SCRIPT));
+    const files = trackedSources(tracked);
+    const { planted, plantLine } = withPlantedKey(
+      files,
+      PLANT_SCRIPT,
+      "PONDER_RPC_URL_84532",
+    );
+    assert.deepEqual(
+      findSingularPonderRpcUrlViolations(planted, {
         allowedKeys: allowed,
         selfPath: SELF_PATH,
-      });
-      assert.equal(hits.length, 1);
-      assert.equal(hits[0]?.path, rel);
-      assert.equal(hits[0]?.line, 1);
-      assert.equal(hits[0]?.key, "PONDER_RPC_URL_84532");
-
-      const clean = [
-        { path: rel, source: 'const x = process.env.PONDER_RPC_URLS_84532 ?? "";\n' },
-      ];
-      assert.deepEqual(
-        findSingularPonderRpcUrlViolations(clean, {
-          allowedKeys: allowed,
-          selfPath: SELF_PATH,
-        }),
-        [],
-      );
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+      }),
+      [{ path: PLANT_SCRIPT, line: plantLine, key: "PONDER_RPC_URL_84532" }],
+    );
+    assert.deepEqual(
+      findSingularPonderRpcUrlViolations(files, {
+        allowedKeys: allowed,
+        selfPath: SELF_PATH,
+      }),
+      [],
+    );
   });
 
-  it("negative: planted PONDER_RPC_URL_8453 (id not in registry) is red", () => {
+  it("negative: planted PONDER_RPC_URL_8453 in tracked deploy.ts copy is red", () => {
     const allowed = allowedLocalSingularRpcKeys();
-    const planted = [
-      {
-        path: "scripts/planted-odd-id.ts",
-        source: "export const k = \"PONDER_RPC_URL_8453\";\n",
-      },
-    ];
-    const hits = findSingularPonderRpcUrlViolations(planted, {
-      allowedKeys: allowed,
-      selfPath: SELF_PATH,
-    });
-    assert.equal(hits.length, 1);
-    assert.equal(hits[0]?.path, "scripts/planted-odd-id.ts");
-    assert.equal(hits[0]?.line, 1);
-    assert.equal(hits[0]?.key, "PONDER_RPC_URL_8453");
+    const tracked = listTrackedFiles(ROOT);
+    assert.ok(tracked.includes(PLANT_SCRIPT));
+    const files = trackedSources(tracked);
+    const { planted, plantLine } = withPlantedKey(
+      files,
+      PLANT_SCRIPT,
+      "PONDER_RPC_URL_8453",
+    );
+    assert.deepEqual(
+      findSingularPonderRpcUrlViolations(planted, {
+        allowedKeys: allowed,
+        selfPath: SELF_PATH,
+      }),
+      [{ path: PLANT_SCRIPT, line: plantLine, key: "PONDER_RPC_URL_8453" }],
+    );
   });
 
   it("negative: maxRequestsPerSecond and ponder-max-rps are gone", () => {

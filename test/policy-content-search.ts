@@ -5,30 +5,41 @@
  * shell out to it — they call this module instead (line-oriented, default-rg
  * semantics unless multiline is set).
  *
- * Tracked-file listing has one owner: {@link listTrackedFiles} (`git ls-files`).
- * Policies that scan the tree must use it and never open untracked or gitignored files.
+ * Tracked-file listing has one owner: {@link listTrackedFiles} (`git ls-files -s`).
+ * Policies that scan the tree must use it and never open untracked or gitignored
+ * files. Symlinks (`120000`) and gitlinks (`160000`) are excluded so a read of a
+ * listed path cannot follow into an untracked or gitignored target.
  */
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 
+const REGULAR_FILE_MODES = new Set(["100644", "100755"]);
+
 /**
- * Sole tracked-file listing owner (`git ls-files -z`).
- * Returns repository-relative paths. Never walks the working tree.
+ * Sole tracked-file listing owner (`git ls-files -s -z`).
+ * Returns repository-relative paths of regular files only (modes 100644 / 100755).
+ * Never walks the working tree; never returns symlinks or gitlinks.
  */
 export function listTrackedFiles(
   cwd: string,
   pathspecs: readonly string[] = [],
 ): string[] {
-  const out = execFileSync("git", ["ls-files", "-z", ...pathspecs], {
+  const out = execFileSync("git", ["ls-files", "-s", "-z", ...pathspecs], {
     cwd,
     encoding: "buffer",
   });
-  return out
-    .toString("utf8")
-    .split("\0")
-    .filter((p) => p.length > 0);
+  const paths: string[] = [];
+  for (const entry of out.toString("utf8").split("\0")) {
+    if (entry.length === 0) continue;
+    const tab = entry.indexOf("\t");
+    if (tab < 0) continue;
+    const mode = entry.slice(0, tab).split(" ", 1)[0];
+    if (!mode || !REGULAR_FILE_MODES.has(mode)) continue;
+    paths.push(entry.slice(tab + 1));
+  }
+  return paths;
 }
 
 export type ContentSearchOpts = {
