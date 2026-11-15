@@ -9,9 +9,9 @@ Public Solana RPC is not a production history guarantee. If a projection rebuild
 The append-only schema **`kargain_svm_raw` is never dropped**. The projection schema is dropped and replayed from raw (no RPC).
 
 - Raw INSERT owner: [`svm-ingest/svm-raw-writer.ts`](../../svm-ingest/svm-raw-writer.ts).
-- Rebuild: [`svm-ingest/projection-rebuild.ts`](../../svm-ingest/projection-rebuild.ts) (`rebuildProjectionFromRaw`); projection drop in the projection writer path.
+- Rebuild: [`svm-ingest/projection-rebuild.ts`](../../svm-ingest/projection-rebuild.ts) (`rebuildProjectionFromRaw`); projection drop: `dropSvmProjectionSchema` in [`svm-ingest/svm-projection-writer.ts`](../../svm-ingest/svm-projection-writer.ts).
 - Choke-points: `svm-raw-ingest` and `svm-projection-replay-digest` in [`lib/architecture/chokepoints.ts`](../../lib/architecture/chokepoints.ts).
-- SPEC: [§13.12](../contracts/SPEC.md#i13-non-evm-commercial-chains-and-the-protocol-parameter-model-normative) (projection rebuild from raw). Ponder retention must not treat raw as disposable ([ADR 0016](./0016-one-writer-schema-per-indexing-identity.md)).
+- SPEC: [§I.13.12](../contracts/SPEC.md#1312-indexer-projection-rebuild) (projection rebuild from raw). Ponder retention must not treat raw as disposable ([ADR 0016](./0016-one-writer-schema-per-indexing-identity.md)).
 
 ## One rejected alternative and why
 

@@ -7,7 +7,7 @@ Multi-chain custody needs one topology and one trust rule. Mesh peer pathways an
 ## Decision
 
 - The bridge is **star-only** through the gateway hub: hub↔spoke only; spoke↔spoke is two hops via the hub ([SPEC §I.12](../contracts/SPEC.md#i12-multi-chain-architecture-normative)).
-- **Trust never survives a crossing**: every landing is UNVERIFIED in both directions ([SPEC §12.3](../contracts/SPEC.md#123-trust-never-survives-a-crossing-supersedes-75-preserved-on-return)).
+- **Trust never survives a crossing**: every landing is UNVERIFIED in both directions ([SPEC §I.12.3](../contracts/SPEC.md#123-trust-never-survives-a-crossing-supersedes-75-preserved-on-return)).
 - Owners: [`lib/web3/bridge/bridge-config.ts`](../../lib/web3/bridge/bridge-config.ts) (`admitBridgeCrossingRoute`, `resolveBridgeRoute`); choke-point `bridge-route-resolver` in [`lib/architecture/chokepoints.ts`](../../lib/architecture/chokepoints.ts).
 
 ## One rejected alternative and why

@@ -10,7 +10,9 @@ The product key is the **commercial namespace** (`KargainNamespace`), never bare
 
 - For EVM commercial rows today, the namespace number equals the EIP-155 chain id.
 - For non-EVM commercial networks, `namespace = 2_000_000_000 + LayerZero EID` ([SPEC §I.13](../contracts/SPEC.md#i13-non-evm-commercial-chains-and-the-protocol-parameter-model-normative)).
-- Owners: [`lib/web3/kargain-namespace.ts`](../../lib/web3/kargain-namespace.ts) (`NON_EVM_NAMESPACE_MIN`, `namespaceFromLayerZeroEid`, `mintKargainNamespace`); registry rows in [`lib/web3/commercial-active.ts`](../../lib/web3/commercial-active.ts).
+- Brand and band: [`lib/web3/kargain-namespace.ts`](../../lib/web3/kargain-namespace.ts) (`KargainNamespace`, `NON_EVM_NAMESPACE_MIN`, `mintKargainNamespace`).
+- EID → namespace owner: [`lib/web3/commercial-eid-namespace.ts`](../../lib/web3/commercial-eid-namespace.ts) (`commercialNamespaceFromLayerZeroEid`); unknown EID fails closed.
+- Registry rows: [`lib/web3/commercial-active.ts`](../../lib/web3/commercial-active.ts).
 - Choke-point: `layerzero-eid-namespace` in [`lib/architecture/chokepoints.ts`](../../lib/architecture/chokepoints.ts).
 
 ## One rejected alternative and why
