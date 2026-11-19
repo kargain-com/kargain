@@ -1150,6 +1150,12 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
       "ponder-rpc-runtime-policy.test.ts",
     ],
   },
+  {
+    id: "env-example-coverage",
+    owner: "scripts/lib/env-example-coverage.ts · .env.example",
+    rule: "Every process.env key or prefix read under app/components/hooks/lib/src/svm-ingest appears in .env.example as KEY= or # KEY= (prefixes as KEY_<id>=); planted missing reads fail the coverage policy",
+    guardTests: ["env-example-coverage-policy.test.ts"],
+  },
 ] as const;
 
 export const ARCHITECTURAL_CHOKEPOINT_IDS: readonly string[] =
