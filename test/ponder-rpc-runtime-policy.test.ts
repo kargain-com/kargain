@@ -127,8 +127,14 @@ function withEnv<T>(env: NodeJS.ProcessEnv, fn: () => T): T {
   }
 }
 
+const FIXTURE_DATABASE_URL =
+  "postgresql://ponder:test@127.0.0.1:5432/kargain_ponder";
+
 function commercialEnv(extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return {
+    DATABASE_URL: FIXTURE_DATABASE_URL,
+    PONDER_DATABASE_URL: undefined,
+    DATABASE_PRIVATE_URL: undefined,
     [`PONDER_RPC_URLS_${HUB}`]: "https://base-sepolia.gateway.tenderly.co",
     [`PONDER_RPC_URLS_${SPOKE}`]: "https://rpc.sepolia.ethpandaops.io",
     [`PONDER_GETLOGS_BLOCK_RANGE_${HUB}`]: "50000",
@@ -160,6 +166,58 @@ describe("ponder-rpc-runtime-policy", () => {
         false,
       );
     });
+  });
+
+  it("negative: non-local with only DATABASE_PRIVATE_URL refuses missing_database_url", () => {
+    assert.throws(
+      () =>
+        withEnv(
+          commercialEnv({
+            DATABASE_URL: undefined,
+            DATABASE_PRIVATE_URL:
+              "postgresql://ponder:private@127.0.0.1:5432/kargain_ponder",
+          }),
+          () => buildPonderRuntime(),
+        ),
+      /missing_database_url/,
+    );
+  });
+
+  it("negative: non-local with only PONDER_DATABASE_URL refuses missing_database_url", () => {
+    assert.throws(
+      () =>
+        withEnv(
+          commercialEnv({
+            DATABASE_URL: undefined,
+            PONDER_DATABASE_URL:
+              "postgresql://ponder:ponder@127.0.0.1:5432/kargain_ponder",
+          }),
+          () => buildPonderRuntime(),
+        ),
+      /missing_database_url/,
+    );
+  });
+
+  it("DATABASE_URL yields postgres with exactly that connection string", () => {
+    withEnv(commercialEnv(), () => {
+      const { database } = buildPonderRuntime();
+      assert.equal(database.kind, "postgres");
+      if (database.kind !== "postgres") return;
+      assert.equal(database.connectionString, FIXTURE_DATABASE_URL);
+    });
+  });
+
+  it("local without DATABASE_URL yields pglite", () => {
+    withEnv(
+      commercialEnv({
+        DATABASE_URL: undefined,
+        PONDER_ENABLE_LOCAL: "1",
+      }),
+      () => {
+        const { database } = buildPonderRuntime();
+        assert.equal(database.kind, "pglite");
+      },
+    );
   });
 
   it("negative: missing getLogs window refuses by name", () => {
