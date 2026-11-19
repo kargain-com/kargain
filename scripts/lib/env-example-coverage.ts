@@ -14,7 +14,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import {
-  scanProcessEnvReads,
+  scanProcessEnvReadsInSources,
   type ProcessEnvRead,
 } from "./ponder-indexing-env-census.ts";
 
@@ -162,17 +162,17 @@ export function walkEnvCoverageAppRoot(
   return out;
 }
 
-/** Scan `process.env` reads in an explicit relative file list. */
+/** Scan `process.env` reads in an explicit relative file list (one program). */
 export function scanEnvReadsInFiles(
   rootDir: string,
   files: readonly string[],
 ): ProcessEnvRead[] {
-  const reads: ProcessEnvRead[] = [];
+  const entries: { file: string; source: string }[] = [];
   for (const rel of files) {
     const abs = join(rootDir, rel);
     if (!existsSync(abs) || !statSync(abs).isFile()) continue;
     if (!/\.(ts|tsx|mts|cts|js|mjs|cjs)$/.test(rel)) continue;
-    reads.push(...scanProcessEnvReads(rel, readFileSync(abs, "utf8")));
+    entries.push({ file: rel.replace(/\\/g, "/"), source: readFileSync(abs, "utf8") });
   }
-  return reads;
+  return scanProcessEnvReadsInSources(entries);
 }

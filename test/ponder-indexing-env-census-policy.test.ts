@@ -16,6 +16,7 @@ import {
   indexingEnvCensusDefects,
   ponderDeployEnvRefusal,
   scanProcessEnvReads,
+  scanProcessEnvReadsInSources,
   type ProcessEnvRead,
 } from "../scripts/lib/ponder-indexing-env-census.ts";
 
@@ -25,8 +26,11 @@ const REMOVED_START_BLOCK_KEY = "PONDER_START_BLOCK";
 
 function liveReads(): ProcessEnvRead[] {
   const { indexing } = collectPonderGraph(ROOT);
-  return indexing.flatMap((rel) =>
-    scanProcessEnvReads(rel, readFileSync(join(ROOT, rel), "utf8")),
+  return scanProcessEnvReadsInSources(
+    indexing.map((rel) => ({
+      file: rel,
+      source: readFileSync(join(ROOT, rel), "utf8"),
+    })),
   );
 }
 
@@ -146,6 +150,94 @@ describe("ponder-indexing-env-census-policy", () => {
         ),
       ),
       ["Q", "opaque"],
+    );
+  });
+
+  it("scan (binder): shorthand, strict options forward, param destructure, process forms", () => {
+    const label = (reads: ProcessEnvRead[]) =>
+      reads.map((r) =>
+        r.kind === "key" ? r.key : r.kind === "prefix" ? `${r.prefix}*` : "opaque",
+      );
+
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          "function f(env = process.env) { return { env }; }\n",
+        ),
+      ),
+      ["opaque"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          "function f(env = process.env) { return h({ env }); }\n",
+        ),
+      ),
+      ["opaque"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          "const env = process.env; export const cfg = { env };\n",
+        ),
+      ),
+      ["opaque"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          [
+            "function g(o) { const e = o?.env ?? process.env; return h(o); }",
+            "function f(env = process.env) { return g({ env }); }",
+          ].join("\n"),
+        ),
+      ),
+      ["opaque"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          [
+            "function g(o) { const e = o?.env ?? process.env; return o!.env.SECRET2; }",
+            "function f(env = process.env) { return g({ env }); }",
+          ].join("\n"),
+        ),
+      ),
+      ["opaque"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          "function f({ A } = process.env) { return A; }\n",
+        ),
+      ),
+      ["A"],
+    );
+    assert.deepEqual(
+      label(scanProcessEnvReads("x.ts", 'process["env"].X1;\n')),
+      ["X1"],
+    );
+    assert.deepEqual(
+      label(scanProcessEnvReads("x.ts", "globalThis.process.env.X2;\n")),
+      ["X2"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads("x.ts", "const { env } = process; env.X3;\n"),
+      ),
+      ["opaque"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads("x.ts", "const p = process; p.env.X4;\n"),
+      ),
+      ["opaque"],
     );
   });
 

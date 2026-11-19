@@ -73,14 +73,37 @@ function unwrap(expr: ts.Expression): ts.Expression {
   }
 }
 
+/** `process` or `globalThis.process` (unresolved global root). */
+function isProcessRootExpr(expr: ts.Expression): boolean {
+  const e = unwrap(expr);
+  if (ts.isIdentifier(e) && e.text === "process") return true;
+  if (
+    ts.isPropertyAccessExpression(e) &&
+    e.name.text === "process" &&
+    ts.isIdentifier(e.expression) &&
+    e.expression.text === "globalThis"
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** `process.env` / `process['env']` / `globalThis.process.env` / `…['env']`. */
 function isProcessEnvExpr(expr: ts.Expression): boolean {
   const e = unwrap(expr);
-  return (
-    ts.isPropertyAccessExpression(e) &&
-    e.name.text === "env" &&
-    ts.isIdentifier(e.expression) &&
-    e.expression.text === "process"
-  );
+  if (ts.isPropertyAccessExpression(e) && e.name.text === "env") {
+    return isProcessRootExpr(e.expression);
+  }
+  if (ts.isElementAccessExpression(e)) {
+    const arg = unwrap(e.argumentExpression);
+    if (
+      (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) &&
+      arg.text === "env"
+    ) {
+      return isProcessRootExpr(e.expression);
+    }
+  }
+  return false;
 }
 
 /** True when `expr` is `process.env` or `… ?? process.env` (rightmost). */
@@ -169,37 +192,77 @@ function destructureObjectPattern(
   }
 }
 
-/** True when `body` binds `param.env` / `param?.env` with `?? process.env`. */
-function bodyConsumesOptionsEnv(
+/**
+ * Options-env forward target: body binds `param?.env ?? process.env`, every
+ * reference to `param` is a property access, and the only `.env` access is
+ * that left-hand side.
+ */
+function bodyIsStrictOptionsEnvForward(
   body: ts.Node | undefined,
   paramName: string,
 ): boolean {
   if (!body) return false;
-  let found = false;
-  const isOptsEnvAccess = (expr: ts.Expression): boolean => {
-    const left = unwrap(expr);
-    return (
-      ts.isPropertyAccessExpression(left) &&
-      left.name.text === "env" &&
-      ts.isIdentifier(left.expression) &&
-      left.expression.text === paramName
-    );
-  };
+  let sawEnvFallback = false;
+  let ok = true;
+
   const visit = (node: ts.Node): void => {
-    if (found) return;
-    if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken &&
-      isProcessEnvExpr(node.right) &&
-      isOptsEnvAccess(node.left)
-    ) {
-      found = true;
+    if (!ok) return;
+
+    // Identifier use of the param
+    if (ts.isIdentifier(node) && node.text === paramName) {
+      const parent = node.parent;
+      // Declaration / type positions
+      if (ts.isParameter(parent) && parent.name === node) return;
+      if (ts.isBindingElement(parent) && parent.name === node) return;
+      // Must be the base of a property access (possibly under NonNull)
+      if (
+        ts.isPropertyAccessExpression(parent) &&
+        parent.expression === node
+      ) {
+        if (parent.name.text === "env") {
+          // Allowed only as left of ?? process.env
+          const grand = parent.parent;
+          const okFallback =
+            ts.isBinaryExpression(grand) &&
+            grand.operatorToken.kind ===
+              ts.SyntaxKind.QuestionQuestionToken &&
+            grand.left === parent &&
+            isProcessEnvExpr(grand.right);
+          if (okFallback) sawEnvFallback = true;
+          else ok = false;
+        }
+        // other property names (eid, namespaceEnv, …) are fine
+        return;
+      }
+      if (
+        ts.isNonNullExpression(parent) &&
+        parent.expression === node &&
+        ts.isPropertyAccessExpression(parent.parent) &&
+        parent.parent.expression === parent
+      ) {
+        // o!.env — same rule as .env
+        if (parent.parent.name.text === "env") {
+          const grand = parent.parent.parent;
+          const okFallback =
+            ts.isBinaryExpression(grand) &&
+            grand.operatorToken.kind ===
+              ts.SyntaxKind.QuestionQuestionToken &&
+            grand.left === parent.parent &&
+            isProcessEnvExpr(grand.right);
+          if (okFallback) sawEnvFallback = true;
+          else ok = false;
+        }
+        return;
+      }
+      // Any other use (pass-through, return, …) disqualifies
+      ok = false;
       return;
     }
+
     ts.forEachChild(node, visit);
   };
   visit(body);
-  return found;
+  return ok && sawEnvFallback;
 }
 
 function hasExportModifier(node: ts.Node): boolean {
@@ -265,8 +328,21 @@ function isQuietProcessEnvBindingSite(sourceExpr: ts.Expression): boolean {
     ) {
       return true;
     }
+    // Parameter destructuring default: `function f({ A } = process.env)`
+    if (
+      ts.isParameter(parent) &&
+      parent.initializer === cur &&
+      ts.isObjectBindingPattern(parent.name)
+    ) {
+      return true;
+    }
     return false;
   }
+}
+
+/** Non-env `process.*` members — not env reads. */
+function isIgnoredProcessMember(name: string): boolean {
+  return name !== "env";
 }
 
 function resolveSymbol(
@@ -361,7 +437,7 @@ function parameterIsEnvForwardTarget(
   }
   if (
     ts.isIdentifier(param.name) &&
-    bodyConsumesOptionsEnv(fn.body, param.name.text)
+    bodyIsStrictOptionsEnvForward(fn.body, param.name.text)
   ) {
     return "options";
   }
@@ -377,7 +453,9 @@ function objectLiteralForwardsEnvAlias(
   if (!ts.isObjectLiteralExpression(u)) return false;
   for (const prop of u.properties) {
     if (ts.isShorthandPropertyAssignment(prop)) {
-      const sym = resolveSymbol(checker, prop.name);
+      const sym =
+        checker.getShorthandAssignmentValueSymbol(prop) ??
+        resolveSymbol(checker, prop.name);
       if (sym && aliases.has(sym) && !aliases.get(sym)!.paramProp) return true;
     }
     if (
@@ -395,45 +473,61 @@ function objectLiteralForwardsEnvAlias(
   return false;
 }
 
-function createScanProgram(
-  file: string,
-  source: string,
-): { program: ts.Program; sf: ts.SourceFile } {
-  const fileName = file.replace(/\\/g, "/");
-  const options: ts.CompilerOptions = {
-    noResolve: true,
-    noLib: true,
-    noEmit: true,
-    target: ts.ScriptTarget.Latest,
-    module: ts.ModuleKind.ESNext,
-    allowJs: true,
-    jsx: fileName.endsWith(".tsx") ? ts.JsxEmit.React : undefined,
+const SCAN_COMPILER_OPTIONS: ts.CompilerOptions = {
+  noResolve: true,
+  noLib: true,
+  noEmit: true,
+  target: ts.ScriptTarget.Latest,
+  module: ts.ModuleKind.ESNext,
+  allowJs: true,
+};
+
+function createScanProgramForSources(
+  entries: ReadonlyArray<{ file: string; source: string }>,
+): { program: ts.Program; files: Map<string, ts.SourceFile> } {
+  const sources = new Map<string, string>();
+  const rootNames: string[] = [];
+  for (const { file, source } of entries) {
+    const fileName = file.replace(/\\/g, "/");
+    sources.set(fileName, source);
+    rootNames.push(fileName);
+  }
+  const host = ts.createCompilerHost(SCAN_COMPILER_OPTIONS, true);
+  const created = new Map<string, ts.SourceFile>();
+  host.getSourceFile = (name, languageVersion) => {
+    const norm = name.replace(/\\/g, "/");
+    const src = sources.get(norm) ?? sources.get(name);
+    if (src == null) return undefined;
+    let sf = created.get(norm);
+    if (!sf) {
+      sf = ts.createSourceFile(
+        norm,
+        src,
+        languageVersion,
+        /*setParentNodes*/ true,
+        norm.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+      );
+      created.set(norm, sf);
+    }
+    return sf;
   };
-  const sf = ts.createSourceFile(
-    fileName,
-    source,
-    ts.ScriptTarget.Latest,
-    /*setParentNodes*/ true,
-    fileName.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-  );
-  const host = ts.createCompilerHost(options, true);
-  host.getSourceFile = (name) =>
-    name === fileName || name.replace(/\\/g, "/") === fileName ? sf : undefined;
   host.fileExists = (name) =>
-    name === fileName || name.replace(/\\/g, "/") === fileName;
+    sources.has(name.replace(/\\/g, "/")) || sources.has(name);
   host.readFile = (name) =>
-    name === fileName || name.replace(/\\/g, "/") === fileName
-      ? source
-      : undefined;
+    sources.get(name.replace(/\\/g, "/")) ?? sources.get(name);
   host.writeFile = () => {};
   const program = ts.createProgram({
-    rootNames: [fileName],
-    options,
+    rootNames,
+    options: SCAN_COMPILER_OPTIONS,
     host,
   });
-  const bound = program.getSourceFile(fileName);
-  if (!bound) throw new Error(`scanProcessEnvReads: missing source file ${fileName}`);
-  return { program, sf: bound };
+  const files = new Map<string, ts.SourceFile>();
+  for (const name of rootNames) {
+    const sf = program.getSourceFile(name);
+    if (!sf) throw new Error(`scanProcessEnvReads: missing source file ${name}`);
+    files.set(name, sf);
+  }
+  return { program, files };
 }
 
 function collectEnvAliases(
@@ -463,6 +557,50 @@ function collectEnvAliases(
   return aliases;
 }
 
+/**
+ * Symbols bound from the process root outside direct env-source forms:
+ * `const p = process` → processRoot; `const { env } = process` → opaqueEnv.
+ */
+function collectProcessEscapes(
+  sf: ts.SourceFile,
+  checker: ts.TypeChecker,
+): {
+  processRoots: Set<ts.Symbol>;
+  opaqueEnvs: Set<ts.Symbol>;
+} {
+  const processRoots = new Set<ts.Symbol>();
+  const opaqueEnvs = new Set<ts.Symbol>();
+  const walk = (node: ts.Node): void => {
+    if (ts.isVariableDeclaration(node) && node.initializer) {
+      if (ts.isIdentifier(node.name) && isProcessRootExpr(node.initializer)) {
+        const sym = checker.getSymbolAtLocation(node.name);
+        if (sym) processRoots.add(sym);
+      }
+      if (
+        ts.isObjectBindingPattern(node.name) &&
+        isProcessRootExpr(node.initializer)
+      ) {
+        for (const el of node.name.elements) {
+          if (el.dotDotDotToken) continue;
+          if (!ts.isIdentifier(el.name)) continue;
+          const key = el.propertyName
+            ? ts.isIdentifier(el.propertyName)
+              ? el.propertyName.text
+              : null
+            : el.name.text;
+          if (key === "env") {
+            const sym = checker.getSymbolAtLocation(el.name);
+            if (sym) opaqueEnvs.add(sym);
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, walk);
+  };
+  walk(sf);
+  return { processRoots, opaqueEnvs };
+}
+
 function isDeclarationNamePosition(id: ts.Identifier): boolean {
   const p = id.parent;
   if (ts.isVariableDeclaration(p) && p.name === id) return true;
@@ -480,28 +618,40 @@ function isDeclarationNamePosition(id: ts.Identifier): boolean {
   return false;
 }
 
-/**
- * Every `process.env` occurrence in `source`, plus named reads on bindings
- * initialised from `process.env`. Scoping and shadowing come from the
- * TypeScript binder (`createProgram` + `getSymbolAtLocation`), not a hand
- * scope stack. Destructuring yields named keys (or opaque for
- * rest/computed/nested). Any other alias use is opaque, except same-file
- * forwarding to a callee whose matching parameter is itself an env binding.
- */
-export function scanProcessEnvReads(
+function emitDestructureFromEnvSource(
+  name: ts.BindingName,
+  initializer: ts.Expression,
   file: string,
-  source: string,
+  sf: ts.SourceFile,
+  out: ProcessEnvRead[],
+  aliasInfoForExpr: (
+    expr: ts.Expression,
+  ) => { sym: ts.Symbol; info: EnvAliasInfo } | undefined,
+): void {
+  if (!ts.isObjectBindingPattern(name)) return;
+  if (initializerYieldsProcessEnv(initializer)) {
+    destructureObjectPattern(name, file, sf, out);
+    return;
+  }
+  const hit = aliasInfoForExpr(initializer);
+  if (hit && !hit.info.paramProp) {
+    destructureObjectPattern(name, file, sf, out);
+  }
+}
+
+function scanSourceFile(
+  file: string,
+  sf: ts.SourceFile,
+  checker: ts.TypeChecker,
 ): ProcessEnvRead[] {
-  const { program, sf } = createScanProgram(file, source);
-  const checker = program.getTypeChecker();
   const aliases = collectEnvAliases(sf, checker);
+  const { processRoots, opaqueEnvs } = collectProcessEscapes(sf, checker);
   const out: ProcessEnvRead[] = [];
 
   function reportOpaque(node: ts.Node): void {
     out.push({ file, line: lineOf(sf, node), kind: "opaque" });
   }
 
-  // Exported / parameter-property env bindings escape without a later use.
   for (const [sym, info] of aliases) {
     if (!info.exported && !info.paramProp) continue;
     for (const d of sym.getDeclarations() ?? []) {
@@ -522,7 +672,6 @@ export function scanProcessEnvReads(
       const info = aliases.get(sym);
       return info ? { sym, info } : undefined;
     }
-    // this.env — property from a parameter property
     if (
       ts.isPropertyAccessExpression(e) &&
       e.expression.kind === ts.SyntaxKind.ThisKeyword
@@ -587,7 +736,13 @@ export function scanProcessEnvReads(
       parent.initializer === sourceExpr &&
       ts.isObjectBindingPattern(parent.name)
     ) {
-      // Destructuring from alias — keys emitted by the declaration walk.
+      return;
+    }
+    if (
+      ts.isParameter(parent) &&
+      parent.initializer === sourceExpr &&
+      ts.isObjectBindingPattern(parent.name)
+    ) {
       return;
     }
     if (isQuietProcessEnvBindingSite(sourceExpr)) return;
@@ -609,24 +764,71 @@ export function scanProcessEnvReads(
     reportOpaque(envNode);
   }
 
-  function visit(node: ts.Node): void {
-    // Destructuring from process.env or from an env alias
-    if (ts.isVariableDeclaration(node) && node.initializer) {
+  function classifyAliasReference(node: ts.Node, info: EnvAliasInfo): void {
+    const parent = node.parent;
+    if (
+      ts.isShorthandPropertyAssignment(parent) &&
+      parent.name === node
+    ) {
+      // Shorthand value — forward or opaque
       if (
-        ts.isObjectBindingPattern(node.name) &&
-        initializerYieldsProcessEnv(node.initializer)
+        ts.isObjectLiteralExpression(parent.parent) &&
+        ts.isCallExpression(parent.parent.parent) &&
+        isSameFileEnvForward(parent.parent.parent, parent.parent)
       ) {
-        destructureObjectPattern(node.name, file, sf, out);
-      } else if (
-        ts.isObjectBindingPattern(node.name) &&
-        aliasInfoForExpr(node.initializer) &&
-        !aliasInfoForExpr(node.initializer)!.info.paramProp
-      ) {
-        destructureObjectPattern(node.name, file, sf, out);
+        return;
+      }
+      reportOpaque(node);
+      return;
+    }
+    classifyEnvSourceUse(node as ts.Expression, node, info);
+  }
+
+  function visit(node: ts.Node): void {
+    // Variable / parameter destructuring from process.env or an env alias
+    if (ts.isVariableDeclaration(node) && node.initializer) {
+      emitDestructureFromEnvSource(
+        node.name,
+        node.initializer,
+        file,
+        sf,
+        out,
+        aliasInfoForExpr,
+      );
+    }
+    if (ts.isParameter(node) && node.initializer) {
+      emitDestructureFromEnvSource(
+        node.name,
+        node.initializer,
+        file,
+        sf,
+        out,
+        aliasInfoForExpr,
+      );
+    }
+
+    // Access through a process-root alias: `p.env.X` → opaque
+    if (
+      (ts.isPropertyAccessExpression(node) ||
+        ts.isElementAccessExpression(node)) &&
+      ts.isIdentifier(node.expression)
+    ) {
+      const sym = resolveSymbol(checker, node.expression);
+      if (sym && processRoots.has(sym)) {
+        reportOpaque(node);
+        if (ts.isPropertyAccessExpression(node)) visit(node.name);
+        else visit(node.argumentExpression);
+        return;
+      }
+      if (sym && opaqueEnvs.has(sym)) {
+        reportOpaque(node);
+        if (ts.isPropertyAccessExpression(node)) visit(node.name);
+        else visit(node.argumentExpression);
+        return;
       }
     }
 
-    // Named access on an env alias (env.KEY / this.env when not param-prop path)
+    // Named access on an env alias
     if (
       (ts.isPropertyAccessExpression(node) ||
         ts.isElementAccessExpression(node)) &&
@@ -638,15 +840,28 @@ export function scanProcessEnvReads(
       } else {
         pushNamedAccess(out, file, sf, node);
       }
-      // Still walk children except the alias expression (avoid bare opaque).
       if (ts.isPropertyAccessExpression(node)) visit(node.name);
       else visit(node.argumentExpression);
       return;
     }
 
-    // Bare alias identifier (value position)
+    // Bare alias identifier / shorthand value
     if (ts.isIdentifier(node) && !isDeclarationNamePosition(node)) {
-      const sym = resolveSymbol(checker, node);
+      let sym: ts.Symbol | undefined;
+      if (
+        ts.isShorthandPropertyAssignment(node.parent) &&
+        node.parent.name === node
+      ) {
+        sym =
+          checker.getShorthandAssignmentValueSymbol(node.parent) ??
+          resolveSymbol(checker, node);
+      } else {
+        sym = resolveSymbol(checker, node);
+      }
+      if (sym && opaqueEnvs.has(sym)) {
+        reportOpaque(node);
+        return;
+      }
       const info = sym ? aliases.get(sym) : undefined;
       if (info) {
         const parent = node.parent;
@@ -657,47 +872,29 @@ export function scanProcessEnvReads(
         ) {
           // handled by access branch
         } else if (
-          ts.isVariableDeclaration(parent) &&
+          (ts.isVariableDeclaration(parent) || ts.isParameter(parent)) &&
           parent.initializer === node &&
           ts.isObjectBindingPattern(parent.name)
         ) {
           // handled by destructure
         } else {
-          classifyEnvSourceUse(node, node, info);
+          classifyAliasReference(node, info);
           return;
         }
       }
     }
 
-    // Direct process.env
+    // Direct process.env / process['env'] / globalThis.process.env
     if (
-      ts.isPropertyAccessExpression(node) &&
-      node.name.text === "env" &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === "process"
+      (ts.isPropertyAccessExpression(node) ||
+        ts.isElementAccessExpression(node)) &&
+      isProcessEnvExpr(node)
     ) {
       classifyEnvSourceUse(node, node, undefined);
       return;
     }
-    if (
-      (ts.isParenthesizedExpression(node) ||
-        ts.isAsExpression(node) ||
-        ts.isTypeAssertionExpression(node)) &&
-      isProcessEnvExpr(node) &&
-      // Only handle wrappers whose immediate child walk would otherwise miss
-      // the interesting parent (e.g. (process.env as T).D).
-      !(
-        ts.isPropertyAccessExpression(node.parent) &&
-        node.parent.expression === node
-      ) &&
-      !(
-        ts.isElementAccessExpression(node.parent) &&
-        node.parent.expression === node
-      )
-    ) {
-      // Let forEachChild reach the inner process.env for binding sites;
-      // for cast.D the PropertyAccess parent is on the wrapper — handle here.
-    }
+
+    // Named access on process.env expression (including casts)
     if (
       ts.isPropertyAccessExpression(node) &&
       isProcessEnvExpr(node.expression)
@@ -715,11 +912,82 @@ export function scanProcessEnvReads(
       return;
     }
 
+    // Other uses of the process root (not .env / ignored members)
+    if (ts.isIdentifier(node) && node.text === "process") {
+      const parent = node.parent;
+      if (
+        ts.isPropertyAccessExpression(parent) &&
+        parent.expression === node
+      ) {
+        if (isIgnoredProcessMember(parent.name.text) && parent.name.text !== "env") {
+          // process.exit / process.argv — not an env read
+        } else {
+          // .env handled above
+        }
+      } else if (
+        ts.isElementAccessExpression(parent) &&
+        parent.expression === node
+      ) {
+        // process['env'] handled as env source; other keys ignored/opaque
+        const arg = unwrap(parent.argumentExpression);
+        const key =
+          ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)
+            ? arg.text
+            : null;
+        if (key && key !== "env") {
+          // non-env member access — ignore
+        }
+      } else if (
+        ts.isVariableDeclaration(parent) &&
+        parent.initializer === node
+      ) {
+        // const p = process / const { env } = process — tracked in escapes
+      } else if (
+        ts.isPropertyAccessExpression(parent) &&
+        parent.name === node &&
+        ts.isIdentifier(parent.expression) &&
+        parent.expression.text === "globalThis"
+      ) {
+        // globalThis.process — handled when used as root
+      } else if (!isDeclarationNamePosition(node)) {
+        reportOpaque(node);
+        return;
+      }
+    }
+
     ts.forEachChild(node, visit);
   }
 
   visit(sf);
   return out;
+}
+
+/**
+ * Scan many sources with one `createProgram` (`noResolve` / `noLib`).
+ * Scoping comes from the TypeScript binder.
+ */
+export function scanProcessEnvReadsInSources(
+  entries: ReadonlyArray<{ file: string; source: string }>,
+): ProcessEnvRead[] {
+  if (entries.length === 0) return [];
+  const { program, files } = createScanProgramForSources(entries);
+  const checker = program.getTypeChecker();
+  const out: ProcessEnvRead[] = [];
+  for (const [file, sf] of files) {
+    out.push(...scanSourceFile(file, sf, checker));
+  }
+  return out;
+}
+
+/**
+ * Every `process.env` occurrence in `source`, plus named reads on bindings
+ * initialised from `process.env`. Thin wrapper over the batch scanner.
+ */
+export function scanProcessEnvReads(
+  file: string,
+  source: string,
+): ProcessEnvRead[] {
+  return scanProcessEnvReadsInSources([{ file, source }]);
 }
 
 function censusEntryFor(
