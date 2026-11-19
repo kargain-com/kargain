@@ -233,11 +233,62 @@ describe("ponder-indexing-env-census-policy", () => {
       ),
       ["opaque"],
     );
+    // process binding: .env is an env source → named read
     assert.deepEqual(
       label(
         scanProcessEnvReads("x.ts", "const p = process; p.env.X4;\n"),
       ),
+      ["X4"],
+    );
+  });
+
+  it("scan (binder): process export/rest, local shadow, typeof, moduleDetection", () => {
+    const label = (reads: ProcessEnvRead[]) =>
+      reads.map((r) =>
+        r.kind === "key" ? r.key : r.kind === "prefix" ? `${r.prefix}*` : "opaque",
+      );
+
+    assert.deepEqual(
+      label(scanProcessEnvReads("x.ts", "export const p = process;\n")),
       ["opaque"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          "const { exit, ...rest } = process; rest.env.R1;\n",
+        ),
+      ),
+      ["opaque"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          "function f(process: any) { return process.env.NOT_REAL; }\n",
+        ),
+      ),
+      [],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads("x.ts", "typeof process !== 'undefined';\n"),
+      ),
+      [],
+    );
+    assert.deepEqual(
+      label(scanProcessEnvReads("x.ts", "typeof process.env;\n")),
+      [],
+    );
+
+    const batch = scanProcessEnvReadsInSources([
+      { file: "a.ts", source: "var env = process.env;\n" },
+      { file: "b.ts", source: "function use() { return env.CROSS_SCRIPT; }\n" },
+    ]);
+    assert.deepEqual(label(batch), []);
+    assert.deepEqual(
+      label(scanProcessEnvReads("b.ts", "function use() { return env.CROSS_SCRIPT; }\n")),
+      label(batch.filter((r) => r.file === "b.ts")),
     );
   });
 
