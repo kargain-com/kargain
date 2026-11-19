@@ -137,26 +137,14 @@ Rollback (canonical detail: [ops/deploys/s9-b-solana-cutover.md](../ops/deploys/
 
 ### Recommended VPS `.env` (RPC profiles)
 
-Commercial RPC is a **list** plus an explicit `eth_getLogs` window. There is no default URL and no singular `PONDER_RPC_URL_<chainId>` for 84532 / 11155111. Every provider in a list must pass `pnpm ponder:rpc-probe` at the configured window before the `.env` change.
+Commercial RPC is a **list** plus an explicit `eth_getLogs` window. There is no default URL and no singular `PONDER_RPC_URL_<chainId>` for 84532 / 11155111. Keys and example values: [`.env.example`](../../.env.example). Every provider in a list must pass `pnpm ponder:rpc-probe` at the configured window before the `.env` change.
 
 **Profiles** (`.env` edit + `docker compose up -d --no-build --force-recreate ponder`; no schema change — RPC lists and windows are transport, outside the indexing identity and Ponder `build_id`):
 
-| Profile | When | Example |
-|---------|------|---------|
+| Profile | When | Behaviour |
+|---------|------|-----------|
 | **backfill** | History catch-up | History-serving providers only; large window |
 | **steady** | After `/ready` **200** | More providers allowed; window = smallest maximum among them |
-
-```bash
-# backfill example
-PONDER_RPC_URLS_84532=https://base-sepolia.gateway.tenderly.co
-PONDER_GETLOGS_BLOCK_RANGE_84532=50000
-PONDER_RPC_URLS_11155111=https://rpc.sepolia.ethpandaops.io
-PONDER_GETLOGS_BLOCK_RANGE_11155111=30000
-
-# steady example (Base), after /ready 200 and probe pass:
-# PONDER_RPC_URLS_84532=https://base-sepolia.gateway.tenderly.co,https://84532.rpc.thirdweb.com,https://sepolia.base.org
-# PONDER_GETLOGS_BLOCK_RANGE_84532=200
-```
 
 ### Start blocks and addresses
 

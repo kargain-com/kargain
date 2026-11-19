@@ -7,9 +7,9 @@ Public map of services, truth, and owners. Host names, IPs, users, and server pa
 | Surface | Responsibility |
 |---------|----------------|
 | **App** (Next.js) | UI, session, Server Actions; discovery via the indexer HTTP API; chain RPC for detail reads and writes |
-| **Ponder** (`ponder`) | Single EVM writer and Hono HTTP API; one schema per indexing identity (`k_<40 hex>`) baked into the writer image |
+| **Ponder** (`ponder`) | Single EVM writer and Hono HTTP API; one schema per indexing identity (`k_<40 hex>`) baked into the writer image; HTTP also unions EVM tables with `kargain_svm_projection` from Postgres |
 | **Ponder deploy** (`ponder-deploy`) | Profile-only one-off; builds and switches the writer tag; not a long-running service |
-| **Postgres** | Shared database: Ponder writer schema, `kargain_svm_raw`, SVM projection |
+| **Postgres** | Shared database: Ponder writer schema, `kargain_svm_raw`, `kargain_svm_projection` |
 | **svm-ingest** | Solana raw ingest into `kargain_svm_raw`; projection is rebuilt by replay, never by dropping raw |
 | **strfry** | Nostr relay (kinds the product publishes and reads) |
 | **Tunnel** | Edge front for the writer HTTP port; Compose target remains `http://ponder:42069` |
@@ -20,20 +20,23 @@ Commercial addresses, SVM program ids, and start cursors come only from [`lib/we
 
 ```mermaid
 flowchart LR
-  ui[App]
-  chain[Commercial_chains]
-  ponder[Ponder_writer]
-  ingest[svm_ingest]
-  pg[(Postgres)]
-  relay[strfry]
-  storage[Irys_Arweave]
-  msg[XMTP]
+  ui["App"]
+  chain["Commercial chains"]
+  ponder["Ponder writer and API"]
+  ingest["svm-ingest"]
+  pg[("Postgres")]
+  tunnel["Tunnel"]
+  relay["strfry"]
+  storage["Irys / Arweave"]
+  msg["XMTP"]
   ui -->|writes| chain
-  ui -->|tagged_reads| ponder
-  chain -->|EVM_logs| ponder
-  chain -->|SVM_slots| ingest
+  ui -->|tagged reads| tunnel
+  tunnel --> ponder
+  chain -->|EVM logs| ponder
+  chain -->|SVM slots| ingest
   ponder --> pg
   ingest --> pg
+  pg -->|"EVM schema + kargain_svm_projection"| ponder
   ui --> relay
   ui --> storage
   ui --> msg
@@ -42,7 +45,7 @@ flowchart LR
 ## Truth layers
 
 1. **Chain is authority.** A user write is settled when there is a receipt (and a successful chain read when the UI needs it). Indexer catch-up is not settlement.
-2. **Indexers are projections.** Browse, directories, and notifications read Ponder (and the SVM projection) as eventual views of chain history.
+2. **Indexers are projections.** Browse, directories, and notifications read Ponder as eventual views: EVM rows from the writer schema, Solana rows from `kargain_svm_projection` (same Postgres, served by the Ponder HTTP API in union with EVM).
 3. **Tagged app→indexer reads.** Mutable Ponder projections go through [`lib/web3/ponder-tagged-read.ts`](../../lib/web3/ponder-tagged-read.ts). Wait instruments (`/status`, live passport catch-up) stay uncached.
 4. **One post-write refresh owner.** [`hooks/use-tx-sync.ts`](../../hooks/use-tx-sync.ts) (`syncReads`) invalidates indexer tags, client caches, and `router.refresh()`.
 
@@ -53,28 +56,20 @@ Trust does not survive a bridge crossing ([SPEC §I.12](../contracts/SPEC.md#i12
 1. Session / wallet state from [`lib/web3/active-account.ts`](../../lib/web3/active-account.ts).
 2. Write planning and send through the VM write owners; lifecycle and outcomes through `useTxSync` / `runTx`.
 3. Chain confirms the transaction.
-4. Ponder indexes EVM logs into the writer schema; `svm-ingest` appends Solana raw and projects.
-5. `syncReads` refreshes tagged indexer reads and the route; discovery UIs then show the new projection.
+4. Ponder indexes EVM logs into the writer schema; `svm-ingest` appends Solana raw and projects into `kargain_svm_projection`.
+5. `syncReads` refreshes tagged indexer reads and the route; discovery UIs then show the new projection (EVM and SVM via the Ponder API).
 
-## Area owners
+## Owners
 
-Executable registry: [`lib/architecture/chokepoints.ts`](../../lib/architecture/chokepoints.ts). Product code does not fork by VM in `app/`, `components/`, or `hooks/` — the fork lives in the owner.
+Area owners (wallet, writes, reads, registry, passport, custody, storage, messaging, bridge, geo, Nostr) are listed once in [`AGENTS.md`](../../AGENTS.md#choke-points). The executable registry is [`lib/architecture/chokepoints.ts`](../../lib/architecture/chokepoints.ts). Product code does not fork by VM in `app/`, `components/`, or `hooks/` — the fork lives in the owner.
 
-| Area | Owner |
-|------|--------|
-| Wallet / session | `lib/web3/active-account.ts` |
-| Writes and outcomes | `hooks/use-tx-sync.ts` |
-| Reads | `lib/web3/keyed-multicall.ts` |
-| Registry / network roles | `lib/web3/commercial-active.ts` |
-| Amounts / explorer URLs | `lib/web3/native-amount.ts` · `lib/web3/network-explorer.ts` |
-| Passport presence / origin | `lib/passport/presence.ts` · `lib/passport/passport-holder.ts` |
-| Ponder reads | `lib/web3/ponder-tagged-read.ts` |
-| SVM ingest | `svm-ingest/svm-raw-writer.ts` |
-| Custody fold | `lib/custody/fold.ts` |
-| Storage | `lib/storage/irys-deposit.ts` |
-| Messaging | `lib/messaging/session-registry.ts` |
-| Bridge | `lib/web3/bridge/bridge-config.ts` |
-| Geo | `lib/geo/` |
-| Nostr | `lib/nostr/app-event-store.ts` |
+Service → runtime owner (not duplicated in the AGENTS table):
+
+| Service | Runtime owner |
+|---------|----------------|
+| Ponder writer / HTTP | `src/` + `ponder.config.ts` (schema via image `DATABASE_SCHEMA`) |
+| svm-ingest | `svm-ingest/svm-raw-writer.ts` |
+| strfry | Compose `strfry` + Dockerfile.strfry |
+| Tunnel | Compose `cloudflared` (fronts `ponder:42069`) |
 
 The product key is the commercial namespace, never `chainId` alone. Further depth: [indexer README](../indexer/README.md), [design spec](../design-spec.md), [ADRs](../adr/README.md).

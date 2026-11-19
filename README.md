@@ -103,7 +103,7 @@ Configure `.env.local` from [`.env.example`](.env.example). Contract addresses c
 
 ```bash
 ./scripts/dev-local.sh       # Postgres + Hardhat + deploy + Ponder
-export NEXT_PUBLIC_ENABLE_LOCAL_CHAIN=1 NEXT_PUBLIC_CHAIN_ID=31337
+export NEXT_PUBLIC_ENABLE_LOCAL_CHAIN=1
 eval "$(node --import tsx scripts/lib/print-local-env.ts)"
 pnpm dev
 ```

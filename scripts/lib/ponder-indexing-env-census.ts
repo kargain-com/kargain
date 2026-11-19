@@ -73,19 +73,68 @@ function unwrap(expr: ts.Expression): ts.Expression {
   }
 }
 
-function isProcessEnv(node: ts.Node): node is ts.PropertyAccessExpression {
+function isProcessEnvExpr(expr: ts.Expression): boolean {
+  const e = unwrap(expr);
   return (
-    ts.isPropertyAccessExpression(node) &&
-    node.name.text === "env" &&
-    ts.isIdentifier(node.expression) &&
-    node.expression.text === "process"
+    ts.isPropertyAccessExpression(e) &&
+    e.name.text === "env" &&
+    ts.isIdentifier(e.expression) &&
+    e.expression.text === "process"
   );
 }
 
+/** True when `expr` is `process.env` or `… ?? process.env` (rightmost). */
+function initializerYieldsProcessEnv(expr: ts.Expression): boolean {
+  const e = unwrap(expr);
+  if (isProcessEnvExpr(e)) return true;
+  if (
+    ts.isBinaryExpression(e) &&
+    e.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+  ) {
+    return initializerYieldsProcessEnv(e.right);
+  }
+  return false;
+}
+
+/** Parameter default or declaration init that aliases `process.env`. */
+function isProcessEnvBindingInit(node: ts.Node): boolean {
+  if (ts.isParameter(node) && node.initializer) {
+    return initializerYieldsProcessEnv(node.initializer);
+  }
+  if (ts.isVariableDeclaration(node) && node.initializer) {
+    return initializerYieldsProcessEnv(node.initializer);
+  }
+  return false;
+}
+
+function pushNamedEnvAccess(
+  out: ProcessEnvRead[],
+  file: string,
+  sf: ts.SourceFile,
+  access: ts.PropertyAccessExpression | ts.ElementAccessExpression,
+): void {
+  const line =
+    sf.getLineAndCharacterOfPosition(access.getStart(sf)).line + 1;
+  if (ts.isPropertyAccessExpression(access)) {
+    out.push({ file, line, kind: "key", key: access.name.text });
+    return;
+  }
+  const arg = unwrap(access.argumentExpression);
+  if (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) {
+    out.push({ file, line, kind: "key", key: arg.text });
+  } else if (ts.isTemplateExpression(arg) && arg.head.text.length > 0) {
+    out.push({ file, line, kind: "prefix", prefix: arg.head.text });
+  } else {
+    out.push({ file, line, kind: "opaque" });
+  }
+}
+
 /**
- * Every `process.env` occurrence in `source`. A read by literal key or by a
- * template with a literal head is named; any other use (passing the object,
- * destructuring, a computed key) is `opaque` and can never be classified.
+ * Every `process.env` occurrence in `source`, plus named reads on bindings
+ * initialised from `process.env` (parameter default `= process.env`, or
+ * `x ?? process.env`). A read by literal key or by a template with a literal
+ * head is named; any other use (passing the object, destructuring, a computed
+ * key) is `opaque` and can never be classified.
  */
 export function scanProcessEnvReads(
   file: string,
@@ -99,9 +148,91 @@ export function scanProcessEnvReads(
     file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
   const out: ProcessEnvRead[] = [];
-  const visit = (node: ts.Node): void => {
-    if (isProcessEnv(node)) {
-      const line = sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+  /** Nested scopes: identifier → aliases process.env. */
+  const aliasStack: Array<Set<string>> = [new Set()];
+
+  function aliasesEnv(name: string): boolean {
+    for (let i = aliasStack.length - 1; i >= 0; i--) {
+      if (aliasStack[i]!.has(name)) return true;
+    }
+    return false;
+  }
+
+  function withFunctionScope(
+    params: readonly ts.ParameterDeclaration[],
+    body: ts.Node | undefined,
+  ): void {
+    const scope = new Set<string>();
+    for (const p of params) {
+      if (
+        p.initializer &&
+        initializerYieldsProcessEnv(p.initializer) &&
+        ts.isIdentifier(p.name)
+      ) {
+        scope.add(p.name.text);
+      }
+    }
+    aliasStack.push(scope);
+    if (body) visit(body);
+    // Visit initializers (process.env defaults) without treating them as opaque.
+    for (const p of params) {
+      if (p.initializer) visit(p.initializer);
+      if (p.type) visit(p.type);
+    }
+    aliasStack.pop();
+  }
+
+  function visit(node: ts.Node): void {
+    // Named reads on an injected env binding.
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      aliasesEnv(node.expression.text)
+    ) {
+      pushNamedEnvAccess(out, file, sf, node);
+      return;
+    }
+    if (
+      ts.isElementAccessExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      aliasesEnv(node.expression.text)
+    ) {
+      pushNamedEnvAccess(out, file, sf, node);
+      return;
+    }
+
+    if (
+      ts.isFunctionDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isArrowFunction(node) ||
+      ts.isMethodDeclaration(node) ||
+      ts.isConstructorDeclaration(node)
+    ) {
+      if (
+        (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node)) &&
+        node.name
+      ) {
+        visit(node.name);
+      }
+      withFunctionScope(node.parameters, node.body);
+      return;
+    }
+
+    if (
+      ts.isVariableDeclaration(node) &&
+      node.initializer &&
+      initializerYieldsProcessEnv(node.initializer) &&
+      ts.isIdentifier(node.name)
+    ) {
+      aliasStack[aliasStack.length - 1]!.add(node.name.text);
+      visit(node.initializer);
+      if (node.type) visit(node.type);
+      return;
+    }
+
+    if (isProcessEnvExpr(node as ts.Expression) && ts.isExpression(node)) {
+      const line =
+        sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
       const parent = node.parent;
       if (ts.isPropertyAccessExpression(parent) && parent.expression === node) {
         out.push({ file, line, kind: "key", key: parent.name.text });
@@ -110,19 +241,42 @@ export function scanProcessEnvReads(
         parent.expression === node
       ) {
         const arg = unwrap(parent.argumentExpression);
-        if (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) {
+        if (
+          ts.isStringLiteral(arg) ||
+          ts.isNoSubstitutionTemplateLiteral(arg)
+        ) {
           out.push({ file, line, kind: "key", key: arg.text });
         } else if (ts.isTemplateExpression(arg) && arg.head.text.length > 0) {
           out.push({ file, line, kind: "prefix", prefix: arg.head.text });
         } else {
           out.push({ file, line, kind: "opaque" });
         }
+      } else if (isProcessEnvBindingInit(parent)) {
+        // Binding initialiser — named reads come from the alias.
+      } else if (
+        ts.isBinaryExpression(parent) &&
+        parent.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken &&
+        parent.right === node &&
+        isProcessEnvBindingInit(parent.parent)
+      ) {
+        // `x ?? process.env` as a binding initialiser.
       } else {
         out.push({ file, line, kind: "opaque" });
       }
+      return;
     }
+
+    // Block scope for const/let aliases.
+    if (ts.isBlock(node) || ts.isModuleBlock(node) || ts.isSourceFile(node)) {
+      aliasStack.push(new Set());
+      ts.forEachChild(node, visit);
+      aliasStack.pop();
+      return;
+    }
+
     ts.forEachChild(node, visit);
-  };
+  }
+
   visit(sf);
   return out;
 }

@@ -65,7 +65,7 @@ describe("ponder-indexing-env-census-policy", () => {
     );
   });
 
-  it("scan: literal, element, template and opaque reads", () => {
+  it("scan: literal, element, template, cast, binding, and opaque reads", () => {
     const reads = scanProcessEnvReads(
       "x.ts",
       [
@@ -75,13 +75,16 @@ describe("ponder-indexing-env-census-policy", () => {
         "const d = (process.env as Record<string, string>).D;",
         "const e = process.env;",
         "const f = process.env[k];",
+        "function g(env: NodeJS.ProcessEnv = process.env) { return env.G; }",
       ].join("\n"),
     );
     assert.deepEqual(
       reads.map((r) =>
         r.kind === "key" ? r.key : r.kind === "prefix" ? `${r.prefix}*` : "opaque",
       ),
-      ["A", "B", "C_*", "opaque", "opaque", "opaque"],
+      // cast unwrap names D; bare `const e = process.env` is a binding (no opaque);
+      // process.env[k] stays opaque; injected env.G is named.
+      ["A", "B", "C_*", "D", "opaque", "G"],
     );
   });
 

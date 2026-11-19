@@ -6,7 +6,6 @@ const deployment = JSON.parse(readFileSync(DEPLOYMENT_PATH(), "utf8")) as Record
 
 const exports: string[] = [
   `export NEXT_PUBLIC_ENABLE_LOCAL_CHAIN=1`,
-  `export NEXT_PUBLIC_CHAIN_ID=31337`,
   `export NEXT_PUBLIC_RPC_BY_CHAIN='{"31337":"http://127.0.0.1:8545"}'`,
   `export PONDER_KAR_PASSPORT_ADDRESS='${deployment.karPassport}'`,
   `export PONDER_KAR_PRO_PASS_ADDRESS='${deployment.karProPass}'`,

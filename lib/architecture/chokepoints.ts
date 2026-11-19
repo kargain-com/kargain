@@ -1152,8 +1152,9 @@ export const ARCHITECTURAL_CHOKEPOINTS: readonly ArchitecturalChokepoint[] = [
   },
   {
     id: "env-example-coverage",
-    owner: "scripts/lib/env-example-coverage.ts · .env.example",
-    rule: "Every process.env key or prefix read under app/components/hooks/lib/src/svm-ingest appears in .env.example as KEY= or # KEY= (prefixes as KEY_<id>=); planted missing reads fail the coverage policy",
+    owner:
+      "scripts/lib/env-example-coverage.ts · scripts/lib/ponder-indexing-env-census.ts (scanProcessEnvReads) · .env.example",
+    rule: "Every process.env key or prefix read in the union of app trees (app|components|hooks|lib), the Ponder executable closure (collectPonderGraph), and the svm-ingest static-import closure appears in .env.example as KEY= or # KEY= (prefixes as KEY_<id>=); injected env bindings are resolved by scanProcessEnvReads; remaining opaque reads fail; planted missing / opaque / prefix-without-placeholder cases fail the coverage policy",
     guardTests: ["env-example-coverage-policy.test.ts"],
   },
 ] as const;
