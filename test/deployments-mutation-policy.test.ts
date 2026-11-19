@@ -119,6 +119,11 @@ function collectModuleImports(sf: ts.SourceFile): ModuleImports {
       if (bindings && ts.isNamedImports(bindings)) {
         for (const el of bindings.elements) {
           const exported = (el.propertyName ?? el.name).text;
+          if (exported === "promises" && !isPromises) {
+            // `import { promises as P } from "node:fs"` — same receiver as fs/promises.
+            fsReceivers.set(el.name.text, true);
+            continue;
+          }
           const base = mutatorBaseFromExportName(exported);
           if (base) mutatorLocals.set(el.name.text, base);
         }
@@ -462,6 +467,20 @@ describe("deployments mutation policy", () => {
     assert.ok(
       hits.some((h) => h.mutator === "rm"),
       `expected rm hit, got ${JSON.stringify(hits)}`,
+    );
+  });
+
+  it('constructed: named import { promises as P } from node:fs → P.unlink(join(…)) is red', () => {
+    const planted = [
+      'import { promises as P } from "node:fs";',
+      'import { join } from "node:path";',
+      'const ROOT = "/repo";',
+      'await P.unlink(join(ROOT, "deployments", "x.json"));',
+    ].join("\n");
+    const hits = findDeploymentsMutationsInSource(planted);
+    assert.ok(
+      hits.some((h) => h.mutator === "unlink"),
+      `expected unlink hit, got ${JSON.stringify(hits)}`,
     );
   });
 });
