@@ -95,6 +95,60 @@ describe("ponder-indexing-env-census-policy", () => {
     assert.equal(indexingEnvCensusDefects(reads).unclassified.length, 1);
   });
 
+  it("scan (binder): export escape, hoist, param property, var hoist, wrong-position forward", () => {
+    const label = (reads: ProcessEnvRead[]) =>
+      reads.map((r) =>
+        r.kind === "key" ? r.key : r.kind === "prefix" ? `${r.prefix}*` : "opaque",
+      );
+
+    assert.deepEqual(
+      label(scanProcessEnvReads("x.ts", "export const e = process.env;\n")),
+      ["opaque"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          "export function f() { return e.H; } const e = process.env;\n",
+        ),
+      ),
+      ["H"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          "class C { constructor(private env = process.env) {} get x() { return this.env.CX; } }\n",
+        ),
+      ),
+      ["opaque", "opaque"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          "function f() { return e.H; }\nvar e = process.env;\n",
+        ),
+      ),
+      ["H"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          [
+            "function g(e = process.env) { return e.Q; }",
+            "export function f(env = process.env) {",
+            "  const g = (x) => x.Z;",
+            "  return g(env);",
+            "}",
+          ].join("\n"),
+        ),
+      ),
+      ["Q", "opaque"],
+    );
+  });
+
   it("refuses removed start-block keys and every PONDER_*_ADDRESS by name", () => {
     for (const key of [
       REMOVED_START_BLOCK_KEY,
