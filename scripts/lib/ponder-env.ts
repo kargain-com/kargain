@@ -71,17 +71,17 @@ type PonderDatabaseConfig =
   | { kind: "pglite"; directory?: string }
   | { kind: "postgres"; connectionString: string };
 
-/**
- * Local dev / E2E use embedded PGlite when no Postgres connection string is set,
- * so Docker Postgres is not required. Production always provides DATABASE_URL
- * (docker-compose) and stays on Postgres.
- */
 /** The Postgres connection string Ponder writes through: `DATABASE_URL` only. */
 export function resolvePonderConnectionString(): string | undefined {
   const trimmed = process.env.DATABASE_URL?.trim();
   return trimmed ? trimmed : undefined;
 }
 
+/**
+ * Postgres when `DATABASE_URL` is set (VPS, Compose, E2E). Embedded PGlite only
+ * when local (`PONDER_ENABLE_LOCAL=1`) and `DATABASE_URL` is unset. Non-local
+ * without `DATABASE_URL` refuses as `missing_database_url`.
+ */
 function resolvePonderDatabase(enableLocal: boolean): PonderDatabaseConfig {
   const connectionString = resolvePonderConnectionString();
 

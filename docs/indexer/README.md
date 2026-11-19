@@ -136,9 +136,9 @@ Smoke checks after a deploy: [OPERATIONS.md §4](./OPERATIONS.md#4-smoke-checks)
 
 ## Local dev database (PGlite — no Docker)
 
-Production and the VPS use **Postgres** (`DATABASE_URL` from docker-compose). Local dev and the E2E harness use **embedded PGlite** — no Docker required. [`scripts/lib/ponder-env.ts`](../../scripts/lib/ponder-env.ts) `resolvePonderDatabase()` chooses:
+Production, the VPS, and the E2E harness use **Postgres** through `DATABASE_URL` (Compose on the VPS; ephemeral Docker Postgres in `./scripts/e2e-local.sh`). Embedded **PGlite** is only for local `ponder` when `DATABASE_URL` is unset. [`scripts/lib/ponder-env.ts`](../../scripts/lib/ponder-env.ts) `resolvePonderDatabase()` chooses:
 
-- **Postgres** when `DATABASE_URL` is set (production, always).
+- **Postgres** when `DATABASE_URL` is set (VPS, Compose, E2E).
 - **PGlite** (`.ponder/pglite`, override with `PONDER_PGLITE_DIR`) when `PONDER_ENABLE_LOCAL=1` and no connection string.
 
-`./scripts/e2e-local.sh` leaves `DATABASE_URL` unset (PGlite) and sets `PONDER_LOCAL_ONLY=1` so Ponder indexes only the Hardhat chain and `/ready` does not wait on the public Base Sepolia RPC. These are **local-dev-only env guards** — production config is unchanged (Postgres, Base Sepolia).
+`./scripts/e2e-local.sh` exports `DATABASE_URL` to its ephemeral Postgres and sets `PONDER_LOCAL_ONLY=1` so Ponder indexes only the Hardhat chain and `/ready` does not wait on the public Base Sepolia RPC. Those local-only env guards never run on the VPS.
