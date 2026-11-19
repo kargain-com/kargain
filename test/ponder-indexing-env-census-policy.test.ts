@@ -16,6 +16,7 @@ import {
   indexingEnvCensusDefects,
   ponderDeployEnvRefusal,
   scanProcessEnvReads,
+  scanProcessEnvReadsInSources,
   type ProcessEnvRead,
 } from "../scripts/lib/ponder-indexing-env-census.ts";
 
@@ -25,8 +26,11 @@ const REMOVED_START_BLOCK_KEY = "PONDER_START_BLOCK";
 
 function liveReads(): ProcessEnvRead[] {
   const { indexing } = collectPonderGraph(ROOT);
-  return indexing.flatMap((rel) =>
-    scanProcessEnvReads(rel, readFileSync(join(ROOT, rel), "utf8")),
+  return scanProcessEnvReadsInSources(
+    indexing.map((rel) => ({
+      file: rel,
+      source: readFileSync(join(ROOT, rel), "utf8"),
+    })),
   );
 }
 
@@ -65,7 +69,7 @@ describe("ponder-indexing-env-census-policy", () => {
     );
   });
 
-  it("scan: literal, element, template and opaque reads", () => {
+  it("scan: literal, element, template, cast, binding, destructure, and opaque reads", () => {
     const reads = scanProcessEnvReads(
       "x.ts",
       [
@@ -74,20 +78,218 @@ describe("ponder-indexing-env-census-policy", () => {
         "const c = process.env[`C_${id}`];",
         "const d = (process.env as Record<string, string>).D;",
         "const e = process.env;",
+        "use(e);",
         "const f = process.env[k];",
+        "function g(env: NodeJS.ProcessEnv = process.env) { return env.G; }",
+        "const { H } = process.env;",
       ].join("\n"),
     );
     assert.deepEqual(
       reads.map((r) =>
         r.kind === "key" ? r.key : r.kind === "prefix" ? `${r.prefix}*` : "opaque",
       ),
-      ["A", "B", "C_*", "opaque", "opaque", "opaque"],
+      // cast unwrap names D; bare binding then use(e) is opaque; process.env[k]
+      // stays opaque; injected env.G is named; destructure yields H.
+      ["A", "B", "C_*", "D", "opaque", "opaque", "G", "H"],
     );
   });
 
   it("constructed: an opaque read can never be classified", () => {
     const reads = scanProcessEnvReads("x.ts", "const all = { ...process.env };\n");
     assert.equal(indexingEnvCensusDefects(reads).unclassified.length, 1);
+  });
+
+  it("scan (binder): export escape, hoist, param property, var hoist, wrong-position forward", () => {
+    const label = (reads: ProcessEnvRead[]) =>
+      reads.map((r) =>
+        r.kind === "key" ? r.key : r.kind === "prefix" ? `${r.prefix}*` : "opaque",
+      );
+
+    assert.deepEqual(
+      label(scanProcessEnvReads("x.ts", "export const e = process.env;\n")),
+      ["opaque"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          "export function f() { return e.H; } const e = process.env;\n",
+        ),
+      ),
+      ["H"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          "class C { constructor(private env = process.env) {} get x() { return this.env.CX; } }\n",
+        ),
+      ),
+      ["opaque", "opaque"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          "function f() { return e.H; }\nvar e = process.env;\n",
+        ),
+      ),
+      ["H"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          [
+            "function g(e = process.env) { return e.Q; }",
+            "export function f(env = process.env) {",
+            "  const g = (x) => x.Z;",
+            "  return g(env);",
+            "}",
+          ].join("\n"),
+        ),
+      ),
+      ["Q", "opaque"],
+    );
+  });
+
+  it("scan (binder): shorthand, strict options forward, param destructure, process forms", () => {
+    const label = (reads: ProcessEnvRead[]) =>
+      reads.map((r) =>
+        r.kind === "key" ? r.key : r.kind === "prefix" ? `${r.prefix}*` : "opaque",
+      );
+
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          "function f(env = process.env) { return { env }; }\n",
+        ),
+      ),
+      ["opaque"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          "function f(env = process.env) { return h({ env }); }\n",
+        ),
+      ),
+      ["opaque"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          "const env = process.env; export const cfg = { env };\n",
+        ),
+      ),
+      ["opaque"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          [
+            "function g(o) { const e = o?.env ?? process.env; return h(o); }",
+            "function f(env = process.env) { return g({ env }); }",
+          ].join("\n"),
+        ),
+      ),
+      ["opaque"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          [
+            "function g(o) { const e = o?.env ?? process.env; return o!.env.SECRET2; }",
+            "function f(env = process.env) { return g({ env }); }",
+          ].join("\n"),
+        ),
+      ),
+      ["opaque"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          "function f({ A } = process.env) { return A; }\n",
+        ),
+      ),
+      ["A"],
+    );
+    assert.deepEqual(
+      label(scanProcessEnvReads("x.ts", 'process["env"].X1;\n')),
+      ["X1"],
+    );
+    assert.deepEqual(
+      label(scanProcessEnvReads("x.ts", "globalThis.process.env.X2;\n")),
+      ["X2"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads("x.ts", "const { env } = process; env.X3;\n"),
+      ),
+      ["opaque"],
+    );
+    // process binding: .env is an env source → named read
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads("x.ts", "const p = process; p.env.X4;\n"),
+      ),
+      ["X4"],
+    );
+  });
+
+  it("scan (binder): process export/rest, local shadow, typeof, moduleDetection", () => {
+    const label = (reads: ProcessEnvRead[]) =>
+      reads.map((r) =>
+        r.kind === "key" ? r.key : r.kind === "prefix" ? `${r.prefix}*` : "opaque",
+      );
+
+    assert.deepEqual(
+      label(scanProcessEnvReads("x.ts", "export const p = process;\n")),
+      ["opaque"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          "const { exit, ...rest } = process; rest.env.R1;\n",
+        ),
+      ),
+      ["opaque"],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads(
+          "x.ts",
+          "function f(process: any) { return process.env.NOT_REAL; }\n",
+        ),
+      ),
+      [],
+    );
+    assert.deepEqual(
+      label(
+        scanProcessEnvReads("x.ts", "typeof process !== 'undefined';\n"),
+      ),
+      [],
+    );
+    assert.deepEqual(
+      label(scanProcessEnvReads("x.ts", "typeof process.env;\n")),
+      [],
+    );
+
+    const batch = scanProcessEnvReadsInSources([
+      { file: "a.ts", source: "var env = process.env;\n" },
+      { file: "b.ts", source: "function use() { return env.CROSS_SCRIPT; }\n" },
+    ]);
+    assert.deepEqual(label(batch), []);
+    assert.deepEqual(
+      label(scanProcessEnvReads("b.ts", "function use() { return env.CROSS_SCRIPT; }\n")),
+      label(batch.filter((r) => r.file === "b.ts")),
+    );
   });
 
   it("refuses removed start-block keys and every PONDER_*_ADDRESS by name", () => {

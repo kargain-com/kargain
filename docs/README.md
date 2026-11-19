@@ -42,6 +42,12 @@ Start here. Each area has **one canonical document**; other files link in — th
 | [ops/deploys/phase2-checkpoint-dossier.md](./ops/deploys/phase2-checkpoint-dossier.md) | §7.6 Phase 2 mainnet dossier — prepared, not activated |
 | [ops/recovery-bridge.md](./ops/recovery-bridge.md) | Bridge recovery ops (testnet EOA vs mainnet Timelock) |
 
+## Architecture
+
+| Document | Purpose |
+|----------|---------|
+| [architecture/overview.md](./architecture/overview.md) | Service topology, truth layers, write path, area owners |
+
 ## Architecture decisions
 
 | Document | Purpose |

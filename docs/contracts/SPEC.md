@@ -1421,13 +1421,7 @@ Local dev stack on **Hardhat chain 31337** — full passport lifecycle before Ph
 
 ### Env vars (local)
 
-| Variable | Purpose |
-|----------|---------|
-| `NEXT_PUBLIC_ENABLE_LOCAL_CHAIN=1` | Add chain 31337 to wagmi |
-| `NEXT_PUBLIC_CHAIN_ID=31337` | Default UI chain |
-| `NEXT_PUBLIC_RPC_BY_CHAIN` | Include `"31337":"http://127.0.0.1:8545"` |
-
-Export the indexer addresses after deploy: `eval "$(node --import tsx scripts/lib/print-local-env.ts)"`
+Local Hardhat keys and examples live only in [`.env.example`](../../.env.example) (section “Local Hardhat stack”). Export indexer addresses after deploy: `eval "$(node --import tsx scripts/lib/print-local-env.ts)"`.
 
 ### E2E scenario (`pnpm test:e2e`)
 
