@@ -96,7 +96,16 @@ function initializerYieldsProcessEnv(expr: ts.Expression): boolean {
   return false;
 }
 
-/** Parameter default or declaration init that aliases `process.env`. */
+type FunctionLike =
+  | ts.FunctionDeclaration
+  | ts.FunctionExpression
+  | ts.ArrowFunction
+  | ts.MethodDeclaration
+  | ts.ConstructorDeclaration;
+
+type AliasKind = "alias" | "shadow";
+
+/** Parameter / declaration whose initializer is (or nullish-falls to) process.env. */
 function isProcessEnvBindingInit(node: ts.Node): boolean {
   if (ts.isParameter(node) && node.initializer) {
     return initializerYieldsProcessEnv(node.initializer);
@@ -107,14 +116,17 @@ function isProcessEnvBindingInit(node: ts.Node): boolean {
   return false;
 }
 
-function pushNamedEnvAccess(
+function lineOf(sf: ts.SourceFile, node: ts.Node): number {
+  return sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+}
+
+function pushNamedAccess(
   out: ProcessEnvRead[],
   file: string,
   sf: ts.SourceFile,
   access: ts.PropertyAccessExpression | ts.ElementAccessExpression,
 ): void {
-  const line =
-    sf.getLineAndCharacterOfPosition(access.getStart(sf)).line + 1;
+  const line = lineOf(sf, access);
   if (ts.isPropertyAccessExpression(access)) {
     out.push({ file, line, kind: "key", key: access.name.text });
     return;
@@ -130,11 +142,179 @@ function pushNamedEnvAccess(
 }
 
 /**
+ * Plain property names from an object binding pattern, or `opaque` when the
+ * pattern has rest / computed / nested elements.
+ */
+function destructureObjectPattern(
+  pattern: ts.ObjectBindingPattern,
+  file: string,
+  sf: ts.SourceFile,
+  out: ProcessEnvRead[],
+): void {
+  const line = lineOf(sf, pattern);
+  for (const el of pattern.elements) {
+    if (el.dotDotDotToken) {
+      out.push({ file, line, kind: "opaque" });
+      continue;
+    }
+    if (el.propertyName && !ts.isIdentifier(el.propertyName)) {
+      out.push({ file, line, kind: "opaque" });
+      continue;
+    }
+    if (ts.isObjectBindingPattern(el.name) || ts.isArrayBindingPattern(el.name)) {
+      out.push({ file, line, kind: "opaque" });
+      continue;
+    }
+    const key = el.propertyName
+      ? (el.propertyName as ts.Identifier).text
+      : ts.isIdentifier(el.name)
+        ? el.name.text
+        : null;
+    if (key) out.push({ file, line, kind: "key", key });
+    else out.push({ file, line, kind: "opaque" });
+  }
+}
+
+/** True when `body` binds `param.env` / `param?.env` with `?? process.env`. */
+function bodyConsumesOptionsEnv(
+  body: ts.Node | undefined,
+  paramName: string,
+): boolean {
+  if (!body) return false;
+  let found = false;
+  const isOptsEnvAccess = (expr: ts.Expression): boolean => {
+    const left = unwrap(expr);
+    return (
+      ts.isPropertyAccessExpression(left) &&
+      left.name.text === "env" &&
+      ts.isIdentifier(left.expression) &&
+      left.expression.text === paramName
+    );
+  };
+  const visit = (node: ts.Node): void => {
+    if (found) return;
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken &&
+      isProcessEnvExpr(node.right) &&
+      isOptsEnvAccess(node.left)
+    ) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(body);
+  return found;
+}
+
+/**
+ * Climb through casts/parens and the right side of `??` to see whether
+ * `sourceExpr` is only introducing a process.env binding (no read yet).
+ */
+function isQuietProcessEnvBindingSite(sourceExpr: ts.Expression): boolean {
+  let cur: ts.Node = sourceExpr;
+  for (;;) {
+    const parent = cur.parent;
+    if (!parent) return false;
+    if (
+      (ts.isAsExpression(parent) ||
+        ts.isParenthesizedExpression(parent) ||
+        ts.isNonNullExpression(parent) ||
+        ts.isSatisfiesExpression(parent) ||
+        ts.isTypeAssertionExpression(parent)) &&
+      parent.expression === cur
+    ) {
+      cur = parent;
+      continue;
+    }
+    if (
+      ts.isBinaryExpression(parent) &&
+      parent.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken &&
+      parent.right === cur
+    ) {
+      cur = parent;
+      continue;
+    }
+    if (isProcessEnvBindingInit(parent)) return true;
+    // Destructuring: `const { A } = process.env` — keys emitted by the
+    // VariableDeclaration visit; process.env itself stays quiet.
+    if (
+      ts.isVariableDeclaration(parent) &&
+      parent.initializer === cur &&
+      ts.isObjectBindingPattern(parent.name)
+    ) {
+      return true;
+    }
+    return false;
+  }
+}
+
+type EnvCalleeInfo = {
+  /** Parameter indices with `= process.env`. */
+  direct: Set<number>;
+  /** Parameter indices that are options objects consuming `.env ?? process.env`. */
+  optionsEnv: Set<number>;
+};
+
+function collectEnvCallees(sf: ts.SourceFile): Map<string, EnvCalleeInfo> {
+  const map = new Map<string, EnvCalleeInfo>();
+  const add = (name: string, info: EnvCalleeInfo): void => {
+    const prev = map.get(name);
+    if (!prev) {
+      map.set(name, info);
+      return;
+    }
+    for (const i of info.direct) prev.direct.add(i);
+    for (const i of info.optionsEnv) prev.optionsEnv.add(i);
+  };
+  const inspect = (fn: FunctionLike, name: string | undefined): void => {
+    if (!name) return;
+    const direct = new Set<number>();
+    const optionsEnv = new Set<number>();
+    fn.parameters.forEach((p, i) => {
+      if (
+        p.initializer &&
+        initializerYieldsProcessEnv(p.initializer) &&
+        ts.isIdentifier(p.name)
+      ) {
+        direct.add(i);
+      } else if (
+        ts.isIdentifier(p.name) &&
+        bodyConsumesOptionsEnv(fn.body, p.name.text)
+      ) {
+        optionsEnv.add(i);
+      }
+    });
+    if (direct.size > 0 || optionsEnv.size > 0) {
+      add(name, { direct, optionsEnv });
+    }
+  };
+  const walk = (node: ts.Node): void => {
+    if (ts.isFunctionDeclaration(node) && node.name) {
+      inspect(node, node.name.text);
+    } else if (ts.isMethodDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
+      inspect(node, node.name.text);
+    } else if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      (ts.isFunctionExpression(node.initializer) ||
+        ts.isArrowFunction(node.initializer))
+    ) {
+      inspect(node.initializer, node.name.text);
+    }
+    ts.forEachChild(node, walk);
+  };
+  walk(sf);
+  return map;
+}
+
+/**
  * Every `process.env` occurrence in `source`, plus named reads on bindings
- * initialised from `process.env` (parameter default `= process.env`, or
- * `x ?? process.env`). A read by literal key or by a template with a literal
- * head is named; any other use (passing the object, destructuring, a computed
- * key) is `opaque` and can never be classified.
+ * initialised from `process.env`. Destructuring yields named keys (or opaque
+ * for rest/computed/nested). Any other alias use is opaque, except same-file
+ * forwarding to a callee whose matching parameter is itself an env binding.
  */
 export function scanProcessEnvReads(
   file: string,
@@ -148,34 +328,121 @@ export function scanProcessEnvReads(
     file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
   const out: ProcessEnvRead[] = [];
-  /** Nested scopes: identifier → aliases process.env. */
-  const aliasStack: Array<Set<string>> = [new Set()];
+  const callees = collectEnvCallees(sf);
+  /** Nested scopes: name → alias | shadow. */
+  const aliasStack: Array<Map<string, AliasKind>> = [new Map()];
+
+  function lookupAlias(name: string): AliasKind | undefined {
+    for (let i = aliasStack.length - 1; i >= 0; i--) {
+      const k = aliasStack[i]!.get(name);
+      if (k) return k;
+    }
+    return undefined;
+  }
 
   function aliasesEnv(name: string): boolean {
-    for (let i = aliasStack.length - 1; i >= 0; i--) {
-      if (aliasStack[i]!.has(name)) return true;
+    return lookupAlias(name) === "alias";
+  }
+
+  function bindInCurrent(name: string, kind: AliasKind): void {
+    aliasStack[aliasStack.length - 1]!.set(name, kind);
+  }
+
+  function isSameFileEnvForward(
+    call: ts.CallExpression,
+    arg: ts.Expression,
+  ): boolean {
+    const callee = unwrap(call.expression);
+    if (!ts.isIdentifier(callee)) return false;
+    const info = callees.get(callee.text);
+    if (!info) return false;
+    const idx = call.arguments.indexOf(arg);
+    if (idx < 0) return false;
+    const u = unwrap(arg);
+    // Direct: foo(env)
+    if (info.direct.has(idx) && ts.isIdentifier(u) && aliasesEnv(u.text)) {
+      return true;
+    }
+    // Options: foo({ env }) or foo({ env: env })
+    if (info.optionsEnv.has(idx) && ts.isObjectLiteralExpression(u)) {
+      for (const prop of u.properties) {
+        if (
+          ts.isShorthandPropertyAssignment(prop) &&
+          aliasesEnv(prop.name.text)
+        ) {
+          return true;
+        }
+        if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === "env") {
+          const init = unwrap(prop.initializer);
+          if (ts.isIdentifier(init) && aliasesEnv(init.text)) return true;
+        }
+      }
     }
     return false;
   }
 
-  function withFunctionScope(
-    params: readonly ts.ParameterDeclaration[],
-    body: ts.Node | undefined,
+  function reportOpaque(node: ts.Node): void {
+    out.push({ file, line: lineOf(sf, node), kind: "opaque" });
+  }
+
+  function handleEnvSourceUse(
+    sourceExpr: ts.Expression,
+    /** The process.env node or alias identifier being used. */
+    envNode: ts.Node,
   ): void {
-    const scope = new Set<string>();
-    for (const p of params) {
-      if (
-        p.initializer &&
-        initializerYieldsProcessEnv(p.initializer) &&
-        ts.isIdentifier(p.name)
-      ) {
-        scope.add(p.name.text);
+    const parent = sourceExpr.parent;
+
+    // process.env.KEY / alias.KEY
+    if (
+      ts.isPropertyAccessExpression(parent) &&
+      parent.expression === sourceExpr
+    ) {
+      pushNamedAccess(out, file, sf, parent);
+      return;
+    }
+    // process.env["KEY"] / process.env[`P_${id}`]
+    if (
+      ts.isElementAccessExpression(parent) &&
+      parent.expression === sourceExpr
+    ) {
+      pushNamedAccess(out, file, sf, parent);
+      return;
+    }
+    // Binding / destructure init — keys (if any) come from the declaration visit
+    if (isQuietProcessEnvBindingSite(sourceExpr)) return;
+
+    // Same-file forward: foo(env) / foo({ env })
+    if (ts.isCallExpression(parent) && isSameFileEnvForward(parent, sourceExpr)) {
+      return;
+    }
+    if (
+      (ts.isShorthandPropertyAssignment(parent) ||
+        (ts.isPropertyAssignment(parent) &&
+          parent.initializer === sourceExpr)) &&
+      ts.isObjectLiteralExpression(parent.parent) &&
+      ts.isCallExpression(parent.parent.parent) &&
+      isSameFileEnvForward(parent.parent.parent, parent.parent)
+    ) {
+      return;
+    }
+
+    reportOpaque(envNode);
+  }
+
+  function withFunctionScope(fn: FunctionLike): void {
+    const scope = new Map<string, AliasKind>();
+    for (const p of fn.parameters) {
+      if (!ts.isIdentifier(p.name)) continue;
+      if (p.initializer && initializerYieldsProcessEnv(p.initializer)) {
+        scope.set(p.name.text, "alias");
+      } else {
+        // Non-env parameter shadows an outer alias of the same name.
+        scope.set(p.name.text, "shadow");
       }
     }
     aliasStack.push(scope);
-    if (body) visit(body);
-    // Visit initializers (process.env defaults) without treating them as opaque.
-    for (const p of params) {
+    if (fn.body) visit(fn.body);
+    for (const p of fn.parameters) {
       if (p.initializer) visit(p.initializer);
       if (p.type) visit(p.type);
     }
@@ -183,13 +450,15 @@ export function scanProcessEnvReads(
   }
 
   function visit(node: ts.Node): void {
-    // Named reads on an injected env binding.
+    // Named property / element on an alias — handled when we see the access.
     if (
       ts.isPropertyAccessExpression(node) &&
       ts.isIdentifier(node.expression) &&
       aliasesEnv(node.expression.text)
     ) {
-      pushNamedEnvAccess(out, file, sf, node);
+      pushNamedAccess(out, file, sf, node);
+      // Do not visit the alias identifier as a bare use.
+      visit(node.name);
       return;
     }
     if (
@@ -197,7 +466,8 @@ export function scanProcessEnvReads(
       ts.isIdentifier(node.expression) &&
       aliasesEnv(node.expression.text)
     ) {
-      pushNamedEnvAccess(out, file, sf, node);
+      pushNamedAccess(out, file, sf, node);
+      visit(node.argumentExpression);
       return;
     }
 
@@ -214,61 +484,109 @@ export function scanProcessEnvReads(
       ) {
         visit(node.name);
       }
-      withFunctionScope(node.parameters, node.body);
+      withFunctionScope(node);
       return;
     }
 
-    if (
-      ts.isVariableDeclaration(node) &&
-      node.initializer &&
-      initializerYieldsProcessEnv(node.initializer) &&
-      ts.isIdentifier(node.name)
-    ) {
-      aliasStack[aliasStack.length - 1]!.add(node.name.text);
-      visit(node.initializer);
-      if (node.type) visit(node.type);
-      return;
+    // Variable bindings: alias, shadow, or destructure from process.env
+    if (ts.isVariableDeclaration(node)) {
+      if (node.initializer && ts.isIdentifier(node.name)) {
+        if (initializerYieldsProcessEnv(node.initializer)) {
+          // Visit initializer before binding so `opts?.env ?? process.env`
+          // does not treat the property name `env` as the new alias.
+          visit(node.initializer);
+          bindInCurrent(node.name.text, "alias");
+          if (node.type) visit(node.type);
+          return;
+        }
+        // Any other initializer shadows an outer alias of this name.
+        bindInCurrent(node.name.text, "shadow");
+      }
+      if (
+        node.initializer &&
+        initializerYieldsProcessEnv(node.initializer) &&
+        ts.isObjectBindingPattern(node.name)
+      ) {
+        destructureObjectPattern(node.name, file, sf, out);
+        visit(node.initializer);
+        return;
+      }
+      if (
+        node.initializer &&
+        ts.isObjectBindingPattern(node.name) &&
+        ts.isIdentifier(unwrap(node.initializer)) &&
+        aliasesEnv((unwrap(node.initializer) as ts.Identifier).text)
+      ) {
+        destructureObjectPattern(node.name, file, sf, out);
+        visit(node.initializer);
+        return;
+      }
     }
 
-    if (isProcessEnvExpr(node as ts.Expression) && ts.isExpression(node)) {
-      const line =
-        sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+    // Bare alias identifier use (value position only — not a property/binding name)
+    if (ts.isIdentifier(node) && aliasesEnv(node.text)) {
       const parent = node.parent;
-      if (ts.isPropertyAccessExpression(parent) && parent.expression === node) {
-        out.push({ file, line, kind: "key", key: parent.name.text });
+      if (
+        (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+        (ts.isPropertyAssignment(parent) && parent.name === node) ||
+        (ts.isBindingElement(parent) &&
+          (parent.name === node || parent.propertyName === node)) ||
+        (ts.isParameter(parent) && parent.name === node) ||
+        (ts.isVariableDeclaration(parent) && parent.name === node) ||
+        (ts.isFunctionDeclaration(parent) && parent.name === node) ||
+        (ts.isMethodDeclaration(parent) && parent.name === node)
+      ) {
+        // Name position — not a read of the alias value.
+      } else if (
+        ts.isPropertyAccessExpression(parent) &&
+        parent.expression === node
+      ) {
+        // handled by PropertyAccess branch
       } else if (
         ts.isElementAccessExpression(parent) &&
         parent.expression === node
       ) {
-        const arg = unwrap(parent.argumentExpression);
-        if (
-          ts.isStringLiteral(arg) ||
-          ts.isNoSubstitutionTemplateLiteral(arg)
-        ) {
-          out.push({ file, line, kind: "key", key: arg.text });
-        } else if (ts.isTemplateExpression(arg) && arg.head.text.length > 0) {
-          out.push({ file, line, kind: "prefix", prefix: arg.head.text });
-        } else {
-          out.push({ file, line, kind: "opaque" });
-        }
-      } else if (isProcessEnvBindingInit(parent)) {
-        // Binding initialiser — named reads come from the alias.
+        // handled by ElementAccess branch
       } else if (
-        ts.isBinaryExpression(parent) &&
-        parent.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken &&
-        parent.right === node &&
-        isProcessEnvBindingInit(parent.parent)
+        ts.isVariableDeclaration(parent) &&
+        parent.initializer === node &&
+        ts.isObjectBindingPattern(parent.name)
       ) {
-        // `x ?? process.env` as a binding initialiser.
+        // handled by destructure branch
       } else {
-        out.push({ file, line, kind: "opaque" });
+        handleEnvSourceUse(node, node);
+        return;
       }
-      return;
     }
 
-    // Block scope for const/let aliases.
+    // process.env itself (including through casts/parens via isProcessEnvExpr on wrappers)
+    if (ts.isExpression(node) && isProcessEnvExpr(node)) {
+      // Only handle the innermost process.env PropertyAccess, or a wrapper
+      // whose parent is the interesting use (cast).D / binding / opaque.
+      if (
+        ts.isPropertyAccessExpression(node) &&
+        node.name.text === "env" &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === "process"
+      ) {
+        handleEnvSourceUse(node, node);
+        return;
+      }
+      // Parenthesized / as-expression wrapping process.env: if parent uses it
+      // as property access (.D), named; else defer to handleEnvSourceUse.
+      if (
+        (ts.isParenthesizedExpression(node) ||
+          ts.isAsExpression(node) ||
+          ts.isTypeAssertionExpression(node)) &&
+        isProcessEnvExpr(node)
+      ) {
+        handleEnvSourceUse(node, node);
+        return;
+      }
+    }
+
     if (ts.isBlock(node) || ts.isModuleBlock(node) || ts.isSourceFile(node)) {
-      aliasStack.push(new Set());
+      aliasStack.push(new Map());
       ts.forEachChild(node, visit);
       aliasStack.pop();
       return;

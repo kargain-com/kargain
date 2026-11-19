@@ -52,14 +52,28 @@ describe("env-example-coverage-policy", () => {
   it("live: every runtime process.env key or prefix is in .env.example; no opaque", () => {
     const coverage = liveCoverage();
     assert.ok(coverage.files.length > 0, "the file set must be non-empty");
-    assert.ok(
-      coverage.files.some((f) => f === "ponder.config.ts" || f.endsWith("/ponder.config.ts")),
-      "Ponder executable closure must include ponder.config.ts",
+    const fileSet = new Set(coverage.files);
+    const ponderExecutable = collectPonderGraph(ROOT).executable.filter((f) =>
+      /\.(ts|tsx|mts|cts|js|mjs|cjs)$/.test(f),
     );
-    assert.ok(
-      coverage.files.some((f) => f.startsWith("svm-ingest/")),
-      "svm-ingest closure must be present",
+    for (const f of ponderExecutable) {
+      const norm = f.replace(/\\/g, "/");
+      assert.ok(
+        fileSet.has(norm),
+        `Ponder executable member missing from runtime env file set: ${norm}`,
+      );
+    }
+    const svmEntry = resolveSvmIngestStartEntry(ROOT);
+    const svmClosure = collectStaticImportClosure(svmEntry, { rootDir: ROOT }).filter(
+      (f) => /\.(ts|tsx|mts|cts|js|mjs|cjs)$/.test(f),
     );
+    for (const f of svmClosure) {
+      const norm = f.replace(/\\/g, "/");
+      assert.ok(
+        fileSet.has(norm),
+        `svm-ingest closure member missing from runtime env file set: ${norm}`,
+      );
+    }
     assert.ok(coverage.readTokenCount > 0, "the scan must see named env reads");
     assert.deepEqual(
       coverage.missing,
@@ -132,6 +146,51 @@ describe("env-example-coverage-policy", () => {
       coverage.opaque.some((o) => o.file === "lib/planted-opaque.ts"),
       "expected opaque read from planted spread",
     );
+  });
+
+  it("constructed: destructuring rest and unknown alias forwards are opaque", () => {
+    const rest = scanProcessEnvReads(
+      "lib/planted-rest.ts",
+      "const { A, ...r } = process.env;\nvoid A; void r;\n",
+    );
+    assert.deepEqual(
+      rest.map((r) =>
+        r.kind === "key" ? r.key : r.kind === "opaque" ? "opaque" : r.kind,
+      ),
+      ["A", "opaque"],
+    );
+    const unknown = scanProcessEnvReads(
+      "lib/planted-unknown-forward.ts",
+      "function f(env: NodeJS.ProcessEnv = process.env) { return use(env); }\n",
+    );
+    assert.deepEqual(
+      unknown.map((r) => (r.kind === "opaque" ? "opaque" : r.kind)),
+      ["opaque"],
+    );
+  });
+
+  it("constructed: same-file env forward stays named without opaque", () => {
+    const reads = scanProcessEnvReads(
+      "lib/planted-forward.ts",
+      [
+        "function host(env: NodeJS.ProcessEnv = process.env) { return env.PLANTED_FORWARD_KEY; }",
+        "function f(env: NodeJS.ProcessEnv = process.env) { return host(env); }",
+      ].join("\n"),
+    );
+    assert.deepEqual(
+      reads.map((r) =>
+        r.kind === "key" ? r.key : r.kind === "opaque" ? "opaque" : r.kind,
+      ),
+      ["PLANTED_FORWARD_KEY"],
+    );
+  });
+
+  it("constructed: a shadowed env name is not a read", () => {
+    const reads = scanProcessEnvReads(
+      "lib/planted-shadow.ts",
+      "function f(env: NodeJS.ProcessEnv = process.env) { return [1].map((env) => env.LENGTHX); }\n",
+    );
+    assert.deepEqual(reads, []);
   });
 
   it("constructed: a prefix read covered only by concrete keys is red", () => {

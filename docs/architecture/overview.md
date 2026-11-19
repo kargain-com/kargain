@@ -68,7 +68,7 @@ Service → runtime owner (not duplicated in the AGENTS table):
 | Service | Runtime owner |
 |---------|----------------|
 | Ponder writer / HTTP | `src/` + `ponder.config.ts` (schema via image `DATABASE_SCHEMA`) |
-| svm-ingest | `svm-ingest/svm-raw-writer.ts` |
+| svm-ingest | `svm-ingest/main.ts` (raw: `svm-raw-writer.ts`; projection: `svm-projection-writer.ts`) |
 | strfry | Compose `strfry` + Dockerfile.strfry |
 | Tunnel | Compose `cloudflared` (fronts `ponder:42069`) |
 
