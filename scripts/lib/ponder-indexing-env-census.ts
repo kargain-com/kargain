@@ -21,8 +21,6 @@ export type IndexingEnvCensusEntry = {
 
 export const PONDER_INDEXING_ENV_CENSUS: readonly IndexingEnvCensusEntry[] = [
   { key: "DATABASE_URL", class: "database" },
-  { key: "PONDER_DATABASE_URL", class: "database" },
-  { key: "DATABASE_PRIVATE_URL", class: "database" },
   { key: "PONDER_PGLITE_DIR", class: "database" },
   { key: "SVM_INGEST_DATABASE_URL", class: "database" },
   { key: "DATABASE_SCHEMA", class: "database" },

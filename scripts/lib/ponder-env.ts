@@ -19,7 +19,8 @@ export type PonderEnvRefusalCode =
   | "missing_rpc_urls"
   | "empty_rpc_urls"
   | "invalid_rpc_url"
-  | "duplicate_rpc_url";
+  | "duplicate_rpc_url"
+  | "missing_database_url";
 
 /** Typed config refusal: closed code + env key. Preflight reads `.code` / `.envKey` only. */
 export class PonderEnvRefusalError extends Error {
@@ -68,22 +69,19 @@ function commercialContractStartBlock(
 
 type PonderDatabaseConfig =
   | { kind: "pglite"; directory?: string }
-  | { kind: "postgres"; connectionString?: string };
+  | { kind: "postgres"; connectionString: string };
 
-/**
- * Local dev / E2E use embedded PGlite when no Postgres connection string is set,
- * so Docker Postgres is not required. Production always provides DATABASE_URL
- * (docker-compose) and stays on Postgres.
- */
-/** The Postgres connection string Ponder writes through, when one is set. */
+/** The Postgres connection string Ponder writes through: `DATABASE_URL` only. */
 export function resolvePonderConnectionString(): string | undefined {
-  return (
-    process.env.DATABASE_URL ??
-    process.env.PONDER_DATABASE_URL ??
-    process.env.DATABASE_PRIVATE_URL
-  );
+  const trimmed = process.env.DATABASE_URL?.trim();
+  return trimmed ? trimmed : undefined;
 }
 
+/**
+ * Postgres when `DATABASE_URL` is set (VPS, Compose, E2E). Embedded PGlite only
+ * when local (`PONDER_ENABLE_LOCAL=1`) and `DATABASE_URL` is unset. Non-local
+ * without `DATABASE_URL` refuses as `missing_database_url`.
+ */
 function resolvePonderDatabase(enableLocal: boolean): PonderDatabaseConfig {
   const connectionString = resolvePonderConnectionString();
 
@@ -98,9 +96,11 @@ function resolvePonderDatabase(enableLocal: boolean): PonderDatabaseConfig {
     };
   }
 
-  // Non-local without a connection string: keep postgres (Ponder resolves
-  // DATABASE_PRIVATE_URL/DATABASE_URL at runtime) — production path unchanged.
-  return { kind: "postgres", connectionString };
+  throw new PonderEnvRefusalError(
+    "missing_database_url",
+    "DATABASE_URL",
+    "missing_database_url: set DATABASE_URL to a Postgres connection string (no default)",
+  );
 }
 
 /** The two transport keys of a commercial chain, each read by name. */
